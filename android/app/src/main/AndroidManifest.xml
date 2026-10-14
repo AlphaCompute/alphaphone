@@ -85,6 +85,10 @@
   <receiver android:name=".ReminderReceiver" android:exported="false">
    <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/></intent-filter>
   </receiver>
+  <!-- Digests and agent schedules run in the resident runtime: bring back the owner-enabled agent (#394). Nothing is replayed. -->
+  <receiver android:name=".ResidentScheduleReceiver" android:exported="false">
+   <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/><action android:name="android.intent.action.MY_PACKAGE_REPLACED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/></intent-filter>
+  </receiver>
   <!-- Explicit user-selected assistant. Separate task preserves the invoking app's back stack. -->
   <activity android:name=".AlphaAssistActivity" android:exported="true" android:launchMode="singleTask" android:taskAffinity="${applicationId}.assistant" android:excludeFromRecents="true" android:screenOrientation="${appOrientation}" android:windowSoftInputMode="adjustResize" android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|density|navigation" android:theme="@style/AppTheme.Launch">
    <intent-filter><action android:name="android.intent.action.ASSIST"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>

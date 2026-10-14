@@ -43,6 +43,8 @@ test('Older servers offer only the query-based Archive folder',async({page})=>{
 
 test('Drafts, Archive and Trash load their lists; a Gmail draft opens for editing and saves only through review',async({page})=>{
  await install(page,{draftsList:true,searchTrash:true});
+ // Folder filters, including the overflow menu, are full 44px touch targets (#411).
+ for(const control of [page.getByRole('combobox',{name:'Other mail folders',exact:true}),page.getByRole('button',{name:'Archive',exact:true})])expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
  await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('trash');
  await expect(page.getByText('Trashed fixture',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Archive',exact:true}).click();
@@ -87,4 +89,22 @@ test('Send opens the exact review and nothing is sent until it is confirmed',asy
  await expect(review).toHaveCount(0);
  await page.waitForTimeout(200);
  expect((await fixture(page)).dispatches).toBe(0);
+});
+
+test.describe('wide Cloud Inbox layout',()=>{
+ test.use({hasTouch:true,isMobile:true});
+ test('keeps the account-bound message open beside its list and through collapsing',async({page})=>{
+  await page.setViewportSize({width:1280,height:800});
+  await install(page,{});
+  const message=page.getByRole('button',{name:'Synthetic sender, Inbox fixture',exact:true});
+  await message.click();
+  await expect(page.getByRole('region',{name:'Email message',exact:true})).toContainText('Synthetic body');
+  const list=page.locator('[data-alpha-subview="inbox-list"]');
+  await expect.poll(()=>list.evaluate(element=>!!element.closest('[inert]'))).toBe(false);
+  await expect(message).toHaveAttribute('aria-current','true');
+  await page.setViewportSize({width:412,height:915});
+  await expect.poll(()=>list.evaluate(element=>!!element.closest('[inert]'))).toBe(true);
+  await expect(page.getByRole('region',{name:'Email message',exact:true})).toContainText('Synthetic body');
+  expect((await fixture(page)).dispatches).toBe(0);
+ });
 });

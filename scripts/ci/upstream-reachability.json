@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "3f709f1f7c12a2f2f9c943d6984c1eb624ebe979",
-  "head": "13c98575987a121decc45b161b0c8a4ee698554e",
-  "recordedAt": "2026-10-11",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...13c98575987a121decc45b161b0c8a4ee698554e",
+  "baseCommit": "d9c6a000716ac73dab30f509d917c4391e5b8c65",
+  "head": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+  "recordedAt": "2026-10-14",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...644d56c93df9e410b1ef4297f961cb1df9e7d152",
   "status": "behind",
   "aheadBy": 0,
-  "behindBy": 252,
-  "mergeBase": "13c98575987a121decc45b161b0c8a4ee698554e",
+  "behindBy": 33,
+  "mergeBase": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -193,6 +193,13 @@
       "mergedAt": "2026-10-10T10:08:15Z",
       "mergeCommit": "13c98575987a121decc45b161b0c8a4ee698554e",
       "head": "codex/native-notice-receipts-20261010"
+    },
+    {
+      "number": 36179,
+      "state": "merged",
+      "mergedAt": "2026-10-14T08:20:26Z",
+      "mergeCommit": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+      "head": "codex/reminder-notice-ask-oct14"
     }
   ]
 }

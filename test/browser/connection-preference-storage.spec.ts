@@ -4,12 +4,14 @@ test.beforeEach(async({context})=>context.addInitScript(()=>localStorage.setItem
 // Disclosed identity boundary fixture: no provider request or credential collection.
 async function identity(page:Page,held=false){await page.evaluate(async held=>{
  const {CloudProtocol}=await import('/src/runtime/cloud-protocol.ts');
+ // Personal setup is development-only hosted-agent code (#406) and lives on the development subclass.
+ const {DevelopmentCloudAgentProtocol}=await import('/src/runtime/development-cloud-agents.ts');
  const {cloudCredentialStore}=await import('/src/runtime/native-connection.ts');
  const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
  const w=window as any;w.preferenceFixture={calls:0};
  cloudCredentialStore.read=async()=>({credentialId:'fixture-generation',token:'synthetic-noncredential'});
  CloudProtocol.prototype.identity=async function(signal:AbortSignal){w.preferenceFixture.calls++;w.preferenceFixture.signal=signal;if(held)await new Promise<void>(resolve=>w.preferenceFixture.release=resolve);return {userId:'fixture-owner'};};
- CloudProtocol.prototype.personal=async()=>{throw Error('Fixture does not authorize personal setup');};
+ DevelopmentCloudAgentProtocol.prototype.personal=async()=>{throw Error('Fixture does not authorize personal setup');};
  w.preferenceFixture.pending=c.cloudList('production');
 },held);}
 for(const changed of ['selection','service','clear'] as const)test(`normal browser ${changed} change cancels delayed identity without adopting it`,async({page,context})=>{

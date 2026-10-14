@@ -42,7 +42,10 @@ export class BrowserVoice extends WebPlugin {
  async localSpeechStatus(){return this.withAgentSpeech(async signal=>{
   // The entrypoint binds this facade after browser factories have registered.
   const connectionController=await this.connection;signal.throwIfAborted();
-  return browserLocalSpeechStatus(()=>connectionController.getBrowserSpeechAgent(),signal);
+  const status=await browserLocalSpeechStatus(()=>connectionController.getBrowserSpeechAgent(),signal);
+  // Transcription and synthesis are separate capabilities: without an explicitly selected
+  // agent the browser has no local transcriber, but its local speechSynthesis still reads aloud.
+  return {...status,synthesisReady:status.route==='local-agent'?status.ready:typeof window.speechSynthesis!=='undefined'&&!!window.speechSynthesis};
  });}
  getRecordingMetrics(input:{recordingId:string}){return Promise.resolve(this.capture.metrics(input.recordingId));}
  startRecording(input:{maxDurationMs?:number}={}){return this.capture.start(input);}

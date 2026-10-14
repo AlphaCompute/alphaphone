@@ -15,6 +15,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name="AlphaHostedResults",permissions={@Permission(alias="notifications",strings={Manifest.permission.POST_NOTIFICATIONS})})
 public class AlphaHostedResultsPlugin extends Plugin {
  static final String CHANNEL="alpha-hosted-results", ACTION="ai.elizaresearch.alphaphone.OPEN_HOSTED_RESULT", PREFIX="alpha-hosted-result:";
+ static final String ASK_ACTION="ai.elizaresearch.alphaphone.ASK_HOSTED_RESULT";
  private final ExecutorService io=Executors.newSingleThreadExecutor();
  // Capacitor can deliver an already queued bridge call after Activity destruction.
  // Reject it without recreating a worker or crashing the bridge HandlerThread.
@@ -77,10 +78,11 @@ public class AlphaHostedResultsPlugin extends Plugin {
  @Override public void load(){channel();capture(getActivity().getIntent());captureRenewal(getActivity().getIntent());}
  @Override protected void handleOnNewIntent(Intent intent){capture(intent);captureRenewal(intent);}
  @Override protected void handleOnResume(){notifyListeners("pendingResult",new JSObject(),true);}
- private void capture(Intent intent){if(intent==null||!ACTION.equals(intent.getAction())||intent.getData()==null)return;String data=intent.getData().toString();if(!data.startsWith(PREFIX))return;String key=data.substring(PREFIX.length());submit(null,()->{try{notices().capture(key);intent.setData(null);notifyListeners("pendingResult",new JSObject(),true);}catch(Exception ignored){/* Keep Intent for a later retry; never expose a result from an uncommitted tap. */}});}
+ private void capture(Intent intent){if(intent==null||(!ACTION.equals(intent.getAction())&&!ASK_ACTION.equals(intent.getAction()))||intent.getData()==null)return;String data=intent.getData().toString();if(!data.startsWith(PREFIX))return;String key=data.substring(PREFIX.length());boolean question=ASK_ACTION.equals(intent.getAction());submit(null,()->{try{notices().capture(key,question);intent.setData(null);notifyListeners("pendingResult",new JSObject(),true);}catch(Exception ignored){/* Keep Intent for a later retry; never expose a result from an uncommitted tap. */}});}
  @PluginMethod public void publishResult(PluginCall call){submit(call,()->{try{String phase=notices().publish(call.getData());JSObject out=new JSObject();out.put("phase",phase);call.resolve(out);}catch(Exception error){call.reject("Result notice unavailable; saved history is unchanged");}});}
- @PluginMethod public void pendingResult(PluginCall call){submit(call,()->{try{call.resolve(new JSObject(notices().peek().toString()));}catch(Exception error){call.reject("Saved result link unavailable");}});}
- @PluginMethod public void consumeResult(PluginCall call){submit(call,()->{try{notices().consume(call.getString("token",""));call.resolve();}catch(Exception error){call.reject("Result link changed");}});}
+ @PluginMethod public void pendingResult(PluginCall call){submit(call,()->{try{sourceForeground();call.resolve(new JSObject(notices().peek().toString()));}catch(Exception error){call.reject("Saved result link unavailable");}});}
+ @PluginMethod public void consumeResult(PluginCall call){submit(call,()->{try{sourceForeground();notices().consume(call.getString("token",""));call.resolve();}catch(Exception error){call.reject("Result link changed");}});}
+ @PluginMethod public void releaseResultQuestion(PluginCall call){submit(call,()->{try{sourceForeground();notices().releaseQuestion(call.getString("token",""));call.resolve();}catch(Exception error){call.reject("Result question changed");}});}
  @PluginMethod public void status(PluginCall call){try{JSObject out=new JSObject(HostedDelivery.get(getContext()).status().toString());out.put("enabled",enabled());call.resolve(out);}catch(Exception error){call.reject("Result status unavailable");}}
  @PluginMethod public void enable(PluginCall call){if(Build.VERSION.SDK_INT>=33&&getPermissionState("notifications")!=PermissionState.GRANTED){LateLaunch.ask(call,()->requestPermissionForAlias("notifications",call,"permissionResult"));return;}Intent settings=new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID,CHANNEL);try{getActivity().startActivity(settings);}catch(RuntimeException unavailable){call.reject("Android notification settings are unavailable");return;}status(call);}
  @PermissionCallback private void permissionResult(PluginCall call){status(call);}

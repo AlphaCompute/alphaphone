@@ -14,6 +14,7 @@ import { isMvpView, DEFERRED_MVP_VIEWS, deferredMvpPrompt } from "./mvp-features
 import { emptyHomeShadePull, pullStart, shadeFallback } from "./system-shade";
 import React from "react";
 import { DCLogic } from "./dc-lite.js";
+import { calendarDayColumns, calendarDayCount, calendarReturnDay, markVisibleWeek, visibleCalendarDays } from "./calendar-days";
 import { WEEKDAYS, MONTHS, formatTime, formatClock, formatHours, formatHoursRange, formatHour, weekdayName, formatShortDate, formatLongDate, formatMonthDay, formatMonthTitle } from "./locale-time";
 
 
@@ -727,6 +728,7 @@ registerView("messages", {
     }
 
     return {
+      nativePrototype: true,
       convos: convos,
       newMsg: function () { api.set({ compose: true, q: "", local: true }); },
       searching: st.sq != null, notSearching: st.sq == null, sq: st.sq || "", hasSq: !!sq, empty: convos.length === 0,
@@ -978,8 +980,10 @@ registerView("inbox", {
         dot: unread ? "var(--acct)" : "transparent", clip: !!(m.atts && m.atts.length),
         label: (unread ? "Unread, " : "") + w.name + ", " + m.subj,
         down: s.down, up: s.up,
-        tx: st.slide && st.slide.id === m.id ? st.slide.x : 0,
-        open: function () { if (api.swallowed()) return; api.set({ open: m.id, openLocal: true }); }
+        tx: st.slide && st.slide.id === m.id ? st.slide.x : 0, current: st.open === m.id ? "true" : "false",
+        // On a split canvas (#411) another message opens beside the list; the one it replaces is
+        // left read, as Back leaves it.
+        open: function () { if (api.swallowed()) return; var prev = api.get("inbox").open; if (prev != null && prev !== m.id) inboxMarkRead(api, prev); api.set({ open: m.id, openLocal: true }); }
       };
     });
 
@@ -1198,7 +1202,7 @@ registerView("calendar", {
   back: function (st, api) {
     if (st.form && st.form.pq != null) { api.set({ form: Object.assign({}, st.form, { pq: null }) }); return true; }
     if (st.form) { api.set({ form: null }); return true; }
-    if (st.open) { var oe = calFind(st.events || CAL_SEED, st.open); api.set({ open: null, openDay: null, day: st.openDay != null ? st.openDay : (oe ? oe.off : st.day) }); return true; }
+    if (st.open) { var oe = calFind(st.events || CAL_SEED, st.open); api.set({ open: null, openDay: null, day: calendarReturnDay(st.day || 0, st.openDay != null ? st.openDay : (oe ? oe.off : st.day || 0)) }); return true; }
     if (st.month != null) { api.set({ month: null }); return true; }
     return false;
   },
@@ -1343,8 +1347,9 @@ registerView("calendar", {
       return { l: l, n: dt.getDate(), cs: cs, dot: on(off).length ? (off === 0 ? "var(--acct)" : "var(--mut)") : "transparent", pick: function () { set({ day: off }); } };
     });
 
-    // timeline
-    var evs = on(sel).slice().sort(function (a, b) { return a.t - b.t || b.d - a.d; });
+    // timeline: one day's layout, used for the selected day and for each side-by-side day column
+    var layoutDay = function (day) {
+    var evs = on(day).slice().sort(function (a, b) { return a.t - b.t || b.d - a.d; });
     var lanes = []; var laneOf = {};
     evs.forEach(function (e) { for (var i = 0; i <= lanes.length; i++) { if (lanes[i] == null || lanes[i] <= e.t + 0.001) { lanes[i] = e.t + e.d; laneOf[e.id] = i; break; } } });
     var W = 412 - 60 - 16;
@@ -1356,13 +1361,20 @@ registerView("calendar", {
       if (pending) css += ";border:1.5px dashed var(--mut);box-shadow:none";
       var h = Math.max(24, e.d * CAL_PX - 4); var short = h < 40;
       return {
-        title: e.title, time: fmtT(e.t), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
+        title: e.title, time: fmtT(e.t), agendaTime: formatHours(e.t), top: (e.t - CAL_H0) * CAL_PX + 8, h: h, left: 60 + laneOf[e.id] * w, w: w - 4,
         css: css + (short ? ";align-items:center;padding-top:0;padding-bottom:0" : ""),
         stripe: e.key || e.hold || pending ? "transparent" : CAL_COLORS[c.color],
         sub: !short && e.d >= 1 ? (e.where || (e.video ? "Video call" : "")) : "", showTime: w >= 150,
-        open: function () { if (api.swallowed()) return; set({ open: e.id, openDay: sel }); }
+        open: function () { if (api.swallowed()) return; set({ open: e.id, openDay: day }); }
       };
     });
+    return events;
+    };
+    var evs = on(sel);
+    var dayEvents = layoutDay(sel);
+    var dayCount = calendarDayCount();
+    var dayOffs = visibleCalendarDays(sel, dayCount);
+    var dayColumns = dayCount > 1 ? dayOffs.map(function (off) { return { off: off, events: off === sel ? dayEvents : layoutDay(off) }; }) : [];
     var hours = []; for (var h = CAL_H0; h <= CAL_H1; h++) hours.push({ top: (h - CAL_H0) * CAL_PX + 8, label: formatHour(h), lt: (h - CAL_H0) * CAL_PX });
     var nowT = api.now.getHours() + api.now.getMinutes() / 60;
     var sw = api.sw(function (dx, dy) { if (Math.abs(dx) < Math.abs(dy) * 1.2) return false; set({ day: sel + (dx < 0 ? 1 : -1) }); }, { axis: "x" });
@@ -1431,7 +1443,7 @@ registerView("calendar", {
         rsvp: isInvite ? [rsvpBtn("yes", "Going"), rsvpBtn("maybe", "Maybe"), rsvpBtn("declined", "No")] : [],
         hasPrep: !!(ev.prep && ev.prep.length), prep: ev.prep || [], noPrep: !(ev.prep && ev.prep.length),
         ask: function () { api.send("Prep me for " + ev.title); },
-        close: function () { set({ open: null, openDay: null, day: evDay }); },
+        close: function () { set({ open: null, openDay: null, day: calendarReturnDay(sel, evDay) }); },
         edit: function () { set({ form: formFrom(ev, evDay) }); },
         del: function () { set({ events: list.filter(function (x) { return x.id !== ev.id; }), open: null, openDay: null, day: evDay }); undo(ev.title + " deleted", ev); }
       };
@@ -1492,8 +1504,13 @@ registerView("calendar", {
       month: monthOpen ? formatMonthTitle(mBase, mBase.getFullYear() !== today.getFullYear()) : formatMonthTitle(selDate, selDate.getFullYear() !== today.getFullYear()),
       dayMode: !monthOpen,
       dayName: calDayName(api, sel),
-      emptyText: sel === 0 ? "Nothing scheduled today" : "Free all day", week: week, events: events, hours: hours, empty: evs.length === 0,
-      showNow: sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
+      emptyText: dayCount > 1 ? "Free on these days" : sel === 0 ? "Nothing scheduled today" : "Free all day",
+      week: markVisibleWeek(week, sel - sdow, sel, dayCount),
+      events: dayCount > 1 ? [] : dayEvents, dayEvents: dayEvents, hours: hours,
+      empty: dayCount > 1 ? dayColumns.every(function (c) { return !c.events.length; }) : evs.length === 0,
+      multiDay: dayCount > 1, dayCount: dayCount,
+      dayColumns: calendarDayColumns(dayColumns, api.now, (nowT - CAL_H0) * CAL_PX + 8, nowT >= CAL_H0 && nowT <= CAL_H1, sel),
+      showNow: dayCount < 2 && sel === 0 && nowT >= CAL_H0 && nowT <= CAL_H1, nowTop: (nowT - CAL_H0) * CAL_PX + 8,
       tlDown: tlDown, tlUp: tlUp,
       notToday: sel !== 0, goToday: function () { set({ day: 0, month: null }); },
       toggleMonth: function () { set({ month: monthOpen ? null : 0 }); },
@@ -1931,7 +1948,7 @@ registerView("camera", {
       showZoom: !isScan && !front,
       zooms: CAM_ZOOM.map(function (z, i) {
         var on = st.zoom === i;
-        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;font-size:13px" : "background:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;font-size:12px", pick: function () { api.set({ zoom: i }); } };
+        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;padding:2px;box-sizing:content-box;background-clip:content-box;font-size:13px" : "background:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;padding:5px;box-sizing:content-box;background-clip:content-box;font-size:12px", pick: function () { api.set({ zoom: i }); } };
       }),
       scanFound: isScan && st.found, scanning: isScan && !st.found,
       posterDay: poster.short,
@@ -2889,11 +2906,16 @@ function notesEmpty(n) {
 }
 function notesStopTimers() { clearInterval(NT.playI); clearInterval(NT.dicI); NT.playI = null; NT.dicI = null; }
 function notesClose(api) {
+  api.set(notesLeave(api, null));
+}
+/** Leaves the open note as Back does: dictation and the unsent checklist item end with it, and an
+ * empty new note is dropped. On a split canvas (#411) another note opens beside the list directly. */
+function notesLeave(api, next) {
   var s = api.get("notes"); notesStopTimers();
-  var n = notesFind(s.list, s.open);
-  var patch = { open: null, sheet: null, playing: false, dict: false, newItem: "" };
+  var n = s.open !== next ? notesFind(s.list, s.open) : null;
+  var patch = { open: next, sheet: null, playing: false, dict: false, newItem: "" };
   if (n && notesEmpty(n)) patch.list = s.list.filter(function (x) { return x.id !== n.id; });
-  api.set(patch);
+  return patch;
 }
 function notesUndoable(api, note, idx, label) {
   api.toast(label, { undo: function () { var s = api.get("notes"); if (notesFind(s.list, note.id)) return; var l = s.list.slice(); l.splice(Math.min(idx, l.length), 0, note); api.set({ list: l }); } });
@@ -2911,8 +2933,8 @@ async function notesDelete(api, id) {
 function notesNew(api, kind) {
   var id = "n" + Date.now();
   var n = kind === "list" ? { id: id, kind: "list", title: "", items: [], pinned: false, when: "Now" } : { id: id, kind: "text", title: "", body: "", pinned: false, when: "Now" };
-  var s = api.get("notes");
-  api.set({ list: [n].concat(s.list), open: id, compose: false, q: null });
+  var leave = notesLeave(api, id);
+  api.set(Object.assign(leave, { list: [n].concat(leave.list || api.get("notes").list), compose: false, q: null }));
 }
 function notesStartRec(api) {
   notesStopTimers();
@@ -3076,7 +3098,7 @@ registerView("notes", {
         id: n.id, title: n.title || "Untitled", hasTitle: true, body: n.kind === "text" ? String(n.body || "").slice(0, 180) : "", hasBody: n.kind === "text" && !!String(n.body || "").trim(),
         isList: n.kind === "list", isVoice: n.kind === "voice", isLink: n.kind === "link", items: items, more: more > 0 ? "+" + more : "", hasMore: more > 0,
         bars: bars, dur: n.kind === "voice" ? notesFmt(n.dur) + (n.actions && n.actions.length ? " · " + n.actions.length + " to-dos" : "") : "", domain: n.domain || "",
-        pinned: !!n.pinned, open: function () { notesStopTimers(); api.set({ open: n.id, pos: 0, playing: false, sheet: null }); }
+        pinned: !!n.pinned, current: st.open === n.id ? "true" : "false", open: function () { api.set(Object.assign(notesLeave(api, n.id), { pos: 0 })); }
       };
     });
     var colL = [], colR = [];

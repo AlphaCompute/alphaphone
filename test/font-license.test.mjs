@@ -162,7 +162,7 @@ test('the bundle audit prints licence flags and the font check as flag lines, ne
   assert.match(run.stderr, /^LICENCE FLAG proprietary-licence-held-outside-repo: Denton typeface@[^\n]+ \(LicenseRef-Commercial-Font\)$/m);
   assert.match(run.stderr, /^LICENCE FLAG \(reported, not blocking\) unresolved-font-licence: resolved-by-owner-statement: Denton typeface \(denton-300\.woff2\) is proprietary; the owner states the licence is held/m);
   assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: pdf\.js standard fonts: Liberation@/m);
-  assert.match(run.stderr, /^LICENCE FLAG unverified: Piper LJSpeech medium voice model \(int8\)@/m);
+  assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: eSpeak NG \(Paradee speech runtime dependency\)@/m);
   assert.doesNotMatch(run.stderr, /RELEASE BLOCKER/);
   // An unrecorded font is printed too, and still does not fail a developer build.
   const swapped = audit(payload(t, {notices: committedNotices, files: {...files, 'denton-300.woff2': otherFont}}));
@@ -195,6 +195,9 @@ function scratchRoot(t) {
   fs.symlinkSync(path.join(ROOT, 'apps/app/public'), path.join(dir, 'apps/app/public'));
   for (const name of ['package.json', 'package-lock.json', 'upstream.lock.json']) fs.copyFileSync(path.join(ROOT, name), path.join(dir, name));
   for (const name of ['licenses', 'config']) fs.cpSync(path.join(ROOT, name), path.join(dir, name), {recursive: true});
+  // The reviewed ASR model pins are listed in the notices, so their recorded reasons are not stale.
+  fs.mkdirSync(path.join(dir, 'scripts'));
+  fs.copyFileSync(path.join(ROOT, 'scripts/host-speech-assets.json'), path.join(dir, 'scripts/host-speech-assets.json'));
   return dir;
 }
 
