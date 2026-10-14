@@ -116,8 +116,16 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
   const finalized = new Set<string>();
   // Client clock marks for the open utterance (numbers only).
   let speechStartAt: number | undefined, speechEndAt: number | undefined, firstPartialAt: number | undefined, partials = 0, responseMode: LiveMode = 'unknown';
-  // A failed turn is reported by the 502 response and, where events arrive, by an error event: once.
-  let turnFailed = false;
+  // A failed turn is reported by its 502 response and, where an event stream exists, also by an error
+  // event. Each report from one source cancels one unmatched report from the other.
+  const deduplicate = typeof options.transport.subscribe === 'function';
+  let eventFailures = 0, responseFailures = 0;
+  const failed = (source: 'event' | 'response') => {
+    if (deduplicate && source === 'event' && responseFailures > 0) { responseFailures--; return false; }
+    if (deduplicate && source === 'response' && eventFailures > 0) { eventFailures--; return false; }
+    if (deduplicate) { if (source === 'event') eventFailures++; else responseFailures++; }
+    return true;
+  };
   const waiting: Array<(final: LiveFinal | null) => void> = [];
 
   const setInterim = (text: string) => { if (text === interim) return; interim = text; options.onInterim?.(text); };
@@ -158,8 +166,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
     }
     // error: the turn produced no transcript.
     current = undefined; lastSeq = 0; setInterim(''); resetTurnMarks();
-    if (turnFailed) { turnFailed = false; return; }
-    turnFailed = true;
+    if (!failed('event')) return;
     options.onError?.('ASR_FAILED');
     for (const resolve of waiting.splice(0)) resolve(null);
   };
@@ -176,7 +183,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
         // 502 with code ASR_FAILED is the route's per-turn failure: that segment has no transcript.
         if (status === 502 && (error as { data?: { code?: unknown } })?.data?.code === 'ASR_FAILED') {
           current = undefined; lastSeq = 0; setInterim(''); resetTurnMarks();
-          if (turnFailed) { turnFailed = false; } else { turnFailed = true; options.onError?.('ASR_FAILED'); }
+          if (failed('response')) options.onError?.('ASR_FAILED');
           for (const resolve of waiting.splice(0)) resolve(null);
           return;
         }
@@ -209,7 +216,7 @@ export function createLiveVoiceSession(options: LiveVoiceSessionOptions) {
       if (disposed) return Promise.resolve();
       const at = now();
       for (const edge of vad) {
-        if (edge.type === 'speech-start') { resetTurnMarks(); speechStartAt = at; turnFailed = false; }
+        if (edge.type === 'speech-start') { resetTurnMarks(); speechStartAt = at; }
         else speechEndAt = at;
       }
       const posts: Promise<void>[] = [];

@@ -174,10 +174,11 @@ test('barge-in during playback stops it and keeps only the sentences that finish
   h.speeches[0].done.resolve(); await flush();
   assert.equal(h.speeches.length, 2);
   h.speeches[1].input.onStarted(); await flush();
-  // The user talks over the second sentence; a short answer is confirmed by its transcript.
+  // The user talks over the second sentence: during playback only the transcript confirms, however
+  // long the VAD stays open (residual echo can last a whole sentence).
   h.mic.onSpeechStart(h.clock.now()); await flush();
   assert.equal(h.speeches[1].input.signal.aborted, false, 'tentative until confirmed');
-  await h.clock.advance(560); h.mic.onSpeechEnd(h.clock.now()); await flush();
+  await h.clock.advance(ASSISTANT_TIMING_DEFAULTS.bargeInConfirmMs * 2); h.mic.onSpeechEnd(h.clock.now()); await flush();
   assert.equal(h.speeches[1].input.signal.aborted, false);
   h.mic.onSegment('wait'); await flush();
   assert.equal(h.speeches[1].input.signal.aborted, true, 'playback is aborted once the speech is accepted');
@@ -341,6 +342,32 @@ test('sentence splitting keeps the reply text and avoids tiny fragments', () => 
   const text = 'One sentence that is long enough. Another one that is long enough? Last.';
   assert.equal(splitSpokenSentences(text).join(' '), text);
   assert.throws(() => new VoiceAssistantSession({conversationId: 'r', assertCurrent() {}, listen: async () => ({close: async () => {}, cancel() {}}), send: async () => ({}), speak: async () => {}}, {timing: {shortGapMs: 900, longGapMs: 300}}), RangeError);
+});
+
+test('Android (no event stream): consecutive failed segments each yield one null, even when the next speech starts before the 502', async () => {
+  const pending = [];
+  const transport = {post: body => body.vad?.some(edge => edge.type === 'speech-end') ? new Promise((_, reject) => pending.push(() => reject(Object.assign(Error('Live ASR error'), {status: 502, data: {code: 'ASR_FAILED'}})))) : Promise.resolve({ok: true})};
+  const results = [];
+  const stream = createLiveSegmentStream({transport, onSegment: text => results.push(text)});
+  void stream.accept([frame(1)], [{type: 'speech-start', timestampMs: 1}]);
+  void stream.accept([frame(2)], [{type: 'speech-end', timestampMs: 2}]);
+  await flush();
+  void stream.accept([frame(3)], [{type: 'speech-start', timestampMs: 3}]);
+  pending.shift()(); await flush();
+  void stream.accept([frame(4)], [{type: 'speech-end', timestampMs: 4}]);
+  await flush(); pending.shift()(); await flush();
+  assert.deepEqual(results, [null, null]);
+});
+
+test('Stop cancels a muted capture that is still finalizing', async () => {
+  const h = harness();
+  await h.session.start();
+  let cancels = 0;const closing = deferred();
+  const capture = {fullDuplex: true, close: () => closing.promise, cancel: () => { cancels++; closing.resolve(); }};
+  h.session.capture = capture;
+  void h.session.setMuted(true); await flush();
+  await h.session.stop();
+  assert.equal(cancels, 1);
 });
 
 test('a failed turn reported by both its error event and its 502 response counts once', async () => {

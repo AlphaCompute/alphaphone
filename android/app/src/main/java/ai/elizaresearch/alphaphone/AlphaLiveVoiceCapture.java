@@ -56,6 +56,7 @@ final class AlphaLiveVoiceCapture {
  private final boolean echoCancel;
  private volatile boolean running;
  private volatile boolean echoCancelled;
+ private volatile long bufferMs;
  private Thread thread;
  private long startedAt;
 
@@ -71,12 +72,14 @@ final class AlphaLiveVoiceCapture {
   int minimum=AudioRecord.getMinBufferSize(SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT);
   AudioRecord recorder;
   int source=LiveCaptureSource.select(echoCancel,AcousticEchoCanceler.isAvailable(),MediaRecorder.AudioSource.VOICE_RECOGNITION,MediaRecorder.AudioSource.VOICE_COMMUNICATION);
-  try{recorder=new AudioRecord(source,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,Math.max(minimum,LiveVadGate.WINDOW*2*16));}
+  int bufferBytes=Math.max(minimum,LiveVadGate.WINDOW*2*16);
+  bufferMs=bufferBytes/2*1000L/SAMPLE_RATE;
+  try{recorder=new AudioRecord(source,SAMPLE_RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT,bufferBytes);}
   catch(SecurityException|IllegalArgumentException error){ElizaVoiceNative.nativeVadClose(vad);throw error;}
   if(recorder.getState()!=AudioRecord.STATE_INITIALIZED){recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw new IllegalStateException("Microphone unavailable");}
   AcousticEchoCanceler echo=null;NoiseSuppressor noise=null;
   if(source==MediaRecorder.AudioSource.VOICE_COMMUNICATION){
-   try{echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null&&(echo.setEnabled(true)!=AudioEffect.SUCCESS||!echo.getEnabled())){echo.release();echo=null;}}catch(RuntimeException unavailable){echo=null;}
+   try{echo=AcousticEchoCanceler.create(recorder.getAudioSessionId());if(echo!=null&&(echo.setEnabled(true)!=AudioEffect.SUCCESS||!echo.getEnabled())){echo.release();echo=null;}}catch(RuntimeException unavailable){if(echo!=null)try{echo.release();}catch(RuntimeException ignored){}echo=null;}
    try{if(NoiseSuppressor.isAvailable()){noise=NoiseSuppressor.create(recorder.getAudioSessionId());if(noise!=null)noise.setEnabled(true);}}catch(RuntimeException unavailable){noise=null;}
   }
   try{recorder.startRecording();}catch(RuntimeException error){release(echo,noise);recorder.release();ElizaVoiceNative.nativeVadClose(vad);throw error;}
@@ -109,7 +112,8 @@ final class AlphaLiveVoiceCapture {
   int windows=0;float peak=0f;
   // Frames are stamped with the end of their audio on the capture clock (start + samples read), not
   // with when the read returned: a reader running behind its buffer still stamps audio captured
-  // before a stop as before the stop.
+  // before a stop as before the stop. Samples dropped by an overrun would make that clock fall
+  // behind, so it never lags the wall clock by more than the record buffer can hold.
   final long origin=startedAt;long samplesRead=0;
   try{
    ElizaVoiceNative.nativeVadReset(vad);
@@ -118,7 +122,7 @@ final class AlphaLiveVoiceCapture {
     while(filled<window.length&&running){int read=recorder.read(window,filled,window.length-filled);if(read<0)throw new IllegalStateException("Microphone read failed");filled+=read;}
     if(!running)break;
     samplesRead+=window.length;
-    long at=origin+samplesRead*1000/SAMPLE_RATE;
+    long at=Math.max(origin+samplesRead*1000/SAMPLE_RATE,System.currentTimeMillis()-bufferMs);
     for(int i=0;i<window.length;i++){short sample=window[i];pcm[i]=sample/32768f;bytes[i*2]=(byte)(sample&0xff);bytes[i*2+1]=(byte)((sample>>8)&0xff);peak=Math.max(peak,Math.abs(pcm[i]));}
     float[] probability=ElizaVoiceNative.nativeVadProcessBatch(vad,pcm);
     JSObject frame=new JSObject();

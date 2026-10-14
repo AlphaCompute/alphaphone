@@ -22,9 +22,10 @@
  * next turn, so the earlier turn is never committed twice.
  *
  * Barge-in and heard content: speech that starts while a reply is pending or playing is tentative.
- * It interrupts once the VAD segment has stayed open for `bargeInConfirmMs` or its transcript passes
- * the disfluency/echo gate; a cough, a blip or the reply's own echo (rejected by the gate) leaves the
- * reply running. While a reply plays, voice can interrupt only over a capture that reports active
+ * While the request is pending it interrupts once the VAD segment has stayed open for
+ * `bargeInConfirmMs` or its transcript passes the disfluency/echo gate; while the reply plays only
+ * the transcript gate confirms (residual echo can hold the VAD open for a whole sentence). A cough,
+ * a blip or the reply's own echo (rejected by the gate) leaves the reply running. While a reply plays, voice can interrupt only over a capture that reports active
  * echo cancellation (`fullDuplex`); otherwise speech during playback is ignored and Stop speaking
  * remains. Interrupting aborts the reply (the native request and playback are cancelled through
  * the port's AbortSignal). Replies are played one sentence at a time; only sentences whose playback
@@ -122,7 +123,7 @@ export interface AssistantTiming {
   shortGapMs: number;
   longGapMs: number;
   endpointDeadlineMs: number;
-  /** Speech held this long while a reply is pending or playing interrupts it before its transcript. */
+  /** Speech held this long while a request is pending (before playback) interrupts it before its transcript. */
   bargeInConfirmMs: number;
 }
 /**
@@ -286,7 +287,9 @@ export class VoiceAssistantSession {
     const capture = this.capture, opening = this.opening;
     this.capture = undefined; this.opening = undefined;
     this.publish({ phase: 'idle' });
-    // Discard: an utterance that was not submitted is not sent after Stop.
+    // Discard: an utterance that was not submitted is not sent after Stop, including a muted
+    // capture that is still finalizing.
+    for (const closing of this.closingCaptures) void Promise.resolve(closing.cancel()).catch(() => {});
     await Promise.all([
       Promise.resolve(capture?.cancel()).catch(() => {}),
       opening?.then(late => late?.cancel()).catch(() => {}),
@@ -345,8 +348,10 @@ export class VoiceAssistantSession {
     return true;
   }
 
+  private closingCaptures = new Set<AssistantCapture>();
   private closeCapture(capture: AssistantCapture) {
-    const closed = Promise.resolve().then(() => capture.close()).catch(() => {});
+    this.closingCaptures.add(capture);
+    const closed = Promise.resolve().then(() => capture.close()).catch(() => {}).finally(() => this.closingCaptures.delete(capture));
     this.closing = Promise.all([this.closing, closed]).then(() => {});
   }
 
@@ -355,7 +360,8 @@ export class VoiceAssistantSession {
     // A muted capture's last segment is delivered before a new capture can open.
     await this.closing;
     this.check(session);
-    if (this.capture || this.opening || this.mutedValue) return;
+    // Never reopen during an owner-review pause; the pause reopens the microphone when it ends.
+    if (this.capture || this.opening || this.mutedValue || (this.awaiting && !this.awaiting.resolved)) return;
     const signal = this.controller!.signal;
     const pending = this.ports.listen({
       signal,
@@ -413,12 +419,15 @@ export class VoiceAssistantSession {
     }
     const segment: Segment = { closed: false, done: false, text: '', ...(response ? { tentative: response } : {}) };
     this.segments.push(segment);
-    if (response) {
+    if (response && !response.started) {
       const session = this.session;
-      // Held speech interrupts before its transcript; a blip closes first and waits for the gate.
-      this.clock.setTimer(() => { if (this.current(session) && !segment.closed && segment.tentative === response) this.confirmBargeIn(segment); }, this.timing.bargeInConfirmMs);
+      // Held speech interrupts a pending request before its transcript; a blip closes first and waits
+      // for the gate. While the reply plays only the transcript gate confirms: residual echo of a
+      // sentence can hold the VAD open longer than any fixed hold.
+      this.clock.setTimer(() => { if (this.current(session) && !segment.closed && segment.tentative === response && !response.started) this.confirmBargeIn(segment); }, this.timing.bargeInConfirmMs);
       return;
     }
+    if (response) return;
     this.publish(this.listeningState());
   }
 

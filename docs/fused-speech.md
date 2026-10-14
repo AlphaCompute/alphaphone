@@ -114,10 +114,11 @@ recording a clip on the device:
    in `voice-selection.ts`, MVP-01/P-01). A reply carrying action proposals ends voice for review in
    the conversation: automatic submission never approves a side effect.
 7. **Barge-in and heard content.** Speech that starts while a reply is pending or playing is
-   tentative: it interrupts once the VAD segment has stayed open for 700 ms (longer than the gate's
-   hangover, so a blip never confirms by time) or once its transcript passes the disfluency and echo
-   gate (upstream `shouldRespondToVoiceTurn`, against every sentence of the reply that has started
-   playing). A cough or the reply's own echo leaves the reply running. While a reply plays, voice
+   tentative. Before playback it interrupts once the VAD segment has stayed open for 700 ms (longer
+   than the gate's hangover, so a blip never confirms by time) or its transcript passes the
+   disfluency and echo gate; during playback only the transcript gate confirms, since residual echo
+   can hold the VAD open for a whole sentence. The gate is upstream `shouldRespondToVoiceTurn`,
+   applied against every sentence of the reply that has started playing. A cough or the reply's own echo leaves the reply running. While a reply plays, voice
    interrupts only over a capture whose platform echo canceller is attached and enabled
    (`echoCancelled` from `startLiveCapture`); otherwise speech during playback is ignored and the
    Stop speaking button remains. Interrupting cancels that request or playback (generation ids drop
