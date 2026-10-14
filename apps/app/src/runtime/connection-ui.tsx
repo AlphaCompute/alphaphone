@@ -192,6 +192,9 @@ export const CLOUD_KEY_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1000;
  */
 export const OFFLINE_PLAN_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const PLAN_ADMISSION = 'alpha.connection.plan-admission.v1';
+export const PLAN_RECHECK_INTERVAL_MS = 60_000;
+let lastPlanRecheck = -Infinity, lastRefusalRecheck = -Infinity;
+let planManagementReturn = false;
 type PlanAdmissionRecord = { version: 1; environment: CloudEnvironment; credentialId: string; userId: string; organizationId: string | null; status: 'active' | 'trialing' | 'past_due'; planName: string; verifiedAt: number; endsAt: number | null };
 function readPlanAdmission(): PlanAdmissionRecord | null {
   try {
@@ -205,7 +208,8 @@ function writePlanAdmission(record: PlanAdmissionRecord | null) { try { if (reco
 function recentPlanAdmission(environment: CloudEnvironment, credentialId: string | undefined, userId?: string): PlanAdmissionRecord | null {
   const record = readPlanAdmission();
   if (!record || !credentialId || record.environment !== environment || record.credentialId !== credentialId || (userId !== undefined && record.userId.toLowerCase() !== userId.toLowerCase())) return null;
-  const age = Date.now() - record.verifiedAt;
+  const now = Date.now(), age = now - record.verifiedAt;
+  if (record.endsAt !== null && record.endsAt <= now) return null;
   return age >= 0 && age <= OFFLINE_PLAN_GRACE_MS ? record : null;
 }
 /** A Cloud outage or no network: not a refusal of the account or the plan. */
@@ -1068,6 +1072,7 @@ function failureKindOf(value:unknown):string|undefined {
  * upgrades or buys anything. Mapped kinds carry `failureKind` (and `serviceLimit` for Cloud limits)
  * so the chat can offer the next step (plan, sign-in); the rest keep the generic text. */
 function replyFailure(kind:string|undefined,selected:Active,limit:ServiceLimit|null):Error {
+  if(selected.kind==='resident'&&(limit?.kind==='subscription-required'||limit?.kind==='billing-refused'))connectionController.recheckPlanAfterRefusal();
   if(limit)return Object.assign(new AlphaClientError('transport-failed',serviceLimitMessage(limit)),{failureKind:kind??limit.kind,serviceLimit:limit.kind});
   if(kind==='rate_limited')return new AlphaClientError('transport-failed',RATE_LIMITED);
   // The on-device agent without Eliza Cloud inference (no plan, offline, signed out): the same honest
@@ -1880,7 +1885,7 @@ export const connectionController = {
   },
   /** Opens the hosted plan page in the system browser; the plan is checked again on return. */
   async residentManagePlan() {
-    await work('Opening Eliza Cloud plans…',async signal=>{await makeCloud(residentEnvironment()).openSubscriptionManagement(signal);update({message:'Choose or manage your plan in Eliza Cloud, then return here. Alpha checks your plan again when you come back.'});});
+    await work('Opening Eliza Cloud plans…',async signal=>{await makeCloud(residentEnvironment()).openSubscriptionManagement(signal);planManagementReturn=true;update({message:'Choose or manage your plan in Eliza Cloud, then return here. Alpha checks your plan again when you come back.'});});
   },
   /**
    * Redeems a subscription code for the signed-in account, then checks the plan again and admits
@@ -1915,12 +1920,21 @@ export const connectionController = {
     return redeemed;
   },
   /** Checks the plan again after the owner returns from Eliza Cloud (resume or visibility). */
-  recheckPlanOnReturn() {
+  recheckPlanOnReturn(explicit=false) {
     if(!residentCloudFlow()||operation||state.busy)return;
+    const now=Date.now();
+    if(!explicit&&!planManagementReturn&&now-lastPlanRecheck<PLAN_RECHECK_INTERVAL_MS)return;
+    planManagementReturn=false;lastPlanRecheck=now;
     // Without bound Cloud inference (no plan, offline, signed out) or without a running agent, the
     // account and plan are read again; the agent is rebound or restarted only when that changes.
     if(!state.session||residentBinding!=='cloud'){void recheckResidentPlan();return;}
     entitlementRefresher?.refreshNow();
+  },
+  /** A billing refusal asks only for fresh plan state; the failed turn is never retried. */
+  recheckPlanAfterRefusal() {
+    if(!residentCloudFlow()||!entitlementRefresher)return;
+    const now=Date.now();if(now-lastRefusalRecheck<PLAN_RECHECK_INTERVAL_MS)return;
+    lastRefusalRecheck=now;entitlementRefresher.refreshNow();
   },
   async cloudLogin(environment: CloudEnvironment) {
     if(!testMocksEnabled && !isAndroid && !browserLocalAgentEnabled){update({open:true,error:WEB_CLOUD_UNAVAILABLE,message:''});return;}
@@ -2298,7 +2312,7 @@ export function ConnectionChooser() {
         {notice==='needs-plan'?<>
           <button disabled={snapshot.busy} onClick={()=>connectionController.openPlan()}>Redeem code</button>
           <button disabled={snapshot.busy} onClick={()=>void connectionController.residentManagePlan()}>{CHOOSE_PLAN_LABEL}</button>
-        </>:<button disabled={snapshot.busy} onClick={()=>connectionController.recheckPlanOnReturn()}>Try again</button>}
+        </>:<button disabled={snapshot.busy} onClick={()=>connectionController.recheckPlanOnReturn(true)}>Try again</button>}
         <button aria-label="Dismiss plan notice" onClick={()=>setDismissedNotice(notice)}>×</button>
       </div>
     </aside>;
@@ -2437,7 +2451,7 @@ export function ConnectionChooser() {
     <p>{testMocksEnabled ? 'Run your agent locally, or use a development connection below.' : 'Your agent runs on this phone.'} Model inference uses the provider configured for that agent.</p>
     <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This preview connects to it; the Android app runs its own agent.'}</p>
-      {isAndroid && localPackaging==='available' && <details onToggle={event=>{if((event.currentTarget as HTMLDetailsElement).open)void connectionController.refreshProviderStatus();}}><summary>Model provider</summary><p role="status">{providerStatusLabel(snapshot.providerStatus)}</p><p>Cerebras receives prompts and selected context for inference with {LOCAL_PROVIDER_MODEL}. Your key is checked with Cerebras, then stored using Android Keystore. A new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><p>Model: {LOCAL_PROVIDER_MODEL}</p><button disabled={snapshot.busy}>Save provider</button></form>
+      {testMocksEnabled && isAndroid && localPackaging==='available' && <details onToggle={event=>{if((event.currentTarget as HTMLDetailsElement).open)void connectionController.refreshProviderStatus();}}><summary>Model provider</summary><p role="status">{providerStatusLabel(snapshot.providerStatus)}</p><p>Cerebras receives prompts and selected context for inference with {LOCAL_PROVIDER_MODEL}. Your key is checked with Cerebras, then stored using Android Keystore. A new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><p>Model: {LOCAL_PROVIDER_MODEL}</p><button disabled={snapshot.busy}>Save provider</button></form>
         {snapshot.providerStatus?.configured&&snapshot.providerStatus.provider==='cerebras'&&(confirmRemove?<><p role="alert">Remove the saved Cerebras key from this phone? The local agent restarts with AI off until you add a key.</p><button disabled={snapshot.busy} onClick={()=>{setConfirmRemove(false);void connectionController.removeProvider();}}>Remove key</button><button disabled={snapshot.busy} onClick={()=>setConfirmRemove(false)}>Keep key</button></>:<button disabled={snapshot.busy} onClick={()=>setConfirmRemove(true)}>Remove key…</button>)}</details>}
       {/* Android shows Restart beside the connected resident below; browser development reconnects here. */}
       {!(isAndroid&&snapshot.session&&snapshot.kind==='resident')&&<button disabled={snapshot.busy || localPackaging!=='available'} onClick={() => void connectionController.startLocal()}>{snapshot.session&&snapshot.kind==='resident'?'Restart local agent':'Start local agent'}</button>}

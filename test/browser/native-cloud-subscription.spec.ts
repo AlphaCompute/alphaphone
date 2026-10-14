@@ -316,6 +316,35 @@ test.describe('entitlement route unavailable: billing snapshot fallback, never c
 });
 
 test.describe('outages and offline use',()=>{
+ test('frequent Home returns are throttled but returning from plan management rechecks',async({page})=>{
+  await boot(page,{...await entitlements(),plan:'none',holdProvider:false});await needsPlan(page);await idle(page);
+  const checks=async()=>(await calls(page)).filter(c=>c.path==='/api/v1/subscription/entitlement').length;
+  const before=await checks();
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());
+  await expect.poll(checks).toBe(before+1);await idle(page);
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());await idle(page);
+  expect(await checks()).toBe(before+1);
+  await page.evaluate(()=>(window as any).planController.residentManagePlan());await idle(page);
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());
+  await expect.poll(checks).toBe(before+2);
+ });
+ test('billing refusals refresh plan state once per minute without stopping the resident',async({page})=>{
+  await boot(page,{...await entitlements(),holdProvider:false});await expect.poll(()=>configured(page)).toBe(1);await idle(page);
+  const checks=async()=>(await calls(page)).filter(c=>c.path==='/api/v1/subscription/entitlement').length;
+  const before=await checks(),stops=(await calls(page)).filter(c=>c.method==='stop').length;
+  await page.evaluate(()=>(window as any).planController.recheckPlanAfterRefusal());
+  await expect.poll(checks).toBe(before+1);
+  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription?.kind)).toBe('active');
+  await page.evaluate(()=>(window as any).planController.recheckPlanAfterRefusal());
+  expect(await checks()).toBe(before+1);
+  expect((await calls(page)).filter(c=>c.method==='stop')).toHaveLength(stops);
+ });
+ test('an ended cached plan window cannot keep the Cloud binding during an outage',async({page})=>{
+  const record=JSON.stringify({version:1,environment:'production',credentialId:CREDENTIAL,userId:USER,organizationId:null,status:'active',planName:'Synthetic plan',verifiedAt:Date.now()-1000,endsAt:Date.now()-1});
+  await boot(page,{identity:'offline',holdProvider:false,storage:{'alpha.connection.plan-admission.v1':record}});await started(page);await idle(page);
+  expect((await calls(page)).some(c=>c.method==='clearProvider')).toBe(true);
+  expect(await configured(page)).toBe(0);
+ });
  test('a failed background refresh does not renew the verified plan timestamp',async({page})=>{
   await boot(page,{...await entitlements({rfa:Math.floor(Date.now()/1000)+4}),holdProvider:false});
   await expect.poll(()=>configured(page)).toBe(1);await idle(page);
