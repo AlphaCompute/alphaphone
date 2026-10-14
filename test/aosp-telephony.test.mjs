@@ -5,11 +5,12 @@ import assert from "node:assert/strict";
 import { createAospTelephony, TelephonyUnavailable, parseTelephonyStatus, parseContacts, parseHandoff, normalizePhoneNumber, reviewSms, advanceSmsState, smsMayBeReviewedAgain } from "../apps/app/src/runtime/aosp-telephony.ts";
 
 const status = (patch = {}) => ({
-  version: 1, voiceCapable: true, smsCapable: true,
-  permissions: { contacts: "granted", phoneState: "granted" },
+  version: 2, voiceCapable: true, smsCapable: true,
+  permissions: { contacts: "granted", phoneState: "granted", sms: "prompt", sendSms: "prompt" }, sendMode: "handoff",
   roles: { dialer: { available: true, held: false, eligible: false }, sms: { available: true, held: false, eligible: false } },
   defaultDialer: "com.android.dialer", defaultSms: "com.android.messaging",
   subscriptions: [{ id: 1, slot: 0, displayName: "Work", carrierName: "Carrier A", defaultSms: true, defaultVoice: true }],
+  defaultSmsSubscriptionId: 1,
   ...patch,
 });
 function stub(answers = {}) {
@@ -34,12 +35,12 @@ test("off the verified image nothing reaches native code", async () => {
 
 test("status is validated; an unread SIM list is never shown as no SIM", () => {
   assert.equal(parseTelephonyStatus(status()).subscriptions.length, 1);
-  assert.equal(parseTelephonyStatus(status({ permissions: { contacts: "prompt", phoneState: "denied" }, subscriptions: null })).subscriptions, null);
-  assert.throws(() => parseTelephonyStatus(status({ permissions: { contacts: "granted", phoneState: "denied" } })), /subscriptions/, "a list without phone-state access is refused");
+  assert.equal(parseTelephonyStatus(status({ permissions: { contacts: "prompt", phoneState: "denied", sms: "prompt", sendSms: "prompt" }, subscriptions: null, defaultSmsSubscriptionId: null })).subscriptions, null);
+  assert.throws(() => parseTelephonyStatus(status({ permissions: { contacts: "granted", phoneState: "denied", sms: "prompt", sendSms: "prompt" } })), /subscriptions/, "a list without phone-state access is refused");
   assert.throws(() => parseTelephonyStatus(status({ roles: { dialer: { available: false, held: true, eligible: false }, sms: { available: true, held: false, eligible: false } } })), /dialer role/);
   assert.throws(() => parseTelephonyStatus(status({ roles: { dialer: { available: true, held: false }, sms: { available: true, held: false, eligible: false } } })), /dialer role/, "eligibility is required");
-  assert.throws(() => parseTelephonyStatus(status({ subscriptions: [{ id: 1, slot: 0, displayName: "A", carrierName: "B", defaultSms: true, defaultVoice: true }, { id: 1, slot: 1, displayName: "C", carrierName: "D", defaultSms: false, defaultVoice: false }] })), /subscription/, "duplicate subscription ids");
-  assert.throws(() => parseTelephonyStatus({ ...status(), version: 2 }), /version/);
+  assert.throws(() => parseTelephonyStatus(status({ subscriptions: [{ id: 1, slot: 0, displayName: "A", carrierName: "B", defaultSms: true, defaultVoice: true }, { id: 1, slot: 1, displayName: "C", carrierName: "D", defaultSms: false, defaultVoice: false }], defaultSmsSubscriptionId: null })), /subscription/, "duplicate subscription ids");
+  assert.throws(() => parseTelephonyStatus({ ...status(), version: 1 }), /version/, "the version 1 status without SMS access is refused");
 });
 
 test("contacts are read-only records within the requested limit", async () => {
@@ -72,7 +73,7 @@ test("dial and SMS are handoffs: the receipt never says called, sent or delivere
 });
 
 test("SMS review: recipients, body and SIM selection", () => {
-  const one = parseTelephonyStatus(status()), none = parseTelephonyStatus(status({ subscriptions: null, permissions: { contacts: "granted", phoneState: "prompt" } }));
+  const one = parseTelephonyStatus(status()), none = parseTelephonyStatus(status({ subscriptions: null, defaultSmsSubscriptionId: null, permissions: { contacts: "granted", phoneState: "prompt", sms: "prompt", sendSms: "prompt" } }));
   const two = parseTelephonyStatus(status({ subscriptions: [...status().subscriptions, { id: 2, slot: 1, displayName: "Personal", carrierName: "Carrier B", defaultSms: false, defaultVoice: false }] }));
   assert.deepEqual(reviewSms({ recipients: [], body: "x" }, one), { problem: "no-recipient" });
   assert.deepEqual(reviewSms({ recipients: ["abc"], body: "x" }, one), { problem: "invalid-recipient" });
@@ -81,7 +82,7 @@ test("SMS review: recipients, body and SIM selection", () => {
   assert.deepEqual(reviewSms({ recipients: ["5550100"], body: "x".repeat(5001) }, one), { problem: "body-too-long" });
   assert.deepEqual(reviewSms({ recipients: ["5550100"], body: "x", subscriptionId: 1 }, one), { problem: "sim-not-selectable" }, "handoff mode refuses a SIM choice rather than dropping it");
   assert.equal(reviewSms({ recipients: ["5550100"], body: "x" }, two).review.subscriptionId, null, "the SMS app chooses the SIM for a handoff");
-  // Direct sends (future, only while Alpha holds the user-selected SMS role).
+  // Direct sends (only when status.sendMode is "direct"): the SIM is explicit among several.
   assert.deepEqual(reviewSms({ recipients: ["5550100"], body: "x" }, two, "direct"), { problem: "sim-required" });
   assert.equal(reviewSms({ recipients: ["5550100"], body: "x", subscriptionId: 2 }, two, "direct").review.subscriptionId, 2);
   assert.deepEqual(reviewSms({ recipients: ["5550100"], body: "x", subscriptionId: 9 }, two, "direct"), { problem: "sim-unknown" }, "an inactive SIM is never silently replaced");

@@ -72,10 +72,64 @@ final class AndroidShade {
   return null;
  }
 
- /** Taps the notification row that shows this text, as a person tapping it in the shade. */
+ static final String ROW_ID = SYSTEM_UI + ":id/expandableNotificationRow";
+
+ /** The notification row that owns this node (SystemUI's ExpandableNotificationRow), or null. */
+ static AccessibilityNodeInfo ownRow(AccessibilityNodeInfo node) {
+  for (int i = 0; node != null && i < 12; i++, node = node.getParent())
+   if (ROW_ID.equals(node.getViewIdResourceName())) return node;
+  return null;
+ }
+
+ private static boolean expandable(AccessibilityNodeInfo node) {
+  for (AccessibilityNodeInfo.AccessibilityAction action : node.getActionList())
+   if (action.getId() == AccessibilityNodeInfo.ACTION_EXPAND) return true;
+  return false;
+ }
+
+ /**
+  * Whether this row holds other notification rows, which makes it a group's summary row and never
+  * one notice's own row. Clicking it is a tap on the whole group.
+  */
+ static boolean holdsRows(AccessibilityNodeInfo row) {
+  ArrayDeque<AccessibilityNodeInfo> queue = new ArrayDeque<>();
+  for (int i = 0; i < row.getChildCount(); i++) { AccessibilityNodeInfo child = row.getChild(i); if (child != null) queue.add(child); }
+  for (int seen = 0; !queue.isEmpty() && seen < 1000; seen++) {
+   AccessibilityNodeInfo node = queue.remove();
+   if (ROW_ID.equals(node.getViewIdResourceName())) return true;
+   for (int i = 0; i < node.getChildCount(); i++) { AccessibilityNodeInfo child = node.getChild(i); if (child != null) queue.add(child); }
+  }
+  return false;
+ }
+
+ /** A row that is this one notice's own and can be clicked. */
+ private static boolean ownClickable(AccessibilityNodeInfo row) { return row != null && row.isClickable() && !holdsRows(row); }
+
+ /**
+  * Taps the notification row that shows this text, as a person tapping that notice in the shade.
+  * Only the notice's own row is clicked. Android 15 bundles two or more notices of one app into
+  * an automatic group ("ranker_group"); while that group is collapsed its children are previews
+  * inside the group's summary row, and clicking the summary is a tap on the group (measured on
+  * the API 35 emulator: it dispatched no child's intent and cancelled every notice in the group).
+  * So a collapsed group is expanded first, the way a person opens it, and the notice is found
+  * again and tapped on its own row. A row that holds other rows (a group summary) is never
+  * clicked. Returns false when no row of this notice can be tapped.
+  */
  static boolean tap(AccessibilityNodeInfo node) {
-  for (int i = 0; node != null && i < 8; i++, node = node.getParent())
-   if (node.isClickable() && node.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true;
+  if (node == null) return false;
+  CharSequence label = node.getText();
+  AccessibilityNodeInfo row = ownRow(node);
+  if (row == null) return false;
+  if (ownClickable(row)) return row.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+  // The text may sit in the group's summary itself, or in a child row inside a collapsed group.
+  AccessibilityNodeInfo group = holdsRows(row) ? row : ownRow(row.getParent());
+  if (group == null || label == null || !expandable(group) || !group.performAction(AccessibilityNodeInfo.ACTION_EXPAND)) return false;
+  long end = SystemClock.uptimeMillis() + 5000;
+  do {
+   SystemClock.sleep(200);
+   AccessibilityNodeInfo again = ownRow(text(label.toString()));
+   if (ownClickable(again)) return again.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+  } while (SystemClock.uptimeMillis() < end);
   return false;
  }
 }
