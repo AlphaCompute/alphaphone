@@ -338,11 +338,11 @@ function errorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'status' in error && error.status === 503) return 'The agent is starting or temporarily unavailable. Try again shortly.';
   return error instanceof Error ? error.message : 'The connection could not be completed.';
 }
-async function work(message: string, action: (signal: AbortSignal) => Promise<void>, quiet = false) {
+async function work(message: string, action: (signal: AbortSignal) => Promise<void>, showDialog = true) {
   if (operation) return;
   const controller = new AbortController(); operation = controller;
-  // A quiet step (a plan change rebinding the running agent) does not open the connection dialog.
-  update(quiet ? { busy: true, message, error: '' } : { busy: true, open: true, message, error: '' });
+  // A step without the dialog (for example a plan change rebinding the running agent) stays quiet.
+  update({ busy: true, ...(showDialog ? {open:true} : {}), message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
@@ -351,9 +351,9 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
       try { await previous.cloud.disconnect(); }
       catch { update({ error: 'The expired connection is detached, but its stored credential could not be removed.', open: true, message: '' }); return; }
     }
-    update({ error: errorMessage(error), open: true, message: '' });
+    update({ error: errorMessage(error), ...(!showDialog&&!state.open?{purpose:residentCloudFlow()?'agent' as const:'cloud-account' as const}:{}), open: true, message: '' });
   }
-  finally { if (operation === controller) operation = null; update({ busy: false, ...(quiet && !state.open ? { message: '' } : {}) }); runQueuedResidentRebind(); }
+  finally { if (operation === controller) operation = null; update({ busy: false, ...(!showDialog&&!state.open?{message:''}:{}) }); runQueuedResidentRebind(); }
 }
 /**
  * Applies a plan change to the running on-device agent: re-admits the account, binds or unbinds
@@ -367,7 +367,7 @@ function queueResidentRebind() {
   residentRebindQueued = false;
   // An outcome the open dialog is showing (for example a sign-out) stays visible after the rebind.
   const shown = state.open ? state.message : '';
-  void work('Updating your agent…', async signal => { retire(); await connectResident(signal); if (shown && state.open && !state.message) update({ message: shown }); }, true);
+  void work('Updating your agent…', async signal => { retire(); await connectResident(signal); if (shown && state.open && !state.message) update({ message: shown }); }, false);
 }
 function runQueuedResidentRebind() { if (residentRebindQueued && !operation) queueResidentRebind(); }
 function activate(next: Active, session: VerifiedSession, name: string) {
@@ -1261,10 +1261,10 @@ export const connectionController = {
               const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
               if(restoreEpoch!==epoch||current?.credentialId!==expected.credentialId||current?.credentialReference!==expected.credentialReference)throw Error('Cloud account changed. Try again.');
               await verifyService(makeCloud('production'),signal,expected);
-            });
+            },false);
             if(restoreEpoch!==epoch||state.error||service?.identity.credentialId!==expected.credentialId)return;
           }
-        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
+        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;},false);return;}
       }
       // A build that cannot use Eliza Cloud signs a saved Cloud service out on every start, whatever is selected
       // (an offline choice included): the marker and, best effort and unawaited, the stored Cloud key. Only that
