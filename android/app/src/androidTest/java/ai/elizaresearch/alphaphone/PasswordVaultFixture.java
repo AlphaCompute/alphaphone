@@ -81,6 +81,7 @@ final class PasswordVaultFixture implements AutoCloseable {
     SystemClock.sleep(100);
    }
    assertNotNull("The credential prompt's entry field is present", field);
+   try { if (!field.isFocused()) continue; } catch (StaleObjectException rebound) { continue; }
    SystemClock.sleep(500); // let the prompt finish binding the PIN input type
    try { field.setText(PIN); }
    catch (StaleObjectException rebound) { continue; }
