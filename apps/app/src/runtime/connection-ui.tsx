@@ -762,14 +762,17 @@ function migrateLegacyMock(): boolean {
 }
 /** Saved selection kinds of the retired hosted and paired agents (remote, local development, Cloud). */
 function legacyHostedKind(kind: unknown): kind is 'remote' | 'local' | 'cloud' { return kind === 'remote' || kind === 'local' || kind === 'cloud'; }
-/** Where a migrated hosted-agent selection is kept, unread by product code, for recovery and diagnostics. */
+/** Where migrated hosted-agent selections are kept, oldest first, unread by product code, for recovery and diagnostics. */
 export const LEGACY_HOSTED_SELECTION = 'alpha.connection.legacy-hosted-selection.v1';
 /**
  * The agent always runs on the phone (#406): product builds have no remote, paired or Cloud-hosted
  * agent. A saved selection of one from an earlier build becomes the resident agent. The old choice is
- * moved to LEGACY_HOSTED_SELECTION, not deleted (an earlier record is kept). Nothing is connected to
- * it: no credential slot is read or removed, no request is made, and conversation selections and
- * history stay where they are. Test-mocks builds keep their development selections.
+ * appended to LEGACY_HOSTED_SELECTION, not deleted: every earlier record (and an unreadable one, as
+ * its raw text) is kept. Nothing is connected to it: no credential slot is read or removed, no request
+ * is made, and conversation selections and history stay where they are. In the product web build,
+ * which has no on-device agent, the stored 'resident' only names the Android agent: the web branch
+ * of initialize() never connects it and shows the chooser. Test-mocks builds keep their development
+ * selections.
  */
 function migrateLegacyHostedSelection(): boolean {
   if (testMocksEnabled) return false;
@@ -777,7 +780,9 @@ function migrateLegacyHostedSelection(): boolean {
   try { stored = JSON.parse(localStorage.getItem(SELECTION) || 'null'); } catch { return false; }
   if (!stored || typeof stored !== 'object' || !legacyHostedKind((stored as { kind?: unknown }).kind)) return false;
   try {
-    if (localStorage.getItem(LEGACY_HOSTED_SELECTION) === null) localStorage.setItem(LEGACY_HOSTED_SELECTION, JSON.stringify(stored));
+    let kept: unknown[] = [];
+    try { const prior: unknown = JSON.parse(localStorage.getItem(LEGACY_HOSTED_SELECTION) || '[]'); kept = Array.isArray(prior) ? prior : [prior]; } catch { kept = [localStorage.getItem(LEGACY_HOSTED_SELECTION)]; }
+    localStorage.setItem(LEGACY_HOSTED_SELECTION, JSON.stringify([...kept, stored]));
     save({ kind: 'resident' });
   } catch { /* selection() already reads the stored choice as the resident agent. */ }
   return true;
@@ -1017,10 +1022,6 @@ function boundNavigation():ViewNavigationClient|undefined {
  return selected.viewNavigation??=new ViewNavigationClient(selected.request,()=>active===selected&&state.session===session&&epoch===generation&&!state.open&&!state.busy,()=>navigationContext?.()??null);
 }
 
-/** Shared controller for the chat adapter. Snapshot contains no credentials.
- * subscribe/getSnapshot expose connection changes; send uses server-bound identity
- * and one persisted conversation per origin+owner+agent. It never executes proposals.
- */
 /*
  * DEVELOPMENT INFRASTRUCTURE ONLY (#406). The agent always runs on the phone; remote pairing, the
  * local development agent and Cloud-hosted agents (discovery, personal/Dedicated setup, runtime
@@ -1101,6 +1102,10 @@ async function pairedRequest(selected:Extract<Active,{kind:'remote'|'local'}>,se
 }
 const hosted = testMocksEnabled ? { pairedRequest, pair, restore: restoreHosted, inspectPersonal, cloudList, cloudManage, personalDecline, personalAccept, personalPoll, personalFinalize, personalRecoveryOpen, personalConnect } : null;
 
+/** Shared controller for the chat adapter. Snapshot contains no credentials.
+ * subscribe/getSnapshot expose connection changes; send uses server-bound identity
+ * and one persisted conversation per origin+owner+agent. It never executes proposals.
+ */
 export const connectionController = {
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   getSnapshot() { return state; },
@@ -1379,7 +1384,8 @@ export const connectionController = {
       }
       const saved = selection();
       if(!testMocksEnabled&&!isAndroid&&!browserLocalAgentEnabled){
-        // Preserve legacy selection and history for recovery; never read credentials or reconnect.
+        // History stays for recovery; a hosted choice was already moved to LEGACY_HOSTED_SELECTION and the
+        // selection now names the Android agent. Never read credentials or reconnect from the browser.
         update({open:saved?.kind!=='offline',message:'Your agent runs locally in the Android app. Local apps remain available here.'});return;
       }
       if (residentCloudFlow()) { await startResidentGate(); return; }
@@ -1978,7 +1984,7 @@ export function ConnectionChooser() {
       {localPackaging==='checking' && <p role="status">Checking local agent availability…</p>}
       {localPackaging==='unavailable' && <p>The local agent is unavailable in this version.{testMocksEnabled ? ' Use a development connection below, or continue offline.' : ''}</p>}
     </section>
-    {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : testMocksEnabled ? (snapshot.kind === 'local' ? 'Local development' : 'Remote agent') : 'On this device'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
+    {snapshot.session && <section className="alpha-connection-current"><strong>{snapshot.name}</strong><span>Connected · {snapshot.kind === 'resident' ? (isAndroid ? 'On this device' : 'On this computer · development') : testMocksEnabled ? (snapshot.kind === 'cloud' ? 'Eliza Cloud' : snapshot.kind === 'local' ? 'Local development' : 'Remote agent') : 'Unsupported connection'}</span><button disabled={snapshot.busy} onClick={() => void connectionController.disconnect()}>Disconnect agent</button>{isAndroid && snapshot.kind==='resident' && <button disabled={snapshot.busy} onClick={()=>void connectionController.stopLocal()}>Stop local agent</button>}</section>}
     {!isAndroid&&<button disabled={snapshot.busy} onClick={()=>void recoverConversationChoice()}>Conversation selection recovery</button>}
     {conversations}
     {snapshot.session && snapshot.phoneCapabilityReason && <p role="status">{snapshot.phoneCapabilityReason}</p>}

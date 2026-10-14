@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
+import {readFileSync} from 'node:fs';
 import {stripTypeScriptTypes} from 'node:module';
 import vm from 'node:vm';
 // #406: a saved hosted or paired agent selection from an earlier build becomes the resident agent.
@@ -44,7 +45,7 @@ test('a product build moves the saved hosted selection aside, keeps history and 
   assert.equal(f.api.migrate(),true,saved.kind);
   assert.deepEqual(JSON.parse(f.memory.get(SELECTION)),{kind:'resident'});
   // Moved, not deleted: the exact earlier choice is kept for recovery.
-  assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),saved);
+  assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),[saved]);
   // Conversation selections and the Cloud service marker are untouched; nothing else was written.
   assert.equal(f.memory.get(CONVERSATIONS),history);
   assert.equal(f.memory.get(CLOUD_SERVICE),'production');
@@ -54,12 +55,33 @@ test('a product build moves the saved hosted selection aside, keeps history and 
  }
 });
 
-test('an earlier migrated record is never overwritten',()=>{
+test('an earlier migrated record is never overwritten and a later hosted choice is kept too',()=>{
  const first={kind:'remote',origin:'https://first.example.test'};
- const f=fixture(false,{[SELECTION]:JSON.stringify(legacy[2]),[LEGACY]:JSON.stringify(first)});
+ const f=fixture(false,{[SELECTION]:JSON.stringify(legacy[2]),[LEGACY]:JSON.stringify([first])});
  assert.equal(f.api.migrate(),true);
- assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),first);
+ assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),[first,legacy[2]]);
  assert.deepEqual(JSON.parse(f.memory.get(SELECTION)),{kind:'resident'});
+ // A second hosted choice saved later (for example by an older build restored from backup) is appended.
+ f.memory.set(SELECTION,JSON.stringify(legacy[0]));
+ assert.equal(f.api.migrate(),true);
+ assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),[first,legacy[2],legacy[0]]);
+});
+
+test('a non-array or unreadable earlier record is kept ahead of the new one',()=>{
+ const single={kind:'local',origin:'http://10.0.2.2:2138'};
+ let f=fixture(false,{[SELECTION]:JSON.stringify(legacy[0]),[LEGACY]:JSON.stringify(single)});
+ assert.equal(f.api.migrate(),true);
+ assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),[single,legacy[0]]);
+ f=fixture(false,{[SELECTION]:JSON.stringify(legacy[0]),[LEGACY]:'{not json'});
+ assert.equal(f.api.migrate(),true);
+ assert.deepEqual(JSON.parse(f.memory.get(LEGACY)),['{not json',legacy[0]]);
+});
+
+test('product labels never describe an unexpected non-resident connection as on this device',()=>{
+ const settings=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');
+ assert.match(settings,/testMocksEnabled\?'Remote agent':'Unsupported connection'/);
+ assert.match(source,/testMocksEnabled \? \(snapshot\.kind === 'cloud' \? 'Eliza Cloud' : snapshot\.kind === 'local' \? 'Local development' : 'Remote agent'\) : 'Unsupported connection'\}/);
+ assert.doesNotMatch(settings,/testMocksEnabled\?'Remote agent':'On this device'/);
 });
 
 test('other saved choices are not migrated',()=>{
