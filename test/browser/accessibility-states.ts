@@ -353,48 +353,24 @@ export const LAUNCHER_STATES: State[] = [
   launcher('Settings display', ['Settings', 'Display']),
 ];
 
-/**
- * Provider-connected states with synthetic providers (development server only): a Gmail account
- * behind a stand-in Eliza Cloud client, and the calendar saved in this browser holding events.
- * Nothing leaves the page; the stand-ins answer in the shapes the real clients return.
- */
-const syntheticGmail = async (page: Page) => page.evaluate(async () => {
-  const { connectionController: c } = await import('/src/runtime/connection-ui.tsx' as string), { secureConnectionStore: s } = await import('/src/runtime/native-connection.ts' as string);
-  s.read = async () => null;
-  const rows = [
-    { id: 'a11y-unread', threadId: 'a11y-thread-a', subject: 'Synthetic quarterly planning', from: 'Synthetic sender A', to: [], snippet: 'Synthetic preview', receivedAt: '2026-10-09T00:00:00Z', unread: true },
-    { id: 'a11y-read', threadId: 'a11y-thread-b', subject: 'Synthetic venue confirmation', from: 'Synthetic sender B', to: [], snippet: '', receivedAt: '2026-10-08T00:00:00Z', unread: false }];
-  const client = {
-    gmailAccounts: async () => [{ connectionId: 'grant-a11y', label: 'Synthetic mailbox', connected: true, grantedCapabilities: ['google.gmail.triage'] }],
-    gmailSearch: async () => ({ messages: structuredClone(rows), syncedAt: 'fixture', nextPageToken: null }),
-    gmailInboxCapabilities: async () => ({ send: false, providerDrafts: false, mailboxMutations: false }),
-  };
-  c.getCloudClient = () => ({ client, sessionId: 'a11y-fixture' });
-  const original = c.getSnapshot(), snapshot = { ...original, cloudAccount: { environment: 'production', userId: 'a11y-fixture', sessionId: 'a11y-fixture', credentialId: 'fixture-only' } };
-  c.getSnapshot = () => snapshot;
-});
+/** A seeded local calendar (browser store), so the Calendar view has events to audit. */
 const syntheticCalendar = async (page: Page) => page.evaluate(async () => {
   const { BrowserCalendar } = await import('/src/browser/calendar.ts' as string), calendar = new BrowserCalendar(), day = new Date(); day.setHours(10, 0, 0, 0);
   for (const [title, offset] of [['Synthetic design review', 0], ['Synthetic venue walkthrough', 2]] as const)
     await calendar.save({ calendarId: 'local', title, location: 'Synthetic room 4', begin: day.getTime() + offset * 3_600_000, end: day.getTime() + (offset + 1) * 3_600_000, allDay: false, creationId: crypto.randomUUID() });
 });
-const connected = (name: string, setup: (page: Page) => Promise<void>, steps: string[], shows?: string): State => ({
-  name: `connected ${name}`, shows,
+const calendarWithEvents: State = {
+  name: 'connected Calendar with events',
   open: async (page, theme) => {
     await page.addInitScript(offline);
     await page.goto(theme ? `/?theme=${theme}` : '/');
     await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible();
-    await setup(page);
-    await press(page, steps);
+    await syntheticCalendar(page);
+    await press(page, ['Calendar']);
     await settle(page);
-    await showing(page, shows);
   },
-});
-export const CONNECTED_STATES: State[] = [
-  connected('Inbox', syntheticGmail, ['Inbox']),
-  connected('Settings connections', syntheticGmail, ['Settings', 'Connections']),
-  connected('Calendar with events', syntheticCalendar, ['Calendar']),
-];
+};
+CONNECTED_STATES.push(calendarWithEvents);
 
 /** Large text as the renderer sees it: every declared pixel size multiplied, as WebView text zoom does. */
 export async function setTextScale(page: Page, scale: number) {

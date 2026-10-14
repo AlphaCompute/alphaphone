@@ -32,7 +32,7 @@ for(const reason of ['disconnected','scope-revoked'] as const)test(`Gmail same-I
 
 // The successful handoff. The authorization page is the system browser's (AlphaConnection.openExternal,
 // stubbed at the Capacitor bridge); Google, OAuth and Eliza Cloud are not involved and no URL is opened.
-test('Reconnect Gmail and each Authorize chip hand off once with the selected grants; nothing is read until Check connection',async({page})=>{
+test('Reconnect Gmail and the single Authorize Gmail changes chip hand off once with the selected grants; nothing is read until Check connection',async({page})=>{
  const AUTH='https://accounts.google.com/o/oauth2/v2/auth?client_id=fixture&state=synthetic';
  await page.addInitScript(()=>{
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
@@ -65,7 +65,7 @@ test('Reconnect Gmail and each Authorize chip hand off once with the selected gr
  await expect(chip('Reconnect Gmail')).toBeVisible();
  expect((await f()).reads).toBe(1);
  const grants=['google.gmail.triage','google.gmail.send'];
- for(const [label,permission] of [['Reconnect Gmail','read'],['Authorize Gmail drafts','drafts'],['Authorize mailbox changes','mailbox']] as const){
+ for(const [label,permission] of [['Reconnect Gmail','read'],['Authorize Gmail changes','modify']] as const){
   const before=await f();
   await chip(label).click();
   await expect(next).toBeVisible();
@@ -77,7 +77,7 @@ test('Reconnect Gmail and each Authorize chip hand off once with the selected gr
  }
  // A handoff cancelled while the browser is open reports the cancellation, not a pending authorization.
  await page.evaluate(()=>{const f=(window as any).handoffFixture;f.hold=new Promise<void>(resolve=>{f.release=resolve;});});
- await chip('Authorize Gmail drafts').click();
+ await chip('Authorize Gmail changes').click();
  await expect(chip('Cancel')).toBeVisible();
  await chip('Cancel').click();
  await expect(page.getByText('Gmail request cancelled',{exact:true})).toBeVisible();
@@ -87,8 +87,8 @@ test('Reconnect Gmail and each Authorize chip hand off once with the selected gr
  // The Cloud account changes while the browser is open: the late handoff is not applied to it.
  await page.evaluate(()=>{const f=(window as any).handoffFixture;f.hold=new Promise<void>(resolve=>{f.release=resolve;});});
  const reads=(await f()).reads;
- await chip('Authorize mailbox changes').click();
- await expect.poll(async()=>(await f()).opened.length).toBe(5);
+ await chip('Authorize Gmail changes').click();
+ await expect.poll(async()=>(await f()).opened.length).toBe(4);
  await page.evaluate(()=>{const f=(window as any).handoffFixture;f.session='other-cloud';f.release();});
  await page.waitForTimeout(300);
  await expect(next).toHaveCount(0);

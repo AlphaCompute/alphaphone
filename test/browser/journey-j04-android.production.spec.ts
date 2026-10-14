@@ -37,7 +37,8 @@ const j04 = (page: Page) => page.evaluate(() => (window as any).j04 as { perform
 test('an event location opens unconfigured Maps, hands off to an installed map app only on tap, and Back to event restores the same event', async ({ page }) => {
   test.setTimeout(150_000);
   const foreign = await fenceNetwork(page);
-  const begin = (() => { const at = new Date(); at.setHours(at.getHours() + 2, 0, 0, 0); return at.getTime(); })();
+  // Two hours ahead, but always today: the Calendar list opens on today, so a run after 22:00 keeps the event on it.
+  const begin = (() => { const now = new Date(), at = new Date(now); at.setHours(at.getHours() + 2, 0, 0, 0); if (at.getDate() !== now.getDate()) { at.setTime(now.getTime()); at.setHours(22, 0, 0, 0); } return at.getTime(); })();
   await flagOffAndroid(page, { calendar: { access: 'granted', calendars: [{ id: '7', name: 'Harbour team', account: 'owner@example.invalid' }], events: [{ id: '42', calendarId: '7', title: TITLE, begin, end: begin + 1_800_000 }] } });
   await mapsApp(page, LOCATION);
   await residentHome(page);

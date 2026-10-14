@@ -456,11 +456,13 @@ test('loops B, C and J04 in the web build: local calendar and alarm records are 
   // Delete is reviewed first: the dialog names the event, and nothing is removed until it is confirmed.
   const review = page.getByRole('dialog', { name: 'Delete calendar event?' });
   await expect(review).toContainText('Flag-off meeting');
-  await expect(review).toContainText('This cannot be undone.');
+  await expect(review).toContainText('Deletion waits 10 seconds. You can Undo during that time.');
   expect((await storedEvents(page)).map(row => row.title)).toEqual(['Flag-off meeting']);
   await review.getByRole('button', { name: 'Delete event', exact: true }).click();
   await expect(review).toHaveCount(0);
-  await expect.poll(() => storedEvents(page)).toEqual([]);
+  // The deletion is queued with Undo for 10 seconds, then removes exactly the reviewed event.
+  await expect(page.getByRole('complementary', { name: 'Pending deletions' }).getByRole('button', { name: 'Undo', exact: true })).toBeVisible();
+  await expect.poll(() => storedEvents(page), { timeout: 30_000 }).toEqual([]);
   // After a restart the event is gone from the list and from the saved calendar document.
   await page.reload();
   await button(page, 'Calendar').click();
@@ -869,7 +871,7 @@ test('loop B / J02 on Android: a recorded note, a resident summary and reviewed 
   const event = (await native(page, f => f.writes.events))[0];
   // The note draft targets the phone's own local calendar (form calendar 'native:local').
   expect(event).toMatchObject({ calendarId: 'local', title: 'Venue walkthrough', body: ACTIONS, begin: reminder.dueAt, end: reminder.dueAt + 3_600_000 });
-  // Device calendar rows are not linked to notes, and the event does not claim one.
+  // The event's review shows no note link before the reload below.
   await expect(page.getByText(/From note/)).toHaveCount(0);
 
   // 5. Reload once: both records are still there, exactly once, and nothing is written again.
@@ -885,7 +887,12 @@ test('loop B / J02 on Android: a recorded note, a resident summary and reviewed 
   await expect(page.getByText('From note: Venue meeting', { exact: true })).toBeVisible();
   expect(await writes()).toEqual({ reminders: 0, events: 0 });
   expect(await native(page, f => [f.device.reminders.length, f.device.events.length])).toEqual([1, 1]);
-  expect(Object.keys(await native(page, f => JSON.parse(f.slots['note-origins:v1:device']).links))).toEqual(['reminder:' + reminder.id]);
+  // Both saved records link back to the note: the reminder by its id, the device event by the creation
+  // id the upstream calendar plugin returns for events the host created (elizaOS/eliza#35912).
+  const links = Object.keys(await native(page, f => JSON.parse(f.slots['note-origins:v1:device']).links));
+  expect(links).toHaveLength(2);
+  expect(links).toContain('reminder:' + reminder.id);
+  expect(links.filter(key => /^event:[0-9a-f-]{36}$/.test(key))).toHaveLength(1);
   await expectNoDevelopmentSurface(page);
   expect(await native(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);

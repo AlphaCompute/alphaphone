@@ -112,22 +112,7 @@ test('first run: Cloud refusing the new key (401 on the account read) removes it
   await nothingLeft(page, welcome);
 });
 
-test('first run: an account Cloud reports unable to use AI keeps the sign-in but starts no agent', async ({ page }) => {
-  test.setTimeout(90_000);
-  await fenceNetwork(page);
-  await flagOffAndroid(page);
-  await residentStub(page, { emptyKeystore: true, accounts: [{ ...account, balance: 0 }] });
-  await page.goto('/');
-  await setStub(page, { nextToken: account.token });
-  const welcome = page.getByRole('dialog', { name: 'Welcome to Alpha' });
-  await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  // The sign-in itself succeeded: the account is kept so the plan can be fixed in Cloud and checked
-  // again. Cloud's plan page opens only on request; nothing is purchased here (subscription-entitlement.ts).
-  const account_ = page.getByRole('dialog', { name: 'Your Cloud account' });
-  await expect(account_).toContainText('AI is unavailable for this Eliza Cloud account', { timeout: 30_000 });
-  await expect(account_.getByRole('button', { name: 'Open Eliza Cloud billing', exact: true })).toBeVisible();
-  await expect(account_.getByRole('button', { name: 'Use local apps without AI', exact: true })).toBeEnabled();
-  expect(await harness(page, f => f.calls.includes('Agent.start'))).toBe(false);
-  expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
-  expect(await page.evaluate(() => localStorage.getItem('alpha.connection.selection.v1') ?? '')).not.toContain('resident');
-});
+// An account Cloud reports unable to use AI no longer blocks the resident agent: billing state never
+// retires local orchestration and Cloud refuses AI requests itself (subscription-entitlement.ts,
+// connection-ui.tsx admitCloudResident). The plan view and its billing link are covered by
+// native-cloud-subscription.spec.ts; the refusal on send by resident-failures.production.spec.ts.

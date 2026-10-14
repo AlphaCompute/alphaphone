@@ -232,8 +232,10 @@ test.describe('launcher Home taller than the screen (landscape)', () => {
     const row = (await page.locator('.alpha-shade-row').boundingBox())!, start = { x: row.x + row.width - 12, y: row.y + row.height - 6 };
     expect(await page.evaluate(({ x, y }) => { const hit = document.elementFromPoint(x, y); return !!hit?.closest('[data-alpha-layer="home"]') && !hit.closest('button,.scr'); }, start)).toBe(true);
     const icons = (await page.getByRole('button', { name: 'Browser', exact: true }).boundingBox())!;
-    // An upward drag on the app row is ordinary scrolling: Home moves, no shade.
-    await touchDrag(page, icons.x + icons.width / 2, icons.y + icons.height / 2, -160);
+    // Home's scroller ends above the floating composer (--alpha-composer-reserve). In landscape the
+    // app row is then below the visible part of Home, so the upward drag starts on empty Home beside
+    // the Notifications button: ordinary scrolling, Home moves, no shade.
+    await touchDrag(page, start.x, start.y, -160);
     await expect.poll(() => layer.evaluate(element => element.scrollTop)).toBeGreaterThan(0);
     await closed(page, 'upward scroll');
     // Scrolled away from its top, a downward drag scrolls Home back instead of opening the shade.
