@@ -94,6 +94,14 @@ final class WorkflowNoticeTaps {
    row.remove("question");if(untapped)row.put("state","new").put("order",0);storage.write(SLOT,rows.toString());return;
   }throw new UnknownTap();
  }}
+ /** Completes an approval Ask without consuming its route: the approval is still waiting, so its
+  * time-sensitive notice stays posted and its tap remains usable. Refuses expired, withdrawn or other-owner routes. */
+ void releaseApprovalQuestion(String token)throws Exception{synchronized(LOCK){
+  JSONObject rows=ledger();for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!Objects.equals(token,row.getString("token")))continue;
+   if(!WorkflowNoticeDelivery.approvalId(id)||!"pending".equals(row.getString("state"))||!row.optBoolean("question")||!confirmed(id,row))throw new IllegalStateException("Notification tap changed");
+   row.remove("question");row.put("state","new").put("order",0);storage.write(SLOT,rows.toString());return;
+  }throw new UnknownTap();
+ }}
  /** All owner-specific routes, in stable order: results share the same privacy boundary. */
  List<String> noticesOfOtherOwners(JSONObject owner)throws Exception{synchronized(LOCK){
   NoticeOwner.identity(owner);

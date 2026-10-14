@@ -77,6 +77,14 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    assertFalse("Explicit Cancel settles only the question",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",discard:true})").has("error"));
    assertNotNull("Cancel retains approval notice",active(manager,id));
    assertEquals("succeeded",new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(id).getString("status"));
+   notice.actions[0].actionIntent.send();
+   long askedEnd=SystemClock.elapsedRealtime()+15000;JSONObject asked=new JSONObject();
+   while(SystemClock.elapsedRealtime()<askedEnd){asked=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(asked.optBoolean("question"))break;SystemClock.sleep(100);}
+   assertTrue(asked.optBoolean("question"));
+   assertFalse("Use in conversation settles only the question",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",noticeRevision:"+JSONObject.quote(asked.getJSONObject("notice").getString("revision"))+"})").has("error"));
+   assertNotNull("A completed Ask keeps the waiting approval's notice",active(manager,id));assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
+   assertEquals(token,WorkflowNoticeTapsFactory.create(context).token(id));
+   assertEquals("succeeded",new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(id).getString("status"));
    notice.contentIntent.send();
    long end=SystemClock.elapsedRealtime()+15000;JSONObject pending=new JSONObject();
    while(SystemClock.elapsedRealtime()<end){pending=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(token.equals(pending.optString("token")))break;SystemClock.sleep(100);}

@@ -70,7 +70,10 @@ public class AlphaNotificationsPlugin extends Plugin {
   if(token==null||!token.equals(pending.optString("token")))throw new IllegalStateException("Pending tap changed");
   if(Boolean.TRUE.equals(call.getBoolean("discard",false))){if(!pending.optBoolean("question"))throw new IllegalStateException("Tap purpose changed");workflowTaps().settleQuestion(token,true);call.resolve();return;}
   if(pending.optBoolean("question")){addQuestionNotice(pending);org.json.JSONObject notice=pending.optJSONObject("notice");if(notice==null||!notice.getString("revision").equals(call.getString("noticeRevision")))throw new IllegalStateException("Question notice changed");}else if(call.getString("noticeRevision")!=null)throw new IllegalStateException("Tap purpose changed");
-  requireNoticeForeground();workflowTaps().consume(token);manager().cancel("alpha-workflow-"+pending.getString("operationId"),0);call.resolve();
+  requireNoticeForeground();
+  // A completed approval Ask leaves the approval waiting: keep its notice and tap, only the question is settled.
+  if(pending.optBoolean("question")&&WorkflowNoticeDelivery.approvalId(pending.getString("operationId"))){workflowTaps().releaseApprovalQuestion(token);call.resolve();return;}
+  workflowTaps().consume(token);manager().cancel("alpha-workflow-"+pending.getString("operationId"),0);call.resolve();
  }
  /** Question excerpts are read only while unlocked and only from the exact still-posted own notice. */
  private void addQuestionNotice(org.json.JSONObject pending)throws Exception{

@@ -15,13 +15,18 @@ owner-bound delivery receipt. Capture and consumption refuse expired approval
 questions. Withdrawing the approval or changing owners invalidates the action.
 After process recreation, the queued question is revalidated against its live
 notice and authenticated workflow/run before review. Explicit Cancel returns the
-question to its untapped state while leaving the approval waiting. A missing
+question to its untapped state while leaving the approval waiting. Completing
+Ask with **Use in conversation** does the same: the approval is still waiting,
+so its time-sensitive notice stays posted and its tap still opens the run. Only
+an ordinary approval open (or a plain step notice open) consumes the route and
+removes the notice. A missing
 notice cannot supply an excerpt; the ordinary route still fails safely if the
 workflow or run has disappeared.
 
 Local JVM regressions cover persistence, owner changes, expiry, withdrawal,
-Cancel and no replay. Android instrumentation covers the action, redacted excerpt,
-Cancel preserving the approval, and cancellation of both old PendingIntents.
+Cancel, completed Ask keeping the route reusable, and no replay. Android
+instrumentation covers the action, redacted excerpt, Cancel and completed Ask
+preserving the approval notice, and cancellation of both old PendingIntents.
 These checks do not establish physical-device notification acceptance.
 
 ## Remaining issue #449 work
