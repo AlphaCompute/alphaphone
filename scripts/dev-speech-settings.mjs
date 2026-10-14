@@ -1,12 +1,18 @@
 import {constants, openSync, closeSync, fstatSync, readSync} from 'node:fs';
 import {join, isAbsolute} from 'node:path';
 
+import {RENAMED, RETIRED} from './speech-env.mjs';
+
+// Upstream elizaOS names only (scripts/speech-env.mjs).
 const modes = {
-  ALPHA_LOCAL_ASR: ['auto', 'off', 'required'],
-  ALPHA_LOCAL_TTS: ['auto', 'off', 'required'],
+  ELIZA_ASR_ENABLED: ['0', '1'],
+  ELIZA_PARADEE_ENABLED: ['0', '1'],
 };
 const paths = new Set(['ELIZA_INFERENCE_LIBRARY', 'ELIZA_ASR_MODEL_DIR', 'ELIZA_PARADEE_MODEL_DIR']);
-const retired = new Set(['ALPHA_ASR_MODEL_DIR', 'ALPHA_TTS_MODEL_DIR', 'ALPHA_TTS_LIBRARY', 'ALPHA_WHISPER_BIN', 'ALPHA_WHISPER_BACKEND', 'ALPHA_ASR_MODEL']);
+// Saved files written before the upstream names were adopted keep working: a renamed key is read
+// as its upstream replacement (never written back; the upstream key wins when both exist). The old
+// auto/off/required modes map to unset/0/1.
+const legacyMode = {auto: undefined, off: '0', required: '1'};
 
 /** Host-only, nonsecret asset selection. Existing asset admission still runs at startup. */
 export function developmentSpeechEnvironment(profile, inherited = process.env) {
@@ -28,8 +34,22 @@ export function developmentSpeechEnvironment(profile, inherited = process.env) {
     try { saved = JSON.parse(text); } catch { throw Error('Local speech settings must contain valid JSON.'); }
   } finally { closeSync(fd); }
   if (!saved || typeof saved !== 'object' || Array.isArray(saved)) throw Error('Local speech settings must be an object.');
+  // A retired key (Whisper CLI, single ASR model, Kokoro) has no equivalent: it is ignored, never applied.
+  for (const name of RETIRED) if (Object.hasOwn(saved, name)) {
+    delete saved[name];
+    console.warn(`local-speech.json: ${name} is retired and ignored; configure ELIZA_INFERENCE_LIBRARY, ELIZA_ASR_MODEL_DIR and ELIZA_PARADEE_MODEL_DIR.`);
+  }
+  for (const [old, replacement] of Object.entries(RENAMED)) if (Object.hasOwn(saved, old)) {
+    let value = saved[old];
+    if (Object.hasOwn(modes, replacement)) {
+      if (!Object.hasOwn(legacyMode, value)) throw Error('Invalid local speech setting. Use supported modes and absolute asset paths.');
+      value = legacyMode[value];
+    }
+    if (!Object.hasOwn(saved, replacement) && value !== undefined) saved[replacement] = value;
+    delete saved[old];
+    console.warn(`local-speech.json: ${old} is read as ${replacement}; rename it there.`);
+  }
   for (const [key, value] of Object.entries(saved)) {
-    if (retired.has(key)) throw Error('Retired local speech setting. Use ELIZA_INFERENCE_LIBRARY, ELIZA_INFERENCE_LIBRARY_SHA256, ELIZA_ASR_MODEL_DIR and ELIZA_PARADEE_MODEL_DIR.');
     if (!Object.hasOwn(modes, key) && !paths.has(key) && key !== 'ELIZA_INFERENCE_LIBRARY_SHA256') throw Error('Unsupported local speech setting. Store credentials separately.');
     if (typeof value !== 'string' || (Object.hasOwn(modes, key) ? !modes[key].includes(value) : key === 'ELIZA_INFERENCE_LIBRARY_SHA256' ? !/^[a-f0-9]{64}$/.test(value) : !isAbsolute(value) || value.includes('\0'))) {
       throw Error('Invalid local speech setting. Use supported modes and absolute asset paths.');

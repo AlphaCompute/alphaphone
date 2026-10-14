@@ -42,17 +42,28 @@ function integer(value: unknown, min: number, max: number): number {
 }
 export type ClockDay = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 export const CLOCK_DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
-/** One to seven unique days, ascending; Clock receives exactly this list in EXTRA_DAYS. */
+/**
+ * Repeat days, reconciled with the pinned upstream contract
+ * (vendor/eliza/plugins/plugin-assistant/src/services/device-actions/clock-contract.ts):
+ * like upstream, any order is accepted and a repeated day is refused. The order is then
+ * normalised (ascending), so review text and Clock's EXTRA_DAYS do not depend on it.
+ *
+ * Alpha restriction: upstream also accepts [] as an "explicit one-off" for its
+ * clock.handoff.v2 capability. Alpha advertises only clock.handoff.v1 plus the native
+ * clockRepeatDaysVersion, whose handoff has no distinct empty EXTRA_DAYS meaning, so an
+ * empty list is refused with that reason rather than reinterpreted. Omit `days` for a
+ * one-time alarm.
+ */
 export function clockDays(value: unknown): ClockDay[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 7)
+  if (Array.isArray(value) && value.length === 0)
+    throw Error("Invalid Clock repeat days: an empty list is not supported here; omit days for a one-time alarm");
+  if (!Array.isArray(value) || value.length > 7)
     throw Error("Invalid Clock repeat days");
-  let previous = 0;
-  for (const day of value) {
-    if (typeof day !== "number" || !Number.isInteger(day) || day < 1 || day > 7 || day <= previous)
+  for (const day of value)
+    if (typeof day !== "number" || !Number.isInteger(day) || day < 1 || day > 7)
       throw Error("Invalid Clock repeat days");
-    previous = day;
-  }
-  return [...value] as ClockDay[];
+  if (new Set(value).size !== value.length) throw Error("Invalid Clock repeat days: a day is repeated");
+  return [...value].sort((a, b) => a - b) as ClockDay[];
 }
 export function describeClockDays(days: readonly ClockDay[]): string {
   if (days.length === 7) return "every day";
@@ -176,8 +187,8 @@ export function buildClockRequest(input:{action:'set'|'show'|'snooze'|'dismiss';
  const {action,time,label,snooze}=input;
  if(action==='set'){
   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)||label.length>200||label.includes('\0'))throw Error('Choose a valid time and a label up to 200 characters.');
-  const [hour,minute]=time.split(':').map(Number),repeat=[...input.days].sort((a,b)=>a-b);
-  return {action,hour,minute,label:label.trim(),timeZone,reviewed:true,...(repeat.length?{days:clockDays(repeat)}:{})};
+  const [hour,minute]=time.split(':').map(Number);
+  return {action,hour,minute,label:label.trim(),timeZone,reviewed:true,...(input.days.length?{days:clockDays(input.days)}:{})};
  }
  if(action==='snooze'){
   if(!/^\d{1,2}$/.test(snooze)||Number(snooze)<1||Number(snooze)>60)throw Error('Choose 1 to 60 snooze minutes.');

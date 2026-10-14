@@ -1,12 +1,14 @@
 import {test,expect,type Page} from '@playwright/test';
-import {localBrowserVoice} from './voice-fixture';
+import {agentBrowserVoice} from './voice-fixture';
+// P-43: read aloud has no Web Speech fallback. It runs through the local agent's speech
+// (libelizainference Paradee), stubbed here at the agent boundary (agentBrowserVoice).
 
-// Read aloud uses the local browser voice only; editing or leaving the note stops it.
+// Read aloud uses the agent's on-device speech only; editing or leaving the note stops it.
 // The development server is shared and slow on a loaded machine.
 test.describe.configure({timeout:120000});
 test.beforeEach(async({page})=>{await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 async function openNote(page:Page){
- await page.goto('/');await localBrowserVoice(page);
+ await page.goto('/');await agentBrowserVoice(page);
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  await page.getByRole('button',{name:'New note',exact:true}).click();
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Groceries');

@@ -1,8 +1,8 @@
 # Combined agent and phone process restart campaign
 
-Historical design record. The restart wrapper described here was removed on October 8 with the other aggregate smoke runners, at the owner's request, and this campaign has no current repository runner. The instrumentation class remains; running it requires a new reviewed host-side runner. Prepared source only; not compiled or executed by this task. This is a separate opt-in campaign, preserving the existing CombinedAgentInstrumentedTest and production sources.
+Historical design record. The restart wrapper described here was removed on October 8 with the other aggregate smoke runners, at the owner's request, and this campaign has no current repository runner. The instrumentation class remains; running it requires a new reviewed host-side runner. Prepared source only; not compiled or executed by that task. Since then the class has been compiled into both instrumentation APKs with the rest of the androidTest source (for example the round 8 developer builds and the Gradle compile of the MVP completion integration); it has never been executed. This is a separate opt-in campaign, preserving the existing CombinedAgentInstrumentedTest and production sources.
 
-`CombinedAgentRestartInstrumentedTest` has three explicit methods, each gated by `combinedAgentRestart=1` and `restartPhase=prepare|verify|cleanup`. The runner invokes the exact method so skipped phases cannot masquerade as acceptance. The removed wrapper had passed `node --check`; Android compilation and real execution remained pending.
+`CombinedAgentRestartInstrumentedTest` has three explicit methods, each gated by `combinedAgentRestart=1` and `restartPhase=prepare|verify|cleanup`. The runner invokes the exact method so skipped phases cannot masquerade as acceptance. The removed wrapper had passed `node --check`; Android compilation has happened since (see above) and real execution is still pending.
 
 ## Preparation
 

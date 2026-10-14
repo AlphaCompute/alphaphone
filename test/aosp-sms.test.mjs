@@ -229,7 +229,10 @@ test("standalone SMS stays unavailable at the UI and agent boundaries", async ()
   assert.deepEqual(admittedAospViews(false, ["messages", "phone", "contacts"]), []);
   // Agent SMS is negotiated only by the verified image, then validated by the reviewed shared contract.
   const connection=read("apps/app/src/runtime/connection-ui.tsx");
-  assert.equal((connection.match(/if\(aospImage&&.*includes\(SMS_SEND_CAPABILITY\)/g)||[]).length,3);
+  // One negotiation (deviceCapabilities) serves the resident, remote and Cloud runtimes.
+  assert.equal((connection.match(/if\(aospImage&&.*includes\(SMS_SEND_CAPABILITY\)/g)||[]).length,1);
+  assert.match(connection.slice(connection.indexOf('async function deviceCapabilities('),connection.indexOf("return capabilities.join(',');")),/if\(aospImage&&agent\.includes\(SMS_SEND_CAPABILITY\)\)capabilities\.push\(SMS_SEND_CAPABILITY\);/);
+  assert.equal((connection.match(/await deviceCapabilities\(/g)||[]).length,3);
   assert.match(read("apps/app/src/runtime/device-actions.ts"),/claimed.providerIdempotencyKey!==operationId/);
   assert.match(read("apps/app/src/prototype/agent-adapter.ts"),/if\(!aospImage\|\|expectedContext.sensitive/);
   const telephony = read("apps/app/src/runtime/aosp-telephony.ts");

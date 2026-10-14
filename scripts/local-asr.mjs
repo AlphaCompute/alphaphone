@@ -13,7 +13,7 @@ export const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 const ffmpeg = process.env.ALPHA_FFMPEG_BIN || '/opt/homebrew/bin/ffmpeg';
 const ffprobe = process.env.ALPHA_FFPROBE_BIN || '/opt/homebrew/bin/ffprobe';
 async function loadSharedAsr() {
- if(process.env.ALPHA_LOCAL_ASR==='off')throw Error('Development speech disabled');
+ if(process.env.ELIZA_ASR_ENABLED==='0')throw Error('Development speech disabled');
  if(!process.versions.bun)throw Error('Shared development speech requires Bun');
  admitSpeech('asr');
  const {sourceDirectory,verifySource}=await import('./local-agent-source.mjs');

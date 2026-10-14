@@ -1,6 +1,6 @@
 /** Archived workflow scenarios; upstream owns leased APK and disposable-user lifecycles.
  * Phases: `workflow` (phone-step reads and drafts), `approval-notice` (phone-step approval
- * notice builders, OS posting, tap route and withdrawal) and `approval-notice-recovery` (a pending
+ * notice builders, OS posting, tap route and withdrawal, and the tap fenced after an account change) and `approval-notice-recovery` (a pending
  * approval notice across the death of the app's main process, and across an owner change). Every
  * case runs on both distributions from one hash-admitted archive pair; any failed, skipped or
  * missing case fails the campaign.
@@ -48,6 +48,9 @@ const cases=[{class:'WorkflowPhoneNativeInstrumentedTest',method:'privateReadRes
  {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalAndStepBuildersAreRedactedAndExpire',gate:'workflowApprovalNotice',grant:false,phase:'approval-notice'},
  // The OS post and tap need the runtime notification permission in the owned secondary user.
  {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'},
+ // MVP-18: a tap after the account changed is fenced to the other-account state; no stale approval opens.
+ // The process-death counterpart is WorkflowApprovalNoticeProcessDeathInstrumentedTest in the approval-notice-recovery phase below.
+ {class:'WorkflowApprovalNoticeInstrumentedTest',method:'approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval',gate:'workflowApprovalNotice',grant:false,notifications:true,phase:'approval-notice'},
  // A pending approval notice while the main process dies: the helper-process runner keeps the test alive.
  {class:'WorkflowApprovalNoticeProcessDeathInstrumentedTest',method:'pendingApprovalNoticeSurvivesProcessDeathAndOpensItsExactApprovalOnce',gate:'workflowApprovalNoticeProcessDeath',grant:false,notifications:true,phase:'approval-notice-recovery',runner:'WorkflowNoticeProcessRunner'},
  // A pending approval notice while the connected owner changes (synthetic owner IDs; no account).

@@ -1,6 +1,7 @@
 /** Explicit, inactive, disposable held arithmetic fixture. No agents, tools or communications. */
-import fs from 'node:fs/promises';import assert from 'node:assert/strict';import {WorkflowProtocol} from '../apps/app/src/runtime/workflow-protocol.ts';
-const file=process.env.ALPHA_DEVICE_SESSION_FILE;if(!file||(await fs.stat(file)).mode&0o077)throw Error('Owner-only paired fixture session required');const {token}=JSON.parse(await fs.readFile(file,'utf8'));
+import fs from 'node:fs/promises';import assert from 'node:assert/strict';import {parseArgs} from 'node:util';import {WorkflowProtocol} from '../apps/app/src/runtime/workflow-protocol.ts';
+// Input: --session-file names an owner-only paired session JSON file for the loopback host on 47840.
+const file=parseArgs({options:{'session-file':{type:'string'}},strict:true}).values['session-file'];if(!file||(await fs.stat(file)).mode&0o077)throw Error('Owner-only paired fixture session required');const {token}=JSON.parse(await fs.readFile(file,'utf8'));
 const request=async(path,body,signal)=>{const r=await fetch('http://127.0.0.1:47840'+path,{method:body===undefined?'GET':'POST',headers:{Authorization:`Bearer ${token}`,'X-Forwarded-For':'192.0.2.1','Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),redirect:'error',signal});if(!r.ok)throw Error(`Fixture HTTP ${r.status}`);return r.json();};const client=new WorkflowProtocol(request),signal=()=>AbortSignal.timeout(30000);
 const source=`/** @jsxImportSource smthrs */
 import {createSmithers} from "smthrs/create";

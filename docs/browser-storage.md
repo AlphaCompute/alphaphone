@@ -115,6 +115,24 @@ delete changed or unobserved records. Those fixtures require current-source
 native execution; host tests and APK compilation alone do not qualify Android
 Keystore, process death or real Clock behavior.
 
+## Android browser site permissions
+
+The Android browser's camera, microphone and location decisions are decided by
+upstream `BrowserSitePermissions` at the pin: the persistent profile only (a private
+tab asks every time and stores nothing), at most 200 origins with the oldest dropped
+first, and decisions cleared with the site's data or all browsing data. Alpha keeps
+its own sealed storage: `BrowserSessionStore` seals the record with the session
+Keystore key under the `permissions` preference, and `BrowserPermissionRecords` reads
+and writes it through the upstream class. The stored format did not change
+(`{"https://host[:port]":{"camera":true,...}}`, oldest origin first), so records
+written by earlier builds are read as they are; an origin or kind the upstream class
+does not recognize, or a damaged record, grants nothing and the site is asked again.
+Two Alpha rules stay in `AlphaBrowserPlugin.sitePermission`: only the selected,
+shown page may prompt or use a stored Allow, and an Allow is chained to Android's
+runtime permission. `test/browser-site-permissions.test.mjs` reads old-format records
+(allow, deny, a damaged store, the 200-origin bound) through the new path on the
+host JVM; it does not exercise WebView prompts or the Keystore.
+
 ## Storage and recovery rules
 
 - Preserve the exact legacy bytes, including malformed or empty values. Never
@@ -181,7 +199,7 @@ must be copied or exported before a reset reloads the app.
 Deleting a note from the editor, through an approved agent `notes_delete`, or as a
 voice note moves it to Trash. Upstream Notes keeps content-free tombstones, so the
 product keeps the restorable copy beside the store (`runtime/notes-trash.ts`): the
-Keystore-encrypted no-backup slot `notes-trash:v1:device` (32 MiB) on Android and the
+Keystore-encrypted no-backup slot `notes-trash:v1:device` (30 MiB, the Trash policy byte limit; a document written under the earlier 32 MiB cap stays readable) on Android and the
 canonical browser document `alpha.browser.notes-trash.v1` on the web build. Each
 entry holds the exact record, its reviewed revision (`target`), list position,
 `deletedAt` and, for voice notes, the recording owned by the same deletion operation.
@@ -304,10 +322,13 @@ additions are refused until it is below the limits again. `notes-trash-recovery.
 and `scripts/test-notes-trash-flow.ts` cover this in the browser build and the policy, and
 `notes-trash-full.spec.ts` reaches the refusal through the entry limit and, separately,
 through the byte limit (encoded bytes, with the entry limit left at 10,000);
-the Android slot cap itself is a hard read and write limit of the shared
-`JsonCredentialSlots`, so Alpha must not lower `notes-trash:v1:device` below 32 MiB
-until that store admits reads and reductions above its limit. Not yet qualified on a
-device.
+since the pin `bc71e21f3b` the shared `JsonCredentialSlots` admits reads of a slot above
+its lowered limit and writes that shrink it (elizaOS/eliza#35910), so Alpha lowered
+`notes-trash:v1:device` from 32 MiB to the 30 MiB policy limit with a retained limit of
+32 MiB (`AlphaCredentialStore.retainedLimit`); a write that would grow such a slot is
+storage-full. `NotesStorageDurabilityInstrumentedTest` covers this (older oversize Trash
+readable, a shrink accepted, growth refused) and has been compiled, not run. Not yet
+qualified on an emulator or a device.
 
 The owning suites cover independent tabs, stale editors, exact archives,
 malformed recovery, failed writes, lost acknowledgements, deletion receipts,

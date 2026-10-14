@@ -101,12 +101,18 @@ final class BrowserReading {
   review(call,web,world,stillCurrent,false);
  }
  void reviewQuestion(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent){review(call,web,world,stillCurrent,true);}
+ /**
+  * Stable reject codes, so the renderer never parses message text (J05). A missing isolated world
+  * may fall back to a pasted excerpt; a sensitive page never may.
+  */
+ static final String ISOLATED_WORLD_UNAVAILABLE="isolated-world-unavailable",SENSITIVE_PAGE="sensitive-page";
+ private static final String ISOLATED_MESSAGE="Isolated page reading is unavailable. Update Android System WebView, then reload this page.";
  private void review(PluginCall call,WebView web,BrowserReadingWorld world,BooleanSupplier stillCurrent,boolean question){
   cancel();final long expected=generation;
   // The provider cannot read in isolation: say so before anything else. No speech route, other page or reload can help, and nothing falls back to the page's own world.
   if(world==null||!world.available()){call.reject(UNSUPPORTED,UNSUPPORTED_CODE);return;}
   try{if(!question)binding=binding(call);}catch(Exception error){call.reject("Select an available speech route before reading");return;}
-  if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page");return;}
+  if(sensitiveUrl(web.getUrl())){call.reject("Reading unavailable on a sensitive or unverified page",SENSITIVE_PAGE);return;}
   if(!world.ready()){call.reject("This page is not ready for private reading. Reload this page, then try again.","reading-not-ready");return;}
   current=stillCurrent;pending=call;expires=System.currentTimeMillis()+120000;
   scheduleTimeout(expected,120000);
@@ -115,7 +121,7 @@ final class BrowserReading {
    try{
     if(!current.getAsBoolean())throw new IllegalStateException();
     Object decoded=new JSONTokener(encoded).nextValue();if(!(decoded instanceof JSONObject))throw new IllegalStateException();JSONObject result=(JSONObject)decoded;
-    if(result.optBoolean("blocked")){PluginCall rejected=pending;pending=null;cancel();rejected.reject("Reading unavailable on a sensitive or ambiguous page");return;}
+    if(result.optBoolean("blocked")){PluginCall rejected=pending;pending=null;cancel();rejected.reject("Reading unavailable on a sensitive or ambiguous page",SENSITIVE_PAGE);return;}
     String extracted=result.getString("text");if(extracted.isBlank()||extracted.length()>5000)throw new IllegalStateException();text=extracted;token=UUID.randomUUID().toString();
     String source=android.net.Uri.parse(web.getUrl()).getHost();boolean local="device".equals(call.getString("execution"));
     TextView preview=new TextView(activity);preview.setText(question?"Source: "+source+"\n\nContinue releases this public excerpt to the question editor. Review and edit it there; only Send shares your draft with the selected agent.\n\n"+text:"Source: "+source+"\nSpeech: "+(local?"On this device":call.getString("origin"))+"\nOwner: "+call.getString("ownerId")+(local?"\n\nRead on this device uses local speech. The excerpt is not sent to an agent or speech server.\n":"\n\nRead with selected agent sends exactly the following text for speech.\n")+text.length()+" characters"+(result.optBoolean("truncated")?" (truncated; no further text will be sent)":"")+"\n\n"+text);preview.setTextIsSelectable(true);int padding=(int)(20*activity.getResources().getDisplayMetrics().density);preview.setPadding(padding,padding,padding,padding);
@@ -124,7 +130,10 @@ final class BrowserReading {
      if(expected!=generation||!valid()){cancel();return;}if(question){PluginCall accepted=pending;pending=null;JSObject response=new JSObject();response.put("text",text);cancel();accepted.resolve(response);return;}approved=true;PluginCall accepted=pending;pending=null;dialog=null;JSObject response=new JSObject();response.put("readingToken",token);accepted.resolve(response);
     }).setOnCancelListener(d->cancel()).create();dialog.show();
    }catch(Exception error){cancel();}
-  },()->{if(expected==generation)cancel();});
+  },()->{
+   // The isolated world could not run the extraction: the same refusal as a world that never started.
+   if(expected!=generation)return;PluginCall rejected=pending;pending=null;cancel();if(rejected!=null)rejected.reject(ISOLATED_MESSAGE,ISOLATED_WORLD_UNAVAILABLE);
+  });
  }
  private void scheduleTimeout(long expected,long delay){new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(()->{if(expected==generation)cancel();},delay);}
  private boolean valid(){return current!=null&&current.getAsBoolean()&&System.currentTimeMillis()<expires;}

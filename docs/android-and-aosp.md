@@ -31,9 +31,9 @@ checkout `npm run android:build:local` runs the whole chain: an input check,
 `agent:build-embedding-host`, `agent:prepare`, `agent:build-workflow-worker`,
 `agent:stage-android`, `licenses:packaged-runtime` and `android:build`. It stops at the second
 step until a person supplies the reviewed embedding host libraries; `npm run
-android:build:inputs` lists every input and who supplies it (see the README). Gradle's
-`:local-speech:preBuild` also needs the speech AAR from
-[local speech setup](../scripts/local-speech/README.md). `npm run android:build` checks all of
+android:build:inputs` lists every input and who supplies it (see the README). On-device speech
+uses only the libelizainference voice host ([fused speech](fused-speech.md), decision P-42); an
+APK without a voice bundle is valid. `npm run android:build` checks all of
 these first (`scripts/android-build-preflight.mjs`) and exits 2 with the command to run instead
 of failing inside Gradle. `npm run android:build -- --allow-unpackaged-runtime` is the developer
 path: it needs only `agent:prepare` and records release APKs without the payload as
@@ -137,7 +137,9 @@ product or publish a Pixel 10 installer before its device inputs are admitted.
    HOME resolution after reboot, screen/IME/native bridge behavior and absence of crashes.
 8. Validate the same signed release on physical hardware: radios, audio/mic, touch,
    camera, suspend/resume, charging, keys, auth/agent reconnect, accessibility and
-   recovery. Then validate signed OTA and rollback. Record image/APK/source hashes.
+   recovery. Record image/APK/source hashes. Signed OTA and rollback are a future gate: no OTA
+   manifest and no rollback path exist today, `scripts/pilot-update.mjs` refuses a lower
+   versionCode, and the design is blocked on A-06.
 
 An SDK emulator with an installed launcher is useful HOME/app evidence, but is not
 proof that this product makefile built or booted in a custom AOSP image.

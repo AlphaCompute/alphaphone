@@ -1,5 +1,5 @@
-import fs from 'node:fs';import http from 'node:http';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {RemoteProtocol} from '../apps/app/src/runtime/remote-protocol.ts';
-const origin='http://127.0.0.1:47848',profile='/Users/shawwalters/.local/share/alphaphone/local-reviewed-workflows',out='test-results/workflow-submissions';fs.mkdirSync(out,{recursive:true});
+import fs from 'node:fs';import os from 'node:os';import path from 'node:path';import http from 'node:http';import crypto from 'node:crypto';import assert from 'node:assert/strict';import {RemoteProtocol} from '../apps/app/src/runtime/remote-protocol.ts';
+const origin='http://127.0.0.1:47848',profile=path.join(os.homedir(),'.local/share/alphaphone/local-reviewed-workflows'),out='test-results/workflow-submissions';fs.mkdirSync(out,{recursive:true});
 const raw=input=>new Promise((resolve,reject)=>{const req=http.request(input.url,{method:input.method,headers:{...input.headers,Host:'10.0.2.2:47848'},signal:input.signal},res=>{let text='';res.on('data',c=>text+=c);res.on('end',()=>resolve({status:res.statusCode,body:JSON.parse(text)}));});req.on('error',reject);req.end(input.body);});
 let credential;const remote=new RemoteProtocol(origin,raw,{read:async()=>credential,write:async c=>{credential=c;},remove:async()=>credential=null},{developmentOrigins:[origin]});
 const result={scope:'Real paired isolated app host47848 durable reviewed workflow admission; no phone/UI claim',testedAt:new Date().toISOString(),passed:false};

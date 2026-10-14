@@ -21,7 +21,7 @@ bun run dev
 
 Before starting, configure `CEREBRAS_API_KEY` in the host environment or the owner-only file `~/.config/alphaphone/cerebras-key`. Do not put it in a `VITE_` variable, checked-in file, browser field, URL or command-line argument. The existing private key file is supported. The current model defaults to `qwen-3.8-27b`.
 
-`bun run dev` starts the agent on this computer in the background together with the development server (`npm run dev:local` is the same command). Open `http://127.0.0.1:5317`: on first launch the app connects to that local agent automatically; afterwards your saved choice (including **Continue offline**) is kept, and **Start local agent** reconnects. Extra arguments go to Vite, for example `bun run dev --port 5199` for the Alpha comparison preview. The default port is 5317. Conversation history comes from the agent's local database. Use `npm run dev:ui` for a renderer-only development server with no agent.
+`bun run dev` starts the agent on this computer in the background together with the development server (`npm run dev:local` is the same command). Open `http://127.0.0.1:5317`: the app always connects to that local agent (P-43: there is no offline mode); if it is not running the app shows a recovering state, and **Restart local agent** reconnects. Extra arguments go to Vite, for example `bun run dev --port 5199` for the Alpha comparison preview. The default port is 5317. Conversation history comes from the agent's local database. Use `npm run dev:ui` for a renderer-only development server with no agent.
 
 `bun run dev` owns the host and Vite child processes and stops them on Ctrl-C. It refuses an occupied agent port or a live process already using its profile. Its default profile is `~/.local/share/alphaphone/browser-agent`, with owner-only credentials, logs and browser action journal. `ALPHA_REMOTE_PROFILE` and `ALPHA_REMOTE_PORT` permit a separate profile/port. `ALPHA_ELIZA_SOURCE` is an explicit development override; evidence for one source snapshot does not qualify another.
 
@@ -51,40 +51,19 @@ stays unknown.
 
 ## Speech routes and optional local development
 
-Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud in the product. A valid saved Cloud account is required; opening voice must reuse that account rather than request a new sign-in unnecessarily. Notes recordings remain local until the user explicitly requests transcription. Chat voice has a separate conversation controller and does not open Notes. Actual microphone, playback, backend STT selection and Android permission acceptance require their own qualification; text inference readiness does not prove them.
+Product speech stays on the device (P-43): Android uses the on-device libelizainference voice (Paradee-8M TTS and the voice bundle's ASR slot, [fused speech](fused-speech.md)), and a browser uses the local agent on the same computer. Eliza Cloud speech exists only in test-mocks builds, and nothing falls back to Web Speech or to the network. Notes recordings remain local until the user explicitly requests transcription. Actual microphone, playback and Android permission acceptance require their own qualification; text inference readiness does not prove them.
 
-The following local Whisper/Kokoro instructions describe optional development asset qualification, not the default product route. The active Mac comparison profile keeps local ASR and TTS off. A private `local-speech.json` may save supported nonsecret asset settings; explicit environment choices take precedence. Never store credentials in that file or run its audio qualification without authorization.
+The development host runs the same engine: the shared Paradee TTS worker (`POST /api/tts/paradee`) and the shared ASR service (`POST /api/asr/libelizainference`), both on libelizainference. Configuration uses the upstream names only (`scripts/speech-env.mjs`): `ELIZA_INFERENCE_LIBRARY` with its independently reviewed `ELIZA_INFERENCE_LIBRARY_SHA256`, `ELIZA_PARADEE_ENABLED` / `ELIZA_PARADEE_MODEL_DIR` and `ELIZA_ASR_ENABLED` / `ELIZA_ASR_MODEL_DIR`. `1` requires the service, `0` turns it off, and unset enables it only when its model directory is set. The Paradee directory holds the pinned `paradee-8m-v1_0.gguf`, `misaki-en-us.lex` and optionally `espeak-ng-data/`; the ASR directory holds the slot pair under `asr/` and Silero VAD under `vad/` (paths and hashes in `scripts/host-speech-assets.json`). Assets are verified before the worker starts; nothing is downloaded.
 
-Host ASR runs through the shared `libelizainference` worker with the pinned Qwen3-ASR GGUF pair and Silero VAD described in `docs/host-speech-migration-2026-10-14.md`. Its readiness belongs to the native worker; this is host development, not Android speech qualification or a guarantee of the device latency target.
-
-When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component. Local playback also prepares sentence-sized chunks, bounded to 300 characters, so the first audio response does not wait for a complete multi-sentence passage. The entire passage is validated before any chunk is submitted; completion still waits for every chunk and Stop cancels the current request without starting the remainder.
-
-For repeatable cold-process qualification with the installed speech settings, run:
+Require both speech services at startup with:
 
 ```sh
-ALPHA_ELIZA_SOURCE=/absolute/path/to/prepared/runtime npm run agent:test-cold-kokoro
-```
-
-This Bun check validates the pinned source and assets, exercises three fresh
-workers without a readiness probe, and verifies cold cancellation/recovery. It
-writes `test-results/cold-kokoro/result.json`. It never sends text to a model
-provider and uses only a fixed synthetic phrase. The opt-in browser case
-`first host speech request plays without a readiness probe` in
-`test/browser/browser-agent-playback.spec.ts` additionally checks actual playback;
-set `ALPHA_REAL_KOKORO=1` and point a serverless Playwright configuration at the
-freshly restarted local dev server. Agent readiness is separate from TTS readiness.
-
-
-
-Require both speech providers at startup with:
-
-```sh
-ALPHA_LOCAL_ASR=required \
-ALPHA_LOCAL_TTS=required \
+ELIZA_ASR_ENABLED=1 \
+ELIZA_PARADEE_ENABLED=1 \
 ELIZA_INFERENCE_LIBRARY=/absolute/path/to/libelizainference.dylib \
-ELIZA_INFERENCE_LIBRARY_SHA256=<independently reviewed sha256> \
+ELIZA_INFERENCE_LIBRARY_SHA256=<reviewed sha256> \
 ELIZA_PARADEE_MODEL_DIR=/absolute/path/to/paradee \
-ELIZA_ASR_MODEL_DIR=/absolute/path/to/asr \
+ELIZA_ASR_MODEL_DIR=/absolute/path/to/asr-bundle \
 npm run dev:local
 ```
 
@@ -95,26 +74,35 @@ permissions (`chmod 600`). For example:
 
 ```json
 {
-  "ALPHA_LOCAL_ASR": "required",
-  "ALPHA_LOCAL_TTS": "required",
+  "ELIZA_ASR_ENABLED": "1",
+  "ELIZA_PARADEE_ENABLED": "1",
   "ELIZA_INFERENCE_LIBRARY": "/absolute/path/to/libelizainference.dylib",
-  "ELIZA_INFERENCE_LIBRARY_SHA256": "<independently reviewed sha256>",
+  "ELIZA_INFERENCE_LIBRARY_SHA256": "<reviewed sha256>",
   "ELIZA_PARADEE_MODEL_DIR": "/absolute/path/to/paradee",
-  "ELIZA_ASR_MODEL_DIR": "/absolute/path/to/asr"
+  "ELIZA_ASR_MODEL_DIR": "/absolute/path/to/asr-bundle"
 }
 ```
 
-`npm run dev` and `npm run dev:local` read this file at startup. Explicit shell
-environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Retired keys
-(`ALPHA_TTS_LIBRARY`, `ALPHA_TTS_MODEL_DIR`, `ALPHA_ASR_MODEL_DIR`,
-`ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL`, `ALPHA_WHISPER_BACKEND`) are rejected.
-Exact asset layouts are in `docs/host-speech-migration-2026-10-14.md`. Only speech modes and absolute asset paths are accepted;
-credentials, arbitrary process settings, symlinks, shared-access files and malformed
-JSON are rejected. With no file, existing environment/default behavior is preserved.
-The file selects installed assets; their existing hash and readiness checks still
-run. It does not download assets or configure speech on Android.
+The TTS directory holds the pinned Paradee-8M GGUF and misaki lexicon (optionally
+`espeak-ng-data/`); the ASR directory holds `asr/phonon-2-fv5.gguf` (Phonon-2, the only GGUF under
+`asr/`) and `vad/silero-vad-v5.gguf`. The agent's host workers load them through
+libelizainference, and the ASR worker runs with `ELIZA_ASR_BACKEND=parakeet`
+(`scripts/host-speech-assets.json`, [host speech migration](host-speech-migration-2026-10-14.md)).
 
-The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/af_bella.bin` assets. The launcher checks the model and voice hashes; the host service checks the native library and ABI and warms synthesis before readiness. This command uses already installed qualified assets; it does not download a model or build a native library. `ALPHA_LOCAL_TTS=auto` stays disabled unless a library is explicitly configured, and `off` disables synthesis. Browser phrases are bounded to 500 characters; the transcript player divides longer text into shorter phrases. Speech runs on the development computer; text-model inference still uses the configured hosted provider.
+`npm run dev` and `npm run dev:local` read this file at startup. A file that still uses the
+earlier Alpha-only keys (`ALPHA_LOCAL_TTS`, `ALPHA_LOCAL_ASR`, `ALPHA_TTS_MODEL_DIR`,
+`ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) is read as the upstream names, with a warning to
+rename them; the retired Whisper and Kokoro keys are ignored. In the environment the earlier names
+are refused with their replacement. Explicit shell environment values take precedence, including
+`ELIZA_PARADEE_ENABLED=0`. Only speech modes, the digest and absolute asset paths are accepted;
+credentials, arbitrary process settings, symlinks, shared-access files and malformed JSON are
+rejected. The file does not download assets or configure speech on Android. Speech runs on the
+development computer; text-model inference still uses the configured provider (Qwen
+`qwen-3.8-27b` on Cerebras).
+
+The earlier cold-Kokoro, paired-Whisper and combined voice-roundtrip campaign scripts were deleted
+on 2026-10-14 (they could not qualify Paradee or Phonon-2); their historical evidence below
+describes the retired engines.
 
 Notes recording uses the selected Cloud account. The retired local-agent Notes UI journeys are removed; real browser capture, reviewed saves, cancellation and playback remain covered by the Cloud-bound recording E2E fixtures. Those fixtures use synthetic transport and do not qualify a live Cloud provider. The explicit local-host playback check above remains available for development speech. Native Android speech and physical-device acceptance remain separate.
 
@@ -169,7 +157,7 @@ Iterate on UI at `http://127.0.0.1:5199/` with `bun run dev --port 5199`. This d
 
 The staging command builds the Android mobile agent bundle, runs upstream's host-Bun module initialization check, and stages pinned ARM64 and x86_64 Bun/musl/runtime artifacts. Executables are packaged as extracted JNI libraries for an ordinary APK; it does not require root, writable-directory execution or disabling SELinux. The upstream staging step includes its small embedding artifact, not an offline text-generation model. Generated assets and binaries are ignored by Git and reproducible from the checked-in scripts and manifests.
 
-When an APK build is wanted, `npm run android:build:local` checks the pinned checkout and speech AAR, checks that the reviewed embedding host libraries are staged (it stops there, naming the person who must supply them, when they are not; `npm run android:build:inputs` lists every input), then runs preparation, `agent:build-workflow-worker`, staging, the packaged-runtime notices and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Unpackaged developer artifacts never qualify resident acceptance. Signing, speech functionality and overall release acceptance remain separate from a successful packaging check. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
+When an APK build is wanted, `npm run android:build:local` checks the pinned checkout (and any staged voice bundle against `android/voice-host/qualified-voice-host.json`), checks that the reviewed embedding host libraries are staged (it stops there, naming the person who must supply them, when they are not; `npm run android:build:inputs` lists every input), then runs preparation, `agent:build-workflow-worker`, staging, the packaged-runtime notices and the existing build/verification of both standalone and launcher variants. Rerunning it reuses the prepared source and worker artifact only when they verify against the current source stamp; a stale worker artifact is reported, never rebuilt over. The ordinary `android:build` uses whatever payload has already been staged and stops before Gradle, naming the command to run, when the prepared source or (for distribution builds) the staged payload is missing or was staged from a different preparation. Unpackaged developer artifacts never qualify resident acceptance. Signing, speech functionality and overall release acceptance remain separate from a successful packaging check. Preparation, worker build and staging start their children in the prepared checkout without the AI-agent variables Turborepo detects (`AI_AGENT`, `CLAUDECODE` and others, see `TURBO_AGENT_DETECTION_ENV` in `scripts/local-agent-source.mjs`), so Turborepo does not append agent guidance to that checkout's `AGENTS.md`.
 
 In the standalone Android app, use the existing Eliza Cloud account flow. The app checks the account's plan before local access setup; without one it offers Redeem code and Choose a plan (Cloud's hosted page). Staging QA: [cloud-subscription-qa.md](cloud-subscription-qa.md). It binds a credential reference to the supported Cloud model in native encrypted storage and reuses the saved account on restart. No provider key belongs in the renderer or source, and no hosted agent is provisioned. Account/logout changes retire the old binding and runtime; changed provider selections require a new admitted runtime launch.
 
@@ -306,9 +294,9 @@ What a pass means: the interrupted run is kept as `outcome-unknown` with no fini
 
 The Resident source preparation workflow runs this campaign after installing the pinned runtime dependencies. Its `resident-prepare-evidence` artifact retains the supervised phase outcome and synthetic process logs/results, including failures; the temporary PGlite database is not uploaded. Source preparation alone is not a passing restart campaign.
 
-This check is not part of `npm test` or `npm run verify`, because it needs prepared runtime dependencies; the Resident source preparation workflow runs it after preparation. `test/digest-restart-input.test.mjs` covers only its input admission. Recorded run (host-runtime evidence, not Android): product branch `claude/r5-runner-gaps`, the script as committed in `15d29c3d` (its test phases are unchanged from `8acc6e4b`; only input admission and result labels changed), upstream `352d7a0855b713319cbe1acdab5fbf556fb85aa8`, macOS arm64, Node 24.15.0, Bun 1.4.2, 2026-10-10: exit 0 twice (once with `ALPHA_ELIZA_SOURCE`, once with the default directory); one model call in the admit phase and none in recover or overdue; `recovered.json` `{"sameRunId":true,"resultCount":0,"duplicateAdmissionsSameRun":true,"reconciliation":"outcome-unknown","finished":false}`; `overdue-result.json` `{"status":"missed","resultCount":1,"nextOccurrenceFuture":true,"duplicateAdmissionSameRun":true}`. A changed upstream pin needs a new run.
+This check is not part of `npm test` or `npm run verify`, because it needs prepared runtime dependencies; the Resident source preparation workflow runs it after preparation, and `.github/workflows/digest-restart.yml` runs it on dispatch only (not a required check; not dispatched). `test/digest-restart-input.test.mjs` covers only its input admission. Recorded run (host-runtime evidence, not Android): product branch `claude/r5-runner-gaps`, the script as committed in `15d29c3d` (its test phases are unchanged from `8acc6e4b`; only input admission and result labels changed), upstream `352d7a0855b713319cbe1acdab5fbf556fb85aa8`, macOS arm64, Node 24.15.0, Bun 1.4.2, 2026-10-10: exit 0 twice (once with `ALPHA_ELIZA_SOURCE`, once with the default directory); one model call in the admit phase and none in recover or overdue; `recovered.json` `{"sameRunId":true,"resultCount":0,"duplicateAdmissionsSameRun":true,"reconciliation":"outcome-unknown","finished":false}`; `overdue-result.json` `{"status":"missed","resultCount":1,"nextOccurrenceFuture":true,"duplicateAdmissionSameRun":true}`. A changed upstream pin needs a new run.
 
-Repeated at pin `40dbe96bd1`, which round 9 has since replaced with `13c9857598` (host-runtime evidence, not Android; not repeated at the newer pin): product branch `claude/r8-runner-ci` at `dc0baed4`, the script unchanged since `15d29c3d`, upstream `40dbe96bd1fc2603aaff655cd52d0ab899704e2c`, macOS arm64, Node 24.15.0, Bun 1.4.2, 2026-10-11. `ALPHA_RUNTIME_GIT_CACHE="$PWD/vendor/eliza" npm run agent:prepare` exit 0 (27,339 files, 3,236 packages, 5.8 GB; the dependency install was removed afterwards), then `npm run agent:test-digest-restart` with the default directory: exit 0 in 19 seconds, `{"evidenceClass":"host-runtime","upstreamCommit":"40dbe96b…","crashDuringInference":true,"preservedSameRun":true,"unknownOutcomeNotReplayed":true,"noFabricatedResult":true,"overdueSkippedWithoutInference":true,"modelAttempts":1}`; `recovered.json` `{"sameRunId":true,"resultCount":0,"duplicateAdmissionsSameRun":true,"reconciliation":"outcome-unknown","finished":false}` (its run id omitted here); `overdue-result.json` `{"status":"missed","resultCount":1,"nextOccurrenceFuture":true,"duplicateAdmissionSameRun":true}`; one model call, in the admit phase. One run. The evidence directory was a temporary folder and is not kept.
+Repeated at pin `40dbe96bd1`, which round 9 has since replaced with `13c9857598` (host-runtime evidence, not Android; not run at `13c9857598`, so the last two runs are at `352d7a08` and `40dbe96bd1`): product branch `claude/r8-runner-ci` at `dc0baed4`, the script unchanged since `15d29c3d`, upstream `40dbe96bd1fc2603aaff655cd52d0ab899704e2c`, macOS arm64, Node 24.15.0, Bun 1.4.2, 2026-10-11. `ALPHA_RUNTIME_GIT_CACHE="$PWD/vendor/eliza" npm run agent:prepare` exit 0 (27,339 files, 3,236 packages, 5.8 GB; the dependency install was removed afterwards), then `npm run agent:test-digest-restart` with the default directory: exit 0 in 19 seconds, `{"evidenceClass":"host-runtime","upstreamCommit":"40dbe96b…","crashDuringInference":true,"preservedSameRun":true,"unknownOutcomeNotReplayed":true,"noFabricatedResult":true,"overdueSkippedWithoutInference":true,"modelAttempts":1}`; `recovered.json` `{"sameRunId":true,"resultCount":0,"duplicateAdmissionsSameRun":true,"reconciliation":"outcome-unknown","finished":false}` (its run id omitted here); `overdue-result.json` `{"status":"missed","resultCount":1,"nextOccurrenceFuture":true,"duplicateAdmissionSameRun":true}`; one model call, in the admit phase. One run. The evidence directory was a temporary folder and is not kept.
 
 ## Contact placeholder semantics (October 3)
 

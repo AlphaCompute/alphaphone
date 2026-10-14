@@ -29,7 +29,7 @@ const unrecorded = {...denton, license: NO_FONT_LICENCE, flags: [FONT_FLAG], obl
 const legacy = {name: denton.name, version: denton.version, license: UNVERIFIED, source: denton.source, text: denton.text};
 const otherFont = Buffer.from('a different font file');
 const RELEASE = {mode: 'release', distributable: true, testMocks: false, bundleAudit: 'passed', signed: true, runtime: 'PACKAGED', runtimeNotices: true,
-  releaseAdmission: {failures: [], blockers: [], signerMatches: true}, speechQualification: {byteMatch: true, functionalPassed: true, qualified: true}, licenceFlags: []};
+  releaseAdmission: {failures: [], blockers: [], signerMatches: true}, voiceHost: {packaged: true, asr: true, differences: [], qualified: true}, licenceFlags: []};
 
 function payload(t, {notices, files = {}}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-font-'));
@@ -162,7 +162,7 @@ test('the bundle audit prints licence flags and the font check as flag lines, ne
   assert.match(run.stderr, /^LICENCE FLAG proprietary-licence-held-outside-repo: Denton typeface@[^\n]+ \(LicenseRef-Commercial-Font\)$/m);
   assert.match(run.stderr, /^LICENCE FLAG \(reported, not blocking\) unresolved-font-licence: resolved-by-owner-statement: Denton typeface \(denton-300\.woff2\) is proprietary; the owner states the licence is held/m);
   assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: pdf\.js standard fonts: Liberation@/m);
-  assert.match(run.stderr, /^LICENCE FLAG copyleft-strong: eSpeak NG \(Paradee speech runtime dependency\)@/m);
+  assert.match(run.stderr, /^LICENCE FLAG unverified: pdf\.js QuickJS sandbox@/m);
   assert.doesNotMatch(run.stderr, /RELEASE BLOCKER/);
   // An unrecorded font is printed too, and still does not fail a developer build.
   const swapped = audit(payload(t, {notices: committedNotices, files: {...files, 'denton-300.woff2': otherFont}}));
@@ -176,7 +176,7 @@ test('verify-apks records licence flags and the font check, and only an unresolv
   assert.match(source, /fontCheck = fontLicenceCheck\(payload\.public\);/);
   assert.match(source, /const licenceBlockers = fontCheck\.blockers;/);
   assert.match(source, /fontLicenceCheck: \{ check: fontCheck\.check, status: fontCheck\.status, blocksDistribution: fontCheck\.blocksDistribution, items: fontCheck\.items, resolved: fontCheck\.resolved \},/);
-  assert.match(source, /row\.speechQualification\.qualified === true &&\n\s+row\.licenceBlockers\.length === 0;/);
+  assert.match(source, /row\.runtimeNotices === true &&\n\s+row\.voiceHost\.packaged === true && row\.voiceHost\.qualified === true &&\n\s+row\.licenceBlockers\.length === 0;/);
   // Flags are recorded per APK and printed; they are not part of the distributable expression or of any failure.
   assert.match(source, /licenceFlags = licenceFlagRecords\(entries\);/);
   assert.match(source, /for \(const line of flagLines\) console\.warn\(line\);/);

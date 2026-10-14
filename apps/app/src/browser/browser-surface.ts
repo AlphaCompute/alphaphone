@@ -65,5 +65,6 @@ export class BrowserSurface extends WebPlugin {
   }
   async clearSiteData(input:{session:string;id:string;url:string}) {const tab=this.tab(input);if(tab.history[tab.position]!==input.url)throw Error('Load a website before clearing its data.');return {site:new URL(input.url).hostname};}
   async downloads() {window.dispatchEvent(new CustomEvent('alpha:browser-open-view',{detail:'files'}));}
-  async cancelReading() {window.speechSynthesis?.cancel();}
+  /** Page reading plays agent audio only (no Web Speech); the voice facade stops that playback. */
+  async cancelReading() {}
 }

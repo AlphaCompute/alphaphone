@@ -8,15 +8,15 @@ const REMOTE = 'https://agent.example.test';
 const REDACTION = {
   resident: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered',
   agent: 'Depends on the selected agent; not reported',
-  offline: 'No agent connected; no hosted inference requests',
+  offline: 'No remote agent connected; no hosted inference requests',
 };
 // Former fixture activity rows and claims must never be presented as this phone's history.
 const fixtureActivity = [/Drafted a reply to Maya/, /Filed Jordan's term sheet/, /Moved Gym to 7:30 PM/, /Summarized 14 emails/, /Ran Morning brief/, /Redaction receipt saved/, /Booked Nopa/, /\b\d+ today\b/];
 const forbidden = [/Redaction on/, /Identifiers replaced/, /Pre-egress redaction is not connected/];
 
 type Scenario = 'resident' | 'remote' | 'offline';
-async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean; proposals?: boolean; locationAccess?: 'approximate' | 'precise' } = {}) {
-  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus, proposals, locationAccess }) => {
+async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInStatus?: boolean; proposals?: boolean; locationAccess?: 'approximate' | 'precise'; providerStatus?: { provider: string; model: string } } = {}) {
+  await page.addInitScript(({ scenario, key, remote, strayKeyInStatus, proposals, locationAccess, providerStatus }) => {
     const w = window as any;
     w.androidBridge = {};
     const store = new Map<string, string>();
@@ -29,7 +29,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
       }
     } catch { /* storage-blocked runs are covered elsewhere */ }
     // The native credential slot holds the provider key; only providerStatus may describe it.
-    const provider = { key, model: 'qwen-3.8-27b' };
+    const provider = { key, name: providerStatus?.provider ?? 'cerebras', model: providerStatus?.model ?? 'qwen-3.8-27b' };
     w.privacyFixture = { calls: [] as unknown[], unexpected: [] as string[] };
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = {
@@ -51,7 +51,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
           if (method === 'getStatus') return respond({ packaged: true, state: 'stopped', serviceActive: false, socketListening: false });
           if (method === 'start') return respond({ state: 'ready' });
           if (method === 'stop') return respond({ state: 'stopping' });
-          if (method === 'providerStatus') return respond({ provider: 'cerebras', configured: true, model: provider.model, ...(strayKeyInStatus ? { apiKey: provider.key, key: provider.key } : {}) });
+          if (method === 'providerStatus') return respond({ provider: provider.name, configured: true, model: provider.model, ...(strayKeyInStatus ? { apiKey: provider.key, key: provider.key } : {}) });
           if (method === 'request') {
             let body: any;
             if (input.path === '/api/auth/me') body = { identity: { kind: 'owner', id: 'fixture-owner' }, access: { role: 'OWNER', mode: 'session' } };
@@ -84,7 +84,7 @@ async function nativeStub(page: Page, scenario: Scenario, options: { strayKeyInS
         f.unexpected.push(plugin + '.' + method); throw Error('Unexpected native operation');
       },
     };
-  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus, proposals: !!options.proposals, locationAccess: options.locationAccess });
+  }, { scenario, key: SYNTHETIC_KEY, remote: REMOTE, strayKeyInStatus: !!options.strayKeyInStatus, proposals: !!options.proposals, locationAccess: options.locationAccess, providerStatus: options.providerStatus });
 }
 
 async function connect(page: Page, scenario: Scenario) {
@@ -137,6 +137,19 @@ for (const { scenario, redaction, model } of cases) test(`Privacy, Models and Ab
   expect(fixture.unexpected.filter((name: string) => name.startsWith('Agent.'))).toEqual([]);
 });
 
+test('the Eliza Cloud route names Qwen on Cerebras with one label in Models and About', async ({ page }) => {
+  await nativeStub(page, 'resident', { providerStatus: { provider: 'elizacloud', model: 'cerebras/qwen-3.8-27b' } });
+  await connect(page, 'resident');
+  const label = 'Eliza Cloud · qwen-3.8-27b (Cerebras)';
+  await openSettings(page, 'Models');
+  await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'About', exact: true }).click();
+  await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  // The raw provider path is never shown.
+  expect(await page.locator('body').innerText()).not.toContain('cerebras/');
+});
+
 test('provider key never reaches renderer state, bridge payloads or test output', async ({ page }, info) => {
   // Defence in depth: even a bridge that returned extra fields must not surface the key.
   await nativeStub(page, 'resident', { strayKeyInStatus: true });
@@ -165,7 +178,7 @@ test('Activity shows an empty connect state and Workflow runs opens Workflows', 
   await openSettings(page, 'Privacy & data');
   await expect(page.getByText(REDACTION.offline, { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
-  await expect(page.getByText('Connect an agent to see activity', { exact: true })).toBeVisible();
+  await expect(page.getByText('Connect your remote agent to see activity', { exact: true })).toBeVisible();
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
   await expect(page.locator('html')).toHaveAttribute('data-active-view', 'settings');
@@ -203,7 +216,7 @@ for (const proposals of [true, false]) test(`resident Activity shows history onl
   else { await expect(unread).toBeVisible(); await expect(app.getByRole('button', { name: 'Load phone action history', exact: true })).toBeVisible(); expect(await app.innerText()).not.toContain('No phone actions recorded'); }
   const text = await page.locator('body').innerText();
   for (const row of fixtureActivity) expect(text).not.toMatch(row);
-  expect(text).not.toContain('Connect an agent to see activity');
+  expect(text).not.toContain('Connect your remote agent to see activity');
 });
 
 for (const locationAccess of ['approximate', 'precise'] as const) test(`Privacy shows the native ${locationAccess} location grant without losing connection disclosure`, async ({ page }) => {

@@ -102,7 +102,7 @@ test('every Gradle script of the build declares only reviewed repositories and e
   const scripts = buildScripts(ROOT);
   const settings = read('android/settings.gradle');
   assert.equal(scripts.length, 2 + [...settings.matchAll(/['"]:[a-z-]+['"](?=\s*(,|$))/gm)].length, 'one build.gradle per included project');
-  for (const expected of ['android/app/build.gradle', 'android/local-speech/build.gradle', 'android/notification-fixture/build.gradle', CAPACITOR, SYSTEM_PLUGIN]) assert.ok(scripts.includes(expected), expected);
+  for (const expected of ['android/app/build.gradle', 'android/notification-fixture/build.gradle', CAPACITOR, SYSTEM_PLUGIN]) assert.ok(scripts.includes(expected), expected);
   const urls = new Set();
   for (const script of scripts)
     for (const repository of declaredRepositories(read(script))) {

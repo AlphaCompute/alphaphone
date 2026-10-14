@@ -1,7 +1,8 @@
 import {noteOriginOf} from './note-origin.ts';
 type Form=Record<string,any>;
 // `origin` is a display back-reference to the note a draft came from. It grants no access.
-const fields=['title','notes','where','t','d','video','who','cal','repeat','alert','creationId','reminderCreationId','origin'] as const;
+// `allDay` is stored only as true, for creation forms (an all-day form restored without it would come back as a timed event).
+const fields=['title','notes','where','t','d','video','who','cal','repeat','alert','creationId','reminderCreationId','origin','allDay'] as const;
 /** Backup may retain invalid edits, but never adds proposal/source authority. */
 export function snapshotCalendarForm(form:Form){return Object.fromEntries([...fields,'off'].filter(key=>form[key]!==undefined).map(key=>[key,form[key]]));}
 const day=(date:Date)=>Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
@@ -15,6 +16,7 @@ function validate(value:any,requireCreation=true){
  if(typeof f.cal!=='string'||f.cal.length>256||!(f.cal==='alpha-reminders'||f.cal.startsWith('native:'))||!['none','daily','weekdays','weekly'].includes(f.repeat)||f.alert!==null&&(!Number.isFinite(f.alert)||f.alert<0||f.alert>10080))fail();
  for(const key of ['creationId','reminderCreationId'])if(f[key]!==undefined&&(typeof f[key]!=='string'||!/^[-a-zA-Z0-9_]{1,100}$/.test(f[key])))fail();
  if(f.origin!==undefined&&JSON.stringify(noteOriginOf(f.origin))!==JSON.stringify(f.origin))fail();
+ if(f.allDay!==undefined&&f.allDay!==true)fail();
  if(requireCreation&&!f.creationId)fail();
  if(new TextEncoder().encode(JSON.stringify(value)).length>64000)fail();
  return value as {version:1;date:string;zone:string;form:Form};
@@ -22,12 +24,12 @@ function validate(value:any,requireCreation=true){
 /** Only editable creation fields and original idempotency IDs; no selected-source authority. */
 export function encodeCalendarForm(form:Form,anchor=new Date()){
  if(form.id||form.alphaCalendarId||form.alphaReminderId||!Number.isSafeInteger(form.off))fail();
- const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>form[key]!==undefined).map(key=>[key,form[key]]))};
+ const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>key==='allDay'?form.allDay===true:form[key]!==undefined).map(key=>[key,form[key]]))};
  return JSON.stringify(validate(payload));
 }
 export function calendarEditFields(form:Form,anchor=new Date()){
  if(!Number.isSafeInteger(form.off))fail();
- const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>!['creationId','reminderCreationId','origin'].includes(key)&&form[key]!==undefined).map(key=>[key,form[key]]))};
+ const payload={version:1,date:new Date(day(anchor)+form.off*86400000).toISOString().slice(0,10),zone:Intl.DateTimeFormat().resolvedOptions().timeZone,form:Object.fromEntries(fields.filter(key=>!['creationId','reminderCreationId','origin','allDay'].includes(key)&&form[key]!==undefined).map(key=>[key,form[key]]))};
  return validate(payload,false);
 }
 export function decodeCalendarForm(raw:string,now=new Date(),requireCreation=true){

@@ -60,9 +60,27 @@ final class SelectedDocumentAccess {
   }
   return uri;
  }
+ /** A grant that a note's source link still names (NoteSourceReferences) is kept with the selection's. */
+ private static boolean referencedByNote(Uri uri){
+  return owner!=null&&NoteSourceReferences.referenced(owner.getSharedPreferences(NoteSourceReferences.PREFERENCES,0).getAll(),uri.toString());
+ }
  private static void releaseUnused(Uri uri,int flags){
-  if(uri==null||flags==0||selected.containsValue(uri))return;
+  if(uri==null||flags==0||selected.containsValue(uri)||referencedByNote(uri))return;
   try{owner.getContentResolver().releasePersistableUriPermission(uri,flags);}catch(SecurityException ignored){/* Already revoked by the provider. */}
+ }
+ /**
+  * Releases the persisted grant on exactly this document once the last note reference to it is
+  * gone and no picker selection holds it. A folder (tree) grant that covers it is never touched.
+  */
+ static synchronized boolean releaseUnreferenced(Context context,Uri uri){
+  initialize(context);
+  if(uri==null||!"content".equals(uri.getScheme())||selected.containsValue(uri)||referencedByNote(uri))return false;
+  for(android.content.UriPermission grant:context.getContentResolver().getPersistedUriPermissions()){
+   if(!grant.getUri().equals(uri))continue;
+   int flags=(grant.isReadPermission()?Intent.FLAG_GRANT_READ_URI_PERMISSION:0)|(grant.isWritePermission()?Intent.FLAG_GRANT_WRITE_URI_PERMISSION:0);
+   try{context.getContentResolver().releasePersistableUriPermission(uri,flags);return true;}catch(SecurityException revoked){return false;}
+  }
+  return false;
  }
  static synchronized void forget(String id) {
   if(id==null)return;Uri uri=selected.remove(id);Integer flags=retained.remove(id);

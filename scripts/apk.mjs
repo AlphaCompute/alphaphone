@@ -23,7 +23,14 @@ export const EXPORTED_COMPONENTS = Object.freeze({
   "androidx.work.impl.background.systemjob.SystemJobService": "android.permission.BIND_JOB_SERVICE",
   "androidx.work.impl.diagnostics.DiagnosticsReceiver": "android.permission.DUMP",
   "androidx.profileinstaller.ProfileInstallReceiver": "android.permission.DUMP",
+  // Read-only release data integrity export for pilot updates (adb shell holds DUMP).
+  "ai.elizaresearch.alphaphone.release.DataIntegrityProvider": "android.permission.DUMP",
 });
+// On-device speech is the fused libelizainference engine only. Entries and classes of the removed
+// speech runtimes (Open Neural Network Exchange models and runtimes, sherpa, ORT-Web, the former
+// in-browser model directory public/browser-speech/) never ship.
+export const REMOVED_SPEECH_ENTRY = /(?:\.on{2}x$|libon{2}xruntime|libsherpa|k2fsa|ort-wasm|^assets\/public\/browser-speech\/)/i;
+export const REMOVED_SPEECH_CLASSES = Object.freeze(["Lcom/k2fsa/", "Lai/eliza/speech/"]);
 import { manifestFacts } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
 export { manifestFacts, parseXmlTree } from "../vendor/eliza/packages/app/scripts/lib/android-manifest-facts.mjs";
 const isFalse = value => value === "0x0";
@@ -75,9 +82,9 @@ export function distributionProblems(apk, { mode, testMocks = false } = {}) {
     problems.push("WRITE_EXTERNAL_STORAGE is requested");
   const maps = apk.names.filter(name => name.startsWith("assets/") && name.endsWith(".map"));
   if (maps.length) problems.push(`Source maps are packaged: ${maps.slice(0, 3).join(", ")}`);
-  // Android recognizes speech natively; the browser build's Whisper model must not ride along.
-  const browserSpeech = apk.names.filter(name => name.startsWith("assets/public/browser-speech/"));
-  if (browserSpeech.length) problems.push(`Browser speech model assets are packaged: ${browserSpeech.slice(0, 3).join(", ")}`);
+  const removedSpeech = apk.names.filter(name => REMOVED_SPEECH_ENTRY.test(name));
+  if (removedSpeech.length) problems.push(`Removed speech runtime entries are packaged: ${removedSpeech.slice(0, 3).join(", ")}`);
+  if (apk.removedSpeechClasses?.length) problems.push(`Removed speech runtime classes are packaged: ${apk.removedSpeechClasses.join(", ")}`);
   if (!apk.names.includes("assets/public/licenses/third-party-notices.json"))
     problems.push("assets/public/licenses/third-party-notices.json is missing");
   if (facts.versionCode === null)
@@ -88,12 +95,13 @@ export function distributionProblems(apk, { mode, testMocks = false } = {}) {
 }
 
 function dexClassNames(file, names) {
-  const found = new Set();
+  const found = new Set(), removed = new Set();
   for (const entry of names.filter(name => /^classes\d*\.dex$/.test(name))) {
     const bytes = execFileSync("unzip", ["-p", file, entry], { maxBuffer: 512 * 1024 * 1024 });
     for (const name of DEVELOPMENT_CLASSES) if (bytes.includes(`/${name};`)) found.add(name);
+    for (const prefix of REMOVED_SPEECH_CLASSES) if (bytes.includes(prefix)) removed.add(prefix);
   }
-  return [...found];
+  return { development: [...found], removedSpeech: [...removed] };
 }
 
 export function inspectApk(file) {
@@ -120,7 +128,7 @@ export function inspectApk(file) {
     badging,
     xml,
     names,
-    dexClasses: dexClassNames(file, names),
+    ...(({ development, removedSpeech }) => ({ dexClasses: development, removedSpeechClasses: removedSpeech }))(dexClassNames(file, names)),
   };
 }
 

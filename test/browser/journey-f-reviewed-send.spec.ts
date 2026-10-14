@@ -14,7 +14,8 @@
 //  F-5   Cc, Bcc and an attachment appear in the send review, and the dispatched request equals
 //        the reviewed one byte for byte.
 //  F-10  An email edited after its review gets a new review under a new request ID; the first
-//        review's digest is never dispatched.
+//        review's digest is never dispatched. A saved older version of a sent email is kept, labelled
+//        'Earlier version of a sent email' and reopened only after a confirmation.
 //  F-12  A mailbox that changes between pages never shows a message twice; a refused cursor says
 //        so and reloads from the start only when asked.
 //  F-13  Trash and its undo are reviewed operations; an unknown trash outcome is handled like an
@@ -299,6 +300,45 @@ test('F-10: an email edited after its review is reviewed again under a new reque
   expect(state.dispatched).toEqual([state.prepared[1]]);
   expect(state.dispatched.map(d => d.digest)).not.toContain(state.prepared[0].digest);
   expect(state.sent).toEqual(['Edited after review']);
+});
+
+test('F-10: a saved older version of a sent email is kept, labelled as such, and reopened only after a confirmation', async ({page}) => {
+  test.setTimeout(180_000);
+  await openInbox(page);
+  await compose(page, 'Versioned plan', 'Saved first text');
+  await button(page, 'Save draft locally').click();
+  await expect(page.getByText('Saved locally on this device').first()).toBeVisible();
+  // Edited after saving and sent without saving again: the saved copy is an earlier version.
+  await page.getByRole('textbox', {name: 'Message', exact: true}).fill('Sent final text');
+  await button(page, 'Send email').click();
+  const review = page.getByRole('dialog', {name: 'Review mail operation'});
+  await review.getByRole('button', {name: 'Send this email', exact: true}).click();
+  await expect(review.getByRole('status')).toHaveText('Provider confirmed this operation.');
+  await expect(review).toContainText('An earlier saved version of this email is still on this device.');
+  await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
+  // Never removed on its own, and offered only under its label; Restore local draft is not shown.
+  await expect(button(page, 'Earlier version of a sent email')).toBeVisible();
+  await expect(button(page, 'Restore local draft')).toHaveCount(0);
+  // After a reload the receipt reopens; closing it leaves the label, which is kept with the saved copy.
+  await openInbox(page, {}, true);
+  await review.getByRole('button', {name: 'Close receipt', exact: true}).click();
+  await expect(review).toHaveCount(0);
+  await expect(button(page, 'Earlier version of a sent email')).toBeVisible();
+  // Declining the confirmation leaves it closed; accepting opens it, still unsent.
+  const prompts: string[] = [];
+  page.once('dialog', dialog => { prompts.push(dialog.message()); void dialog.dismiss(); });
+  await button(page, 'Earlier version of a sent email').click();
+  await expect.poll(() => prompts.length).toBe(1);
+  expect(prompts[0]).toContain('earlier version of an email that was already sent');
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveCount(0);
+  page.once('dialog', dialog => { prompts.push(dialog.message()); void dialog.accept(); });
+  await button(page, 'Earlier version of a sent email').click();
+  await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Saved first text');
+  await expect(page.getByText(/Earlier version of a sent email\. Sending it creates another message/).first()).toBeVisible();
+  const state = await provider(page);
+  expect(state.sent).toEqual(['Versioned plan']);
+  expect(state.dispatched).toHaveLength(1);
+  expect(JSON.parse(state.dispatched[0].proposal).bodyText).toBe('Sent final text');
 });
 
 test('F-10: an edit made while the review is still being prepared cannot be sent under that review', async ({page}) => {

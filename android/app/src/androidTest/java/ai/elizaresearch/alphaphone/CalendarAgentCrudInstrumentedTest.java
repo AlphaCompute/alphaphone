@@ -36,6 +36,18 @@ public class CalendarAgentCrudInstrumentedTest {
  }
  private void begin(JSONObject operation)throws Exception{awaitReviewForeground();eval("window.__calendarAgentResult=null;Capacitor.Plugins.AlphaCalendar.executeAgent({operation:"+operation+",operationId:"+JSONObject.quote(java.util.UUID.randomUUID().toString())+"}).then(value=>window.__calendarAgentResult=value,error=>window.__calendarAgentResult={error:String(error)})");}
  private JSONObject perform(JSONObject operation,String button)throws Exception{begin(operation);nativeClick(button);return result();}
+ /** Upstream review wording (elizaOS/eliza#35913): the review names the calendar and its account and,
+  * for a change, says no attendee is involved. Checked on screen before the button is pressed. */
+ static final String[] CHANGE_REVIEW={"Calendar: On this phone","Account: Alpha Phone (this phone only)","No attendees are invited, changed or notified."};
+ private void reviewShows(String... texts)throws Exception{
+  for(int i=0;i<120;i++){
+   AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();StringBuilder seen=new StringBuilder();
+   if(root!=null){java.util.ArrayDeque<AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();queue.add(root);while(!queue.isEmpty()){AccessibilityNodeInfo node=queue.removeFirst();if(node.isVisibleToUser()&&node.getText()!=null)seen.append(node.getText()).append('\n');for(int c=0;c<node.getChildCount();c++){AccessibilityNodeInfo child=node.getChild(c);if(child!=null)queue.add(child);}}}
+   boolean all=true;for(String text:texts)all&=seen.indexOf(text)>=0;if(all)return;SystemClock.sleep(100);
+  }
+  fail("Calendar review does not show "+java.util.Arrays.toString(texts));
+ }
+ private JSONObject performReviewed(JSONObject operation,String button,String... texts)throws Exception{begin(operation);reviewShows(texts);nativeClick(button);return result();}
  private boolean exists(Context context,long id){try(Cursor row=context.getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,id),new String[]{CalendarContract.Events.DELETED},null,null,null)){return row!=null&&row.moveToFirst()&&row.getInt(0)==0;}}
  @Test public void reviewedNativeCreateReadUpdateDeleteAndStaleRevision()throws Exception{
   org.junit.Assume.assumeTrue("Explicit synthetic agent Calendar gate", "1".equals(InstrumentationRegistry.getArguments().getString("calendarAgent")));
@@ -45,10 +57,10 @@ public class CalendarAgentCrudInstrumentedTest {
    AppNavigation.liveMode();until("document.documentElement.dataset.activeView");eval(AppNavigation.request("Calendar"));until(AppNavigation.selected("Calendar"));AppNavigation.declineStartupAccess();
    eval("window.__calendarAgentResult=null;Capacitor.Plugins.AlphaCalendar.prepareAgentSource().then(value=>window.__calendarAgentResult=value)");JSONObject prepared=result();assertEquals("ready",prepared.getString("status"));JSONObject source=new JSONObject().put("sourceId",prepared.getString("sourceId")).put("sourceRevision",prepared.getString("sourceRevision"));
    long begin=System.currentTimeMillis()+3600000;java.time.format.DateTimeFormatter format=new java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter();JSONObject fields=new JSONObject().put("title","Agent Calendar "+java.util.UUID.randomUUID()).put("description","Synthetic approved body").put("location","Fixture").put("start",format.format(java.time.Instant.ofEpochMilli(begin))).put("end",format.format(java.time.Instant.ofEpochMilli(begin+3600000))).put("timeZone","UTC");
-   JSONObject created=perform(new JSONObject().put("type","calendar_create").put("source",source).put("fields",fields),"Create event");assertEquals("applied",created.getString("status"));JSONObject receipt=created.getJSONObject("result");id=Long.parseLong(receipt.getString("eventId"));assertTrue(exists(context,id));
+   JSONObject created=performReviewed(new JSONObject().put("type","calendar_create").put("source",source).put("fields",fields),"Create event",CHANGE_REVIEW);assertEquals("applied",created.getString("status"));JSONObject receipt=created.getJSONObject("result");id=Long.parseLong(receipt.getString("eventId"));assertTrue(exists(context,id));
    JSONObject target=new JSONObject(source.toString()).put("eventId",Long.toString(id)).put("revision",receipt.getString("revision"));
    JSONObject read=perform(new JSONObject().put("type","calendar_read_selected").put("target",target),"Share with agent");assertEquals(fields.getString("description"),read.getJSONObject("result").getJSONObject("fields").getString("description"));
-   JSONObject changed=new JSONObject(fields.toString()).put("title",fields.getString("title")+" edited");JSONObject updated=perform(new JSONObject().put("type","calendar_update").put("target",target).put("fields",changed),"Update event");assertEquals("applied",updated.getString("status"));assertEquals(Long.toString(id),updated.getJSONObject("result").getString("eventId"));assertNotEquals(target.getString("revision"),updated.getJSONObject("result").getString("revision"));
+   JSONObject changed=new JSONObject(fields.toString()).put("title",fields.getString("title")+" edited");JSONObject updated=performReviewed(new JSONObject().put("type","calendar_update").put("target",target).put("fields",changed),"Update event",CHANGE_REVIEW);assertEquals("applied",updated.getString("status"));assertEquals(Long.toString(id),updated.getJSONObject("result").getString("eventId"));assertNotEquals(target.getString("revision"),updated.getJSONObject("result").getString("revision"));
    begin(new JSONObject().put("type","calendar_delete").put("target",target));assertEquals("conflict",result().getString("status"));assertTrue(exists(context,id));
    target.put("revision",updated.getJSONObject("result").getString("revision"));JSONObject deletion=new JSONObject().put("type","calendar_delete").put("target",target);assertEquals("cancelled",perform(deletion,"Cancel").getString("status"));assertTrue(exists(context,id));
    JSONObject deleted=perform(deletion,"Delete event");assertEquals("applied",deleted.getString("status"));assertEquals(target.getString("revision"),deleted.getJSONObject("result").getString("revision"));assertFalse(exists(context,id));

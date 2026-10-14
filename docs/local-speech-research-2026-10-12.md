@@ -1,5 +1,11 @@
 # On-device speech research and native integration — October 12, 2026
 
+> **Superseded in part (2026-10-13, [decision P-42](decisions.md)).** On-device and local speech
+> and inference use only libelizainference (llama.cpp/ggml, GGUF models). ONNX Runtime, Sherpa-ONNX
+> and ONNX-format models may not be used, behind a native API or otherwise: the ONNX candidates
+> below (Paradee, Supertonic) are admissible only as GGUF models the fused engine runs, and the
+> Sherpa pipeline described below is removed from this repository ([fused speech](fused-speech.md)).
+
 Status: researched implementation plan, **no new model downloaded, benchmarked or
 admitted**. Owner policy requires all production STT/TTS on the phone, through an
 Android native bridge to Eliza's reviewed llama.cpp/inference build. There is no
@@ -26,9 +32,10 @@ different hardware, engines and corpora and are not a comparative phone benchmar
 Recommendation: start the JNI contract with the fork's Kokoro path and an STT
 backend audit, compare Moonshine Tiny/Small and Paradee/Supertonic against it, then
 admit the fastest candidate that meets quality and thermal requirements. Do not
-commit a production model purely from these cards. An ONNX engine may live behind
-the common native inference API if required, but that is explicit upstream work,
-not a claim that a GGUF conversion alone makes the architecture supported.
+commit a production model purely from these cards. No ONNX engine may be added
+(P-42); a candidate that exists only as ONNX needs a GGUF port the fused engine supports,
+which is explicit upstream work, not a claim that a GGUF conversion alone makes the
+architecture supported.
 
 ## What exists in Eliza and what does not yet follow
 

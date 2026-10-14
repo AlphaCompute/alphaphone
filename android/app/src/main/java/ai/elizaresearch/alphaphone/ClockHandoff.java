@@ -11,22 +11,9 @@ import com.getcapacitor.JSObject;
 /** Standard Clock intents only. A launched Activity is not an alarm mutation receipt. */
 final class ClockHandoff {
  private ClockHandoff() {}
- /** Repeat days use java.util.Calendar values (SUNDAY=1 … SATURDAY=7), unique and ascending. */
- static java.util.ArrayList<Integer> days(Object raw) {
-  if(raw==null||raw==org.json.JSONObject.NULL)return null;
-  if(!(raw instanceof org.json.JSONArray))throw new IllegalArgumentException("Choose valid repeat days");
-  org.json.JSONArray input=(org.json.JSONArray)raw;java.util.ArrayList<Integer> out=new java.util.ArrayList<>();
-  if(input.length()<1||input.length()>7)throw new IllegalArgumentException("Choose valid repeat days");
-  for(int i=0;i<input.length();i++){Object v=input.opt(i);if(!(v instanceof Number))throw new IllegalArgumentException("Choose valid repeat days");double n=((Number)v).doubleValue();if(n!=Math.rint(n)||n<1||n>7)throw new IllegalArgumentException("Choose valid repeat days");out.add((int)n);}
-  return days(out);
- }
- static java.util.ArrayList<Integer> days(java.util.List<Integer> input) {
-  if(input==null)return null;
-  java.util.ArrayList<Integer> out=new java.util.ArrayList<>();
-  for(Integer day:input){if(day==null||day<java.util.Calendar.SUNDAY||day>java.util.Calendar.SATURDAY||(!out.isEmpty()&&day<=out.get(out.size()-1)))throw new IllegalArgumentException("Choose valid repeat days");out.add(day);}
-  if(out.isEmpty())throw new IllegalArgumentException("Choose valid repeat days");
-  return out;
- }
+ /** Repeat days use java.util.Calendar values (SUNDAY=1 … SATURDAY=7), unique and ascending (ClockContract). */
+ static java.util.ArrayList<Integer> days(Object raw) {return ClockContract.strictDays(raw);}
+ static java.util.ArrayList<Integer> days(java.util.List<Integer> input) {return ClockContract.strictDays(input);}
  static Intent intent(String action, Integer hour, Integer minute, String label, Integer snoozeMinutes) {return intent(action,hour,minute,label,snoozeMinutes,null);}
  static Intent intent(String action, Integer hour, Integer minute, String label, Integer snoozeMinutes, java.util.List<Integer> repeatDays) {
   java.util.ArrayList<Integer> days=days(repeatDays);
@@ -67,14 +54,20 @@ final class ClockHandoff {
    if(activity==null||activity.isFinishing()||activity.isDestroyed()||!activity.hasWindowFocus())return result(action,"failed","Open Alpha Phone before continuing to Clock");
    KeyguardManager guard=(KeyguardManager)activity.getSystemService(Context.KEYGUARD_SERVICE);
    if(guard!=null&&guard.isKeyguardLocked())return result(action,"failed","Unlock the phone before continuing to Clock");
-   if(target.resolveActivity(activity.getPackageManager())==null)return result(action,"unavailable","No installed Clock app handles this action");
+   // Resolve and bind the handler, as ClockAgentReview.dispatch does: Alpha itself (a launcher-flavor
+   // HOME holder or a future Alpha Clock) never receives the request, and the receipt names who did.
+   android.content.pm.ResolveInfo resolved=activity.getPackageManager().resolveActivity(target,0);
+   String receiver=resolved==null||resolved.activityInfo==null?null:ClockContract.receiver(activity.getPackageName(),resolved.activityInfo.packageName);
+   if(receiver==null)return result(action,"unavailable","No installed Clock app handles this action");
    if(timeZone!=null){
     String requested=android.icu.util.TimeZone.getCanonicalID(timeZone);
     String current=android.icu.util.TimeZone.getCanonicalID(java.util.TimeZone.getDefault().getID());
     if(!"set".equals(action)||requested==null||!requested.equals(current))return result(action,"failed","Phone time zone changed. Review the Clock request again.");
    }
+   target.setComponent(new android.content.ComponentName(receiver,resolved.activityInfo.name));
    activity.startActivity(target);
-   return result(action,"opened","Clock request sent. Check the Clock app; Alpha cannot confirm an alarm was changed.");
+   JSObject opened=result(action,"opened","Clock request sent. Check the Clock app; Alpha cannot confirm an alarm was changed.");
+   opened.put("package",receiver);return opened;
   } catch(ActivityNotFoundException missing) {return result(action,"unavailable","The Clock app is no longer available");}
   catch(SecurityException denied) {return result(action,"denied","Android did not allow this Clock action");}
   catch(IllegalArgumentException invalid) {return result(action,"failed",invalid.getMessage());}

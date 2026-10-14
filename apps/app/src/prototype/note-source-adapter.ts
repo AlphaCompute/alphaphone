@@ -10,8 +10,23 @@ const attachments=registerPlugin<{
  openReviewed(input:MailAttachment & {sha256:string;reviewed:boolean}):Promise<{message:string}>;
  retainSourceReference(input:{selectionId:string;sha256:string}):Promise<{reference?:string}>;
  openSourceReference(input:{reference:string;sha256:string;size:number;mimeType:string}):Promise<{message:string}>;
+ releaseSourceReferences(input:{keep:string[]}):Promise<{removed:number;released:number;remaining:number}>;
  cancel():Promise<void>;
 }>('AlphaMailAttachments');
+/**
+ * Android keeps a linked source's read grant while a note names its a1: reference (J03, option a),
+ * also after the picker selection that granted it is forgotten or evicted. Notes therefore tell
+ * the native side which references a saved or restorable (Trash) note still names; the others
+ * are removed once they were last retained more than three days ago (a content question's link
+ * may be saved in a summary note well after it was asked) and their grants released, so the bounded
+ * reference map never fills with links of deleted notes. A trashed note keeps its link until its
+ * Trash copy is purged, so a restored note still opens its source.
+ */
+export async function releaseUnusedSourceReferences(notes:readonly unknown[]):Promise<void>{
+ if(Capacitor.getPlatform()!=='android')return;
+ const keep=[...new Set(notes.map(note=>sourceOf((note as Bag|undefined)?.documentSource)?.reference).filter((reference):reference is string=>!!reference&&reference.startsWith('a1:')))];
+ await attachments.releaseSourceReferences({keep});
+}
 export function sourceOf(value:unknown):Source|undefined {
  const s=value as Source|undefined;
  if(!s||s.version!==1||typeof s.name!=='string'||!s.name||s.name.length>120||/[\\/\x00-\x1f\x7f]/.test(s.name)||typeof s.mimeType!=='string'||!['text/plain','application/pdf','image/png','image/jpeg','image/webp'].includes(s.mimeType)||typeof s.sha256!=='string'||!/^[a-f0-9]{64}$/.test(s.sha256)||!Number.isSafeInteger(s.size)||s.size<0||s.size>5*1024*1024)return;
@@ -52,7 +67,10 @@ export function installNoteSourceAdapter(views:Bag){
     if(next)record.documentSource=next;else delete record.documentSource;
     const saved=await api.saveImportedNote({list:state.list.map((n:Bag)=>n.id===note.id?record:n)});
     if(!saved)throw Error('Source link save is unconfirmed. Reopen Notes before trying again.');
-    expected=JSON.stringify(api.get('notes').list.find((n:Bag)=>n.id===note.id));source=next;
+    expected=JSON.stringify(api.get('notes').list.find((n:Bag)=>n.id===note.id));
+    // A replaced or removed link may have been the last one to its document.
+    if(source?.reference&&source.reference!==next?.reference)void api.notesTrash?.maintain?.();
+    source=next;
    };
    const choose=async(mode:'link'|'open')=>{
     if(busy||!current())return;busy=true;status.textContent='Choose a file…';paint();let selectionId:string|undefined;

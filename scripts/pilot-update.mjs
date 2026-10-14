@@ -15,14 +15,17 @@
  *  4. `adb install -r` (data kept), then read back again without launching the app:
  *     the package uid and first-install time must be unchanged and every domain
  *     byte-identical. The app is not started in between, so nothing may change.
- * Readback uses run-as, which Android allows only for debuggable builds. A release
- * unit therefore gets the package-identity readback only and the record says so;
- * full data readback on a release needs the in-app export check (not built yet).
+ * Readback uses run-as, which Android allows only for debuggable builds. A release unit
+ * is read through the in-app integrity export instead (release/DataIntegrityProvider,
+ * `content query` as adb's shell, which holds the DUMP permission it requires): every file
+ * as an HMAC-SHA-256 of its path and bytes under one random nonce per update, so before and
+ * after compare file by file without any name or content leaving the device. An installed
+ * build without the export gets the package-identity readback only and the record says so.
  *
  * Rollback is not offered: a lower versionCode cannot replace an install without
  * erasing data, and the rollback design (A-06) is still blocked.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -85,6 +88,42 @@ export function readbackInventory(output) {
   return parseDomainInventory(output);
 }
 
+export const INTEGRITY_AUTHORITY = `${PACKAGE}.integrity`;
+/** The export query for one nonce; the URI is single-quoted for the device shell ("?" must not glob). */
+export const integrityQuery = nonce => {
+  if (!/^[0-9a-f]{32,128}$/.test(nonce)) throw new Error("Integrity nonce must be 32 to 128 hex characters");
+  return ["shell", "content", "query", "--uri", `'content://${INTEGRITY_AUTHORITY}/domains?nonce=${nonce}'`];
+};
+
+/**
+ * Parse `content query` output of the integrity export into { domain: { "domain/<path HMAC>": content HMAC } }.
+ * null when the installed build has no export; throws on a refused, failed or truncated export.
+ */
+export function parseIntegrityExport(output) {
+  const text = String(output ?? "");
+  if (/Could not find provider|Unknown authority|No content provider found/i.test(text)) return null;
+  if (/Permission Denial|SecurityException|Exception|Error while accessing provider/.test(text))
+    throw new Error(`Integrity export failed: ${text.trim().split(/\r?\n/).slice(0, 2).join(" | ")}`);
+  const domains = {};
+  let rows = 0, end = null;
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^Row: \d+ domain=(.+?), key=([0-9a-f]{64}|\d+), digest=([0-9a-f]{64})$/.exec(line.trim());
+    if (!match) continue;
+    const [, domain, key, digest] = match;
+    if (domain === "#end") { end = Number(key); continue; }
+    if (!/^[0-9a-f]{64}$/.test(key) || /[/,=]/.test(domain)) throw new Error(`Malformed integrity export row: ${line.trim()}`);
+    (domains[domain] ??= {})[`${domain}/${key}`] = digest;
+    rows++;
+  }
+  if (end === null) throw new Error("Integrity export has no end row; the output is truncated");
+  if (end !== rows) throw new Error(`Integrity export lists ${rows} files but its end row says ${end}`);
+  return domains;
+}
+
+function readExport(adb, nonce) {
+  return parseIntegrityExport(adb(integrityQuery(nonce), { allowFailure: true, withStderr: true }));
+}
+
 function readDomains(adb) {
   return readbackInventory(adb(["shell", "run-as", PACKAGE, "sh", "-c", `'${DOMAIN_SCRIPT}'`], { allowFailure: true, withStderr: true }));
 }
@@ -121,11 +160,15 @@ async function main() {
   if (problems.length) throw new Error(`Update refused: ${problems.join("; ")}`);
 
   adb(["shell", "am", "force-stop", PACKAGE]);
-  const domainsBefore = readDomains(adb);
+  // run-as on a debuggable rehearsal; the in-app integrity export on a release.
+  const nonce = randomBytes(32).toString("hex");
+  const runAs = readDomains(adb);
+  const method = runAs ? "run-as" : "integrity-export";
+  const domainsBefore = runAs ?? readExport(adb, nonce);
   adb(["install", "-r", apk.file], { timeout: 600_000 });
   const after = packageFacts(adb(["shell", "dumpsys", "package", PACKAGE]));
   const installedSha256 = installedApkSha256(adb);
-  const domainsAfter = domainsBefore ? readDomains(adb) : null;
+  const domainsAfter = !domainsBefore ? null : method === "run-as" ? readDomains(adb) : readExport(adb, nonce);
   const failures = [];
   if (installedSha256 !== apk.sha256) failures.push("installed bytes differ from the admitted APK");
   if (after.versionCode !== apk.versionCode) failures.push(`installed versionCode ${after.versionCode} is not ${apk.versionCode}`);
@@ -142,8 +185,9 @@ async function main() {
     to: { versionCode: apk.versionCode, versionName: apk.versionName, sha256: apk.sha256, signerSha256: newSigner, build: apk.build },
     packageIdentityPreserved: after.userId === before.userId && after.firstInstallTime === before.firstInstallTime,
     dataReadback: domainsBefore
-      ? { method: "run-as per-file SHA-256", domains: Object.fromEntries(Object.entries(domainsBefore).map(([domain, files]) => [domain, Object.keys(files).length])) }
-      : { method: "unavailable", reason: "run-as is refused for a non-debuggable release; only package identity was read back" },
+      ? { method: method === "run-as" ? "run-as per-file SHA-256" : "in-app integrity export: per-file HMAC-SHA-256 of path and bytes under one per-update nonce",
+        domains: Object.fromEntries(Object.entries(domainsBefore).map(([domain, files]) => [domain, Object.keys(files).length])) }
+      : { method: "unavailable", reason: "run-as is refused for a non-debuggable release and the installed build has no integrity export; only package identity was read back" },
     failures,
     passed: failures.length === 0,
     rollback: "not offered (A-06 rollback design blocked)",

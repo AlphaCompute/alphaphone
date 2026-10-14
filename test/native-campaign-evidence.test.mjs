@@ -4,29 +4,30 @@ import {exercise} from './fixtures/isolated-native-campaign.mjs';
 const run=mode=>exercise(mode,'workflow');
 const approvalClass='ai.elizaresearch.alphaphone.WorkflowApprovalNoticeInstrumentedTest';
 test('workflow campaign runs every exact case of every phase in disposable users and scopes permissions',()=>{
- const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,18);
+ const r=run('pass');assert.equal(r.code,0,r.stderr);assert.equal(r.record.results.length,20);
  assert.ok(r.record.results.every(row=>row.passed&&row.userLifecycle.removed));
  assert.equal(r.state.user,'0');assert.equal(r.state.created,false);assert.deepEqual(r.state.files,{});
- const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,18);
- assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,9);
+ const calls=r.commands.filter(a=>a.includes('instrument'));assert.equal(calls.length,20);
+ assert.equal(new Set(calls.map(a=>a[a.indexOf('class')+1])).size,10);
  const permissions=r.commands.filter(a=>a.includes('grant')||a.includes('revoke')||a.includes('clear-permission-flags'));
- // Ten workflow cases, four approval-notice cases and four recovery cases scope Calendar (4 commands each); the six OS-posting cases also grant notifications (2 commands each).
- assert.equal(permissions.length,84);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
+ // Ten workflow cases, six approval-notice cases and four recovery cases scope Calendar (4 commands each); the eight OS-posting cases also grant notifications (2 commands each).
+ assert.equal(permissions.length,96);assert.ok(permissions.every(a=>a[a.indexOf('--user')+1]==='10'));
  approvalNoticePhase(r);approvalNoticeRecoveryPhase(r);
 });
 // Same full campaign run as above: the approval-notice phase, its gate, grant and report.
 function approvalNoticePhase(r){
  const recovery='ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing';
  const calls=r.commands.filter(a=>a.includes('instrument')&&a[a.indexOf('class')+1].startsWith(approvalClass+'#')&&!a[a.indexOf('class')+1].endsWith('#'+recovery));
- assert.deepEqual(calls.map(a=>a[a.indexOf('class')+1].split('#')[1]),['approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision']);
+ assert.deepEqual(calls.map(a=>a[a.indexOf('class')+1].split('#')[1]),['approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval','approvalAndStepBuildersAreRedactedAndExpire','approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval']);
  assert.ok(calls.every(a=>a[a.indexOf('workflowApprovalNotice')+1]==='1'&&a[a.indexOf('--user')+1]==='10'));
- // Only the OS-posting tap case receives POST_NOTIFICATIONS, once per distribution, before its instrumentation.
- const grants=r.commands.map((a,index)=>({a,index})).filter(({a})=>a.includes('grant')&&a.includes('android.permission.POST_NOTIFICATIONS')).filter(({index})=>{const next=r.commands.slice(index).find(a=>a.includes('instrument'));return next[next.indexOf('class')+1].endsWith('#approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision');});
- assert.equal(grants.length,2);assert.ok(!r.commands.some(a=>a.includes('revoke')&&a.includes('android.permission.POST_NOTIFICATIONS')));
- for(const {index} of grants){const next=r.commands.slice(index).find(a=>a.includes('instrument'));assert.equal(next[next.indexOf('class')+1],approvalClass+'#approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision');}
+ // Only the two OS-posting tap cases of this phase receive POST_NOTIFICATIONS, once each per distribution, before their instrumentation.
+ const phaseMethods=['approvalNoticeOpensItsRunOnceAndIsWithdrawnOnDecision','approvalNoticeTapAfterAccountChangeIsFencedWithoutAStaleApproval'];
+ const grants=r.commands.map((a,index)=>({a,index})).filter(({a})=>a.includes('grant')&&a.includes('android.permission.POST_NOTIFICATIONS')).filter(({index})=>{const next=r.commands.slice(index).find(a=>a.includes('instrument'));return next[next.indexOf('class')+1].startsWith(approvalClass+'#')&&phaseMethods.includes(next[next.indexOf('class')+1].split('#')[1]);});
+ assert.equal(grants.length,4);assert.ok(!r.commands.some(a=>a.includes('revoke')&&a.includes('android.permission.POST_NOTIFICATIONS')));
+ assert.deepEqual(grants.map(({index})=>{const next=r.commands.slice(index).find(a=>a.includes('instrument'));return next[next.indexOf('class')+1].split('#')[1];}),[...phaseMethods,...phaseMethods]);
  // The report names each phase, its coverage on both distributions and the exact archived pair.
  const phase=r.record.phases['approval-notice'];
- assert.deepEqual([phase.expected,phase.passed,phase.complete],[4,4,true]);
+ assert.deepEqual([phase.expected,phase.passed,phase.complete],[6,6,true]);
  assert.deepEqual([...new Set(phase.cases.map(row=>row.variant))],['standalone','launcher']);assert.ok(phase.cases.every(row=>row.status==='passed'));
  assert.deepEqual([r.record.phases.workflow.expected,r.record.phases.workflow.passed,r.record.phases.workflow.complete],[10,10,true]);
  assert.equal(r.record.passed,true);assert.equal(r.record.failure,undefined);
@@ -37,7 +38,7 @@ function approvalNoticeRecoveryPhase(r){
  const pkg='ai.elizaresearch.alphaphone',death=pkg+'.WorkflowApprovalNoticeProcessDeathInstrumentedTest#pendingApprovalNoticeSurvivesProcessDeathAndOpensItsExactApprovalOnce',change=approvalClass+'#ownerChangeWithdrawsThePendingApprovalNoticeAndItsTapOpensNothing';
  const all=r.commands.filter(a=>a.includes('instrument')).map(a=>a[a.indexOf('class')+1]);
  // Each distribution runs the phase last, process death before the owner change.
- assert.deepEqual(all.slice(7,9),[death,change]);assert.deepEqual(all.slice(16,18),[death,change]);
+ assert.deepEqual(all.slice(8,10),[death,change]);assert.deepEqual(all.slice(18,20),[death,change]);
  const calls=r.commands.filter(a=>a.includes('instrument')&&[death,change].includes(a[a.indexOf('class')+1]));assert.equal(calls.length,4);
  for(const a of calls){
   const selected=a[a.indexOf('class')+1];assert.equal(a[a.indexOf('--user')+1],'10');

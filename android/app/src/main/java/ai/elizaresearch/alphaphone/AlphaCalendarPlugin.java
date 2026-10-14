@@ -152,9 +152,9 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   if(!readGranted()){c.resolve(status("permission-required"));return;}
   if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
   String zone=c.getString("timeZone");
-  if(!CalendarAvailabilityReader.sameZone(zone,java.time.ZoneId.systemDefault())){c.resolve(status("timezone-changed"));return;}
+  if(!CalendarZones.sameZone(zone,java.time.ZoneId.systemDefault())){c.resolve(status("timezone-changed"));return;}
   try{
-   org.json.JSONArray calendars=CalendarAvailabilityReader.sources(getContext().getContentResolver());
+   org.json.JSONArray calendars=ai.eliza.plugins.calendar.read.SelectedCalendarReader.availabilitySources(getContext().getContentResolver());
    if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
    JSObject out=status("ready");out.put("timeZone",zone);out.put("calendars",calendars);c.resolve(out);
   }catch(Exception unavailable){c.resolve(status("unavailable"));}
@@ -168,16 +168,21 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   if(!readGranted()){c.resolve(status("permission-required"));return;}
   if(!foreground()||!unlocked()){c.resolve(status("unavailable"));return;}
   java.time.ZoneId zone=java.time.ZoneId.systemDefault();
-  if(!CalendarAvailabilityReader.sameZone(c.getString("timeZone"),zone)){c.resolve(status("timezone-changed"));return;}
+  if(!CalendarZones.sameZone(c.getString("timeZone"),zone)){c.resolve(status("timezone-changed"));return;}
   try{
    JSArray chosen=c.getArray("calendars");
-   org.json.JSONArray events=CalendarAvailabilityReader.read(getContext().getContentResolver(),chosen==null?null:new org.json.JSONArray(chosen.toString()),c.getString("start"),c.getString("end"),zone);
+   org.json.JSONArray selected=chosen==null?null:new org.json.JSONArray(chosen.toString());
+   // A changed source is reported as changed before freshness is judged; an unknown-freshness
+   // source refuses the whole read before any instance is queried.
+   if(selected!=null)ai.eliza.plugins.calendar.read.SelectedCalendarReader.assertSourceIdentities(getContext().getContentResolver(),selected);
+   CalendarSyncFreshness.requireLocal(getContext().getContentResolver(),selected);
+   org.json.JSONArray events=ai.eliza.plugins.calendar.read.SelectedCalendarReader.readAvailability(getContext().getContentResolver(),selected,c.getString("start"),c.getString("end"),zone);
    if(!readGranted()||!foreground()||!unlocked())throw new IllegalStateException();
    if(!java.time.ZoneId.systemDefault().equals(zone)){c.resolve(status("timezone-changed"));return;}
    JSObject out=status("ready");out.put("freshness","local");out.put("events",events);c.resolve(out);
-  }catch(CalendarAvailabilityReader.SourceChanged changed){c.resolve(status("changed"));}
-  catch(CalendarAvailabilityReader.FreshnessUnknown unknown){c.resolve(status("freshness-unknown"));}
-  catch(CalendarAvailabilityReader.TooMany bound){c.resolve(status("too-many"));}
+  }catch(ai.eliza.plugins.calendar.read.SelectedCalendarReader.SourceChanged changed){c.resolve(status("changed"));}
+  catch(CalendarSyncFreshness.FreshnessUnknown unknown){c.resolve(status("freshness-unknown"));}
+  catch(ai.eliza.plugins.calendar.read.SelectedCalendarReader.TooMany bound){c.resolve(status("too-many"));}
   catch(Exception unavailable){c.resolve(status("unavailable"));}
  }
  /**
