@@ -390,17 +390,24 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
  * keyboard and Stop controls are the same elements, so rotation never restarts a session. */
 .alpha-landscape [data-alpha-voice-panel] { left:auto!important; right:16px!important; width:calc(var(--alpha-dock-width) - 16px); box-sizing:border-box; }
 .alpha-wide:not(.alpha-landscape) [data-alpha-voice-panel] { right:0!important; left:0!important; margin-inline:auto; max-width:560px; box-sizing:border-box; }
-/* List-detail split (`alpha-split`, a measured canvas of at least SPLIT_CANVAS px): the open
- * message, note or file takes the right pane and its list stays usable on the left. The same
- * elements are moved, never re-created, so drafts, caret and scroll survive collapsing back to a
- * single column. Compose, voice notes, links, recording and Trash stay full screen. */
+/* List-detail split (`alpha-split`, a measured canvas of at least SPLIT_CANVAS px below large
+ * text): the open message, note (text, checklist, voice or link) or file takes the right pane and
+ * its list stays usable on the left. The same elements are moved, never re-created, so drafts,
+ * caret and scroll survive collapsing back to a single column. Compose and replies, mail reviews,
+ * recording and Trash stay full screen. */
 :root { --alpha-split-list:clamp(300px, 36%, 400px); }
-.alpha-split :is([data-alpha-subview="inbox-list"]:has(~ [data-alpha-subview="inbox-detail"]),[data-alpha-subview="notes-list"]:has(~ [data-alpha-subview="notes-editor"]),[data-alpha-subview="files-list"]:has(~ [data-alpha-subview="files-preview"])) { width:var(--alpha-split-list); max-width:var(--alpha-split-list); align-self:flex-start; box-sizing:border-box; }
+.alpha-split :is([data-alpha-subview="inbox-list"]:has(~ [data-alpha-subview="inbox-detail"]),[data-alpha-subview="notes-list"]:has(~ :is([data-alpha-subview="notes-editor"],[data-alpha-subview="notes-voice"],[data-alpha-subview="notes-link"])),[data-alpha-subview="files-list"]:has(~ [data-alpha-subview="files-preview"])) { width:var(--alpha-split-list); max-width:var(--alpha-split-list); align-self:flex-start; box-sizing:border-box; }
 .alpha-split [data-alpha-subview="files-folder"]:has(~ [data-alpha-subview="files-preview"]) { right:auto!important; width:var(--alpha-split-list); }
-.alpha-split :is([data-alpha-subview="inbox-list"] ~ [data-alpha-subview="inbox-detail"],[data-alpha-subview="notes-list"] ~ [data-alpha-subview="notes-editor"],[data-alpha-subview="files-list"] ~ [data-alpha-subview="files-preview"]) { left:var(--alpha-split-list)!important; box-shadow:-1px 0 0 var(--line); }
+.alpha-split :is([data-alpha-subview="inbox-list"] ~ [data-alpha-subview="inbox-detail"],[data-alpha-subview="notes-list"] ~ :is([data-alpha-subview="notes-editor"],[data-alpha-subview="notes-voice"],[data-alpha-subview="notes-link"]),[data-alpha-subview="files-list"] ~ [data-alpha-subview="files-preview"]) { left:var(--alpha-split-list)!important; box-shadow:-1px 0 0 var(--line); }
 /* The list beside an open item is narrow: it drops the wide reading column's side padding. */
 .alpha-split [data-alpha-subview="inbox-list"]:has(~ [data-alpha-subview="inbox-detail"]) .scr:not(.scr .scr):not([style*="overflow-x"]) { padding-inline:0!important; }
 .alpha-split :is([data-alpha-subview="files-list"],[data-alpha-subview="files-folder"]):has(~ [data-alpha-subview="files-preview"]) .scr:not(.scr .scr):not([style*="overflow-x"]) { padding-inline:16px!important; }
 /* Beside its open item, the list marks which row is open. */
 .alpha-split [data-alpha-subview="inbox-list"] button[aria-current="true"] { background:var(--s2)!important; }
 .alpha-split [data-alpha-subview="notes-list"] button[aria-current="true"] { box-shadow:inset 0 0 0 2px var(--acct); }
+/* Large text (canvas-geometry LARGE_TEXT): the selected day is listed as an agenda. The timeline
+ * stays mounted and hidden, so its scroll position survives returning to normal text. */
+.calendar-timeline[data-alpha-calendar-agenda="true"],[data-alpha-calendar-all-day][data-alpha-calendar-agenda="true"] { display:none!important; }
+.calendar-agenda-event { display:flex; flex-direction:column; gap:4px; width:100%; min-height:48px; padding:12px 16px; margin-bottom:8px; border-radius:14px; background:var(--s2); color:var(--fg); text-align:left; box-sizing:border-box; overflow-wrap:anywhere; }
+.calendar-agenda-event span { font-size:13px; color:var(--mut); }
+.calendar-agenda-event strong { font-size:16px; line-height:1.35; }
