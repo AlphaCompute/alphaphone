@@ -60,9 +60,15 @@ final class DeferredDeletionJournal {
  synchronized JSONObject undo(String id,JSONObject owner,String continuity,long elapsed)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);
   if(!same(owner,row.getJSONObject("owner")))throw new SecurityException("Deletion owner changed");
-  String phase=row.getString("phase");if(!"queued".equals(phase)&&!"paused".equals(phase))return copy(row);
+  String phase=row.getString("phase");if(!"queued".equals(phase)&&!"paused".equals(phase))return requireUndone(copy(row));
   if(!"paused".equals(phase)&&"expired".equals(window(row,continuity,elapsed)))throw new IllegalStateException("Undo window ended");
   row.put("phase","undone");store.save(data.toString());return copy(row);
+ }
+ /** Undo succeeds only when the item was kept. A settled (deleted, conflicting or uncertain)
+  * deletion is never reported back as a successful Undo. A repeated Undo stays successful. */
+ static JSONObject requireUndone(JSONObject row)throws Exception{
+  if(!"undone".equals(row.optString("phase")))throw new IllegalStateException("Undo window ended; deletion "+row.optString("phase","unknown"));
+  return row;
  }
  synchronized JSONObject expire(String id,String continuity,long elapsed,Admission admission,Delete deletion)throws Exception{
   JSONObject data=read(),row=data.getJSONObject("records").getJSONObject(id);

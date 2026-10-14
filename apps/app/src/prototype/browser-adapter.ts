@@ -169,15 +169,21 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       }
     } catch { if (approvedSignal) throw new Error('Invalid approved browser destination'); report(new Error('Enter search words or a valid HTTP or HTTPS address without credentials.')); return; }
     const s = state(); if (!s) { if (approvedSignal) throw new Error('Browser unavailable'); return; }
+    const selectedTab=s.cur;
     const id = newTab ? newTabId() : s.cur, priv = newTab ? privateTab : isPrivate(id);
     // Keep the last committed address durable while a restored page is loading or fails.
     const saved = restored.get(id);
     if (saved) metadata.set(id, { ...metadata.get(id), savedUrl: saved.url, title: saved.title });
     restored.delete(id);
     try {
-      await ensure(id, priv);
+      const creation=ensure(id, priv);
+      await creation;
+      if(newTab&&(approvedSignal?.aborted||disposed)&&created.get(id)===creation){created.delete(id);void Browser.close({session,id}).catch(report);}
       approvedSignal?.throwIfAborted();
       if (disposed) { if (approvedSignal) throw new Error('Browser closed'); return; }
+      const current=state();
+      if(created.get(id)!==creation||!current||(!newTab&&!current.tabs.some((tab:Bag)=>tab.id===id))){void Browser.close({session,id}).catch(report);if(approvedSignal)throw new Error('Browser tab closed');return;}
+      if(!background&&current.cur!==selectedTab){if(newTab){created.delete(id);void Browser.close({session,id}).catch(report);}if(approvedSignal)throw new Error('Browser tab changed');return;}
       if (newTab) shell.vset('browser', { tabs: [...state().tabs, { id, hist: ['newtab'], pos: 0, ...(priv ? {priv: true} : {}) }], cur: id });
       metadata.set(id, { ...metadata.get(id), url: url.href, loading: true, committed: false, error: '' });
       documentRevisions.set(id, (documentRevisions.get(id) || 0) + 1);

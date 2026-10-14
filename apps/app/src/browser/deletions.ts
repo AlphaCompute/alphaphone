@@ -20,7 +20,9 @@ export class BrowserDeletions extends WebPlugin{
   const owner=browserDeletionOwner(),operationHash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(input.operation))))).map(v=>v.toString(16).padStart(2,'0')).join('');return this.review(input.operation.target,owner,input.operationId,JSON.stringify([input.bindingHash,input.operation]),{...input.journalIdentity,operationHash});
  }
  private async review(target:ReminderTarget,owner?:string,id=crypto.randomUUID() as string,binding?:string,journalBinding?:{scope:string;proposalId:string;operationHash:string}){
-  const selected=await this.daily.deletionSelection(target),captured=owner||selected.owner;
+  // A changed or missing selection is a definite refusal before admission: nothing is staged.
+  let selected:Awaited<ReturnType<BrowserDaily['deletionSelection']>>;try{selected=await this.daily.deletionSelection(target);}catch{return {status:'stale'};}
+  const captured=owner||selected.owner;
   if(!await this.reviews.confirm(id,'Delete reminder?',selected.row.title+'\n\nDelete this reminder after 10 seconds? Its alert is paused immediately. You can Undo during that time.','Delete reminder'))return {status:'cancelled'};
   return {status:'queued',deletion:await this.daily.stageDeletion(target,captured,id,binding,journalBinding)};
  }

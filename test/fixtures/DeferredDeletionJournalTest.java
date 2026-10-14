@@ -32,11 +32,21 @@ public final class DeferredDeletionJournalTest {
   for(int n=0;n<20;n++){
    Store raceStore=new Store();DeferredDeletionJournal race=new DeferredDeletionJournal(raceStore);race.stage("race",owner,target,new DeletionDeadline("boot",100,1000));
    java.util.concurrent.CountDownLatch start=new java.util.concurrent.CountDownLatch(1);AtomicInteger writes=new AtomicInteger();java.util.concurrent.atomic.AtomicReference<Throwable> failure=new java.util.concurrent.atomic.AtomicReference<>();
-   Thread undo=new Thread(()->{try{start.await();race.undo("race",owner,"boot",10099);}catch(Throwable e){failure.set(e);}});
+   AtomicInteger lateUndo=new AtomicInteger();
+   Thread undo=new Thread(()->{try{start.await();race.undo("race",owner,"boot",10099);}catch(IllegalStateException late){lateUndo.incrementAndGet();}catch(Throwable e){failure.set(e);}});
    Thread expiry=new Thread(()->{try{start.await();race.expire("race","boot",10100,(a,b)->null,t->{writes.incrementAndGet();return new JSONObject().put("status","deleted");});}catch(Throwable e){failure.set(e);}});
    undo.start();expiry.start();start.countDown();undo.join();expiry.join();if(failure.get()!=null)throw new AssertionError(failure.get());
-   String phase=race.list("boot",20000).getJSONObject(0).getString("phase");check(phase.equals("undone")?writes.get()==0:phase.equals("deleted")&&writes.get()==1);
+   String phase=race.list("boot",20000).getJSONObject(0).getString("phase");check(phase.equals("undone")?writes.get()==0&&lateUndo.get()==0:phase.equals("deleted")&&writes.get()==1&&lateUndo.get()==1);
   }
+  // An Undo that arrives after expiry dispatched is refused, never reported as a kept item.
+  Store lateStore=new Store();DeferredDeletionJournal late=new DeferredDeletionJournal(lateStore);late.stage("late",owner,target,new DeletionDeadline("boot",100,1000));
+  check(late.expire("late","boot",10100,(a,b)->null,t->new JSONObject().put("status","deleted")).getString("phase").equals("deleted"));
+  try{late.undo("late",owner,"boot",10099);throw new AssertionError("late undo reported success");}catch(IllegalStateException expected){}
+  late.stage("conflict",owner,target,new DeletionDeadline("boot",100,1000));late.expire("conflict","boot",10100,(a,b)->null,t->new JSONObject().put("status","conflict"));
+  try{late.undo("conflict",owner,"boot",10099);throw new AssertionError("conflict undo reported success");}catch(IllegalStateException expected){}
+  late.stage("twice",owner,target,new DeletionDeadline("boot",100,1000));check(late.undo("twice",owner,"boot",200).getString("phase").equals("undone"));check(late.undo("twice",owner,"boot",200).getString("phase").equals("undone"));
+  check(DeferredDeletionJournal.requireUndone(new JSONObject().put("phase","undone")).getString("phase").equals("undone"));
+  for(String settled:new String[]{"deleted","conflict","dispatching","unknown","queued"})try{DeferredDeletionJournal.requireUndone(new JSONObject().put("phase",settled));throw new AssertionError(settled);}catch(IllegalStateException expected){}
   Store retained=new Store();DeferredDeletionJournal bounded=new DeferredDeletionJournal(retained);
   bounded.stage("uncertain",owner,target,new DeletionDeadline("boot",1,1));bounded.expire("uncertain","boot",10001,(a,b)->null,t->{throw new IllegalStateException("lost response");});
   for(int n=0;n<600;n++){String id="terminal_"+n;bounded.stage(id,owner,target,new DeletionDeadline("boot",n+10,n+10));bounded.undo(id,owner,"boot",n+11);}
