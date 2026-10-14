@@ -127,7 +127,7 @@ for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origi
     expect((await secureValues(page))[remoteSlot]).toBe(saved[remoteSlot]);
     // #406: the saved hosted choice becomes the resident agent and is kept aside, not deleted.
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1')!))).toEqual(legacy.selection);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1')!))).toEqual([legacy.selection]);
     await page.reload();
     await expect(page.getByRole('dialog', { name: 'Welcome to Alpha' })).toBeVisible();
     const calls = await nativeCalls(page);
@@ -321,7 +321,7 @@ for (const saved of [
     // #406: a saved Cloud agent becomes the resident agent and is kept aside; other choices are unchanged.
     const hostedChoice = (saved.selection as { kind: string }).kind === 'cloud';
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual(hostedChoice ? { kind: 'resident' } : saved.selection);
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1') || 'null'))).toEqual(hostedChoice ? saved.selection : null);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1') || 'null'))).toEqual(hostedChoice ? [saved.selection] : null);
     await expect(chooser.getByText(/Connected ·/)).toHaveCount(0);
     // A later start changes nothing further, and no request left the page at any point.
     await page.reload();
