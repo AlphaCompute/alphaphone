@@ -238,7 +238,8 @@ export function missedRunNowMutationId(runId: string): string | null {
  * changed and nothing runs automatically: the owner reviews and confirms one new, separate run that
  * reads the reviewed phone sources as they are now (the agent's on-demand dossier). Offered only for
  * the newest result of an active morning loop over a current native source whose revision the loop
- * is bound to, and only while no newer result exists for that loop or source. Keyed by missed runId.
+ * is bound to, and only while no newer result exists for that loop, that source, or any on-demand run.
+ * Keyed by missed runId.
  */
 export function missedRunNowOffers(results: DigestResult[], loops: DigestLoop[], sources: DigestSource[], now = Date.now()): Map<string, MissedRunNow> {
 	const offers = new Map<string, MissedRunNow>();
@@ -249,7 +250,11 @@ export function missedRunNowOffers(results: DigestResult[], loops: DigestLoop[],
 		const source = sources.find((s) => s.id === loop.spec.sourceId);
 		if (!source || source.revoked || source.live?.provider !== "native" || source.revision !== loop.spec.sourceRevision) continue;
 		if (!(Date.parse(source.expiresAt) > now) || (loop.sourceState && loop.sourceState !== "current")) continue;
-		if (results.some((other) => other.cursor > result.cursor && (other.workflowId === loop.id || other.source?.id === source.id))) continue;
+		// Any newer on-demand run (a dossier is never a listed loop) supersedes it too, whatever its
+		// source: after a renewal rebinds the loop, the earlier Run now still hides the offer instead
+		// of re-offering a submission the agent has already bound to the old source.
+		const superseding = (other: DigestResult) => other.workflowId === loop.id || other.source?.id === source.id || !loops.some((l) => l.id === other.workflowId);
+		if (results.some((other) => other.cursor > result.cursor && superseding(other))) continue;
 		const mutationId = missedRunNowMutationId(result.runId);
 		if (!mutationId) continue;
 		offers.set(result.runId, { runId: result.runId, sourceId: source.id, sourceRevision: source.revision, sourceLabel: source.label, scheduledAt: result.scheduledAt, mutationId });

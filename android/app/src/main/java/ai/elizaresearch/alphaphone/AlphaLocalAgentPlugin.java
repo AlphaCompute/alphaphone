@@ -95,8 +95,16 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    return LocalAgentProviderAdmission.currentGeneration(saved,cloud);
   }catch(Exception unavailable){return null;}
  }
- /** Read-only: a system broadcast may start the resident only while no surface is stopping it or changing its provider. */
- static boolean residentStartAdmissible(){synchronized(lifecycleLock){return accepting&&!stopping&&credentialMutationEpoch<0&&credentialShutdownRequest==-1;}}
+ /**
+  * A system broadcast starts the resident only while no surface is stopping it or changing its
+  * provider. The check and ElizaAgentService.start share lifecycleLock, as start() does, so a stop
+  * cannot slip between them. The epoch is left alone: a running resident is not restarted and its
+  * attached surfaces keep their in-flight calls.
+  */
+ static ResidentScheduleRearm.Decision startResidentIfAdmissible(Context context,String action,boolean userUnlocked,boolean runtimePackaged,boolean ownerEnabled){
+  return ResidentScheduleRearm.admitAndStart(lifecycleLock,action,userUnlocked,runtimePackaged,ownerEnabled,
+   ()->accepting&&!stopping&&credentialMutationEpoch<0&&credentialShutdownRequest==-1,()->ElizaAgentService.start(context));
+ }
  private void rejectPending(PluginCall call,String message){synchronized(lifecycleLock){if(pending.remove(call))call.reject(message);}}
 
  private static final class Superseded extends Exception {}

@@ -6,7 +6,8 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 // #394: a missed digest is never replayed. Run now is one new, explicitly reviewed run whose identity
 // is derived from the missed record, so repeats and retries return the same run. Resident schedules
-// are re-armed natively after boot, update and clock/time-zone changes. Not Android/device evidence.
+// run in the resident, which is brought back natively after boot, update and clock/time-zone changes
+// when not running. Not Android/device evidence.
 const root=resolve(import.meta.dirname,'..');
 const read=path=>readFileSync(join(root,path),'utf8');
 const script=`
@@ -22,7 +23,12 @@ out.missed=offers([result(1,'completed'),result(2,'missed')]);
 out.olderMissed=offers([result(1,'missed'),result(2,'completed')]);
 out.twoMissed=offers([result(1,'missed'),result(2,'missed')]).map(o=>o.runId);
 out.newerDossier=offers([result(1,'missed'),result(2,'completed',{workflowId:'manual'})]).length;
-out.otherSource=offers([result(1,'missed'),result(2,'completed',{workflowId:'manual',source:{id:'other'}})]).length;
+out.otherSource=offers([result(1,'missed'),result(2,'completed',{workflowId:'l2',source:{id:'other'}})],[loop,{...loop,id:'l2',spec:{...loop.spec,template:'evening',sourceId:'other'}}]).length;
+out.otherDossier=offers([result(1,'missed'),result(2,'completed',{workflowId:'manual',source:{id:'other'}})]).length;
+// Renewal rebinds the loop to s2 after Run now already produced a dossier over s1.
+const renewed={...source,id:'s2',revision:'r2'};
+out.renewed=offers([result(1,'missed'),result(2,'completed',{workflowId:'manual',source:{id:'s'}})],[{...loop,versionId:'v2',spec:{...loop.spec,sourceId:'s2',sourceRevision:'r2'}}],[{...source,revoked:true},renewed]).length;
+out.renewedNoRun=offers([result(1,'missed')],[{...loop,versionId:'v2',spec:{...loop.spec,sourceId:'s2',sourceRevision:'r2'}}],[{...source,revoked:true},renewed]).map(o=>o.sourceId);
 out.executed=offers([result(1,'completed'),result(2,'unavailable'),result(3,'overlap')]).length;
 out.evening=offers([result(1,'missed')],[{...loop,spec:{...loop.spec,template:'evening'}}]).length;
 out.paused=offers([result(1,'missed')],[{...loop,active:false}]).length;
@@ -42,7 +48,10 @@ test('Run now is offered only for the newest missed morning digest over a curren
  assert.equal(out.olderMissed.length,0,'a later result supersedes the missed one');
  assert.deepEqual(out.twoMissed,['run-2'],'only the newest missed occurrence, never a backlog');
  assert.equal(out.newerDossier,0,'a newer run over the same source hides it');
- assert.equal(out.otherSource,1,'a run over another source does not');
+ assert.equal(out.otherSource,1,'another loop over another source does not');
+ assert.equal(out.otherDossier,0,'any newer on-demand run does, whatever its source');
+ assert.equal(out.renewed,0,'after a renewal the earlier Run now still hides the offer, so no refused repeat');
+ assert.deepEqual(out.renewedNoRun,['s2'],'a renewed loop that never ran now is offered over its current source');
  assert.equal(out.executed,0,'unavailable and overlap records are not missed');
  for(const key of ['evening','paused','removed','lapsed','expired','revoked','rebound','snapshot','google','badId'])assert.equal(out[key],0,key);
  assert.equal(out.sameId,true,'identity is stable, so a repeat returns the same run');
@@ -54,11 +63,12 @@ test('Run now goes through the reviewed dossier path with the derived identity a
  assert.match(ui,/setReview\(\{path:'dossier',body:\{sourceId:offer\.sourceId,sourceRevision:offer\.sourceRevision,mutationId:offer\.mutationId,confirmed:true\}/);
  assert.match(ui,/The missed occurrence stays recorded as missed and nothing from that time is replayed/);
  assert.match(ui,/onClick=\{\(\)=>reviewMissedRunNow\(/,'only an owner tap opens the review');
+ assert.match(ui,/\{missedOffers\.has\(result\.runId\)&&!ranMissed\.has\(result\.runId\)&&<button[^>]*onClick=\{\(\)=>reviewMissedRunNow\(missedOffers\.get\(result\.runId\)!\)\}/,'the button renders only for an offer, so revoked or rebound sources never show it');
  assert.doesNotMatch(ui,/reviewMissedRunNow\([^)]*\)\s*;?\s*\}\s*,\s*\[/,'never invoked from an effect');
  assert.doesNotMatch(ui,/submit\(\{path:'dossier'/,'never submitted without the review');
 });
 
-test('resident schedules are re-armed after boot, update and clock or time-zone changes',()=>{
+test('the resident is brought back after boot, update and clock or time-zone changes',()=>{
  const manifest=read('android/app/src/main/AndroidManifest.xml').replace(/<!--[\s\S]*?-->/g,'');
  const receiver=manifest.match(/<receiver android:name="\.ResidentScheduleReceiver"[^>]*>([\s\S]*?)<\/receiver>/);
  assert.ok(receiver,'receiver declared');
@@ -67,8 +77,10 @@ test('resident schedules are re-armed after boot, update and clock or time-zone 
  assert.doesNotMatch(receiver[1],/LOCKED_BOOT_COMPLETED/,'credential-encrypted agent state needs unlock');
  const source=read('android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentScheduleReceiver.java');
  assert.match(source,/ElizaAgentService\.shouldAutoStart\(context\)/);
- assert.match(source,/AlphaLocalAgentPlugin\.residentStartAdmissible\(\)/);
- assert.match(source,/ElizaAgentService\.start\(context\)/);
+ assert.match(source,/AlphaLocalAgentPlugin\.startResidentIfAdmissible\(context,action,unlocked,packaged,enabled\)/);
+ assert.doesNotMatch(source,/ElizaAgentService\.start\(/,'the receiver never starts outside the lifecycle lock');
+ const plugin=read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java');
+ assert.match(plugin,/ResidentScheduleRearm\.admitAndStart\(lifecycleLock,[\s\S]{0,240}\(\)->accepting&&!stopping&&credentialMutationEpoch<0&&credentialShutdownRequest==-1,\(\)->ElizaAgentService\.start\(context\)\)/,'admission and start share lifecycleLock');
  assert.doesNotMatch(source,/ACTION_RESTART|restart\(|runHostedDossier|dossier/i,'never restarts a running agent or runs a digest');
  assert.doesNotMatch(read('android/app/src/main/java/ai/elizaresearch/alphaphone/ResidentScheduleRearm.java'),/import android\./,'pure policy');
 });
