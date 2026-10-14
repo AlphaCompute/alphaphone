@@ -327,8 +327,9 @@ export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQ
     const renewalSources=useRef(sources);renewalSources.current=sources;
     const renewalFlight=resolveTap;
     const renewalStart=useRef(startRenewal);renewalStart.current=startRenewal;
+    // Renewal taps exist only on Android; elsewhere the native plugin is absent and must not replace the sync status.
     const checkRenewal=()=>renewalFlight.current(async()=>{
-      const b=binding.current;if(!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
+      const b=binding.current;if(!isAndroid||!b||!canSyncResults()||questionBusy.current||questionClose.current)return;
       try{const tap=await nativeSources.pendingSourceRenewal();if(!tap.token||!tap.selection||typeof tap.expiresAt!=='number'||binding.current!==b||!b.notices.current()||!canSyncResults())return;
        const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open&&renewalSources.current.some(source=>!source.revoked&&source.live?.provider==='native'&&renewalMatches(tap as SourceRenewalTap,source.live,source.expiresAt));
        if(!current())return;
