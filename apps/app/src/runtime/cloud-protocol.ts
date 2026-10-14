@@ -537,7 +537,7 @@ export class CloudProtocol {
       ...(data.hasAttachments === undefined ? {} : typeof data.hasAttachments === "boolean" ? { hasAttachments: data.hasAttachments } : (() => { throw new CloudProtocolError("invalid-response"); })()) };
   }
   /** One page of results. `nextPageToken` is the provider's opaque cursor for the same query, or null. */
-  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null }> {
+  async gmailSearch(grantId: string, query: string, signal: AbortSignal, maxResults: 10 | 25 | 50 = 25, pageToken?: string): Promise<{ messages: GmailMessage[]; syncedAt: string; nextPageToken: string | null;supportsSpamTrash:boolean }> {
     if (pageToken !== undefined && (typeof pageToken !== "string" || !pageToken || pageToken.length > 4096)) throw new TypeError("Invalid Gmail page token");
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), query: string(query), maxResults: String(maxResults) });
     if (pageToken !== undefined) params.set("pageToken", pageToken);
@@ -545,7 +545,8 @@ export class CloudProtocol {
     if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
     const next = data.nextPageToken;
     if (next != null && (typeof next !== "string" || !next || next.length > 4096 || next === pageToken)) throw new CloudProtocolError("invalid-response");
-    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next };
+    if(data.supportsSpamTrash!==undefined&&typeof data.supportsSpamTrash!=='boolean')throw new CloudProtocolError('invalid-response');
+    return { messages: data.messages.map(value => this.gmailMessage(value)), syncedAt: string(data.syncedAt), nextPageToken: next == null ? null : next,supportsSpamTrash:data.supportsSpamTrash===true };
   }
   /** Revokes Eliza Cloud's stored Google grant for one owner connection. It does not delete mail and
    * cannot remove the app from the user's Google Account permissions; callers verify with gmailAccounts. */
@@ -553,13 +554,16 @@ export class CloudProtocol {
     const data = await this.call("/api/v1/eliza/google/disconnect", signal, { authenticated: true, body: { side: "owner", connectionId: string(connectionId) } });
     if (data.ok !== true) throw new CloudProtocolError("invalid-response");
   }
-  async gmailRead(grantId: string, messageId: string, signal: AbortSignal): Promise<{ message: GmailMessage; bodyText: string; links: GmailLink[] }> {
+  async gmailRead(grantId: string, messageId: string, signal: AbortSignal): Promise<{ message: GmailMessage; bodyText: string; bodyHtml?:string; links: GmailLink[];historyId:string|null;attachments:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[] }> {
     const params = new URLSearchParams({ side: "owner", grantId: string(grantId), messageId: string(messageId) });
     const data = await this.call(`/api/v1/eliza/google/gmail/read?${params}`, signal, { authenticated: true });
     if (typeof data.bodyText !== "string") throw new CloudProtocolError("invalid-response");
     const message = this.gmailMessage(data.message);
     if (message.id !== messageId) throw new CloudProtocolError("invalid-response");
-    return { message, bodyText: data.bodyText, links: mailLinks(data.links) };
+    const metadata=data.message&&typeof data.message==='object'?object(object(data.message).metadata??{}):{};
+    if(data.bodyHtml!==undefined&&data.bodyHtml!==null&&typeof data.bodyHtml!=='string')throw new CloudProtocolError('invalid-response');
+    const attachments=Array.isArray(data.attachments)?data.attachments.map(value=>{const a=object(value);const name=typeof a.filename==='string'?a.filename:a.name;if(typeof a.partId!=='string'||typeof name!=='string'||typeof a.mimeType!=='string'||!Number.isSafeInteger(a.size)||(a.size as number)<0||a.supported!==undefined&&typeof a.supported!=='boolean')throw new CloudProtocolError('invalid-response');return {partId:a.partId,name,mimeType:a.mimeType,size:a.size as number,supported:typeof a.supported==='boolean'?a.supported:['application/pdf','text/plain','image/png','image/jpeg','image/webp'].includes(a.mimeType)};}):[];
+    return { message, bodyText: data.bodyText,...(typeof data.bodyHtml==='string'&&data.bodyHtml&&new TextEncoder().encode(data.bodyHtml).length<=512*1024?{bodyHtml:data.bodyHtml}:{}), links: mailLinks(data.links),historyId:typeof metadata.historyId==='string'?metadata.historyId:null,attachments };
   }
   async gmailInboxCapabilities(grantId:string,signal:AbortSignal):Promise<GmailInboxCapabilities> {
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/capabilities?${new URLSearchParams({grantId})}`,signal,{authenticated:true});

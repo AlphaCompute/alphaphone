@@ -1,5 +1,5 @@
 import { InboxOperation, composerKind, composerContent, reviewBinding, reviewBindingRefusal, type ComposerEmail, type ReviewBinding } from '../runtime/inbox-operation';
-import { secureConnectionStore } from '../runtime/native-connection';
+import { inboxLocalStore } from '../runtime/inbox-local-store';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailInboxCapabilities, GmailInboxReceipt } from '../runtime/cloud-protocol';
 import { classifyGmailFailure, type GmailFailureKind } from '../runtime/gmail-mailbox';
@@ -32,7 +32,7 @@ export function inboxProviderControls(publish:()=>void,toast:(message:string)=>v
   if(binding&&grant===selected&&binding.sessionId===session&&operation){const token=epoch;try{const next=await binding.client.gmailInboxCapabilities(grant,new AbortController().signal);if(token===epoch){caps=next;publish();}}catch{if(token===epoch){caps=null;publish();}}return;}
   reset();if(!binding||!account||!grant||document.documentElement.dataset.connectionMode==='mock')return;
   selected=grant;session=binding.sessionId;const token=epoch;
-  operation=new InboxOperation({owner:JSON.stringify([account.environment,account.userId,account.organizationId||'']),grantId:grant,store:secureConnectionStore,client:binding.client,active:()=>epoch===token&&session===connectionController.getCloudClient()?.sessionId&&document.documentElement.dataset.connectionMode!=='mock'});
+  operation=new InboxOperation({owner:JSON.stringify([account.environment,account.userId,account.organizationId||'']),grantId:grant,store:inboxLocalStore,client:binding.client,active:()=>epoch===token&&session===connectionController.getCloudClient()?.sessionId&&document.documentElement.dataset.connectionMode!=='mock'});
   try{await operation.load();if(token!==epoch)return;
    if(operation.snapshot()){status='Saved mail operation. Check its exact review and receipt before continuing.';visible=true;settleSent(operation);}
    const next=await binding.client.gmailInboxCapabilities(grant,new AbortController().signal);if(token!==epoch)return;caps=next;

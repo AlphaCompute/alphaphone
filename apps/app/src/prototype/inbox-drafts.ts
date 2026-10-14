@@ -4,7 +4,7 @@ const attachmentNative=registerPlugin<{readSelected(input:{selectionId:string}):
 import {DailyApps} from '../daily';
 import {reviewMailAttachment,type MailAttachment} from '../runtime/inbox-attachment';
 import {checkOutgoingAttachments,outgoingAttachmentLimits,attachmentBytes} from '../runtime/inbox-operation';
-import { secureConnectionStore } from '../runtime/native-connection';
+import { inboxLocalStore } from '../runtime/inbox-local-store';
 import { connectionController } from '../runtime/connection-ui';
 import type { GmailMessage } from '../runtime/cloud-protocol';
 type Bag = Record<string, any>;
@@ -73,7 +73,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
    }
    const expected=saved;
    if(expected&&expected.id===draftId&&sentContent(expected,proposal,true)){
-    try{const receipt=await secureConnectionStore.compareExchange(key,expected,null);if(token!==epoch)return;if(receipt.status==='saved'){saved=null;baseRevision=null;removed=true;}}catch{}
+    try{const receipt=await inboxLocalStore.compareExchange(key,expected,null);if(token!==epoch)return;if(receipt.status==='saved'){saved=null;baseRevision=null;removed=true;}}catch{}
     if(token!==epoch)return;
    }
    if(removed)status='Sent. The local copy of this email was removed from this device.';
@@ -91,7 +91,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   epoch++;saved=draft=null;loading=ready=busy=open=confirm=false;toQ='';status='';owner=next;account=next?account_:'';session=binding?.sessionId||'';label=accountLabel;
   if(!owner)return;
   const token=epoch, key=slot();loading=true;status='Checking local draft…';publish();
-  try{const value=await secureConnectionStore.read<Draft>(key);if(token!==epoch)return;
+  try{const value=await inboxLocalStore.read<Draft>(key);if(token!==epoch)return;
    if(value!==null&&!valid(value,owner))throw Error();saved=value;const pending=pendingEdits.get(owner);draft=pending?.draft||null;toQ=pending?.toQ||'';baseRevision=pending?pending.baseRevision:value?.revision||null;staleBase=!!pending&&baseRevision!==(saved?.revision||null);const recovery=retained=inboxUnsaved(owner,publish,restored=>{if(token===epoch)restoreRetained(restored);});await recovery.ready;if(token!==epoch)return;ready=true;if(pending?.persist){pendingEdits.set(owner,{...pending,persist:false});persist();}status=draft?'Edits retained for this account':value?'Saved draft on this device':'No saved local draft';
   }catch{if(token===epoch)status='Local draft storage unavailable. Retry connection to reload.';}
   if(token===epoch){loading=false;publish();void settleSent();}
@@ -141,7 +141,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   const value=remove?null:{...draft,revision:crypto.randomUUID(),to:[...draft.to]};
   if(value&&(!valid(value,owner)||new TextEncoder().encode(JSON.stringify(value)).length>8*1024*1024)){toast('Draft is too large or contains an invalid subject.');return;}
   const token=epoch,key=slot(),expected=saved;busy=true;publish();
-  try{const receipt=await secureConnectionStore.compareExchange(key,expected,value);if(token!==epoch)return;
+  try{const receipt=await inboxLocalStore.compareExchange(key,expected,value);if(token!==epoch)return;
    if(receipt.status!=='saved'){status='Draft changed in another window. Close this composer and reload before replacing it.';ready=false;toast(status);return;}
    pendingEdits.delete(owner);saved=value;let cleared=true;try{await retained?.clear();}catch{cleared=false;}if(token!==epoch)return;baseRevision=value?.revision||null;staleBase=false;draft=value?structuredClone(value):cleared?null:draft;status=cleared?(remove?'Local draft discarded':'Saved locally on this device'):(remove?'Saved local draft removed; retained edits could not be cleared. Review recovery before closing.':'Saved locally; retained edits could not be cleared. Review recovery before closing.');confirm=false;if(remove&&cleared)open=false;toast(status);
   }catch{if(token===epoch){status='Local draft update failed. Your edits remain here.';toast(status);}}

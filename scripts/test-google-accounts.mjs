@@ -8,7 +8,7 @@ const account = {configured:true,connected:true,connectionId:'owned-grant',label
 function fixture(overrides={}) {
   const calls=[], events=[];
   const client={
-    async initiateGoogle(_signal,permission){calls.push(['connect',permission]);return 'https://accounts.google.com/o/oauth2/v2/auth?state=synthetic';},
+    async initiateGoogle(_signal,permission,gmailPermission){calls.push(['connect',permission,gmailPermission]);return 'https://accounts.google.com/o/oauth2/v2/auth?state=synthetic';},
     async gmailAccounts(){calls.push(['list']);return [account];},
     async disconnectGmail(id){calls.push(['disconnect',id]);},
     ...overrides,
@@ -24,7 +24,9 @@ test('combined Google authorization defaults to calendar read and requires an ex
   const f=fixture();
   assert.match(await f.helper.connect(signal()),/^https:\/\/accounts.google.com\//);
   await f.helper.connect(signal(),'write');
-  assert.deepEqual(f.calls,[['connect','read'],['connect','write']]);
+  assert.deepEqual(f.calls,[['connect','read','read'],['connect','write','read']]);
+  await f.helper.connect(signal(),'read','send');
+  assert.deepEqual(f.calls.at(-1),['connect','read','send'],'optional sending preserves calendar read consent');
   assert.deepEqual(f.events,[],'an authorization URL is not proof that authorization completed');
   assert.deepEqual(await f.helper.list(signal()),[account]);
 });
