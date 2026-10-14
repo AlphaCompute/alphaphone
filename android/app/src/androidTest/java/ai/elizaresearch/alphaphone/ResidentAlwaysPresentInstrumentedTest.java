@@ -64,7 +64,7 @@ public class ResidentAlwaysPresentInstrumentedTest {
    assertEquals("AI is off until sign-in", "true", WebViewTestDriver.evaluate("document.querySelector('.alpha-connection').innerText.includes('Sign in with Eliza Cloud')"));
    // Once the start has settled, the signed-out dialog has no close control and a close request leaves it open.
    until("['Running on this device','Not running'].includes(" + status + ")", 120000);
-   if ("Not running".equals(WebViewTestDriver.evaluate(status)))
+   if ("true".equals(WebViewTestDriver.evaluate(status + "==='Not running'")))
     assertEquals("Not running offers Retry", "true", WebViewTestDriver.evaluate("[...document.querySelectorAll('.alpha-connection section[aria-label=\"Agent status\"] button')].some(b=>b.textContent.trim()==='Retry')"));
    assertEquals("The signed-out dialog cannot be dismissed", "false", WebViewTestDriver.evaluate("!!document.querySelector('.alpha-connection-scrim button[aria-label=\"" + AppNavigation.CLOSE_CONNECTION + "\"]')"));
    WebViewTestDriver.evaluate(AppNavigation.closeConnection());
