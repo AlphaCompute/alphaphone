@@ -2,7 +2,7 @@ import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import {test,expect,type Page} from '@playwright/test';
 test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
 // Gmail MVP flows against a controlled provider-boundary fixture: no real account, OAuth or mail.
-type Options={accounts?:string[];readState?:boolean;pages?:Record<string,number>};
+type Options={accounts?:string[];readState?:boolean;pages?:Record<string,number>;deferPaging?:boolean};
 async function setup(page:Page,options:Options={}){
  // Provider fixtures use local apps; they do not perform resident/Cloud onboarding.
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
@@ -15,24 +15,26 @@ async function setup(page:Page,options:Options={}){
   s.read=async(key:string)=>structuredClone(slots[key]??null) as any;
   s.compareExchange=async(key:string,prior:unknown,next:unknown)=>{if(JSON.stringify(slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)delete slots[key];else slots[key]=structuredClone(next);return {status:'saved'};};
   const f=w.gm={searches:[] as any[],prepares:[] as any[],dispatches:[] as any[],disconnects:[] as string[],fail:null as any,failCursor:false,stale:false,gate:null as Promise<void>|null,dispatchState:'succeeded',
-   accounts:(options.accounts||['owner@example.test']).map((label,i)=>({connectionId:'grant-'+i,label,configured:true,connected:true,reason:'connected',grantedCapabilities:['google.gmail.triage']}))};
+   accounts:(options.accounts||['owner@example.test']).map((label,i)=>({connectionId:'grant-'+i,label,configured:true,connected:true,reason:'connected',grantedCapabilities:['google.gmail.triage','google.gmail.send','google.gmail.mailbox']}))};
   const mail=(id:string,extra:Record<string,unknown>={})=>({id,threadId:'thread-'+id,subject:'Subject '+id,from:'Sender '+id,fromEmail:'sender@example.test',to:['owner@example.test'],cc:[],replyTo:null,snippet:'Preview '+id,receivedAt:'2026-10-06T12:00:00Z',unread:false,...extra});
   const inbox=Array.from({length:options.pages?.inbox??1},(_,page)=>[mail('in-'+page+'-a',{unread:page===0}),mail('in-'+page+'-b')]);
   const store:Record<string,any[][]>={'in:inbox':inbox,'in:sent':[[mail('sent-a',{to:['friend@example.test'],subject:'Sent subject'})]]};
   const all=()=>Object.values(store).flat(2);
   const digest=async(text:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
   const receipts:Record<string,any>={};
+  let deferredPage=false;
   const client={
    gmailAccounts:async()=>structuredClone(f.accounts),
    gmailInboxCapabilities:async()=>({version:1,from:'owner@example.test',threads:true,send:false,providerDrafts:false,mailboxMutations:true,attachments:true,providerExactlyOnce:false,atomicDraftReplacement:false,readState:options.readState!==false}),
    gmailSearch:async(grant:string,query:string,_signal:AbortSignal,size:number,pageToken?:string)=>{
     f.searches.push({grant,query,size,pageToken:pageToken??null});
+    if(pageToken&&options.deferPaging&&!deferredPage){deferredPage=true;await new Promise<void>((resolve,reject)=>{(f as any).releasePage=resolve;_signal.addEventListener('abort',()=>reject(_signal.reason),{once:true});});_signal.throwIfAborted();}
     if(f.fail){const kind=f.fail;f.fail=null;if(kind==='offline')throw new TypeError('Failed to fetch');throw new CloudProtocolError('http',kind);}
     if(pageToken&&f.failCursor){f.failCursor=false;throw new CloudProtocolError('http',400,{error:'Invalid Gmail page token.'});}
     const pages=store[query]||[[]],index=pageToken?Number(pageToken.split(':')[1]):0;
     return {messages:pages[index]||[],syncedAt:'sync',nextPageToken:index+1<pages.length?'cursor:'+(index+1):null};
    },
-   gmailRead:async(_grant:string,id:string)=>({message:all().find(m=>m.id===id),bodyText:'Body of '+id}),
+   gmailRead:async(_grant:string,id:string)=>({message:all().find(m=>m.id===id),bodyText:'Body of '+id,historyId:'h-'+id,attachments:[]}),
    gmailThread:async(_grant:string,threadId:string)=>{const message=all().find(m=>m.threadId===threadId);return {messages:[{message,bodyText:'Body of '+message.id,historyId:'h-'+message.id,attachments:[]}],total:1,offset:0,historyId:'thread-history',nextOffset:null};},
    gmailPrepareOperation:async(_grant:string,requestId:string,proposal:any)=>{
     f.prepares.push(proposal);
@@ -145,20 +147,15 @@ for(const [kind,text] of [['offline',/offline/],[409,/revoked or needs authoriza
  expect((await gm(page)).searches.length).toBe(2);
 });
 
-test('Inbox disconnect asks first and then shows the honest disconnected state',async({page})=>{
- await setup(page);
- await page.getByRole('button',{name:'Inbox',exact:true}).click();
+test('Settings disconnect asks first and Inbox then shows the honest disconnected state',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('region',{name:'Inbox',exact:true}).getByText('Subject in-0-a',{exact:true})).toBeVisible();
- page.once('dialog',dialog=>dialog.dismiss());
- await page.getByRole('button',{name:'Disconnect Google account',exact:true}).click();
- expect((await gm(page)).disconnects).toEqual([]);
- page.once('dialog',dialog=>{expect(dialog.message()).toContain('including Gmail and Calendar');expect(dialog.message()).toContain('mail and calendar events are not deleted');void dialog.accept();});
- await page.getByRole('button',{name:'Disconnect Google account',exact:true}).click();
- await expect(page.getByText(/owner@example\.test is disconnected from Alpha\. Eliza Cloud no longer holds this Google connection/).first()).toBeVisible();
- await expect(page.getByText('Subject in-0-a',{exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Disconnect Google account',exact:true})).toHaveCount(0);
- await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toHaveCount(0);
- expect((await gm(page)).disconnects).toEqual(['grant-0']);
+ await page.getByRole('button',{name:'Back to apps',exact:true}).click();await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Connections',exact:true}).click();
+ const disconnect=page.getByRole('button',{name:'Disconnect Google account owner@example.test',exact:true});await expect(disconnect).toBeVisible();
+ page.once('dialog',dialog=>dialog.dismiss());await disconnect.click();expect((await gm(page)).disconnects).toEqual([]);
+ page.once('dialog',dialog=>{expect(dialog.message()).toContain('including Gmail and Calendar');expect(dialog.message()).toContain('mail and calendar events are not deleted');void dialog.accept();});await disconnect.click();
+ await expect(disconnect).toHaveCount(0);expect((await gm(page)).disconnects).toEqual(['grant-0']);
+ await page.getByRole('button',{name:'Open Inbox',exact:true}).click();await expect(page.getByText('Subject in-0-a',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toHaveCount(0);
 });
 
 test('Settings Connections disconnects one confirmed account and reports the read-back',async({page})=>{
@@ -213,14 +210,14 @@ test('single-account compose has no From switcher',async({page})=>{
  await expect(page.getByRole('button',{name:'From account',exact:true})).toHaveCount(0);
 });
 
-test('re-opening Inbox reloads the list instead of showing an empty mailbox',async({page})=>{
+test('re-opening Inbox reuses its verified cached list instead of showing an empty mailbox',async({page})=>{
  await setup(page);
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
  await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
- expect((await gm(page)).searches.map((s:any)=>s.pageToken)).toEqual([null,null]);
+ expect((await gm(page)).searches.map((s:any)=>s.pageToken)).toEqual([null]);
 });
 
 test('mark-read is sent once per message even when it is reopened during or after an unconfirmed outcome',async({page})=>{
@@ -246,10 +243,10 @@ test('mark-read is sent once per message even when it is reopened during or afte
 });
 
 test('a failed Load more drops the stale cursor and Retry reloads from the first page without duplicates',async({page})=>{
- await setup(page,{pages:{inbox:2}});
+ await setup(page,{pages:{inbox:2},deferPaging:true});
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
- await page.evaluate(()=>(window as any).gm.failCursor=true);
+ await page.waitForFunction(()=>!!(window as any).gm.releasePage);await page.evaluate(()=>{(window as any).gm.failCursor=true;(window as any).gm.releasePage();});
  await page.getByRole('button',{name:'Load more',exact:true}).click();
  await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
  await expect(page.getByText('Subject in-0-b',{exact:true})).toBeVisible();
