@@ -63,8 +63,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  /** Bridge messages already queued during Activity teardown can arrive after shutdown. */
  private boolean submit(PluginCall call,Runnable task) {
   if(destroyed){call.reject("Connection closed");return false;}
-  try{workers.execute(task);return true;}
-  catch(java.util.concurrent.RejectedExecutionException stopped){call.reject("Connection closed");return false;}
+  return PluginWorkers.submit(workers,task,()->call.reject("Connection closed"));
  }
  private boolean submitStorage(PluginCall call,Runnable task) {
   return storageTasks.submit(()->{if(destroyed)call.reject("Connection closed");else task.run();},()->call.reject("Connection closed"));
@@ -131,7 +130,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   submitStorage(call,()->{
    try {
     String name=RendererCredentialSlots.requireAllowed(call.getString("slot"));
-    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.equals(AlphaCredentialStore.NOTES_DRAFT)||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
+    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.equals(AlphaCredentialStore.NOTES_DRAFT)||name.equals("note-origins:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
     JSObject result=new JSObject();
@@ -186,7 +185,7 @@ public final class AlphaConnectionPlugin extends Plugin {
  }
  static boolean validDeviceCapabilities(String value) {
   if(value==null||value.contains("\r")||value.contains("\n"))return false;
-  Set<String> allowed=Set.of("calendar.local-event.v1","calendar.create.v1","calendar.next-read.v1","notes.local-record.v1","notes.query.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1");
+  Set<String> allowed=Set.of("calendar.local-event.v1","calendar.create.v1","calendar.next-read.v1","notes.local-record.v1","notes.query.v1","reminders.local-record.v1","reminders.local-record.v2","reminders.create.v1","maps.selected-read.v1","clock.handoff.v1","clock.handoff.v2");
   String[] parts=value.split(",",-1);if(parts.length<1||parts.length>allowed.size())return false;
   java.util.HashSet<String> seen=new java.util.HashSet<>();
   for(String part:parts){String token=part.trim();if(!allowed.contains(token)||!seen.add(token))return false;}
@@ -307,11 +306,10 @@ public final class AlphaConnectionPlugin extends Plugin {
  @PluginMethod public void openExternal(PluginCall call) {
   try {
    URI url = validatedUrl(call.getString("url"), false);
-   String host = url.getHost().toLowerCase(Locale.ROOT);
-   if (!(host.equals("eliza.app") || host.endsWith(".eliza.app") || host.equals("accounts.google.com"))) throw new IllegalArgumentException();
-   if (url.getPort() != -1 && url.getPort() != 443) throw new IllegalArgumentException();
+   // Production hosts only in a flag-off build; staging and other *.eliza.app hosts need test mocks.
+   if (!ConnectionRoutes.externalHost(url.getScheme(), url.getHost(), url.getPort(), BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)) throw new IllegalArgumentException();
    Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url.toASCIIString())); intent.addCategory(Intent.CATEGORY_BROWSABLE);
-   boolean cliLogin=("eliza.app".equals(host)||"staging.eliza.app".equals(host))&&"/auth/cli-login".equals(url.getPath());
+   boolean cliLogin=ConnectionRoutes.externalCliLogin(url.getHost(),url.getPath(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
    if(cliLogin){
     String id=required(call.getString("requestId"),256);
     Pending pending=new Pending();pending.browserCall=call;

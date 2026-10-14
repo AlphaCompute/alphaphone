@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "admitted": false,
+  "description": "Pixel 10 hardware lock, kept separate from the Cuttlefish product and not admitted: it needs its own verified device, kernel and vendor sources and a reviewed product configuration (docs/android-and-aosp.md). Nothing stages against it.",
+  "profiles": {
+    "pixel10": {
+      "kind": "physical",
+      "device": {
+        "codename": "UNSET",
+        "buildId": "UNSET"
+      },
+      "manifest": {
+        "url": "https://android.googlesource.com/platform/manifest",
+        "tag": "UNSET",
+        "tagObject": "UNSET",
+        "commit": "UNSET"
+      },
+      "projects": [],
+      "proprietaryArchive": {
+        "filename": "UNSET",
+        "sizeBytes": 0,
+        "sha256": "UNSET"
+      }
+    }
+  }
+}

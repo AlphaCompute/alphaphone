@@ -23,7 +23,7 @@ Alpha source: `apps/app/src/runtime/subscription-entitlement.ts`, `cloud-protoco
   services) is bound into it. Without an admissible plan, offline or signed out, the agent runs
   with Cloud inference unbound and answers chat and assistant requests honestly (a plan is needed,
   or Cloud is unreachable) with Redeem code / Choose a plan actions. Local tools, scheduling,
-  approvals, notices and on-device speech keep working. Cloud is never a replacement agent.
+  approvals, notices and on-device speech keep working. Cloud is never a replacement agent (decision P-43).
 - Once a plan was verified on the phone recently, local apps, on-device speech and local tools do
   not depend on an online billing check (offline grace, section 4).
 - Nothing is purchased automatically: no overage purchase, upgrade or retry that spends money.

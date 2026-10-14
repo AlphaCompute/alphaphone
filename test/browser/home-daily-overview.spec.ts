@@ -119,13 +119,18 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await expect(card).toHaveAccessibleName(`Open overdue reminder: Synthetic overdue reminder, ${due}`);
  await expect(card).toContainText('2 overdue reminders');
  await expect(card.locator('.home-calendar-footer')).toHaveText(due);
- await expect(card).not.toContainText('Synthetic in-progress event');
  // Its source is the reminder store and that store's read time, not a calendar.
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
  const read=await card.locator('[data-alpha-home-calendar-source]').textContent();
  expect(read).toMatch(/^Read \d{1,2}:\d{2}/);
- await expect(card).toHaveAttribute('aria-description',`Overdue reminder saved on this browser, read ${read!.slice('Read '.length)}`);
- await expect(card).not.toContainText(/In this app|This app/);
+ // The event in progress is not hidden: it is the next item, on its own line with its own source.
+ const next=card.locator('[data-alpha-home-calendar-next-line]');
+ await expect(next.locator('.home-calendar-next-text')).toHaveText('Next: Synthetic in-progress event Now');
+ const nextRead=await next.locator('[data-alpha-home-calendar-next-source]').textContent();
+ expect(nextRead).toMatch(/^In this app · Read \d{1,2}:\d{2}/);
+ await expect(card).toHaveAttribute('aria-description',`Overdue reminder saved on this browser, read ${read!.slice('Read '.length)}. Next: Synthetic in-progress event, Now. In this app. ${nextRead!.slice('In this app · '.length)} from the calendar saved in this browser`);
+ // The next line stays inside the card without clipping its text.
+ expect(await card.evaluate(element=>{const line=element.querySelector<HTMLElement>('.home-calendar-next-text')!,a=line.getBoundingClientRect(),box=element.getBoundingClientRect();return {clipped:line.scrollWidth>line.clientWidth,inside:a.bottom<=box.bottom&&a.right<=box.right};})).toEqual({clipped:false,inside:true});
  // It is still there after another render and a reload: nothing dismissed it.
  await page.reload();await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','true');
  await page.screenshot({path:info.outputPath('home-overdue.png'),animations:'disabled'});
@@ -138,10 +143,12 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await page.reload();
  await expect(card).toContainText('Synthetic second overdue');
  await expect(card).toContainText('Overdue reminder');await expect(card).not.toContainText('overdue reminders');
+ await expect(card.locator('.home-calendar-next-text')).toHaveText('Next: Synthetic in-progress event Now');
  expect(await done('overview-overdue-b')).toBe('completed');
  await page.reload();
  await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
  await expect(card).toContainText('Synthetic in-progress event');
+ await expect(card.locator('[data-alpha-home-calendar-next-line]')).toHaveCount(0);
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('In this app');
  await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
 });

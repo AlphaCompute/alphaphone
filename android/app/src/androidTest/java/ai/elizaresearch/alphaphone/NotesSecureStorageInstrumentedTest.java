@@ -74,4 +74,59 @@ public final class NotesSecureStorageInstrumentedTest {
   }
  }
 
+ /**
+  * The same legacy-layout migration across a real process restart (an upgrade reaches the new
+  * build in a new process). scripts/test-native-restart.mjs notes-secure-migration passes
+  * notesSecureMigrationPhase=prepare (fresh install: install the legacy localStorage layout and
+  * empty the encrypted slot), force-stops the app, then verify (a new process migrates and the
+  * exact bytes are read back from the encrypted slot), then cleanup (the baseline is restored).
+  * The fixture state between phases is a test-owned file in the app's private files directory.
+  */
+ @Test public void secureMigrationProcessRestartPhase()throws Exception{
+  String phase=InstrumentationRegistry.getArguments().getString("notesSecureMigrationPhase");
+  org.junit.Assume.assumeTrue("Run by node scripts/test-native-restart.mjs notes-secure-migration","prepare".equals(phase)||"verify".equals(phase)||"cleanup".equals(phase));
+  File state=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getFilesDir(),"notes-secure-migration-fixture.json");
+  if("prepare".equals(phase)){
+   assertFalse("A previous migration fixture was not cleaned up",state.exists());
+   String marker="MIGRATION-"+UUID.randomUUID();
+   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+    AppNavigation.liveMode();js(AppNavigation.request("Notes"));until("window.__alphaTestNavigation?.status==='complete'");committed();
+    String baseline=NotesSecureFixture.read();
+    JSONObject original=new JSONObject(baseline),originalEnvelope=new JSONObject(original.getString("currentRaw"));
+    assertEquals("Fresh empty collection required",0,originalEnvelope.getJSONArray("records").length());
+    JSONObject archive=original.getJSONObject("archive");for(String name:new String[]{"v1","v2","daily"})assertTrue("No original archive may be replaced",archive.isNull(name));
+    JSONArray records=new JSONArray().put(new JSONObject().put("id",marker).put("kind","voice").put("title",marker).put("body","Exact transcript").put("audio",new JSONObject().put("audioId",marker+"-audio").put("noteId",marker).put("mimeType","audio/mp4")).put("custom",new JSONArray().put("retained").put(42)));
+    String legacyRaw=records.toString(),currentRaw=new JSONObject().put("version",2).put("collectionId",UUID.randomUUID().toString()).put("records",records).put("deleted",new JSONArray().put(new JSONObject().put("id",marker+"-deleted").put("revision","exact-prior-revision").put("operationId",marker+"-operation"))).toString();
+    // Recorded before any change, so cleanup can restore the baseline even if a later step fails.
+    Files.write(state.toPath(),new JSONObject().put("baseline",baseline).put("legacyRaw",legacyRaw).put("currentRaw",currentRaw).toString().getBytes(StandardCharsets.UTF_8));
+    JSONObject clear=new JSONObject().put("slot","notes-records:v1:device").put("expectedValue",baseline).put("value",JSONObject.NULL);assertEquals("saved",NotesSecureFixture.call("Capacitor.Plugins.AlphaConnection.secureCompareExchange("+clear+")").getString("status"));
+    js("localStorage.setItem('alphaphone:prototype:notes:v1',"+JSONObject.quote(legacyRaw)+");localStorage.setItem('alphaphone:notes:v2',"+JSONObject.quote(currentRaw)+")");
+    assertEquals("Legacy layout installed","true",js("localStorage.getItem('alphaphone:notes:v2')!==null&&localStorage.getItem('alphaphone:prototype:notes:v1')!==null"));
+   }
+   return;
+  }
+  // A prepare that failed before recording anything changed nothing, so there is nothing to restore.
+  if("cleanup".equals(phase)&&!state.isFile())return;
+  assertTrue("The prepare phase recorded its fixture",state.isFile());
+  JSONObject fixture=new JSONObject(new String(Files.readAllBytes(state.toPath()),StandardCharsets.UTF_8));
+  String baseline=fixture.getString("baseline"),legacyRaw=fixture.getString("legacyRaw"),currentRaw=fixture.getString("currentRaw");
+  try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
+   AppNavigation.liveMode();
+   if("verify".equals(phase)){
+    js(AppNavigation.request("Notes"));until("window.__alphaTestNavigation?.status==='complete'");committed();
+    JSONObject migrated=new JSONObject(NotesSecureFixture.read());
+    assertEquals("The current envelope migrated byte for byte",currentRaw,migrated.getString("currentRaw"));
+    assertEquals("The v1 archive holds the exact legacy bytes",legacyRaw,migrated.getJSONObject("archive").getString("v1"));
+    assertEquals("The v2 archive holds the exact current bytes",currentRaw,migrated.getJSONObject("archive").getString("v2"));
+    assertEquals("The legacy layout is removed after migration","true",js("localStorage.getItem('alphaphone:notes:v2')===null&&localStorage.getItem('alphaphone:prototype:notes:v1')===null"));
+    return;
+   }
+   // cleanup: restore the baseline, never overwriting an unrelated collection.
+   JSONObject r=NotesSecureFixture.call("Capacitor.Plugins.AlphaConnection.secureRead({slot:'notes-records:v1:device'})");String now=r.isNull("value")?null:r.getString("value");
+   if(now!=null&&!now.equals(baseline)){JSONObject owned=new JSONObject(now);assertEquals("Do not overwrite an unrelated collection",currentRaw,owned.getString("currentRaw"));}
+   if(!Objects.equals(now,baseline)){JSONObject restore=new JSONObject().put("slot","notes-records:v1:device").put("expectedValue",now==null?JSONObject.NULL:now).put("value",baseline);assertEquals("saved",NotesSecureFixture.call("Capacitor.Plugins.AlphaConnection.secureCompareExchange("+restore+")").getString("status"));}
+   js("(()=>{for(const [key,value] of [['alphaphone:prototype:notes:v1',"+JSONObject.quote(legacyRaw)+"],['alphaphone:notes:v2',"+JSONObject.quote(currentRaw)+"]])if(localStorage.getItem(key)===value)localStorage.removeItem(key);})()");
+   assertEquals(baseline,NotesSecureFixture.read());
+  }finally{if("cleanup".equals(phase))Files.deleteIfExists(state.toPath());}
+ }
 }

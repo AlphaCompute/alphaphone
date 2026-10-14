@@ -33,8 +33,7 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
   * then throws on the bridge thread, which ends the process. Such a call is rejected instead.
   */
  private void work(PluginCall call,Runnable task){
-  try{worker.execute(task);}
-  catch(RejectedExecutionException stopped){call.reject("Attachment service closed.");}
+  PluginWorkers.submit(worker,task,()->call.reject("Attachment service closed."));
  }
  private File folder(){File f=new File(getContext().getCacheDir(),"mail-attachments");if(!f.isDirectory()&&!f.mkdirs())throw new IllegalStateException();return f;}
  private static String hash(byte[] bytes)throws Exception{StringBuilder out=new StringBuilder();for(byte b:MessageDigest.getInstance("SHA-256").digest(bytes))out.append(String.format(Locale.ROOT,"%02x",b&255));return out.toString();}
@@ -102,15 +101,37 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
  private byte[] sourceBytes(Uri uri)throws Exception{try(InputStream in=getContext().getContentResolver().openInputStream(uri)){if(in==null)throw new IOException();return read(in);}}
  @PluginMethod public void retainSourceReference(PluginCall call){int token=generation.get();work(call,()->{try{
   Uri uri=SelectedDocumentAccess.resolve(call.getString("selectionId"));if(uri==null)throw new SecurityException();byte[] bytes=sourceBytes(uri);if(!hash(bytes).equals(call.getString("sha256"))||token!=generation.get())throw new SecurityException();JSObject result=new JSObject();
-  if(retainedSourceAccess(uri)&&uri.toString().length()<=4096){String reference="a1:"+hash(uri.toString().getBytes(StandardCharsets.UTF_8));android.content.SharedPreferences refs=getContext().getSharedPreferences("note-source-references",0);if(refs.contains(reference)||refs.getAll().size()<128){if(!refs.edit().putString(reference,uri.toString()).commit())throw new IOException();result.put("reference",reference);}}
+  if(retainedSourceAccess(uri)&&uri.toString().length()<=4096){String reference="a1:"+hash(uri.toString().getBytes(StandardCharsets.UTF_8));android.content.SharedPreferences refs=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0);if(refs.contains(reference)||refs.getAll().size()<NoteSourceReferences.LIMIT){if(!getContext().getSharedPreferences(NoteSourceReferences.RETAINED_PREFERENCES,0).edit().putLong(reference,System.currentTimeMillis()).commit()||!refs.edit().putString(reference,uri.toString()).commit())throw new IOException();result.put("reference",reference);}}
   call.resolve(result);
  }catch(Exception error){call.reject("Source changed or reference storage is unavailable. Select the source again.");}});}
  @PluginMethod public void openSourceReference(PluginCall call){int token=generation.get();work(call,()->{try{
-  String reference=call.getString("reference");if(reference==null||!reference.matches("a1:[a-f0-9]{64}"))throw new SecurityException();String stored=getContext().getSharedPreferences("note-source-references",0).getString(reference,null);if(stored==null)throw new IOException();Uri uri=Uri.parse(stored);if(!"content".equals(uri.getScheme())||!retainedSourceAccess(uri))throw new SecurityException();
+  String reference=call.getString("reference");if(reference==null||!reference.matches("a1:[a-f0-9]{64}"))throw new SecurityException();String stored=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0).getString(reference,null);if(stored==null)throw new IOException();Uri uri=Uri.parse(stored);if(!"content".equals(uri.getScheme())||!retainedSourceAccess(uri))throw new SecurityException();
   String name;try(android.database.Cursor row=getContext().getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(row==null||!row.moveToFirst())throw new IOException();name=row.getString(0);}String mime=getContext().getContentResolver().getType(uri);byte[] bytes=sourceBytes(uri);validate(name,mime,bytes);
   if(token!=generation.get()||!hash(bytes).equals(call.getString("sha256"))||bytes.length!=call.getInt("size",-1)||!mime.equals(call.getString("mimeType")))throw new SecurityException();
   call.getData().put("name",name);call.getData().put("dataBase64",android.util.Base64.encodeToString(bytes,android.util.Base64.NO_WRAP));call.getData().put("reviewed",true);openReviewedAt(call,token);
  }catch(Exception error){call.reject("Linked source changed or access is unavailable. Choose the matching source again.");}});}
+ /**
+  * Notes reconcile their source links: keep lists every a1: reference a saved or restorable (Trash)
+  * note still names. Other references are removed, and the persisted grant of a document that no
+  * reference and no picker selection names any more is released (NoteSourceReferences).
+  */
+ @PluginMethod public void releaseSourceReferences(PluginCall call){
+  final Set<String> keep=new HashSet<>();
+  try{org.json.JSONArray values=call.getArray("keep");if(values==null||values.length()>20000)throw new IllegalArgumentException();for(int i=0;i<values.length();i++){String value=values.getString(i);if(!NoteSourceReferences.valid(value))throw new IllegalArgumentException();keep.add(value);}}
+  catch(Exception invalid){call.reject("Note source references could not be reconciled.");return;}
+  PluginWorkers.submit(worker,()->{try{
+   android.content.SharedPreferences refs=getContext().getSharedPreferences(NoteSourceReferences.PREFERENCES,0),times=getContext().getSharedPreferences(NoteSourceReferences.RETAINED_PREFERENCES,0);
+   Map<String,?> all=refs.getAll();long now=System.currentTimeMillis();
+   // A reference without a usable retain time starts its grace period now instead of being pruned.
+   List<String> seed=NoteSourceReferences.unseeded(all,times.getAll(),now);
+   if(!seed.isEmpty()){android.content.SharedPreferences.Editor edit=times.edit();for(String key:seed)edit.putLong(key,now);if(!edit.commit())throw new IOException();}
+   List<String> drop=NoteSourceReferences.unreferenced(all,keep,times.getAll(),now);int released=0;
+   if(!drop.isEmpty()){android.content.SharedPreferences.Editor edit=refs.edit();for(String key:drop)edit.remove(key);if(!edit.commit())throw new IOException();}
+   {android.content.SharedPreferences.Editor edit=times.edit();boolean stale=false;for(String key:times.getAll().keySet())if(!refs.contains(key)){edit.remove(key);stale=true;}if(stale)edit.commit();}
+   for(String uri:NoteSourceReferences.orphaned(all,drop))if(SelectedDocumentAccess.releaseUnreferenced(getContext(),Uri.parse(uri)))released++;
+   JSObject result=new JSObject();result.put("removed",drop.size());result.put("released",released);result.put("remaining",refs.getAll().size());call.resolve(result);
+  }catch(Exception error){call.reject("Note source references could not be reconciled.");}},()->call.reject("Attachment service closed."));
+ }
  private JSObject saveResult(String status,String message){JSObject result=new JSObject();result.put("status",status);result.put("message",message);return result;}
  private byte[] reviewedBytes(PluginCall call)throws Exception{
   String encoded=call.getString("dataBase64");if(encoded==null||encoded.length()>7*1024*1024||!Boolean.TRUE.equals(call.getBoolean("reviewed")))throw new IllegalArgumentException();
@@ -118,24 +139,24 @@ public final class AlphaMailAttachmentsPlugin extends Plugin {
  }
  @PluginMethod public void saveReviewed(PluginCall call){
   if(!saving.compareAndSet(false,true)){call.reject("An attachment save is already pending.");return;}int token=generation.get();
-  try{worker.execute(()->{try{reviewedBytes(call);main.post(()->{
+  PluginWorkers.submit(worker,()->{try{reviewedBytes(call);main.post(()->{
    try{if(token!=generation.get()||getActivity()==null||!getActivity().hasWindowFocus())throw new CancellationException();exports.put(call,token);
     Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType(Boolean.TRUE.equals(call.getBoolean("opaque"))?opaqueMime(call.getString("mimeType")):call.getString("mimeType")).putExtra(Intent.EXTRA_TITLE,call.getString("name")).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
     startActivityForResult(call,intent,"savedReviewed");
    }catch(Exception error){exports.remove(call);saving.set(false);call.resolve(saveResult("cancelled","Save destination unavailable or review closed."));}
-  });}catch(Exception error){saving.set(false);call.reject("Review valid attachment bytes before saving.");}});}catch(RejectedExecutionException error){saving.set(false);call.reject("Attachment service closed.");}
+  });}catch(Exception error){saving.set(false);call.reject("Review valid attachment bytes before saving.");}},()->{saving.set(false);call.reject("Attachment service closed.");});
  }
  @ActivityCallback private void savedReviewed(PluginCall call,ActivityResult response){
   if(call==null){exports.clear();saving.set(false);return;}Integer token=exports.remove(call);
   if(response.getResultCode()!=Activity.RESULT_OK||response.getData()==null){saving.set(false);call.resolve(saveResult("cancelled","Save cancelled."));return;}
   Uri uri=response.getData().getData();
   if(token==null||token!=generation.get()||uri==null||!"content".equals(uri.getScheme())){saving.set(false);call.resolve(saveResult("unverified","Review closed or destination unavailable. Inspect the chosen destination before retrying."));return;}
-  try{worker.execute(()->{boolean opened=false;try{
+  PluginWorkers.submit(worker,()->{boolean opened=false;try{
    byte[] bytes=reviewedBytes(call);if(token!=generation.get())throw new CancellationException();
    try(OutputStream out=getContext().getContentResolver().openOutputStream(uri,"wt")){if(out==null)throw new IOException();opened=true;if(token!=generation.get())throw new CancellationException();out.write(bytes);out.flush();}
    try(InputStream in=getContext().getContentResolver().openInputStream(uri)){DocumentExportBytes.verify(in,bytes);}
    if(token!=generation.get())throw new CancellationException();call.resolve(saveResult("saved","Saved to the chosen destination. Exact bytes verified."));
-  }catch(Exception error){call.resolve(saveResult("unverified",opened?"The destination may contain some or all bytes. Inspect it before retrying.":"Save not confirmed. Inspect the chosen destination before retrying."));}finally{saving.set(false);}});}catch(RejectedExecutionException error){saving.set(false);call.resolve(saveResult("unverified","Attachment service closed. Inspect the chosen destination."));}
+  }catch(Exception error){call.resolve(saveResult("unverified",opened?"The destination may contain some or all bytes. Inspect it before retrying.":"Save not confirmed. Inspect the chosen destination before retrying."));}finally{saving.set(false);}},()->{saving.set(false);call.resolve(saveResult("unverified","Attachment service closed. Inspect the chosen destination."));});
  }
  @Override public void load(){cleanup();}
  @Override protected void handleOnDestroy(){generation.incrementAndGet();cancelPhotoReads();main.removeCallbacksAndMessages(null);try{cleanup();}catch(RuntimeException unavailable){/* load() removes leftovers on the next start. */}worker.shutdown();super.handleOnDestroy();}

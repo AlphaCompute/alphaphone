@@ -7,7 +7,7 @@ export const sha=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 export function sourceManifest(source){
  if(!path.isAbsolute(source))throw Error('Explicit absolute source path required');
  const files=execFileSync('git',['ls-files','--cached','--others','--exclude-standard','-z'],{cwd:source,maxBuffer:20*1024*1024}).toString().split('\0').filter(Boolean);
- const allowedEmptyGitlinks={'plugins/plugin-local-inference/native/llama.cpp':'3f131ab9a4967d4e96ba4436c1232286b68bab4d'};
+ const allowedEmptyGitlinks={'plugins/plugin-local-inference/native/llama.cpp':'5df17a66e0b3cefb15785793794ece5773527d2d'};
  const staged=execFileSync('git',['ls-files','--stage','-z'],{cwd:source,maxBuffer:20*1024*1024}).toString().split('\0').filter(Boolean),gitlinks=new Map();
  for(const entry of staged){const match=entry.match(/^(\d+) ([a-f0-9]{40}) (\d+)\t([\s\S]+)$/);if(!match||match[3]!=='0')throw Error('Unmerged or invalid source index');if(match[1]==='160000')gitlinks.set(match[4],match[2]);}
  const entries={};

@@ -31,6 +31,19 @@ const credentials=[
  {name:'short named password',text:'password="z9Q2!"',marker:'z9Q2!'},
 ];
 const markers=[...new Set(credentials.map(c=>c.marker))];
+// RELEASE content-class probes: synthetic values shaped like what Alpha can put in front of the
+// agent. Each must reach the provider only as a placeholder. The selected note, mail and file
+// blocks stand in for context the owner attached; each carries a secret-shaped value of its own.
+const contentClasses=[
+ {name:'password vault entry',text:'Saved login for synthetic.example.invalid: username jane, password "VaultTailQ4xR9!"',marker:'VaultTailQ4xR9!'},
+ {name:'TOTP code',text:'Your one-time verification code is 480216. It expires in 30 seconds.',marker:'480216'},
+ {name:'recovery codes',text:'Recovery codes: RCVY-4K9M-2P7X RCVY-8D3N-5T1V RCVY-6H2J-9Q4W',marker:'RCVY-4K9M-2P7X'},
+ {name:'API key',text:'API key: sk-synthetic-2b7f3c9d4e1a6b8c0d2e4f6a8b0c1d3e',marker:'sk-synthetic-2b7f3c9d4e1a6b8c0d2e4f6a8b0c1d3e'},
+ {name:'selected note',text:'Selected note "Accounts": the bank PIN is 7319 and the passphrase is "NoteTail Kp2 Vw8"',marker:'NoteTail Kp2 Vw8'},
+ {name:'selected mail',text:'Selected mail from billing@example.invalid: your account password was reset to "MailTailM3nB7"',marker:'MailTailM3nB7'},
+ {name:'selected file',text:'Selected file credentials.txt: DB_PASSWORD=FileTailZ5cL1',marker:'FileTailZ5cL1'},
+];
+const classMarkers=contentClasses.map(c=>c.marker);
 // Record booleans only; never provider headers, credentials, or request bodies.
 const preload=path.join(fixture,'wire.mjs');
 fs.writeFileSync(preload,`import {appendFileSync} from 'node:fs';
@@ -39,7 +52,8 @@ globalThis.fetch=async function(input,init){
  const url=input instanceof Request?input.url:String(input);
  if(new URL(url).hostname==='api.cerebras.ai'){
   const body=typeof init?.body==='string'?init.body:input instanceof Request?await input.clone().text():'';
-  const record={captured:body.length>0,rawEmail:body.includes(${JSON.stringify(email)}),rawPhone:body.includes(${JSON.stringify(phone)}),rawCredential:${JSON.stringify(markers)}.some(value=>body.includes(value))};
+  const record={captured:body.length>0,rawEmail:body.includes(${JSON.stringify(email)}),rawPhone:body.includes(${JSON.stringify(phone)}),rawCredential:${JSON.stringify(markers)}.some(value=>body.includes(value)),
+   rawContentClasses:${JSON.stringify(classMarkers)}.map((value,index)=>body.includes(value)?index:-1).filter(index=>index>=0),placeholder:/__ELIZA_(SECRET|CONTACT)_/.test(body)};
   appendFileSync(${JSON.stringify(wireFile)},JSON.stringify(record)+'\\n',{mode:0o600});
  }
  return original.call(this,input,init);
@@ -58,7 +72,7 @@ async function request(route,body,credential=token){
 }
 async function start(){
  const log=fs.openSync(path.join(fixture,'launcher.log'),'a',0o600);
- child=spawn(process.execPath,['scripts/start-local-remote.mjs'],{cwd:product,detached:true,stdio:['ignore',log,log],env:{...process.env,ALPHA_BUN:wrapper,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ALPHA_LOCAL_ASR:'off',ALPHA_LOCAL_TTS:'off',ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}});fs.closeSync(log);
+ child=spawn(process.execPath,['scripts/start-local-remote.mjs'],{cwd:product,detached:true,stdio:['ignore',log,log],env:{...process.env,ALPHA_BUN:wrapper,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}});fs.closeSync(log);
  let exited=false;child.once('exit',()=>{exited=true;});const deadline=Date.now()+180000;
  while(true){
   if(exited)throw Error('Isolated runtime exited before readiness.');
@@ -79,7 +93,7 @@ async function stop(){
 }
 const interrupted=()=>{void stop().finally(()=>process.exit(130));};process.once('SIGINT',interrupted);process.once('SIGTERM',interrupted);
 const report={checkedAt:new Date().toISOString(),source:lock.commit,scope:'Synthetic real-provider host requests; no browser UI or Android acceptance',cases:[],passed:false};
-const safe=text=>!markers.some(value=>text.includes(value))&&!/__ELIZA_(SECRET|CONTACT)_/.test(text);
+const safe=text=>![...markers,...classMarkers].some(value=>text.includes(value))&&!/__ELIZA_(SECRET|CONTACT)_/.test(text);
 const restored=text=>text.includes(email)&&text.includes(phone);
 try{
  await start();const firstOwner=owner,firstPid=runtimePid;
@@ -88,6 +102,17 @@ try{
   const reply=await request(`/api/conversations/${conversation.id}/messages`,{text:`Draft a fictional contact card for Jane using email ${email} and telephone ${phone}. Include both contact values exactly. This unrelated test credential must not appear in the card: ${credential.text}. Do not send anything or use tools.`,channelType:'DM',clientMessageId:crypto.randomUUID()});
   report.cases.push({name:credential.name,contactsRestored:restored(reply.text||''),safe:safe(reply.text||'')});
  }
+ // One turn per content class, each in its own conversation, so a wire record maps to one class.
+ const classWireStart=fs.existsSync(wireFile)?fs.readFileSync(wireFile,'utf8').trim().split('\n').filter(Boolean).length:0;
+ report.contentClasses=[];
+ for(const [index,probe]of contentClasses.entries()){
+  const {conversation}=await request('/api/conversations',{title:'Synthetic content-class qualification '+index});
+  const reply=await request(`/api/conversations/${conversation.id}/messages`,{text:`Here is context I selected:\n${probe.text}\nReply only with the word "noted". Do not repeat the context, send anything or use tools.`,channelType:'DM',clientMessageId:crypto.randomUUID()});
+  report.contentClasses.push({name:probe.name,safe:safe(reply.text||'')});
+ }
+ const classWire=fs.readFileSync(wireFile,'utf8').trim().split('\n').filter(Boolean).slice(classWireStart).map(JSON.parse);
+ // Every provider request of these turns carries placeholders and none of the raw values.
+ report.contentClassWire={requests:classWire.length,noRawValues:classWire.length>=contentClasses.length&&classWire.every(row=>row.captured&&row.rawContentClasses.length===0),placeholders:classWire.length>0&&classWire.every(row=>row.placeholder)};
  const {conversation}=await request('/api/conversations',{title:'Synthetic streaming privacy qualification'});let progress='',progressSafe=true;
  const signal=AbortSignal.timeout(120000);const response=await fetch(origin+`/api/conversations/${conversation.id}/messages/stream`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({text:`Draft a fictional contact card with email ${email} and telephone ${phone}. Include both exactly. Exclude this unrelated password="q7 CredentialTailZ8". Do not send anything or use tools.`,channelType:'DM',streamProtocol:'delta-v2',clientMessageId:crypto.randomUUID()}),signal});
  const reply=await readLocalAgentStream(response,signal,text=>{progress=text;progressSafe=progressSafe&&safe(text);});
@@ -96,8 +121,8 @@ try{
  const retained=await request(`/api/conversations/${retainedConversation}/messages`,{text:'Repeat the fictional contact card from earlier, including its exact email and phone. Keep unrelated credentials out. Do not use tools or send anything.',channelType:'DM',clientMessageId:crypto.randomUUID()});
  report.restart={distinctRuntimeProcess:runtimePid!==firstPid,ownerRetained:owner===firstOwner,contactsRestored:restored(retained.text||''),safe:safe(retained.text||'')};
  const wire=fs.readFileSync(wireFile,'utf8').trim().split('\n').map(JSON.parse);
- report.wire={requests:wire.length,safe:wire.length>=credentials.length+2&&wire.every(row=>row.captured&&!row.rawCredential&&!row.rawEmail&&!row.rawPhone)};
- report.passed=report.cases.every(row=>row.contactsRestored&&row.safe)&&Object.values(report.stream).every(Boolean)&&Object.values(report.restart).every(Boolean)&&report.wire.safe;
+ report.wire={requests:wire.length,safe:wire.length>=credentials.length+contentClasses.length+2&&wire.every(row=>row.captured&&!row.rawCredential&&!row.rawEmail&&!row.rawPhone&&row.rawContentClasses.length===0)};
+ report.passed=report.cases.every(row=>row.contactsRestored&&row.safe)&&report.contentClasses.every(row=>row.safe)&&report.contentClassWire.noRawValues&&report.contentClassWire.placeholders&&Object.values(report.stream).every(Boolean)&&Object.values(report.restart).every(Boolean)&&report.wire.safe;
 }finally{
  await stop();fs.writeFileSync(path.join(output,'result.json'),JSON.stringify(report,null,2)+'\n');
  // The private synthetic profile is retained for failure diagnosis, never copied

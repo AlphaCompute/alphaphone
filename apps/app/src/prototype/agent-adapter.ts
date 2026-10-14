@@ -48,7 +48,7 @@ import { DailyApps } from '../daily';
 import { isAndroid } from '../native';
 import { registerPlugin } from '../platform-plugins';
 import { SystemBars, SystemBarsStyle } from '@capacitor/core';
-import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE } from '../runtime/connection-ui';
+import { connectionController, STOPPED_REPLY_NOTICE, STOPPED_CANCELLED_NOTICE, STOPPED_CONFIRMED_NOTICE, INFERENCE_OFFLINE_NOTICE, RESIDENT_STARTING_NOTICE, RESIDENT_RECOVERING_NOTICE, NO_REMOTE_SEND, NO_REMOTE_VOICE, residentAlwaysPresent, agentPendingText } from '../runtime/connection-ui';
 import { broaderPageNotice, honestTiles, handoffGate, watchReturnToApp, tileFactsFromSnapshot, tileSettingsPages, type TileFacts, type TileKey } from './native-adapter';
 const alphaDevice = registerPlugin<{ snapshot(): Promise<Record<string, unknown>>; openSettings(input: { page: string }): Promise<{ status: string; specific?: boolean }> }>('AlphaDevice');
 const elizaSystem = registerPlugin<{ setFlashlight(input: { enabled: boolean }): Promise<{ available: boolean; enabled: boolean }> }>('ElizaSystem');
@@ -61,7 +61,7 @@ type SendAttempt={transportCalled:boolean;preDispatch:boolean;streamed:boolean;s
 /** Refused before any request carrying the message could leave this phone. */
 class NotDispatched extends Error {}
 // connectionController.send refuses these before creating a conversation or posting the message.
-const preDispatchRefusals=new Set(['Finish the connection or history operation before sending.','Wait for the current reply before sending another message.','Connect an agent in Settings to send a message.']);
+const preDispatchRefusals=new Set(['Finish the connection or history operation before sending.','Wait for the current reply before sending another message.',NO_REMOTE_SEND,RESIDENT_STARTING_NOTICE,RESIDENT_RECOVERING_NOTICE]);
 // It also marks every failure that happened before it posted the message (`notDispatched`).
 function isPreDispatchError(error:unknown){return !!error&&typeof error==='object'&&((error as {notDispatched?:unknown}).notDispatched===true||error instanceof Error&&(preDispatchRefusals.has(error.message)||(error as {code?:unknown}).code==='session_expired'));}
 function dispatched(attempt:SendAttempt,error:unknown){return !(error instanceof NotDispatched)&&(attempt.streamed||attempt.transportCalled&&!attempt.preDispatch);}
@@ -446,6 +446,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         if (this.live) this.setState({ msgs: history.messages.map(message => ({ ...message, messageBinding:{conversationId:history.conversationId,session:connectionController.getSnapshot().session}, card: null })), typing: false, ...(history.automatic?{}:{draft:'',chat:'full'}) });
       }
       syncStoppedReplyNotice(this,session!==undefined&&history?.sessionId===session?history:null);
+      const offline=!!connectionController.getSnapshot().inferenceOffline;
+      if(offline!==!!this.inferenceOffline){this.inferenceOffline=offline;if(this.live)this.setState({});}
       if (this.live) {context(this);this.refreshDraftBinding();}
     });
     this.notesStorageFailed = true;
@@ -494,10 +496,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]:not([data-alpha-layer="drawer"])')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
       if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
-      connectionController.cancelViewNavigation();alphaClient.cancel(); this.back();
+      // Back that only collapses the chat or a sheet keeps a reply streaming; it arrives in the
+      // transcript. Back that changes the view retires the request through the view context, which
+      // the connection reports with the Stop reconciliation (one cancel, one later history check).
+      connectionController.cancelViewNavigation(); this.back();
     };
     window.addEventListener('alpha-back', this.backHandler);
-    this.homeHandler = () => { connectionController.cancelViewNavigation();alphaClient.cancel(); this.goHome(); };
+    // HOME behaves the same way: from Home itself only the chat collapses; from another app the view
+    // change is an explicit Stop with its reconciliation statement. Nothing is resent.
+    this.homeHandler = () => { connectionController.cancelViewNavigation(); this.goHome(); };
     window.addEventListener('launcher-home', this.homeHandler);
     this.selectionHandler = (event: CustomEvent) => { this.selectedContext = event.detail; context(this); };
     window.addEventListener('alpha-selected-context', this.selectionHandler);
@@ -519,6 +526,15 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           execute: ({ proposal, context, signal }) => connectionController.execute(proposal, context, signal),
         }, connection.kind === 'local' ? { developmentOrigin: connection.session.origin } : {});
         return;
+      }
+      // P-43: where the resident is always present, a send before it has a session waits for the
+      // start already in progress and then says it is starting (or recovering); nothing is sent and
+      // no chooser opens.
+      if (residentAlwaysPresent) {
+        await connectionController.initialize().catch(() => {});
+        const after = connectionController.getSnapshot();
+        if (after.session) return this.connectAgent();
+        throw Object.assign(new Error(after.kind === 'recovering' ? RESIDENT_RECOVERING_NOTICE : RESIDENT_STARTING_NOTICE), { notDispatched: true });
       }
       // An explicit offline choice never falls through to an old development
       // credential that may still be installed on a test device. Without a
@@ -934,7 +950,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const draft=this.composerDraft?.state;
     out.draftRecovery=!!draft?.error&&!!this.composerDraft?.recovery();
     out.recoverDraft=()=>{const recovery=this.composerDraft?.recovery();if(!recovery)return;this.draftRecoveryAbort?.abort();const controller=this.draftRecoveryAbort=new AbortController();openDomainRecovery({capture:async signal=>{const captured=await recovery.capture(signal);return {...captured,raw:JSON.stringify({saved:captured.raw,currentDraft:String(this.S().draft||'')})};},reset:recovery.reset},'assistant draft','Assistant draft recovery','Download the saved bytes and current text before resetting this conversation’s draft. Reset does not delete messages or send anything. Reloading discards the current unsaved text.',controller.signal,undefined,Capacitor.getPlatform()==='android'?'device':'browser');};
-    out.draftRetry=!!draft?.error;out.draftStatus=draft?.message||'';out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
+    // The resident's hosted inference needs a network; local apps keep working without one.
+    const connection=connectionController.getSnapshot(),offline=connection.inferenceOffline&&connection.kind==='resident'&&!!connection.session;
+    // P-43: before the resident has a session the composer says it is starting or recovering.
+    const residentPending=residentAlwaysPresent&&!connection.session?agentPendingText(connection):'';
+    out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:'',residentPending].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
     out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
     out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
     out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
@@ -1014,7 +1034,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.voiceConversationCurrent = function(prepared:{binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope}){return !alphaClient.getState().context.sensitive&&connectionController.voiceConversationCurrent(prepared.binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(prepared.context);};
   p.voiceConversationContext = function(binding:import('../runtime/alpha-client').VoiceConversationBinding){const value=alphaClient.getState().context;if(!this.live||document.hidden||value.sensitive||!connectionController.voiceConversationCurrent(binding))throw Error('The voice conversation changed.');return value;};
   p.prepareVoiceConversation = async function(signal:AbortSignal){
-    if(!connectionController.getSnapshot().session)throw Error('Connect an agent in Settings to start a voice conversation.');
+    if(!connectionController.getSnapshot().session)throw Error(residentAlwaysPresent?(connectionController.getSnapshot().kind==='recovering'?RESIDENT_RECOVERING_NOTICE:RESIDENT_STARTING_NOTICE):NO_REMOTE_VOICE);
     signal.throwIfAborted();context(this);if(alphaClient.getState().context.sensitive)throw Error('Return to Home or another app before starting voice.');const expected=JSON.stringify(alphaClient.getState().context);
     const binding=await connectionController.prepareVoiceConversation(signal);signal.throwIfAborted();
     await this.draftBindingTask;signal.throwIfAborted();context(this);
@@ -1120,7 +1140,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       await transportSettled(attempt);
       if(!dispatched(attempt,e)){
         // Nothing reached the agent: put the text back and drop the unsent bubble. Never resend.
-        if(this.live){this.setState((previous:Shell)=>({msgs:previous.msgs.filter((item:Shell)=>item.id!==userId)}));this.composerDraft?.release();if(reviewedSource&&!this.reviewedSourceDraft)this.reviewedSourceDraft=reviewedSource;this.toast(e instanceof NotDispatched?message:e instanceof AlphaClientError&&['unconfigured','sensitive','busy'].includes(e.code)?'Not sent. '+message:'Not sent. Your message is back in the composer.');}
+        if(this.live){this.setState((previous:Shell)=>({msgs:previous.msgs.filter((item:Shell)=>item.id!==userId)}));this.composerDraft?.release();if(reviewedSource&&!this.reviewedSourceDraft)this.reviewedSourceDraft=reviewedSource;this.toast(e instanceof NotDispatched?message:e instanceof AlphaClientError&&(['unconfigured','sensitive','busy'].includes(e.code)||(e as {refusedBeforeTurn?:unknown}).refusedBeforeTurn===true)?'Not sent. '+message:'Not sent. Your message is back in the composer.');}
         else this.composerDraft?.release();
       }else{
         await this.composerDraft?.commit();
@@ -1129,6 +1149,18 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         // The owner changed mid-turn: say it was interrupted, but never show the previous agent's partial
         // reply or offer a history check that could only read a different agent.
         if(this.live&&!sameChat())this.setState((previous:Shell)=>({...(!opened?{chat:previous.chat==='full'?'full':'sheet'}:{}),msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message+' Your message may have reached the previous agent connection. Check its saved conversations before sending it again.',card:null,interrupted:true}]}));
+        else if(this.live&&e instanceof AlphaClientError&&typeof (e as {failureKind?:unknown}).failureKind==='string'){
+          // The agent recorded the turn and reported why it failed: say so and offer the next step.
+          // Nothing is resent, so no history check is offered.
+          // A provider-less turn of the on-device agent (no plan, offline, signed out) carries the
+          // honest in-conversation answer and its plan action (Redeem / Choose a plan, Sign in, Check again).
+          const planCard=planActionCard((e as {planAction?:unknown}).planAction);
+          if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\n${message}`,...(planCard?{card:planCard}:{})}:item)}));
+          else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:planCard??null,interrupted:true}]}));
+          const limit=(e as {serviceLimit?:unknown}).serviceLimit;
+          // A plan or billing refusal offers Cloud's plan page only; nothing is bought or upgraded here.
+          if((limit==='billing-refused'||limit==='subscription-required'||limit==='allowance-exhausted')&&connectionController.getSnapshot().kind==='resident')this.agentSay('Your Eliza Cloud plan needs attention before your agent can answer.',{type:'generic',icon:'info',title:'Manage plan in Eliza Cloud',sub:'Opens Eliza Cloud plan settings in your browser. Nothing is sent or purchased.',managePlan:true});
+        }
         else if(this.live&&reconciling){if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nStopped.`}:item)}));}
         else if (this.live) {
           // The agent may have received this message. Offer a history check, never a blind resend.
@@ -1154,7 +1186,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       return { chat, msgs: [...(previous.msgs || []), { id: crypto.randomUUID(), ...identity, from: 'agent', text, card: card || null }] };
     });
   };
-  p.reply = function () { return { text: 'Connect an agent to continue.' }; };
+  p.reply = function () { return { text: agentPendingText() }; };
   p.declineCard = async function (message: Shell) {
     const card = message.card || {};
     if(!card.proposalId||card.done||this.pendingActionApproval||this.decliningProposal)return;
@@ -1170,6 +1202,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.cardAct = async function (message: Shell) {
     const card = message.card || {};
     if(card.systemNotice)return;
+    if(card.managePlan){void connectionController.residentManagePlan();return;}
     // The running agent has no Eliza Cloud AI: open the plan panel (Redeem code, Choose a plan),
     // sign in, or check Cloud again. Nothing is purchased or sent from here.
     if(card.planAction){

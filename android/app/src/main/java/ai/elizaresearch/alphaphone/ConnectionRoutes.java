@@ -52,6 +52,25 @@ final class ConnectionRoutes {
   return path.matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")||java.util.Set.of("/api/v1/user","/api/v1/billing/limits","/api/v1/subscription/entitlement","/api/v1/subscription/entitlement-keys","/api/v1/eliza/google/accounts","/api/v1/eliza/google/status","/api/v1/eliza/google/calendar/calendars","/api/v1/eliza/google/calendar/feed","/api/v1/eliza/google/gmail/search","/api/v1/eliza/google/gmail/read").contains(path)||path.matches("/api/v1/eliza/google/gmail/inbox-v1/(capabilities|thread|attachment|drafts|draft)")||path.matches("/api/v1/eliza/google/gmail/inbox-v1/operations/[A-Za-z0-9_-]{1,160}");
  }
  /**
+  * Hosts openExternal may hand to the system browser. A flag-off renderer opens only Cloud sign-in
+  * (https://eliza.app/auth/cli-login), credit top-up and account management on
+  * https://cloud.eliza.app/cloud/billing, and Google's consent page for Gmail
+  * (https://accounts.google.com). Staging (staging.eliza.app, cloud-staging.eliza.app) and any other
+  * *.eliza.app host are admitted only in test-mocks builds. HTTPS on the default port only; the host
+  * is compared lower-cased and exactly, so a lookalike or trailing-dot spelling is refused.
+  */
+ static boolean externalHost(String scheme,String host,int port,boolean testMocks){
+  if(!"https".equals(scheme)||host==null||(port!=-1&&port!=443))return false;
+  String value=host.toLowerCase(java.util.Locale.ROOT);
+  if("eliza.app".equals(value)||"cloud.eliza.app".equals(value)||"accounts.google.com".equals(value))return true;
+  return testMocks&&value.matches("[a-z0-9-]+(\\.[a-z0-9-]+)*\\.eliza\\.app");
+ }
+ /** The Cloud sign-in page, whose return is a browser handoff rather than a fire-and-forget open. */
+ static boolean externalCliLogin(String host,String path,boolean testMocks){
+  String value=host==null?"":host.toLowerCase(java.util.Locale.ROOT);
+  return ("eliza.app".equals(value)||testMocks&&"staging.eliza.app".equals(value))&&"/auth/cli-login".equals(path);
+ }
+ /**
   * Request headers this transport forwards. Product builds talk only to the managed Cloud API, which
   * takes Accept, Content-Type and the sign-in Authorization. The device-identity, device-capability
   * and phone-protocol headers declare this phone to a hosted or paired agent runtime; the agent

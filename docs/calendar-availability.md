@@ -60,7 +60,7 @@ the renderer rejects any provider row that has a field other than `start`, `end`
 | --- | --- |
 | Executor and provider boundary | `apps/app/src/runtime/calendar-availability.ts` |
 | Review dialogs | `apps/app/src/prototype/calendar-availability-review.ts` |
-| Android provider read | `android/app/src/main/java/ai/elizaresearch/alphaphone/CalendarAvailabilityReader.java` |
+| Android provider read | Upstream `SelectedCalendarReader.availabilitySources` and `readAvailability` (`vendor/eliza/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/read/SelectedCalendarReader.java`, elizaOS/eliza#35911, at the pin); the time-zone check is Alpha's `CalendarZones.java`, and Alpha's `CalendarSyncFreshness.java` refuses a selection with any non-`LOCAL` calendar before the upstream read |
 | Android bridge methods | `availabilitySources` and `readAvailability` in `AlphaCalendarPlugin.java` |
 | Android journal policy | `CalendarAvailabilityJournalResult.java`, called from `AlphaActionJournal.java` |
 | Browser provider read | `apps/app/src/browser/calendar.ts` |
@@ -72,7 +72,8 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   the executor and the real `DeviceActions` client over a synthetic provider.
 - `test/browser/calendar-availability.spec.ts`: the renderer, review dialogs, journal
   orchestration and the browser in-app calendar, with synthetic agent routes.
-- `test/calendar-availability-reader.test.mjs` compiles the Android reader for the JVM and
+- `test/calendar-availability-reader.test.mjs` compiles the pinned upstream reader
+  (`SelectedCalendarReader`), Alpha's `CalendarZones`, `CalendarSyncFreshness` and the journal policy for the JVM and
   runs `test/fixtures/CalendarAvailabilityReaderTest.java`. The reader's exact projection,
   selection and sort order are executed by the `sqlite3` shell over tables that use
   CalendarProvider's column names, in five time zones from UTC-11 to UTC+14. The rows
@@ -83,14 +84,16 @@ the renderer rejects any provider row that has a field other than `start`, `end`
   changed window and an answer on a failed check are refused. The Keystore-backed journal
   itself is not exercised.
 - `CalendarAvailabilityInstrumentedTest`: the Android reader against the device
-  CalendarProvider with calendars the test creates. It needs calendar permission from
-  the runner. It has been compiled but never run.
+  CalendarProvider with calendars the test creates. `scripts/test-calendar-regression.mjs --case=CalendarAvailabilityInstrumentedTest` grants
+  the calendar permissions. It passed 4 of 4 on both flavors at `2961bd9e` (pin `13c9857598`),
+  class E on developer APKs ([verification](verification.md)).
 
 ## Still open
 
-- The Android path has not been run on an emulator or device in this change: the
-  permission dialog, the review inside the Android WebView, synced accounts, a declined
-  invitation and a mid-review time-zone change are unverified.
+- The Android reader ran on an emulator (above). The permission dialog and the review inside
+  the Android WebView have no emulator test: the read is a device action an agent requests
+  over a negotiated connection, and a bundled APK has no agent session to script it. Synced
+  accounts, a declined invitation and a mid-review time-zone change are unverified.
 - The bridge methods ask for window focus, as the shared calendar reads do. Whether focus
   has returned by the time the calendars are listed, straight after the owner answers the
   first permission prompt, is unverified. The phone asks for the list again for about a
@@ -121,7 +124,8 @@ This does not establish remote sync freshness. The native source revision covers
 calendar identity/access metadata, and the final re-read detects changed local answers;
 neither proves that CalendarProvider has received the latest remote invitation or
 conflict update. Native availability now refuses any selected calendar whose account type is not
-Android's `LOCAL`, before querying event instances, with `freshness-unknown` and no
+Android's `LOCAL` (`CalendarSyncFreshness`, after the source-identity check and before the
+upstream reader queries event instances), with `freshness-unknown` and no
 intervals. A mixed selection also fails as a whole. Such calendars remain offered,
 including free/busy-only sources; choosing them produces unknown availability until
 remote freshness can be established. Local native and browser reads explicitly return

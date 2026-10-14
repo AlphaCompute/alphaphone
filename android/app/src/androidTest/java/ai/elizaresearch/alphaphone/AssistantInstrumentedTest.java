@@ -100,4 +100,70 @@ public class AssistantInstrumentedTest {
    AlphaLocalAgentPlugin.enrollForTest(null, null, null, 0);
   }
  }
+
+ /** Evaluate in the assistant surface's own WebView (WebViewTestDriver.evaluate reads MainActivity only). */
+ private static String evalAssist(String script) throws Exception {
+  java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+  java.util.concurrent.atomic.AtomicReference<String> answer = new java.util.concurrent.atomic.AtomicReference<>();
+  WebViewTestDriver.withActivity(AlphaAssistActivity.class, activity -> activity.getBridge().getWebView().evaluateJavascript(script, value -> { answer.set(value); done.countDown(); }));
+  assertTrue("Assistant WebView answered: " + script, done.await(8, java.util.concurrent.TimeUnit.SECONDS));
+  return answer.get();
+ }
+ private static void untilAssist(String condition, String message) throws Exception {
+  for (int i = 0; i < 200; i++) { if ("true".equals(evalAssist("!!(" + condition + ")"))) return; SystemClock.sleep(100); }
+  fail(message);
+ }
+ private static boolean assistIme() throws Exception {
+  java.util.concurrent.atomic.AtomicBoolean shown = new java.util.concurrent.atomic.AtomicBoolean();
+  WebViewTestDriver.withActivity(AlphaAssistActivity.class, activity -> {
+   androidx.core.view.WindowInsetsCompat insets = androidx.core.view.ViewCompat.getRootWindowInsets(activity.getWindow().getDecorView());
+   shown.set(insets != null && insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()));
+  });
+  return shown.get();
+ }
+ private static final String ASSIST_DRAFT = "Assistant keyboard draft 2291";
+ private static String fits() {
+  return "(()=>{const e=(" + AppNavigation.composer() + ");if(!e)return false;const r=e.getBoundingClientRect();const s=e.parentElement.querySelector('button[aria-label=Send]');if(!s)return false;const b=s.getBoundingClientRect();"
+   + "return r.top>=0&&r.bottom<=innerHeight+0.5&&r.width>100&&b.top>=0&&b.bottom<=innerHeight+0.5&&b.width>0;})()";
+ }
+
+ /** ACTION_ASSIST with the real soft keyboard: the full-mode composer and Send stay inside
+  * innerHeight once the ime() inset is visible; Back first dismisses the keyboard (the surface
+  * stays, the draft is kept), and only the Back at the assistant's root finishes the activity. The
+  * next ACTION_ASSIST reads the same persisted draft. Emulator evidence only. */
+ @Test public void assistantComposerFitsAboveTheKeyboardAndBackFinishesOnlyAtRoot() throws Exception {
+  Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
+  Intent assist = new Intent(context, AlphaAssistActivity.class).setAction(Intent.ACTION_ASSIST);
+  try (BoundedActivityScenario<AlphaAssistActivity> scenario = BoundedActivityScenario.launch(assist)) {
+   untilAssist("document.documentElement.dataset.activeView!==undefined&&" + AppNavigation.composer(), "The assistant surface shows a composer");
+   // Full mode: the assistant surface's chat at its largest size.
+   if ("true".equals(evalAssist("[...document.querySelectorAll('[data-alpha-layer=\"conversation\"] button')].some(b=>b.getAttribute('aria-label')==='Expand chat'&&b.getClientRects().length)")))
+    evalAssist("[...document.querySelectorAll('[data-alpha-layer=\"conversation\"] button')].find(b=>b.getAttribute('aria-label')==='Expand chat').click()");
+   untilAssist("![...document.querySelectorAll('[data-alpha-layer=\"conversation\"] button')].some(b=>b.getAttribute('aria-label')==='Expand chat'&&b.getClientRects().length)", "The assistant chat is in full mode");
+   evalAssist("(()=>{const e=(" + AppNavigation.composer() + ");e.focus();Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e," + org.json.JSONObject.quote(ASSIST_DRAFT) + ");e.dispatchEvent(new Event('input',{bubbles:true}));})()");
+   SystemClock.sleep(200);
+   WebViewTestDriver.withActivity(AlphaAssistActivity.class, activity -> {
+    android.view.inputmethod.InputMethodManager ime = (android.view.inputmethod.InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+    ime.showSoftInput(activity.getBridge().getWebView(), android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+   });
+   boolean keyboard = false;
+   for (int i = 0; i < 60 && !keyboard; i++) { keyboard = assistIme(); if (!keyboard) SystemClock.sleep(100); }
+   assertTrue("The WindowInsetsCompat ime() inset must be visible", keyboard);
+   untilAssist(fits(), "Composer and Send fit within innerHeight above the keyboard: " + evalAssist("JSON.stringify({innerHeight,viewport:visualViewport?.height})"));
+   WebViewTestDriver.pressBack();
+   boolean dismissed = false;
+   for (int i = 0; i < 60 && !dismissed; i++) { dismissed = !assistIme(); if (!dismissed) SystemClock.sleep(100); }
+   assertTrue("The first Back dismisses the keyboard", dismissed);
+   assertEquals("The assistant is not finished while the keyboard is dismissed", Lifecycle.State.RESUMED, scenario.getState());
+   untilAssist("(" + AppNavigation.composer() + ")?.value===" + org.json.JSONObject.quote(ASSIST_DRAFT), "The draft is kept after the keyboard closes");
+   WebViewTestDriver.pressBack();
+   for (int i = 0; i < 50 && scenario.getState() != Lifecycle.State.DESTROYED; i++) SystemClock.sleep(100);
+   assertEquals("Back at the assistant's root finishes it", Lifecycle.State.DESTROYED, scenario.getState());
+  }
+  try (BoundedActivityScenario<AlphaAssistActivity> again = BoundedActivityScenario.launch(assist)) {
+   untilAssist("(" + AppNavigation.composer() + ")?.value===" + org.json.JSONObject.quote(ASSIST_DRAFT), "The next ACTION_ASSIST reads the persisted draft");
+   WebViewTestDriver.withActivity(AlphaAssistActivity.class, android.app.Activity::finish);
+   for (int i = 0; i < 50 && again.getState() != Lifecycle.State.DESTROYED; i++) SystemClock.sleep(100);
+  }
+ }
 }

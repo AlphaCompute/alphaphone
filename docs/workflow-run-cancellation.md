@@ -44,7 +44,7 @@ an explicit usability limitation, not exactly-once execution.
   Smithers execution accepted and cancelled while an arithmetic-only module
   waits180seconds before running. The fixture is inactive. This proves worker
   cancellation, not completed-effect rollback or phone UI acceptance.
-- `WorkflowCancellationInstrumentedTest` (native gate `workflowCancellation=true`)
+- `WorkflowCancellationInstrumentedTest` (deleted in `8452394f`, round 9: its runner was gone and it could not run; historical) (native gate `workflowCancellation=true`)
   with its dedicated wrapper: archived matching app/test hashes, exact reviewed
   held arithmetic source, both variants, real Notes-independent Workflows UI.
   The wrapper additionally verified exactly one new server execution, matching
@@ -64,7 +64,9 @@ gaps.
 
 ## Reviewed submission contract (Build66 app, isolated47848 backend)
 
-`0004-reviewed-workflow-submissions.patch` advertises
+Upstream changes now arrive only through a reviewed pin move in `upstream.lock.json`; the product's `patches/eliza` series is historical: this repository retired it in `34b3c82a` (2026-10-03) and `55c2944f` (2026-10-04), and the last reference went in `530d3b26` (2026-10-10), each when the pinned upstream already carried the change.
+
+Historical: `0004-reviewed-workflow-submissions.patch` advertised
 `manualSubmissionProtocol: 1` in workflow status. Only then does the phone send
 `{submissionId, expectedVersionId, input:{}}` on manual run. The server locks the
 workflow row, rechecks ownership/version, and atomically inserts the execution
@@ -98,7 +100,7 @@ facade; the service principal-isolation fixture is not production multitenant
 login proof. Admission deduplication does not guarantee exactly-once external
 workflow effects.
 
-`WorkflowSubmissionInstrumentedTest` (`workflowSubmission=true`) and its
+`WorkflowSubmissionInstrumentedTest` (deleted in `8452394f`, round 9: its runner was gone and it could not run; historical) (`workflowSubmission=true`) and its
 dedicated wrapper (removed on October 8 with the aggregate smoke runners) were
 prepared for Build67. The wrapper created inactive arithmetic-only fixtures on47848 and a loopback47849
 proxy that drops each accepted run response. It requires genuine phone pairing,
@@ -117,7 +119,7 @@ evidence; it is not silently relabeled passed.
 
 ## Durable cancellation (isolated backend patch0005)
 
-`0005-durable-workflow-cancellation.patch`, applied after0004, writes
+Historical: `0005-durable-workflow-cancellation.patch`, applied after0004, wrote
 `cancellationRequestedAt` into the existing execution JSON inside a row-locked
 transaction **before** aborting the worker. Every execution save preserves this
 marker from the latest stored record; stale event snapshots cannot erase it or
@@ -156,7 +158,7 @@ Run and reconciliation themselves. The adapter HTTP fixture now mirrors the
 real controller by returning a fresh client on every lookup; old-server and
 new-server lost-response flows pass. Build67 remains failed native evidence.
 
-`0006-workflow-definite-admission-refusal.patch` adds one bounded typed409:
+Historical: `0006-workflow-definite-admission-refusal.patch` added one bounded typed409:
 `WORKFLOW_VERSION_NOT_ADMITTED`, carrying exact workflow, submission and expected
 version IDs. It is returned only after the admission transaction establishes
 that no prior submission exists and the reviewed version is stale. A reused

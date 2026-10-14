@@ -30,6 +30,17 @@ test('attention: stale and error states are explicit and still open Inbox for re
   assert.equal(H.presentHomeAttention({state: 'error'}, now).text, 'Inbox could not be checked');
   assert.equal(H.presentHomeAttention({state: 'loading', source: 'Gmail'}, now).count, '…');
 });
+test('attention: a stale inbox that was never read claims no count and no "when last read"', () => {
+  for (const unread of [0, undefined]) {
+    const card = H.presentHomeAttention({state: 'stale', unread, source: 'Gmail', updatedAt: null}, now);
+    assert.equal(card.count, '—');
+    assert.equal(card.text, 'Not updated recently');
+    assert.equal(card.label, 'Open Inbox: Gmail has not updated');
+    assert.doesNotMatch(card.label, /when last read|unread/);
+  }
+  // With a completed read the last count and its time are named.
+  assert.equal(H.presentHomeAttention({state: 'stale', unread: 0, source: 'Gmail', updatedAt: at(8, 15)}, now).label, 'Open Inbox: Gmail has not updated since 8:15 AM; 0 unread emails when last read');
+});
 test('brief: latest retained digest shows its summary, run time and agent; otherwise "No brief yet"', () => {
   assert.deepEqual(H.presentHomeBrief(null, now), {title: 'No brief yet', time: 'Workflows', source: '', label: 'Open workflows', has: false});
   assert.equal(H.presentHomeBrief({summary: '', ranAt: at(7), agent: 'Alpha', status: 'succeeded'}, now).title, 'No brief yet');
@@ -134,6 +145,20 @@ test('calendar source: names where and when the item was read; no time is claime
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 3), '3 overdue reminders');
   assert.equal(H.overdueDueLabel(at(9), now), 'Due 9:00 AM');
   assert.equal(H.overdueDueLabel(at(9, 0, 5), now), 'Due Mon, Oct 5 9:00 AM');
+});
+test('next item: an overdue reminder does not hide the next event, which keeps its own source', () => {
+  const provenance = H.presentHomeCalendarSource({state: 'ready', overdue: false, readAt: at(15, 4), now, native: true, calendar: 'Work'});
+  assert.deepEqual(H.presentHomeNext({title: 'Design review', begin: at(16), allDay: false, now, provenance}),
+    {text: 'Next: Design review 4:00 PM', source: 'Work · Read 3:04 PM', description: 'Next: Design review, 4:00 PM. Work. Read 3:04 PM from calendars on this device'});
+  assert.equal(H.presentHomeNext({title: 'Standup', begin: at(15), allDay: false, now, provenance}).text, 'Next: Standup Now', 'an event in progress is the next item');
+  assert.equal(H.presentHomeNext({title: 'Offsite', begin: at(9, 0, 9), allDay: true, now, provenance}).text, 'Next: Offsite Fri, Oct 9');
+  assert.equal(H.presentHomeNext({title: 'Dentist', begin: at(9, 30, 8), allDay: false, now, provenance}).text, 'Next: Dentist Thu, Oct 8 9:30 AM');
+  // A reminder after the overdue one names the reminder store, not a calendar.
+  const reminder = H.presentHomeCalendarSource({state: 'ready', overdue: false, reminder: true, reminderReadAt: at(14, 50), readAt: at(15, 4), now, native: false});
+  assert.deepEqual(H.presentHomeNext({title: '  ', begin: at(17), allDay: false, now, provenance: reminder}),
+    {text: 'Next: Untitled event 5:00 PM', source: 'Reminder · Read 2:50 PM', description: 'Next: Untitled event, 5:00 PM. Reminder saved on this browser, read 2:50 PM'});
+  const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
+  assert.match(template, /data-alpha-home-calendar-next-line>.*\{\{homeCalendarNext\}\}.*\{\{homeCalendarNextSource\}\}/);
 });
 test('inbox status: account and read time of the loaded page, and every non-ready state', () => {
   const base = {failure: false, pending: false, cached: null, connected: false, unchecked: false, now};

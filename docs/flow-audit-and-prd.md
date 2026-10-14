@@ -267,9 +267,9 @@ Acceptance F19: unavailable or native-wallet handoff accurately labeled, no card
 | Journey | Required path and result | Critical failure to exercise |
 | --- | --- | --- |
 | J01 Poster to calendar | Camera capture → approve OCR → edit event draft → select calendar → save → read back → agenda card | OCR uncertain date, picker cancel, calendar scope denied |
-| J02 Meeting to action | Notes recording → real transcript → reviewed summary → reminder draft → schedule → OS notification → complete | Audio interrupted, transcript fails, notification disabled |
+| J02 Meeting to action | Notes recording → real transcript → reviewed summary → reminder draft → schedule → OS notification → complete; the saved reminder or event links back to its note by identity only ([note origin](calendar-reminder-contract.md#note-origin-and-the-note-hand-offs); no link on an Android device-calendar event) | Audio interrupted, transcript fails, notification disabled |
 | J03 Email attachment to notes | Inbox thread → select attachment → Files preview → approve agent summary → save note with source link | Expired URI, malicious attachment, account revoked |
-| J04 Schedule to travel | Calendar event → selected address → native map search/navigation → return to event | Multiple addresses, map missing, no location permission |
+| J04 Schedule to travel | Calendar event → selected address → native map search/navigation → return to event; with no Maps provider on Android, "Open in maps app" hands the exact location to an installed map app once per tap | Multiple addresses (read as several search candidates for one location), map missing, no location permission |
 | J05 Web research to note | Native browser/qualified observation → selected page summary → proposed note → save → reopen | Bridge unavailable, cross-origin navigation, stale context |
 | J06 Photo to message | Camera/Photos → select exact image → recipient disambiguation → draft → approved native share/send | Permission revoked, wrong recipient, ambiguous send outcome |
 | J07 Mail to workflow | Select mail source → workflow preview → approved version → one actual test run → receipt/file | Duplicate trigger, timeout after write, disable during execution |

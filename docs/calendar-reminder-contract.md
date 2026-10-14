@@ -65,7 +65,7 @@ clock time after travel.
 ## Refusals, overdue items, reopen and to-dos
 
 `scheduleReminder` resolves stable refusal codes: `past`, `permission-denied`,
-`storage-full` and `failed` (patch `0040-reminders-lifecycle`). A full store reports
+`storage-full` and `failed` (historical patch `0040-reminders-lifecycle`; the codes now come from the pinned upstream reminders plugin, and the patch series was retired in `34b3c82a`). A full store reports
 `storage-full`; it is never reported as `failed`. The renderer shows the specific
 reason. It retires the pending creation only after a definite refusal **and** a
 readback that confirms the ID is absent (`retireRefusedCreation`). A refused
@@ -91,6 +91,29 @@ reopened or deleted through the exact reviewed target (`todoDecision`). Reviewed
 `operateReminder` operations and notification decisions (`reminderDecision`) refuse
 them. A retried save with the same ID and text is idempotent. The adapter exposes
 `todos` and `addTodo`; the to-do list is not rendered in the template yet.
+
+## Note origin and the note hand-offs
+
+A reminder or calendar event saved from a voice note's draft keeps a back-reference to that
+note (`apps/app/src/runtime/note-origin.ts`, `NoteOrigin`):
+
+- It is identity only: note id, recording id and the hash of the whole note record at review.
+  It grants no access to the note and carries none of its content, not even its title; the
+  title shown beside a link is read from the note as it is now.
+- It is created once, at Save, and an existing link for a record is never replaced. Deleting the
+  record removes its link. At most 200 links are kept; the oldest make room.
+- It fails closed: the open-note action works only when exactly one note with that id still
+  holds the same recording, and it says when the note was edited after the link was made. A
+  malformed index is reported as needing recovery, never guessed.
+- Hand-offs: "Review event draft" and the reminder draft on a saved note write nothing until
+  Save in Calendar or Reminders; a double activation or a reload mid hand-off saves once
+  (`test/browser/note-calendar-handoff.spec.ts`).
+- Android: reminder links are stored in the native slot `note-origins:v1:device`, which the
+  native compare-and-exchange admits since the MVP completion integration
+  (`AlphaConnectionPlugin`). `NoteOriginInstrumentedTest` reads a link back at storage level and
+  has not run. A device-calendar event carries no link back: CalendarProvider row ids can be
+  reused and the pinned Calendar plugin stores no Alpha field, so the event draft opened from a note
+  says "This event will not link back to the note on this phone." before Save. NEEDS upstream: a stable per-event identity.
 
 ## Reboot re-post and due channel
 

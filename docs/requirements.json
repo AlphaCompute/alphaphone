@@ -8,7 +8,7 @@
     "deferred": "Out of the MVP by recorded policy.",
     "blocked": "Cannot progress without an external decision, resource or artifact."
   },
-  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Refreshed 2026-10-11 at main 2560eead against upstream pin 13c9857598, with every entry re-read. On 2026-10-14 the pin moved to 644d56c93d (upstream pull request 36179); entries were not re-read then, and no APK, emulator or device result exists at that pin. At that pin there are source and browser test results, developer APK builds without the resident runtime (not distributable) and one partial emulator campaign on those builds (docs/verification.md, Emulator results at 2961bd9e, called round 8 below). Where an entry cites an emulator result it is that campaign or the round 7 campaign at the earlier pin 40dbe96bd1 (Emulator results at 6dcdde34), named as such. Both are class E on developer APKs and neither is evidence for a distributable build or a device. No hosted emulator job has been dispatched and no device result exists (docs/mvp-current-status.md, Current qualification evidence). Round 10 integration adds accessibility, native robustness, approval-notice recovery and strict-build changes after this evidence snapshot. References below to current source failures describe the recorded round 8 APKs; they are not results for the combined source. See the round 10 sections in docs/verification.md. Policy reconciled on 2026-10-12 from the owner answers: approval changes scope and next work only, not prior evidence.",
+  "note": "Status is software state, not acceptance. Evidence lists source and test paths that implement or check the requirement; they are not passing results. Each gate names the next evidence class required. Pin moved again on 2026-10-14 to c7a9a0d7e7 (Phonon-2 ASR, streaming and live voice, elizaOS #36212/#36213/#36214/#36239; docs/fused-speech.md), which changed only the speech row (AP-06); before that, also on 2026-10-14, to 644d56c93d (the shared voice stack: Paradee-8M TTS, misaki G2P, the ASR slot and RegisterNatives JNI). Refreshed 2026-10-13 against upstream pin bc71e21f3b for the pin move on branch claude/mvp-final (docs/agent-integration.md, Upstream changes in the 13c9857598 to bc71e21f3b move): only AP-01 and AP-02 changed; nothing has run on an emulator or a device at bc71e21f3b. The previous refresh, 2026-10-12 against upstream pin 13c9857598 for the MVP completion integration (branch claude/mvp-completion; docs/mvp-audit-2026-10-11.md, Implementation results), re-read every entry. No distribution APK build, real integration or device result is recorded at either pin. The owner has built an AOSP image for a Pixel 10a; no boot or acceptance result from it is recorded in these documents. Earlier refreshes: 2026-10-10 at pin 40dbe96bd1 and the round 9 integration at 13c9857598. Refreshed 2026-10-11 at main 2560eead against upstream pin 13c9857598, with every entry re-read. At that pin there are source and browser test results, developer APK builds without the resident runtime (not distributable) and one partial emulator campaign on those builds (docs/verification.md, Emulator results at 2961bd9e, called round 8 below). Where an entry cites an emulator result it is that campaign or the round 7 campaign at the earlier pin 40dbe96bd1 (Emulator results at 6dcdde34), named as such. Both are class E on developer APKs and neither is evidence for a distributable build or a device. No hosted emulator job has been dispatched and no device result exists (docs/mvp-current-status.md, Current qualification evidence). Round 10 integration adds accessibility, native robustness, approval-notice recovery and strict-build changes after this evidence snapshot. References below to current source failures describe the recorded round 8 APKs; they are not results for the combined source. See the round 10 sections in docs/verification.md. Policy reconciled on 2026-10-12 from the owner answers: approval changes scope and next work only, not prior evidence.",
   "requirements": [
     {
       "id": "AP-01",
@@ -19,7 +19,7 @@
         "Home and launcher",
         "Design and accessibility"
       ],
-      "gate": "E: LauncherLibrary, which has never run, and the HOME-role phase (SettingsRoles, LauncherHome) on a distributable launcher APK; then D on the selected phone",
+      "gate": "E: LauncherApps (LauncherLibrary's replacement on upstream SystemLauncherApps since bc71e21f3b), which has never run, and the HOME-role phase (SettingsRoles, LauncherHome) on a distributable launcher APK; then D on the selected phone",
       "evidence": [
         "apps/app/src/prototype/template.html",
         "apps/app/src/prototype/mvp-features.ts",
@@ -31,9 +31,13 @@
         "test/browser/home-launcher.spec.ts",
         "test/browser/home-native-launcher.spec.ts",
         "test/browser/home-landscape.spec.ts",
-        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherHomeInstrumentedTest.java"
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherHomeInstrumentedTest.java",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/DeviceAppsPlugin.java",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LauncherAppsInstrumentedTest.java",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/SettingsRolesInstrumentedTest.java",
+        "test/product-identity.test.mjs"
       ],
-      "remaining": "The All-apps drawer, search and landscape Home exist with browser tests against a stubbed bridge. On an emulator the HOME-role phase passed on developer APKs at the current pin (round 8: SettingsRoles and LauncherHome 3 of 3 on the final APKs with the original HOME holder read back; class E), and the launcher flavor keeps one live MainActivity when the role is granted. Favorites and order, exact component and profile identity and refresh on package change are implemented in source with Node and stubbed-bridge browser tests; LauncherLibraryInstrumentedTest has never run (MVP-53). No distributable build, image or phone has run any of it."
+      "remaining": "The All-apps drawer, search and landscape Home exist; the drawer launches the exact component (package, activity and user) through upstream SystemLauncherApps (elizaOS/eliza#35909), which replaced LauncherLibrary.java at the pin bc71e21f3b. LauncherHome and SettingsRoles passed in the runner's --home-role phase on the launcher flavor, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598); that is not B (distributable), I or D evidence. LauncherLibraryInstrumentedTest, now LauncherAppsInstrumentedTest on SystemLauncherApps, has no recorded run (MVP-53). RotationInstrumentedTest passed at 73b973a5 (pin 352d7a08) and 6dcdde34 (pin 40dbe96bd1) and was not run at 13c9857598. At 200% text the Home scroller now ends above the composer (test/browser/home-compact-scroll.spec.ts, browser build); the Accessibility class that failed on that step in round 8 has not been rerun. Package and storage identity are checked by test/product-identity.test.mjs. The All-apps drawer, search and landscape Home exist with browser tests against a stubbed bridge. On an emulator the HOME-role phase passed on developer APKs at the current pin (round 8: SettingsRoles and LauncherHome 3 of 3 on the final APKs with the original HOME holder read back; class E), and the launcher flavor keeps one live MainActivity when the role is granted. LauncherLibraryInstrumentedTest has never run (MVP-53). No distributable build, image or phone has run any of it."
     },
     {
       "id": "AP-02",
@@ -46,16 +50,18 @@
         "Connection choices",
         "Release"
       ],
-      "gate": "B: four distribution APKs build at the current pin and pass scripts/verify-apks.mjs; then E: install both modes, open apps and return HOME repeatedly",
+      "gate": "B: four distribution APKs build at the current pin and scripts/verify-apks.mjs marks the releases distributable:true, which needs the release signer (A-06); then E: install both modes, open apps and return HOME repeatedly",
       "evidence": [
         "scripts/build-android.mjs",
         "scripts/verify-apks.mjs",
         "android/app/build.gradle",
         "apps/app/src/runtime/connection-ui.tsx",
         "scripts/android-build-preflight.mjs",
-        "scripts/release-blockers.mjs"
+        "scripts/release-blockers.mjs",
+        "android/release-signer.json",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ResidentAlwaysPresentInstrumentedTest.java"
       ],
-      "remaining": "No distribution APK build exists at the current pin (13c9857598): the strict build stops at the reviewed embedding host libraries, which are not in Git and which a person must supply, and it needs qualified speech assets that do not exist (MVP-39, MVP-23). Developer APKs without the resident runtime were built there (hosted Android foundation runs 38118499272 at c0b19147 and 38131665152 at f87850fa, and development machines); none is distributable. Both flavors of a developer build were installed on an emulator in round 8 and the default classes passed except BrowserFlow, which fails on its live-search method (class E). The Welcome dialog's local-apps entry is covered by a stubbed-bridge browser test; nothing has run on a device."
+      "remaining": "No distribution APK build exists at the current pin (bc71e21f3b) or the previous one (13c9857598). The pin move to bc71e21f3b changed the llama.cpp engine gitlink (CVE-2026-107183 fix), so the reviewed ARM64 embedding host no longer matches its source: android/embedding-host/qualified-host.json is marked for requalification and distribution builds refuse it until a new receipt is reviewed and staged (a candidate was built, class B, not staged). Developer APKs without the resident runtime were built there (hosted Android foundation runs 38118499272 at c0b19147 and 38131665152 at f87850fa, and development machines) and installed on one API 36 arm64 emulator at 2961bd9e and 9a1ca161, where LauncherHome and SettingsRoles (--home-role), LocalAgentOfflineApps, Shell and NoMockProduct passed: class E on developer APKs only. There is no distribution B build and no class I or D evidence. scripts/verify-apks.mjs passes a developer APK as a developer build; it marks a release distributable only when it is signed by the certificate in android/release-signer.json, which stays unset until A-06, and carries the packaged resident runtime and qualified speech. A distribution build also needs the reviewed embedding host. The MVP completion integration compiled both flavors' app and instrumentation Java (compile only, no APK) and added RendererRecoveryInstrumentedTest, which has not run. Both flavors of a developer build were installed on an emulator in round 8 and the default classes passed except BrowserFlow, which fails on its live-search method (class E). The Welcome dialog's local-apps entry is covered by a stubbed-bridge browser test; nothing has run on a device."
     },
     {
       "id": "AP-03",
@@ -73,9 +79,15 @@
         "apps/app/src/runtime/cloud-protocol.ts",
         "apps/app/src/runtime/native-connection.ts",
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java",
-        "docs/owner-approved-mvp-plan-2026-10-12.md"
+        "docs/owner-approved-mvp-plan-2026-10-12.md",
+        "android/app/src/main/java/ai/elizaresearch/alphaphone/ConnectionRoutes.java",
+        "test/connection-routes.test.mjs",
+        "test/fixtures/ConnectionRoutesTest.java",
+        "test/browser/connection-boundaries.production.spec.ts",
+        "apps/app/src/runtime/local-agent.ts",
+        "test/browser/cloud-account-replacement.production.spec.ts"
       ],
-      "remaining": "MVP-04/MVP-34: remove hosted-agent product paths, migrate credit UI to subscriptions, qualify owner-bound inference without a per-turn billing preflight."
+      "remaining": "Production Android pairing is retired by design: a flag-off build admits only https://api.eliza.app and opens only eliza.app, cloud.eliza.app and accounts.google.com externally (ConnectionRoutes.java). A sign-in as a second Cloud account revokes the first account's key once before the new key is stored, unless Cloud returns the same key; the resident conversation history stays with the local owner, not the Cloud account (test/browser/cloud-account-replacement.production.spec.ts). Route and origin guards, self-revocation and account replacement have synthetic, host JVM and stubbed-bridge coverage only. ConnectionRoutesInstrumentedTest is compiled and has not run; no live Eliza Cloud revocation and no device run exist. MVP-04/MVP-34: remove hosted-agent product paths, migrate credit UI to subscriptions, qualify owner-bound inference without a per-turn billing preflight."
     },
     {
       "id": "AP-04",
@@ -94,9 +106,11 @@
         "apps/app/src/runtime/alpha-client.ts",
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java",
         "docs/on-device-agent-plan.md",
-        "docs/owner-approved-mvp-plan-2026-10-12.md"
+        "docs/owner-approved-mvp-plan-2026-10-12.md",
+        "test/browser/resident-failures.production.spec.ts",
+        "test/browser/resident-first-run.production.spec.ts"
       ],
-      "remaining": "MVP-21/MVP-38: qualify resident-only execution and cancellation; remove hosted-agent fallback and retain historical data without reconnecting it."
+      "remaining": "MVP-21/MVP-38: qualify resident-only execution and cancellation; remove hosted-agent fallback and retain historical data without reconnecting it. Resident failures are reported by kind in stream and JSON replies, a lost network shows a notice beside the composer and sends nothing, and a start failure leaves the resident recovering with a Retry; there is no local-apps-only mode (P-43) (flag-off specs with a stubbed bridge, class S). A flag-off build still admits a direct Cerebras key through configureProvider, which the resident instrumentation relies on (A-20); the Cloud branch is limited to cerebras and qwen-3.8-27b (LocalAgentProviderAdmissionTest, host JVM)."
     },
     {
       "id": "AP-05",
@@ -107,16 +121,17 @@
         "Chat and retained context",
         "Design and accessibility"
       ],
-      "gate": "E: soft-keyboard resize, Back and HOME without keyboard obstruction on an installed APK; then D",
+      "gate": "E: the real soft keyboard with Back and HOME, the assistant surface and overlays on an installed APK (ChatContinuity, Assistant, Flow, AssistantResidentReuse); then D",
       "evidence": [
         "apps/app/src/prototype/agent-adapter.ts",
         "apps/app/src/prototype/assistant-draft-controller.ts",
         "test/browser/assistant-draft-recovery.spec.ts",
         "test/browser/assistant-draft-dispatch.spec.ts",
         "test/browser/chat-continuity.spec.ts",
-        "test/browser/compact-viewport.spec.ts"
+        "test/browser/compact-viewport.spec.ts",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/ChatContinuityInstrumentedTest.java"
       ],
-      "remaining": "Draft retention through every pre-dispatch failure is implemented with browser source evidence only (test/browser/chat-continuity.spec.ts). Emulator and device acceptance of resize, Back and HOME without keyboard obstruction remain: Shell, which has a soft-keyboard layout check, passed on both flavors of the developer APKs in round 8 (class E), and Assistant and Flow have no recorded run. Attaching the assistant surface to a running resident without restarting it is implemented in source with JVM and renderer contract tests; AssistantResidentReuseInstrumentedTest has never run (MVP-16)."
+      "remaining": "Back and HOME during a reply no longer cancel it, a view change still aborts it, and the transcript keeps its scroll anchor through resize, Back and HOME (flag-off specs, class S). Shell passed on both flavors, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598). Assistant, Flow, AssistantResidentReuse (MVP-16) and ChatContinuity (real soft keyboard, Back and HOME) have no recorded run. The 200% composer overlap that failed Accessibility in round 8 is fixed in the renderer and has not been rerun on an emulator. Emulator and device acceptance of resize, Back and HOME without keyboard obstruction remain: Shell, which has a soft-keyboard layout check, passed on both flavors of the developer APKs in round 8 (class E), and Assistant and Flow have no recorded run. AssistantResidentReuseInstrumentedTest has never run (MVP-16)."
     },
     {
       "id": "AP-06",
@@ -129,16 +144,21 @@
       "gate": "S: native speech/turn integration, then E both ABIs and D audio/latency/listening",
       "evidence": [
         "apps/app/src/prototype/voice-adapter.ts",
-        "android/local-speech/qualified-runtime-manifest.json",
-        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java",
         "test/browser/browser-speech.spec.ts",
         "apps/app/src/runtime/voice-selection.ts",
         "test/browser/chat-voice-mode.spec.ts",
         "test/browser/production-surface.spec.ts",
         "scripts/test-native-permissions.mjs",
-        "docs/owner-approved-mvp-plan-2026-10-12.md"
+        "docs/owner-approved-mvp-plan-2026-10-12.md",
+        "apps/app/src/runtime/voice-timing.ts",
+        "docs/fused-speech.md",
+        "apps/app/src/runtime/live-voice.ts",
+        "apps/app/src/runtime/native-live-voice.ts",
+        "test/live-voice.test.mjs",
+        "test/browser/live-voice.spec.ts",
+        "android/paradee-voice/asr-inputs.json"
       ],
-      "remaining": "MVP-01/MVP-23/MVP-24/MVP-52: native Eliza llama.cpp/JNI, candidate benchmarks, Clef feasibility, distinct dictation and auto-submit conversation, barge-in and AOSP always-on acceptance are not implemented to the newly approved contract."
+      "remaining": "MVP-01/MVP-23/MVP-24/MVP-52: native Eliza llama.cpp/JNI, candidate benchmarks, Clef feasibility, distinct dictation and auto-submit conversation, barge-in and AOSP always-on acceptance are not implemented to the newly approved contract. The send policy is one constant that keeps today's sending of ongoing Cloud turns until MVP-01 is decided; local-first speech with Cloud only by disclosed opt-in is the PRD wording, pending MVP-01. A Cloud reply with no speech says so, and voice timing marks, including the live ASR latency numbers, are in the diagnostics export. On-device speech: the retired Sherpa engine failed functional acceptance on a physical arm64-v8a device (D); decision P-42 replaces it with libelizainference, and at pin c7a9a0d7e7 the device route uses the shared paradee-voice library with Paradee-8M TTS (P-54) and Phonon-2 in the ASR slot (P-55, backend parakeet, CC-BY-4.0 attribution and NOTICE shipped, training-data terms flagged). The Android voice conversation streams app-process Silero VAD frames to the resident agent's live ASR route and applies the unchanged send policy to its final transcript; interim partials do not reach the phone because the agent IPC carries no event stream (upstream gap). Live voice has class S evidence only (node and Playwright with a stub agent, Gradle compilation). The engine libraries and bundle are recorded in android/voice-host/qualified-voice-host.json (not qualified) and staged by scripts/android-stage-voice-models.mjs; only class B and host evidence exists, no emulator or device run (docs/fused-speech.md); whether on-device speech is still required is A-24. The voice, voice-revoke and voice-limit campaigns passed on both flavors at 6dcdde34 (round 7, pin 40dbe96bd1) and were not rerun at 13c9857598. Always-on listening and hardware invocation (MVP-52) are open and owner-gated."
     },
     {
       "id": "AP-07",
@@ -160,9 +180,12 @@
         "apps/app/src/prototype/home-cards.ts",
         "test/browser/home-daily-overview.spec.ts",
         "test/browser/home-daily-overview.production.spec.ts",
-        "test/browser/home-brief-result.production.spec.ts"
+        "test/browser/home-brief-result.production.spec.ts",
+        "test/browser/digest-resident-schedule.production.spec.ts",
+        "test/browser/digest-native-sources.production.spec.ts",
+        ".github/workflows/digest-restart.yml"
       ],
-      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, and the latest retained brief has its own card, with synthetic provider data only. Browser tests run from a digest result to that card with a stubbed agent and Android bridge; no real scheduled digest, native delivery or device calendar read is behind it (MVP-19)."
+      "remaining": "Agenda comes from on-device calendars only, and schedules are digest-only. A missed occurrence is recorded once and never replaces the last brief. The Home cards name their source and when it was read, an overdue event no longer hides the next one, a stale Inbox card shows a dash with no time, and the latest retained brief has its own card, with synthetic provider data only. Flag-off specs cover resident schedule creation, pause and revoke and the phone sources with consent. No real scheduled digest, native delivery or device calendar read is behind the cards (MVP-19). npm run agent:test-digest-restart passed at 352d7a08 and again at 40dbe96bd1 (host runtime, synthetic model) and was not run at 13c9857598; its lane (.github/workflows/digest-restart.yml) is dispatch-only and has not been dispatched."
     },
     {
       "id": "AP-08",
@@ -198,9 +221,10 @@
         "test/browser/journey-f-email-notifications.spec.ts",
         "test/browser/use-in-email.production.spec.ts",
         "scripts/test-calendar-regression.mjs",
-        "docs/cloud-production-validation.md"
+        "docs/cloud-production-validation.md",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/CalendarAvailabilityInstrumentedTest.java"
       ],
-      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. On an emulator at the current pin the Calendar campaign passed on both flavors of the developer APKs (round 8, class E, fixture rows in the emulator's CalendarProvider): CalendarCrud, both CalendarAgentCrud methods, CalendarAvailability, CalendarTruncation, CalendarRange and CalendarFlow; InboxOperationJournal, MailAttachment and the inbox restart campaign passed there too. Use in email is implemented in source with synthetic agent and provider tests only (MVP-14). No real account, synced calendar or device has run any of it (MVP-12)."
+      "remaining": "Gmail OAuth code exchange returns 401 (docs/cloud-production-validation.md), so no real mailbox has been used. Calendar shows only on-device calendars. Through scripts/test-calendar-regression.mjs, CalendarCrud, CalendarAgentCrud (both methods), CalendarFlow, CalendarRange, CalendarTruncation and CalendarAvailability (4 of 4) passed on both flavors, and InboxOperationJournal, MailAttachment and the inbox restart campaign passed, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598). Use in email and the availability review inside the WebView have no emulator test: both need an agent session that a bundled APK cannot script (MVP-12, MVP-14). R (OAuth 401) and D stay open. On an emulator at the current pin the Calendar campaign passed on both flavors of the developer APKs (round 8, class E, fixture rows in the emulator's CalendarProvider): CalendarCrud, both CalendarAgentCrud methods, CalendarAvailability, CalendarTruncation, CalendarRange and CalendarFlow; InboxOperationJournal, MailAttachment and the inbox restart campaign passed there too. Use in email is implemented in source with synthetic agent and provider tests only (MVP-14). No real account, synced calendar or device has run any of it (MVP-12)."
     },
     {
       "id": "AP-10",
@@ -211,9 +235,10 @@
         "Browser and passwords",
         "Files, camera, scans and media",
         "Schedule to travel (J04) and Maps",
-        "Notes, Calendar and Reminders"
+        "Notes, Calendar and Reminders",
+        "Clock"
       ],
-      "gate": "S: Cloud Maps, full media and browser-policy integration, then R/E/D journeys",
+      "gate": "E: browser reading, sign-in restart, pop-up and app-link instrumentation (P-04) and the integrated vault classes (P-05) at the current pin; S: Cloud Maps, full media and browser-policy integration, then R/E/D journeys",
       "evidence": [
         "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java",
         "apps/app/src/prototype/camera-adapter.ts",
@@ -223,9 +248,11 @@
         "apps/app/src/prototype/scan-document.ts",
         "apps/app/src/maps/regional-provider.ts",
         "test/browser/journey-core-loops.production.spec.ts",
-        "docs/owner-approved-mvp-plan-2026-10-12.md"
+        "docs/owner-approved-mvp-plan-2026-10-12.md",
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/PasswordVaultFillInstrumentedTest.java",
+        "apps/app/src/prototype/notes-trash-adapter.ts"
       ],
-      "remaining": "MVP-29/MVP-30/MVP-31: allow normal third-party cookies, eligible autofill, full permitted media, agent-controlled Eliza Cloud Maps and local read-aloud. Remove app-data import/export controls; preserve ordinary file operations."
+      "remaining": "No flag-off build has a Maps provider, so no route can be produced (A-23); with an installed map app, Maps opened from an event offers to hand its location to that app once per tap. Passed, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598): NotesTrashBackstop (9 of 9), NotesStorageDurability, ReminderLifecycle, ClockHandoff, ClockRepeatDays, CameraScan, PasswordBrowserFill, FilesTree, BrowserSignins, BrowserContinuity and the notes and document restart campaigns. BrowserFlow failed on its live-search method (now behind --live-network) and BrowserReadingNavigation needs a WebView with isolated-world injection. BrowserDownload and BrowserAutofill last passed at 6dcdde34 (round 7 test-mocks pair, pin 40dbe96bd1). Not run at the current pin: the reading classes, the photo classes, maps recovery and background navigation, the signin restart and camera permission campaigns, RealClock (API 35 fixture) and the integrated vault classes PasswordVaultSettings and PasswordVaultFill. A website fill from the integrated vault is refused without native field origins. Reminders and Clock acceptance is MVP-27. MVP-29/MVP-30/MVP-31: allow normal third-party cookies, eligible autofill, full permitted media, agent-controlled Eliza Cloud Maps and local read-aloud. Remove app-data import/export controls; preserve ordinary file operations."
     },
     {
       "id": "AP-11",
@@ -243,9 +270,11 @@
         "scripts/android-workflow-native.mjs",
         "docs/workflow-run-cancellation.md",
         "scripts/test-local-digest-restart.mjs",
-        "test/browser/workflow-interruption-recovery.spec.ts"
+        "test/browser/workflow-interruption-recovery.spec.ts",
+        "test/browser/workflows.production.spec.ts",
+        ".github/workflows/digest-restart.yml"
       ],
-      "remaining": "Phone workflows have manual triggers only, and the resident interrupted-worker case is unqualified on Android: the host digest restart check passed with a synthetic model at two earlier pins (last at 40dbe96b), is in no automated lane, and the process-death classes run only in hosted CI, which has never been dispatched. The native workflow campaign passed 14 of 14 cases on developer APKs on an emulator in round 8 (class E, synthetic reads and drafts)."
+      "remaining": "Phone workflows have manual triggers only. On developer APKs without the resident runtime (API 36 arm64 emulator, 2961bd9e/9a1ca161, pin 13c9857598, class E): scripts/android-workflow-native.mjs passed 14 of 14 cases and its approval-notice phase 4 of 4, and WorkflowApprovalNotice passed against the shared receipt ledger. Open: the resident runtime, WorkflowNoticeTap, WorkflowNoticeProcessDeath (hosted lane only), HostedProcessRestart (round 7 test-mocks pair only) and WorkflowLegacyReminderUpgrade. The host digest restart check passed at 352d7a08 and 40dbe96bd1 with a synthetic model and was not run at 13c9857598; its lane is dispatch-only. The flag-off workflows page is covered on the production bundle (test/browser/workflows.production.spec.ts). Phone workflows have manual triggers only, and the resident interrupted-worker case is unqualified on Android: the host digest restart check passed with a synthetic model at two earlier pins (last at 40dbe96b), is in no automated lane, and the process-death classes run only in hosted CI, which has never been dispatched. The native workflow campaign passed 14 of 14 cases on developer APKs on an emulator in round 8 (class E, synthetic reads and drafts)."
     },
     {
       "id": "AP-12",
@@ -267,7 +296,7 @@
         "test/shade-tile-facts.test.mjs",
         "docs/owner-approved-mvp-plan-2026-10-12.md"
       ],
-      "remaining": "MVP-33: implement reset without data resurrection, native shade/tiles, subscription status and local-only voice controls; no app-data migration/export."
+      "remaining": "Tiles and Settings rows show the states Android reports and open the matching Android page. SettingsSystemFacts, SettingsRoles, Notifications, TextScale and the channels campaign passed, class E on developer APKs with an unpackaged resident runtime (not distributable), one API 36 arm64 SDK emulator, at 2961bd9e and 9a1ca161 (pin 13c9857598). At 6dcdde34 (round 7, pin 40dbe96bd1) SettingsFlow and the settings and notice-denied campaigns also passed. Not run at the current pin: SettingsFlow and its theme restart phase, the settings and notice-denied campaigns, the text-scale restart, SettingsCrashLog, and the hosted ReminderTapProcessDeath and WorkflowNoticeProcessDeath jobs. Class E only, not I, R or D. MVP-33: implement reset without data resurrection, native shade/tiles, subscription status and local-only voice controls; no app-data migration/export."
     },
     {
       "id": "AP-13",
@@ -298,9 +327,16 @@
         "scripts/stage-aosp.mjs",
         "docs/android-and-aosp.md",
         "docs/native-app-distribution.md",
-        "docs/owner-approved-mvp-plan-2026-10-12.md"
+        "docs/owner-approved-mvp-plan-2026-10-12.md",
+        "scripts/release-blockers.mjs",
+        "scripts/verify-apks.mjs",
+        "android/release-signer.json",
+        "scripts/pilot-update.mjs",
+        "scripts/test-installed-upgrade.mjs",
+        "android/aosp/product.json",
+        "test/aosp-product-lock.test.mjs"
       ],
-      "remaining": "MVP-40/MVP-41/MVP-42/MVP-52: qualify exact source/vendor/kernel/signer inputs, AOSP listening, physical functions and OTA/recovery; policy approved, artifacts and acceptance still required."
+      "remaining": "No selected phone SKU (A-01) and no controlled release key (A-06). In place: the AOSP product and source locks (android/aosp, test/aosp-product-lock.test.mjs), the release blockers that refuse a release verify-apks does not mark distributable (scripts/release-blockers.mjs), the in-place update with data readback (scripts/pilot-update.mjs, scripts/test-installed-upgrade.mjs), and an App Links filter emitted only when ELIZAOS_APP_LINK_HOST is set (merged-manifest check, no APK). Software gaps: no OTA design and no rollback path (pilot-update.mjs refuses a lower versionCode; A-06). Always-on listening and hardware invocation (MVP-52) are open and owner-gated. The Denton distribution right (MVP-43) is closed by P-09 and A-21. MVP-40/MVP-41/MVP-42/MVP-52: qualify exact source/vendor/kernel/signer inputs, AOSP listening, physical functions and OTA/recovery; policy approved, artifacts and acceptance still required."
     },
     {
       "id": "AP-15",
@@ -318,9 +354,13 @@
         "test/browser/settings-page-accessibility.spec.ts",
         "test/browser/home-landscape.spec.ts",
         "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/RotationInstrumentedTest.java",
-        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/AccessibilityInstrumentedTest.java"
+        "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/AccessibilityInstrumentedTest.java",
+        "test/browser/accessibility-sweep.spec.ts",
+        "test/browser/accessibility-sweep.production.spec.ts",
+        "test/browser/large-text-overlap.spec.ts",
+        "test/browser/home-compact-scroll.spec.ts"
       ],
-      "remaining": "A landscape Home layout exists with a browser test. On an emulator (developer APKs, class E) AccessibilityInstrumentedTest fails on both flavors at the current source (round 8): on standalone the last Home row is drawn under the floating composer at 200% text, and on launcher an accessibility click reaches no page control on that image's WebView. It had passed in round 7, before round 8 changed Home and the notifications panel. TextScale passed in round 8; Rotation passed in round 7 and was not repeated at the current pin. The all-views accessibility sweep and its fixes are a Chromium renderer check (test/browser/accessibility-sweep.spec.ts), not device acceptance (MVP-48). Physical TalkBack and accessibility acceptance remain."
+      "remaining": "TextScale passed on both flavors and Accessibility failed on both, class E on developer APKs at 2961bd9e (pin 13c9857598): standalone at 'Home at 200% font: reading order' (the last Home row drawn under the composer), and launcher at 'the accessibility click action opens the panel' (ACTION_CLICK through UiAutomation reaches no page control on WebView 133). Rotation was not run at the current pin (it passed at 73b973a5 and 6dcdde34). The renderer fixes since then (Home ends above the composer at 200%, titles wrap, a toast is mirrored into an open dialog, focus is not left under the composer) are Chromium checks, not emulator or device acceptance (MVP-48). The mock calendar block still clips at 200% text (A-22). A landscape Home layout exists with a browser test. On an emulator (developer APKs, class E) AccessibilityInstrumentedTest fails on both flavors at the current source (round 8): on standalone the last Home row is drawn under the floating composer at 200% text, and on launcher an accessibility click reaches no page control on that image's WebView. It had passed in round 7, before round 8 changed Home and the notifications panel. TextScale passed in round 8; Rotation passed in round 7 and was not repeated at the current pin."
     }
   ]
 }

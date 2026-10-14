@@ -10,15 +10,16 @@ function storage(bytes = new Map()) {
   return {bytes, getItem: key => bytes.has(key) ? bytes.get(key) : null, setItem: (key, value) => { bytes.set(key, String(value)); }, removeItem: key => { bytes.delete(key); }};
 }
 function load(store, f = {account: true, dev: false}) {
+  if (typeof f === 'boolean') f = {account: true, dev: false, mocks: f};
   const events = [];
   const box = {
-    testMocksEnabled: false, localStorage: store, Date, JSON, Number, Event: class { constructor(type) { this.type = type; } },
+    testMocksEnabled: f.mocks === true, localStorage: store, Date, JSON, Number, Event: class { constructor(type) { this.type = type; } },
     window: {dispatchEvent: event => { events.push(event.type); return true; }},
     get browserDevProfile() { return f.dev; },
     connectionController: {getCloudEnvironment: () => f.account ? 'production' : null, getCloudClient: () => f.account ? {sessionId: 'synthetic-session', credentialId: 'synthetic-credential'} : null},
   };
   const source = fs.readFileSync('apps/app/src/runtime/voice-selection.ts', 'utf8').replace(/^import .*;\n/gm, '').replaceAll('export function', 'function').replaceAll('export type', 'type');
-  vm.runInNewContext('{' + stripTypeScriptTypes(source, {mode: 'transform'}) + '\nglobalThis.api={selectVoiceRoute,chooseVoiceRoute,voiceRoutePreference,speakRepliesEnabled,setSpeakReplies,cloudVoiceAvailable,voicePreferenceKeys,cloudSpeechDisclosure};}', box);
+  vm.runInNewContext('{' + stripTypeScriptTypes(source, {mode: 'transform'}) + '\nglobalThis.api={selectVoiceRoute,chooseVoiceRoute,voiceRoutePreference,speakRepliesEnabled,setSpeakReplies,cloudVoiceAvailable,voicePreferenceKeys,cloudSpeechDisclosure,voiceSendPolicy,setVoiceSendPolicyForTests};}', box);
   return {...box.api, events, f};
 }
 
@@ -38,6 +39,20 @@ test('legacy preference persistence detects dropped or unavailable storage', () 
   for(const store of [{getItem:()=>null,setItem(){}},{getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}}]) {
     const v=load(store);assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),false);assert.equal(v.selectVoiceRoute(),'device');
   }
+
+test('the voice send policy defaults to auto-send and only test-mocks builds can exercise review', () => {
+  const production = load(storage());
+  assert.equal(production.voiceSendPolicy(), 'auto-send');
+  assert.equal(production.setVoiceSendPolicyForTests('review'), false);
+  assert.equal(production.voiceSendPolicy(), 'auto-send');
+  const mocks = load(storage(), true);
+  assert.equal(mocks.voiceSendPolicy(), 'auto-send');
+  assert.equal(mocks.setVoiceSendPolicyForTests('review'), true);
+  assert.equal(mocks.voiceSendPolicy(), 'review');
+  assert.equal(mocks.setVoiceSendPolicyForTests('anything'), true);
+  assert.equal(mocks.voiceSendPolicy(), 'auto-send', 'an unknown policy falls back to the constant');
+});
+
 });
 
 test('Speak replies is opt-in, persisted and off for anything but an explicit enable', () => {

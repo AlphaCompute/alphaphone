@@ -20,7 +20,8 @@ the required evidence rather than treating a successful APK build as acceptance.
 
 - [Account-bound local Inbox drafts](docs/inbox-local-drafts.md)
 - [Browser implementation and acceptance review](docs/mvp-browser-review.md)
-- [In-browser speech recognition](docs/browser-speech-recognition.md)
+- [Browser speech: local agent or Eliza Cloud](docs/browser-speech-recognition.md)
+- [Fused speech on libelizainference](docs/fused-speech.md)
 - [MVP scope and gap report](docs/mvp-scope-and-gap-report.md)
 - [MVP completion plan](docs/mvp-completion-plan.md)
 - [Remaining MVP work after PR 373](docs/mvp-remaining-work-2026-10-09.md)
@@ -151,11 +152,14 @@ For real host inference and speech, follow the separate [local agent setup](docs
 **Settings → Character → Wake assistant** opens the recording UI; recording starts
 only after Start recording is selected.
 
-The web build retains browser audio capture and reviewed manual transcripts. Browser-local
-speech recognition is unavailable after the shared ONNX engine retirement. An explicitly
-selected development agent can transcribe an owned recording; no automatic network fallback
-is used. Production Android speech uses the native engine. See
-[browser recording and transcription](docs/browser-speech-recognition.md).
+The web build has no speech engine of its own. Local speech in a browser runs on the private
+local agent on the same computer, which uses the native llama.cpp-based libelizainference
+engine (Paradee-8M speech and the voice bundle's ASR); without the agent, local transcription
+reports that the agent is required and the recording is kept. Eliza Cloud speech is only an
+explicit, disclosed opt-in (P-07); there is no Web Speech or automatic network fallback. The
+transcript is always reviewed before it is saved or used. See
+[browser recording and transcription](docs/browser-speech-recognition.md) and
+[fused speech](docs/fused-speech.md).
 
 Deleted notes, including voice notes, move to a Trash inside Notes and are erased
 automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
@@ -175,22 +179,24 @@ recognize the usual macOS Homebrew JDK/Android SDK locations. The Gradle 8.13
 wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
-Before the first Android build, reproduce the pinned speech runtime and model
-assets using [the local speech build instructions](scripts/local-speech/README.md).
-These generated inputs are intentionally absent from Git. Both ARM64 and x86_64
-runtimes are required; Android CI provisions and validates them on a clean checkout.
-The build requires Android NDK r28c (`28.2.13676358`) and CMake 4.0.3 and refuses other
-versions. A local rebuild does not reproduce the qualified hashes in
-`android/local-speech/runtime-manifest.json` (see the instructions for why), so
-`install-generated.py` refuses it unless `--allow-unqualified-runtime` is passed; APKs
-built with such a runtime are build evidence, not release candidates.
+On-device speech uses only the llama.cpp-based libelizainference engine (decision P-42) through
+the shared elizaOS paradee-voice library: Paradee-8M speech output (P-54) and the voice bundle's
+model-agnostic ASR slot (P-55; Phonon-2 is the intended model). Build and stage it as described in
+[fused speech](docs/fused-speech.md): `node scripts/android-stage-voice-models.mjs --from <dir>`
+writes the engine and the bundle (about 1.1 GB, shipped in the APK assets) to the ignored
+`.eliza/paradee-voice/native`, checked against `android/voice-host/qualified-voice-host.json`
+and `android/paradee-voice/asr-inputs.json` by Gradle (`:local-speech:verifySpeechInputs`,
+`:app:verifyParadeeAppLinkage`, `:app:verifyVoiceHost`). A distribution build needs them; the
+`--allow-unpackaged-runtime` developer lane may omit them, and local speech then reports
+unavailable. The record is not qualified: a release is distributable only after on-device
+qualification on both ABIs and device acceptance.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
 `stageLocalAgentSources` step generates the native agent service classes from it.
 Distribution builds also need the staged runtime payload, which in turn needs the
 workflow-worker artifact (`artifacts/mobile-workflow-worker-<commit>`). On a clean
-checkout, after the speech AAR above, one command does all of it:
+checkout, one command does all of it:
 
 ```sh
 # What the strict build needs, what is there, and whether a script or a person supplies
@@ -215,8 +221,9 @@ npm run android:build -- --allow-unpackaged-runtime
 
 `npm run android:build` first runs `scripts/android-build-preflight.mjs` and stops
 (exit 2), before the web sync and Gradle, naming the command to run when the pinned
-`vendor/eliza` checkout, the installed speech AAR, the prepared runtime source or (for
-distribution builds) the staged runtime payload is missing or stale.
+`vendor/eliza` checkout, the prepared runtime source or (for distribution builds) the staged
+runtime payload is missing or stale, or when the on-device voice outputs are missing (distribution
+builds) or not admitted by the voice-host record.
 
 Three inputs of a distributable build cannot come from a script, and
 `npm run android:build:inputs` names each with who supplies it:

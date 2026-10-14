@@ -1,4 +1,5 @@
-// Takes the rows the Android free/busy reader returned on the JVM (test/fixtures/
+// Takes the rows the Android free/busy reader (upstream SelectedCalendarReader.readAvailability)
+// returned on the JVM (test/fixtures/
 // CalendarAvailabilityReaderTest.java) through the renderer's provider-row parser and the
 // shared contract computation, and checks the answer the owner would review and share.
 // It joins the two halves that are otherwise tested apart; it is not a device run.

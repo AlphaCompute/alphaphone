@@ -93,13 +93,10 @@ const set=(page:Page,patch:Record<string,unknown>)=>page.evaluate(patch=>{const 
 const resume=(page:Page)=>page.evaluate(()=>(window as any).truth.resume());
 const opened=(page:Page)=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaDevice'&&c.method==='openSettings').map((c:any)=>c.input.page as string));
 const callNames=(page:Page)=>page.evaluate(()=>[...new Set((window as any).truth.calls.map((c:any)=>c.plugin+'.'+c.method))] as string[]);
-/** Production Android starts at the plan gate. Offline with a recent plan, it can be closed to reach local apps. */
+/** Production Android starts the resident by itself (P-43). Offline with a saved sign-in, nothing gates it and no dialog opens. */
 async function start(page:Page){
  await page.goto('/');
- if(await page.evaluate(()=>!!(window as any).truth)){
-  await page.getByRole('dialog',{name:'Offline',exact:true}).getByRole('button',{name:'Close connection settings'}).click();
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
- }
+ if(await page.evaluate(()=>!!(window as any).truth))await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
  await page.getByRole('button',{name:'Settings',exact:true}).waitFor({state:'visible'});
 }
 async function openSettings(page:Page){
@@ -208,7 +205,9 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   'Notifications':[/Reminders\s*Channel allowed/,/Scheduled digest results\s*Channel allowed/],'Battery':[/64%/,/On battery/,/Battery saver\s*Off/],
   'Privacy & data':[/Device location\s*On/,/Microphone\s*Allowed for Alpha/,/Camera\s*Not allowed/],
   'About':[/Stub phone/,/Alpha Phone\s*0\.1\.0 \(7\)/,/Installed or last updated/,/Updates\s*Alpha does not check for updates/,/Android\s*16/,/Security patch\s*2026-09-05/,/Inference model\s*Not reported by agent/],
-  'Developer':[/App version\s*0\.1\.0/,/Agent memory\s*Not connected/],'Models':[/Inference model\s*Not reported by agent/],
+  'Developer':[/App version\s*0\.1\.0/,/Agent memory\s*Not connected/],
+  // Telegram, Discord and the other deferred connectors cannot be connected in this build.
+  'Connections':[/Other connectors\s*Not available in this version/],'Models':[/Inference model\s*Not reported by agent/],
  };
  const report:string[]=[`Settings: ${top.replace(/\s+/g,' ')}`];
  noFixtures(top,'Settings');
@@ -225,7 +224,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
   // A switch must be backed by something this app owns. Only the calendar and theme controls qualify.
   const switches=await current(page).locator('[role="switch"],[aria-pressed],[aria-checked],input[type="checkbox"],input[type="range"]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||e.tagName));
-  const owned=label==='Display'?['Theme: Light','Theme: Dark','Text size']:[];
+  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:[];
   expect(switches.filter(name=>!owned.includes(name)),`${label} has a switch that nothing backs`).toEqual([]);
   for(const [row,target] of handoffs[label]||[]){
    const before=(await opened(page)).length;
@@ -306,7 +305,7 @@ test('the flag-off build exports redacted diagnostics with the real version and 
  expect(report.format).toBe('alpha-diagnostics/v1');
  expect(report.app).toEqual({version:'0.1.0',versionCode:7,variant:'launcher',buildType:'release',testMocks:false});
  expect(report.permissions).toEqual({Microphone:true,Location:false,Camera:false,Calendar:true,Notifications:true});
- expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','runtimeHashes','upstreamPin']);
+ expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
  for(const leak of ['csk-synthetic','Stub phone','Stub maker','stub-build','Stub Mail','update','Update'])expect(shared).not.toContain(leak);
 });
 
@@ -324,6 +323,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
   expect(text).not.toMatch(/Wi-Fi\s*(On|Off)\b|Bluetooth\s*(On|Off)\b|Airplane mode\s*(On|Off)\b/);
+  if(label==='Connections'){expect(text).toMatch(/Other connectors\s*Not available in this version/);expect(text).not.toMatch(/Other connectors\s*Not connected/);}
  }
  await test.info().attach('browser-settings-rows',{body:report.join('\n\n'),contentType:'text/plain'});
  const about=report.find(row=>row.startsWith('About: '))||'';

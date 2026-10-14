@@ -24,8 +24,10 @@ import static org.junit.Assert.*;
  * J05 on Android: a page excerpt taken by the native WebView becomes a reviewed question.
  *
  * The page is a synthetic article served to the real isolated child WebView from memory at
- * https://reading.invalid (no request for it leaves the device; the first tab is opened on
- * https://example.com, so the emulator needs network). Covered through the real AlphaBrowser plugin,
+ * https://reading.invalid. No public host is involved: the first tab is opened on
+ * https://reading.invalid/start, which cannot resolve (RFC 6761), and every later document comes
+ * from the test's shouldInterceptRequest wrapper around the tab's own client, so the class runs on an
+ * offline emulator. Covered through the real AlphaBrowser plugin,
  * its native review dialog and the rendered controls:
  *  - the excerpt is bound to the committed top-level document: another address or a stale navigation
  *    number is refused before any review opens, and frame, form and hidden content is never extracted;
@@ -46,8 +48,8 @@ import static org.junit.Assert.*;
  *   npm run test:android:instrumentation -- --owned-emulator --avd NAME --serial emulator-NNNN --classes BrowserPageQuestion
  */
 public final class BrowserPageQuestionInstrumentedTest {
- private static final String BASE = "https://reading.invalid";
- private static final String ARTICLE = "Synthetic orchard report: twelve raised beds are open to visitors.";
+ static final String BASE = "https://reading.invalid";
+ static final String ARTICLE = "Synthetic orchard report: twelve raised beds are open to visitors.";
  private static final String OMITTED = "omitted-synthetic-marker";
  private final BrowserFlowInstrumentedTest child = new BrowserFlowInstrumentedTest();
 
@@ -100,7 +102,7 @@ public final class BrowserPageQuestionInstrumentedTest {
  private static void press(AlertDialog dialog, int button) throws Exception { BoundedActivityScenario.main(() -> dialog.getButton(button).performClick()); }
 
  /** In-memory pages for the visible tab: exact synthetic routes only; nothing is forwarded to a network. */
- private static final class Pages implements AutoCloseable {
+ static final class Pages implements AutoCloseable {
   final android.webkit.WebView web; final android.webkit.WebViewClient original;
   final Map<String, String> routes = Collections.synchronizedMap(new LinkedHashMap<>());
   final AtomicInteger requests = new AtomicInteger();
@@ -138,31 +140,42 @@ public final class BrowserPageQuestionInstrumentedTest {
    + "if(typeof C.nativeCallback==='function')C.nativeCallback=function(p,m,a){note(p,m,a);return window.__pageNative.nativeCallback.apply(this,arguments);};})()");
  }
  /** Native calls that carried the marker anywhere except encrypted draft storage on this device. */
- private JSONArray leaks(String marker) throws Exception {
+ JSONArray leaks(String marker) throws Exception {
   return new JSONArray((String) new JSONTokener(js("JSON.stringify(window.__pageCalls.filter(c=>c.body.includes(" + JSONObject.quote(marker) + ")&&!(c.plugin==='AlphaConnection'&&/^secure(Read|Write|Remove|CompareExchange)$/.test(c.method))).map(c=>c.plugin+'.'+c.method))")).nextValue());
  }
- private void restoreNativeCalls() throws Exception {
+ void restoreNativeCalls() throws Exception {
   js("(()=>{const C=window.Capacitor,o=window.__pageNative;if(o){C.nativePromise=o.nativePromise;if(o.nativeCallback)C.nativeCallback=o.nativeCallback;}"
    + "Promise.resolve(window.__pageListener).then(h=>h&&h.remove&&h.remove()).catch(()=>{});for(const k of ['__pageNative','__pageCalls','__pageTab','__pageState','__pageArgs','__pageResult','__pageListener'])delete window[k];})()");
  }
 
- /** Opens the Browser view on a first public page and returns the fixture for its visible tab. */
- private Pages openBrowser() throws Exception {
+ static final String START = BASE + "/start";
+ /** Opens the Browser view, creates its first tab on an address that cannot resolve, then serves
+  * that tab from memory: the fixture's start page is committed before this returns. */
+ Pages openBrowser() throws Exception {
   AppNavigation.liveMode(); js(AppNavigation.request("Browser")); waitFor(AppNavigation.selected("Browser")); waitFor("window.__alphaTestNavigation?.status==='complete'");
     // The native page is withdrawn while the modal first-run access panel is open; answer it first, as an owner does.
     AppNavigation.declineStartupAccess();
   recordNativeCalls();
-  String address = "(()=>{const e=document.querySelector('input[aria-label=Address]');if(!e)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,'https://example.com/');e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return true;})()";
+  String address = "(()=>{const e=document.querySelector('input[aria-label=Address]');if(!e)return false;Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e," + JSONObject.quote(START) + ");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));return true;})()";
   if (!"true".equals(js(address))) {
    js("[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')==='Edit address'||b.getAttribute('aria-label')==='Search or type address')?.click()");
    waitFor("document.querySelector('input[aria-label=Address]')");
    assertEquals("true", js(address));
   }
-  waitFor("window.__pageTab&&document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
+  // The tab exists once the plugin presented it; its first load fails offline (reading.invalid never resolves).
+  waitFor("window.__pageTab");
   String tabId = new JSONObject((String) new JSONTokener(js("JSON.stringify(window.__pageTab)")).nextValue()).getString("id");
   AtomicReference<Pages> pages = new AtomicReference<>();
-  BoundedActivityScenario.main(() -> { try { pages.set(new Pages(tabId)); } catch (Exception error) { throw new AssertionError(error); } });
+  for (int i = 0; i < 100 && pages.get() == null; i++) {
+   BoundedActivityScenario.main(() -> { try { pages.set(new Pages(tabId)); } catch (AssertionError notYet) { /* The tab's WebView is attached after present resolves. */ } catch (Exception error) { throw new AssertionError(error); } });
+   if (pages.get() == null) SystemClock.sleep(100);
+  }
+  assertNotNull("The visible tab's WebView was created", pages.get());
   js("window.__pageState=null;window.__pageListener=Capacitor.Plugins.AlphaBrowser.addListener('stateChanged',state=>{if(state&&state.id===window.__pageTab.id)window.__pageState=state;})");
+  // From here on every top-level document is the fixture's: commit the start page.
+  pages.get().routes.put(START, page("Synthetic start page.", ""));
+  open(START);
+  waitFor("document.querySelector('[role=img][aria-label=\"Secure connection\"]')");
   return pages.get();
  }
  /** Navigates the visible tab and waits for that exact document to be committed and idle. */
@@ -197,7 +210,7 @@ public final class BrowserPageQuestionInstrumentedTest {
 
     // Bound to the committed document: another address, another origin or a stale navigation number is refused.
     assertRefusedWithoutReview("Capacitor.Plugins.AlphaBrowser.reviewQuestion({...window.__pageArgs,url:" + JSONObject.quote(orchard) + "})", "A request naming another address");
-    assertRefusedWithoutReview("Capacitor.Plugins.AlphaBrowser.reviewQuestion({...window.__pageArgs,url:'https://example.com/'})", "A request naming another origin");
+    assertRefusedWithoutReview("Capacitor.Plugins.AlphaBrowser.reviewQuestion({...window.__pageArgs,url:'https://other.invalid/'})", "A request naming another origin");
     assertRefusedWithoutReview("Capacitor.Plugins.AlphaBrowser.reviewQuestion({...window.__pageArgs,navigation:String(Number(window.__pageArgs.navigation)-1)})", "A request naming an earlier navigation");
     assertRefusedWithoutReview("Capacitor.Plugins.AlphaBrowser.reviewQuestion({...window.__pageArgs,session:'another-session'})", "A request from another browser session");
 
@@ -318,7 +331,16 @@ public final class BrowserPageQuestionInstrumentedTest {
    Pages pages = null; Throwable primary = null;
    try {
     pages = openBrowser();
-    String garden = BASE + "/garden", reviewed = "Reviewed excerpt " + letters(UUID.randomUUID()) + ": twelve raised beds.";
+    askAboutPageUpToSend(pages, BASE + "/garden");
+   } catch (Exception | AssertionError failure) { primary = failure; throw failure; } finally { cleanup(pages, primary); }
+  }
+ }
+
+ /** Menu -> Ask about page -> native review -> question editor -> composer -> Send while inference is
+  * unavailable (decision P-43: the resident is present, starting or offline; nothing is dispatched).
+  * Shared with JourneyJ05InstrumentedTest. Returns the reviewed text that reached the composer. */
+ String askAboutPageUpToSend(Pages pages, String garden) throws Exception {
+    String reviewed = "Reviewed excerpt " + letters(UUID.randomUUID()) + ": twelve raised beds.";
     pages.routes.put(garden, page(ARTICLE, "<p hidden>hidden-" + OMITTED + "</p>"));
     open(garden);
     // The product's own controls: Menu, then Ask about page.
@@ -345,25 +367,40 @@ public final class BrowserPageQuestionInstrumentedTest {
     // Before Send: neither the page text nor the reviewed draft has reached any agent, network or other native call.
     assertEquals("Nothing reaches an agent before Send: " + leaks(reviewed), 0, leaks(reviewed).length());
     assertEquals(0, leaks(ARTICLE).length());
-    // Send with no agent connected: the connection choices open, nothing is dispatched, the draft is kept.
+    // Send while inference is unavailable (the resident is starting, or running with no network): the
+    // refusal says so, no chooser opens, nothing is dispatched and the draft is kept.
     waitFor("document.querySelector('button[aria-label=Send]')&&!document.querySelector('button[aria-label=Send]').disabled");
     js("document.querySelector('button[aria-label=Send]').click()");
-    waitFor("document.querySelector('.alpha-connection-scrim')");
-    assertEquals("No agent is connected in this build", "null", js("document.documentElement.dataset.connectionMode==='mock'?'mock':null"));
-    assertEquals("Send without an agent dispatches nothing: " + leaks(reviewed), 0, leaks(reviewed).length());
-    assertEquals("No reply or summary card can exist without an agent", "false", js("document.body.innerText.includes('Review summary note')"));
+    waitFor("['Nothing is sent until this phone is back online','Nothing was sent'].some(t=>document.body.innerText.includes(t))");
+    assertEquals("No connection chooser opens", "false", js("!!document.querySelector('.alpha-connection-scrim')"));
+    assertEquals("Not mock mode", "null", js("document.documentElement.dataset.connectionMode==='mock'?'mock':null"));
+    assertEquals("Send while inference is unavailable dispatches nothing: " + leaks(reviewed), 0, leaks(reviewed).length());
+    assertEquals("No reply or summary card can exist without inference", "false", js("document.body.innerText.includes('Review summary note')"));
     waitFor("[...document.querySelectorAll('textarea[data-alpha-composer]')].some(e=>e.value.includes(" + JSONObject.quote(reviewed) + "))");
-   } catch (Exception | AssertionError failure) { primary = failure; throw failure; } finally { cleanup(pages, primary); }
-  }
+    return reviewed;
  }
 
  /** The note shape the summary save writes, stored through the real encrypted Notes bridge. */
  @Test public void noteWithAWebSourceKeepsItAcrossRecreationAndReopensThatAddress() throws Exception {
   gate();
-  String id = "page-question-" + UUID.randomUUID(), title = "Orchard summary " + letters(UUID.randomUUID()).substring(0, 8), url = BASE + "/garden";
+  String id = "page-question-" + UUID.randomUUID();
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    Throwable primary = null;
    try {
+    sourceNoteSurvivesRecreationAndReopens(scenario, id, BASE + "/garden");
+   } catch (Exception | AssertionError failure) { primary = failure; throw failure; } finally {
+    try {
+     restoreNativeCalls();
+     NotesSecureFixture.replaceRecords("records=>records.filter(n=>n.id!==" + JSONObject.quote(id) + ")");
+    } catch (Exception | AssertionError failure) { if (primary != null) primary.addSuppressed(failure); else throw failure; }
+   }
+  }
+ }
+
+ /** Stores a note with this web source through the encrypted Notes bridge, recreates the Activity and
+  * reopens the source from the note. Shared with JourneyJ05InstrumentedTest; the caller removes `id`. */
+ void sourceNoteSurvivesRecreationAndReopens(BoundedActivityScenario<MainActivity> scenario, String id, String url) throws Exception {
+    String title = "Orchard summary " + letters(UUID.randomUUID()).substring(0, 8);
     AppNavigation.liveMode(); js(AppNavigation.request("Notes")); waitFor(AppNavigation.selected("Notes")); waitFor("window.__alphaTestNavigation?.status==='complete'");
     String note = new JSONObject().put("id", id).put("kind", "text").put("title", title).put("body", "The orchard has twelve raised beds.")
      .put("webSource", new JSONObject().put("kind", "web-page").put("version", 1).put("name", "Orchard report").put("url", url))
@@ -385,16 +422,9 @@ public final class BrowserPageQuestionInstrumentedTest {
     waitFor(openSource); js("(" + openSource + ").click()");
     waitFor(AppNavigation.selected("Browser"));AppNavigation.declineStartupAccess();
     waitFor("window.__pageCalls.some(c=>c.plugin==='AlphaBrowser'&&c.method==='navigate'&&JSON.parse(c.body).url===" + JSONObject.quote(url) + ")");
-   } catch (Exception | AssertionError failure) { primary = failure; throw failure; } finally {
-    try {
-     restoreNativeCalls();
-     NotesSecureFixture.replaceRecords("records=>records.filter(n=>n.id!==" + JSONObject.quote(id) + ")");
-    } catch (Exception | AssertionError failure) { if (primary != null) primary.addSuppressed(failure); else throw failure; }
-   }
-  }
  }
 
- private void cleanup(Pages pages, Throwable primary) throws Exception {
+ void cleanup(Pages pages, Throwable primary) throws Exception {
   try {
    js("Capacitor.Plugins.AlphaBrowser.cancelReading(window.__pageTab||{}).catch(()=>{})");
    js("(()=>{for(const e of document.querySelectorAll('textarea[data-alpha-composer]')){Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(e,'');e.dispatchEvent(new Event('input',{bubbles:true}));}})()");

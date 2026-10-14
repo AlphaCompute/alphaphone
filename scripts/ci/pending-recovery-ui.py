@@ -56,10 +56,21 @@ for row in generated['files']:
   assert target.startswith('android/app/build/generated/local-agent/java/') and '..' not in Path(target).parts
   assert frozen[target]==row['generatedSha256']
 
-PHASES=[('reminder-no-alert','ReminderTimingInstrumentedTest','noAlertBridgeWithoutPermissionRestoresAndCompletesWithoutDelivery','reminderTiming','none'),('reminder-alert-timing','ReminderTimingInstrumentedTest','numericLeadDueTimeStaleTargetsAndLegacyReceiptsRemainBound','reminderTiming','numeric'),('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1'),('reminder-v2-transport','ConnectionInstrumentedTest','encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection','reminderTransport','v2'),('cloud-callback-cold','CloudDelegationCallbackInstrumentedTest','coldCallbackSurvivesRecreationAndOnlyMatchingClear','cloudDelegationNative','1'),('cloud-callback-warm','CloudDelegationCallbackInstrumentedTest','warmCallbackRejectsMalformedLinksAndRetainsLatestOnRecreation','cloudDelegationNative','1'),('workflow-notice-tap','WorkflowNoticeTapInstrumentedTest','twoOpaqueNoticesRetainColdWarmAndFailedCaptureRoutes','workflowNoticeTap','1'),('workflow-notice-process-death','WorkflowNoticeProcessDeathInstrumentedTest','originalNoticeLaunchesAbsentMainAfterOrdinaryProcessDeath','workflowNoticeProcessDeath','1'),('enabled-view-transport','ConnectionInstrumentedTest','enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision','enabledViewTransport','1'),('reminder-tap-lifecycle','ReminderTapLifecycleInstrumentedTest','staleDismissDuplicateCaptureAndConsumedCapacityRemainExact','reminderTapLifecycle','1'),('reminder-tap-process-death','ReminderTapProcessDeathInstrumentedTest','capturedReminderTapSurvivesMainDeathWithoutAnotherNotificationIntent','reminderTapProcessDeath','1'),('native-slot-isolation','ConnectionInstrumentedTest','reservedNativeSlotsRejectEveryPublicStorageOperation','nativeSlotIsolation','1'),('clock-agent-review','ClockAgentReviewInstrumentedTest','journalBoundOwnerReviewManualSelectionCancellationAndRecreation','clockAgentReview','1')]
+PHASES=[('reminder-no-alert','ReminderTimingInstrumentedTest','noAlertBridgeWithoutPermissionRestoresAndCompletesWithoutDelivery','reminderTiming','none'),('reminder-alert-timing','ReminderTimingInstrumentedTest','numericLeadDueTimeStaleTargetsAndLegacyReceiptsRemainBound','reminderTiming','numeric'),('pending-storage','ReminderDeletionStorageInstrumentedTest','reminderDeletionSlotUsesEncryptedCompareExchange','pendingActionStorageFixture','1'),('calendar-recovery','CalendarCreationRecoveryInstrumentedTest','committedMarkerRecoveryAndMissingMarkerNeverReplay','calendarCreationRecovery','1'),('audio-fence','NoteAudioInstrumentedTest','optInRetiredDeletionCannotArriveAfterReloadAndRestore','audioFence','true'),('reminder-edit','ReminderAgentInstrumentedTest','selectedCrudPersistsExactReceiptsAndRejectsChangedBindings','reminderAgent','1'),('reminder-v2-transport','ConnectionInstrumentedTest','encryptedCredentialsAndHttpSurviveRecreationWithCancellationAndRedirectRejection','reminderTransport','v2'),('cloud-callback-cold','CloudDelegationCallbackInstrumentedTest','coldCallbackSurvivesRecreationAndOnlyMatchingClear','cloudDelegationNative','1'),('cloud-callback-warm','CloudDelegationCallbackInstrumentedTest','warmCallbackRejectsMalformedLinksAndRetainsLatestOnRecreation','cloudDelegationNative','1'),('workflow-notice-tap','WorkflowNoticeTapInstrumentedTest','twoOpaqueNoticesRetainColdWarmAndFailedCaptureRoutes','workflowNoticeTap','1'),('workflow-notice-process-death','WorkflowNoticeProcessDeathInstrumentedTest','originalNoticeLaunchesAbsentMainAfterOrdinaryProcessDeath','workflowNoticeProcessDeath','1'),('workflow-approval-process-death','WorkflowNoticeProcessDeathInstrumentedTest','approvalNoticeOpensOnlyItsApprovalAfterProcessDeath','workflowNoticeProcessDeath','approval'),('enabled-view-transport','ConnectionInstrumentedTest','enabledViewProfileHttpPreservesAuthenticationAndConditionalRevision','enabledViewTransport','1'),('reminder-tap-lifecycle','ReminderTapLifecycleInstrumentedTest','staleDismissDuplicateCaptureAndConsumedCapacityRemainExact','reminderTapLifecycle','1'),('reminder-tap-process-death','ReminderTapProcessDeathInstrumentedTest','capturedReminderTapSurvivesMainDeathWithoutAnotherNotificationIntent','reminderTapProcessDeath','1'),('native-slot-isolation','ConnectionInstrumentedTest','reservedNativeSlotsRejectEveryPublicStorageOperation','nativeSlotIsolation','1'),('clock-agent-review','ClockAgentReviewInstrumentedTest','journalBoundOwnerReviewManualSelectionCancellationAndRecreation','clockAgentReview','1')]
 for _,cls,_,_,_ in PHASES:
  relative='android/app/src/androidTest/java/ai/elizaresearch/alphaphone/'+cls+'.java'
  assert relative in frozen and h(Path(relative).read_bytes())==frozen[relative]
+
+def approval_receipt(text):
+ """Receipt of the approval process-death phase: two distinct main processes, one opened approval, one untouched."""
+ rows=re.findall(r'^INSTRUMENTATION_RESULT: workflowApprovalProcessDeath=(\{.*\})\s*$',text.replace('\r\n','\n'),re.M)
+ assert len(rows)==1,'Exactly one approval process-death receipt required'
+ receipt=json.loads(rows[0])
+ assert set(receipt)=={'beforePid','beforeStart','afterPid','afterStart','uid','postTime','openedApprovals','untouchedApprovals'},'Unexpected receipt fields'
+ for key in ['beforePid','afterPid','uid','postTime']:assert isinstance(receipt[key],int) and receipt[key]>0,key
+ assert receipt['beforePid']!=receipt['afterPid'] or receipt['beforeStart']!=receipt['afterStart'],'Process death not proven'
+ assert receipt['openedApprovals']==1 and receipt['untouchedApprovals']==1,'Exactly the tapped approval opens'
+ return receipt
 
 def guard():
  assert run('shell','am','get-current-user').strip()=='0';assert_no_resident(run)
@@ -99,7 +110,7 @@ for variant in ['standalone','launcher']:
      run('shell','cmd','package','install-existing','--user',user,pkg);installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     if phase=='calendar-recovery':
      for permission in ['android.permission.READ_CALENDAR','android.permission.WRITE_CALENDAR']:run('shell','pm','grant','--user',user,APP,permission)
-    if phase in ('reminder-edit','reminder-alert-timing','workflow-notice-tap','workflow-notice-process-death','reminder-tap-lifecycle','reminder-tap-process-death'):run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
+    if phase in ('reminder-edit','reminder-alert-timing','workflow-notice-tap','workflow-notice-process-death','workflow-approval-process-death','reminder-tap-lifecycle','reminder-tap-process-death'):run('shell','pm','grant','--user',user,APP,'android.permission.POST_NOTIFICATIONS')
     switch(user,user,name)
     # A switched but not yet bound policy is a retained diagnostic failure, never user0 fallback.
     def display_record(value):
@@ -107,12 +118,14 @@ for variant in ['standalone','launcher']:
     admit_display(run,user,name,record=display_record)
     for pkg,kind in [(APP,'debug'),(TEST,'androidTest')]:installed(pkg,user,manifest[variant+'-'+kind+'.apk'])
     owned(run,user,name,user);assert_no_resident(run)
-    runner=APP+'.WorkflowNoticeProcessRunner' if phase in ('workflow-notice-process-death','reminder-tap-process-death') else 'androidx.test.runner.AndroidJUnitRunner'
+    runner=APP+'.WorkflowNoticeProcessRunner' if phase in ('workflow-notice-process-death','workflow-approval-process-death','reminder-tap-process-death') else 'androidx.test.runner.AndroidJUnitRunner'
     try:text=run('shell','am','instrument','--user',user,'-w','-r','-e','class',APP+'.'+cls+'#'+method,'-e',opt,value,TEST+'/'+runner,timeout=300)
     except (subprocess.CalledProcessError,subprocess.TimeoutExpired) as error:
      safe=lambda v:(v.decode(errors='replace') if isinstance(v,bytes) else v or '')[:1024*1024]
      (out/(variant+'-'+phase+'-failure.txt')).write_text(safe(error.stdout)+'\nSTDERR\n'+safe(error.stderr));raise
-    (out/(variant+'-'+phase+'.txt')).write_text(text);terminal(text,APP+'.'+cls,method);owned(run,user,name,user)
+    (out/(variant+'-'+phase+'.txt')).write_text(text);terminal(text,APP+'.'+cls,method)
+    if phase=='workflow-approval-process-death':(out/(variant+'-'+phase+'-receipt.json')).write_text(json.dumps(approval_receipt(text))+'\n')
+    owned(run,user,name,user)
    finally:
     primary=sys.exc_info()[1]
     signal.signal(signal.SIGINT,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
@@ -142,4 +155,4 @@ for variant in ['standalone','launcher']:
    (out/(variant+'-cleanup-incomplete.json')).write_text(json.dumps({'cleanupComplete':False,'errorType':type(error).__name__})+'\n')
    if primary is None:raise
    primary.add_note('Package cleanup unconfirmed; preserve')
-(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':16,'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')
+(out/'result.json').write_text(json.dumps({'passed':True,'variants':['standalone','launcher'],'methods':len(PHASES),'nativeRecoveryUI':True,'liveProvider':False,'physicalAcceptance':False})+'\n')

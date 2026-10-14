@@ -37,12 +37,17 @@ export function releaseBlockers(row, { manifestTestMocks = false, admission = ro
   }
   if (row.runtime !== "PACKAGED") blockers.push(`unpackaged runtime (resident runtime ${row.runtime ?? "not recorded"})`);
   else if (row.runtimeNotices !== true) blockers.push("notices lack the packaged runtime");
-  const speech = row.speechQualification;
-  if (!speech) blockers.push("unqualified speech (no qualification recorded)");
+  // On-device voice (libelizainference Paradee/ASR, android/voice-host/qualified-voice-host.json) is
+  // the only speech route: a release without it has no local speech. A packaged bundle must match the
+  // record byte for byte and the record must be qualified (device acceptance); bytes never qualify it.
+  const voice = row.voiceHost;
+  if (!voice || typeof voice !== "object" || Array.isArray(voice) || typeof voice.packaged !== "boolean")
+    blockers.push("on-device voice admission was not recorded");
+  else if (!voice.packaged) blockers.push("no on-device voice packaged (local speech would be unavailable)");
   else {
-    const missing = [speech.byteMatch !== true && "native bytes not admitted", speech.functionalPassed !== true && "functional acceptance pending or failed",
-      speech.byteMatch === true && speech.functionalPassed === true && speech.qualified !== true && "not qualified"].filter(Boolean);
-    if (missing.length) blockers.push(`unqualified speech (${missing.join(", ")})`);
+    const missing = [(!Array.isArray(voice.differences) || voice.differences.length) && "bytes differ from the voice-host record",
+      voice.qualified !== true && "device qualification pending"].filter(Boolean);
+    if (missing.length) blockers.push(`unqualified on-device voice (${missing.join(", ")})`);
   }
   // The font check must have been run and recorded. Its items block only under the policy constant,
   // and only the named font check counts: no other licence text in this field is a blocker.

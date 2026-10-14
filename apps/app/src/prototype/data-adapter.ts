@@ -3,7 +3,7 @@ import {mockAttentionRows} from './mock-attention';
 import {HOME_DEFAULTS} from './model.js';
 import {browserStorageUsage} from '../browser/storage-usage';
 import {browserDevProfile} from '../browser/dev-profile';
-import {attendeeInitials, homeAgendaHeader, homeCalendarEmptyTitle, homeCalendarName, overdueDueLabel, presentHomeAttention, presentHomeBrief, presentHomeBriefCard, presentHomeCalendar, presentHomeCalendarSource, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
+import {attendeeInitials, homeAgendaHeader, homeCalendarEmptyTitle, homeCalendarName, overdueDueLabel, presentHomeAttention, presentHomeBrief, presentHomeBriefCard, presentHomeCalendar, presentHomeCalendarSource, presentHomeNext, type HomeAttentionSummary, type HomeBriefSummary} from './home-cards';
 type Bag = Record<string, any>;
 const installed = new WeakSet<object>();
 
@@ -77,7 +77,7 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     // The app calendar can be hidden in Calendar's display settings; Calendar then leaves its events
     // out, and so does Home. Device calendars have no in-app toggle. Reminders are not affected.
     const calendarHidden = !!calendarSource && !calendarSource.native && (calendarSource.sources || []).some((source: Bag) => source.id === 'local' && source.on === false);
-    const agenda = (calendarState.events || [])
+    const ordered = (calendarState.events || [])
       .filter((event: Bag) => event.reminderStatus !== 'completed')
       .filter((event: Bag) => !event.alphaCalendarId || (calendarSource?.ready && !calendarHidden))
       .map((event: Bag) => {
@@ -88,7 +88,10 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       .concat(overdueRows.map((row: Bag) => ({event: {id: row.id, title: row.title, off: row.off, overdue: true}, begin: Number(row.at), end: Infinity})))
       .filter((item: Bag) => Number.isFinite(item.begin) && (Number.isFinite(item.end) || item.event.overdue) && (item.event.nativeEvent?.allDay?item.end>now:item.end>=now))
       // An overdue reminder is first even when an event already in progress began before it was due.
-      .sort((a: Bag, b: Bag) => Number(!!b.event.overdue) - Number(!!a.event.overdue) || a.begin - b.begin)[0];
+      .sort((a: Bag, b: Bag) => Number(!!b.event.overdue) - Number(!!a.event.overdue) || a.begin - b.begin);
+    const agenda = ordered[0];
+    // Under an overdue reminder, the next event (or reminder) still shows on a line of its own.
+    const following = agenda?.event.overdue ? ordered.find((item: Bag) => !item.event.overdue) : undefined;
     const cardState = calendarSource?.loading ? 'loading' : calendarSource?.ready ? 'ready' : 'error';
     // The calendar adapter may report its read time; otherwise the first render that sees the
     // loaded rows stands in for it (both are reads from this device, never a sync claim).
@@ -119,6 +122,8 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
     // app read it, or the reminder store for an overdue reminder.
     const calendarName = agenda && !overdue ? homeCalendarName(calendarSource?.sources, agenda.event.nativeEvent?.calendarId) : null;
     const provenance = presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue, reminder: !!agenda?.event.alphaReminderId, reminderReadAt, readAt, now, native: Capacitor.isNativePlatform(), calendar: calendarName, truncated: !!calendarSource?.truncated});
+    const next = following ? presentHomeNext({title: String(following.event.title || ''), begin: following.begin, allDay: !!(following.event.nativeEvent?.allDay ?? following.event.allDay), now,
+      provenance: presentHomeCalendarSource({state: cardState === 'error' && !calendarSource?.error ? 'other' : cardState, overdue: false, reminder: !!following.event.alphaReminderId, reminderReadAt, readAt, now, native: Capacitor.isNativePlatform(), calendar: homeCalendarName(calendarSource?.sources, following.event.nativeEvent?.calendarId), truncated: !!calendarSource?.truncated})}) : null;
     const eventTitle=agenda?String(agenda.event.title||'Untitled event'):'';
     const timeLabel=(instant:number)=>new Date(instant).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
     const endDay=agenda?new Date(agenda.end):null;
@@ -133,10 +138,12 @@ export function installPrototypeDataAdapter(Component: any, views: Record<string
       homeCalendarTitle: eventTitle || homeCalendarEmptyTitle(calendarSource, calendarHidden),
       // The card's last row holds the event time and, when known, where and when it was read.
       homeCalendarHasMeta: !!(agenda || provenance.read),
-      homeCalendarSource: provenance.read, homeCalendarOrigin: provenance.origin, homeCalendarDescription: provenance.description, homeCalendarOverdue: overdue,
+      homeCalendarSource: provenance.read, homeCalendarOrigin: provenance.origin, homeCalendarOverdue: overdue,
+      homeCalendarDescription: [provenance.description, next?.description].filter(Boolean).join('. '),
+      homeCalendarNext: next?.text || '', homeCalendarNextSource: next?.source || '', homeCalendarHasNext: !!next,
       homeCalendarVideo: calendar.video, homeCalendarPeople: calendar.people.map(ini => ({ini})),
       homePeopleVisibility: calendar.people.length ? 'visible' : 'hidden',
-      homeAttentionLabel: attention.label, homeAttentionCount: attention.count, homeAttentionText: attention.text,
+      homeAttentionLabel: attention.label,
       homeAttentionPeople: [], homeAttentionPeopleVisibility: 'hidden',
       ...(browserDevProfile?{homeInboxCount:attention.count,homeInboxRows:unreadRows.slice(0,2).map(mail=>({subject:mail.subj||'(no subject)',from:mail.name||mail.email||''})),homeInboxHasRows:unread>0,homeInboxTitle:unread?'':'No unread email',homeInboxStatus:'Development inbox'}:{}),
       homeWorkflowLabel: brief.label, homeWorkflowTitle: brief.title, homeWorkflowTime: brief.time, homeWorkflowSource: brief.source,
@@ -179,11 +186,10 @@ export function setHomeSources(next: Partial<typeof homeSources>) {
 /** Neutral Home card values used when no fixture defaults are bundled. */
 const NEUTRAL_HOME = {
   homeCalendarLabel: 'Open your calendar', homeCalendarTime: 'Calendar', homeCalendarTitle: 'Loading events…',homeCalendarHasEvent:false,homeCalendarHasMeta:false,homeCalendarFooter:'',
-  homeCalendarSource: '', homeCalendarOrigin: '', homeCalendarDescription: '', homeCalendarOverdue: false, homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
+  homeCalendarSource: '', homeCalendarOrigin: '', homeCalendarDescription: '', homeCalendarOverdue: false, homeCalendarNext: '', homeCalendarNextSource: '', homeCalendarHasNext: false, homeCalendarVideo: false, homeCalendarPeople: [] as Bag[],
   homeWorkflowFreshness: '', homeWorkflowDescription: '',
   homeBriefHas: false, homeBriefTitle: '', homeBriefStatus: '', homeBriefLabel: '', homeBriefFailed: false, homeInboxDescription: '',
   homeWorkflowLabel: 'Open workflows', homeWorkflowTitle: 'No brief yet', homeWorkflowTime: 'Workflows', homeWorkflowSource: '',
-  homeAttentionText: '',
 };
 
 /** Call in both fixture and production before mounting. Fixture builds keep the
@@ -202,7 +208,7 @@ export function installPrototypeHomeBindings(Component: any) {
     return {
       ...NEUTRAL_HOME,
       ...(HOME_DEFAULTS || {}),
-      homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionCount: String(attention.length), homeAttentionPeople: attention,
+      homeAttentionLabel: attention.length ? `${attention.length} ${attention.length === 1 ? 'item needs' : 'items need'} your attention` : 'Nothing needs your attention', homeAttentionPeople: attention,
       homeAttentionPeopleVisibility: attention.length ? 'visible' : 'hidden',
       ...out,
       activeViewLabel: activeView[0].toUpperCase()+activeView.slice(1), storageAccessWarning,

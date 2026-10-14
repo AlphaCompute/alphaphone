@@ -6,9 +6,30 @@ import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {verifyEmbeddingHost, verifyEmbeddingInputs} from '../scripts/stage-embedding-host.mjs';
+import {nativeInputPaths, nativeBinding, nativeInputs, nativeGenerated} from '../scripts/embedding-native-contract.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const git=(directory,...args)=>execFileSync('git',['-C',directory,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
-const qualified=JSON.parse(fs.readFileSync(path.join(root,'android/embedding-host/qualified-host.json'),'utf8'));
+const committed=JSON.parse(fs.readFileSync(path.join(root,'android/embedding-host/qualified-host.json'),'utf8'));
+// The admission rules are tested on a qualification shaped like the committed record but made for the
+// pinned source: native build inputs and engine gitlink read from vendor/eliza at upstream.lock.json,
+// and the built pin left as recorded (a reviewed build is never relabelled). The committed record's own
+// state at the pin is the last test in this file.
+const lockCommit=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
+const appId=JSON.parse(fs.readFileSync(path.join(root,'app.config.json'),'utf8')).appId;
+const sha=value=>createHash('sha256').update(value).digest('hex');
+const qualified=(()=>{
+ const record=structuredClone(committed);delete record.requalification;
+ record.forkPin=git(path.join(root,'vendor/eliza'),'ls-tree',lockCommit,'plugins/plugin-local-inference/native/llama.cpp').match(/^160000 commit ([a-f0-9]{40})\t/)[1];
+ // The build inputs come from the shared native contract at the pin (registered JNI: the Java class too).
+ const show=file=>execFileSync('git',['-C',path.join(root,'vendor/eliza'),'show',lockCommit+':'+file]);
+ const binding=nativeBinding(show(nativeInputPaths.at(-1)).toString('utf8'),show(nativeInputPaths.at(-2)).toString('utf8'),appId);
+ if(binding.mode==='registered')record.jniBinding=binding;
+ record.inputs=nativeInputs(binding).map(file=>{
+  const source=show(file),generated=nativeGenerated(file,source.toString('utf8'),appId,binding);
+  return {path:file,sourceSha256:sha(source),generatedSha256:sha(generated)};
+ });
+ return record;
+})();
 function fixture({currentOnly=false}={}){
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-embed-admission-'));
  for(const name of ['upstream.lock.json','app.config.json','android/embedding-host/qualified-host.json']){fs.mkdirSync(path.dirname(path.join(dir,name)),{recursive:true});fs.copyFileSync(path.join(root,name),path.join(dir,name));}
@@ -99,5 +120,21 @@ test('explicit unpackaged builds admit absence, never a partial resident payload
    const file=path.join(dir,relative);fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'partial');
    assert.throws(()=>verifyEmbeddingHost(dir,{allowAbsentRuntime:true}));fs.unlinkSync(file);
   }
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+test('the committed record is admissible at the pin, or names why it must be requalified and is refused',()=>{
+ let admissible=true;try{verifyEmbeddingInputs(root,committed);}catch{admissible=false;}
+ if(admissible){assert.equal(committed.requalification,undefined,'an admissible record carries no requalification note');return;}
+ // A pin move that changes the engine gitlink or a native build input voids the reviewed bytes.
+ const note=committed.requalification;
+ assert.equal(note?.required,true,'an inadmissible record says that requalification is required');
+ assert.equal(note.atPin,lockCommit,'for the current pin');
+ assert.ok(typeof note.reason==='string'&&note.reason.length>20);
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-embed-requalify-'));
+ try{
+  for(const name of ['upstream.lock.json','app.config.json','android/embedding-host/qualified-host.json']){fs.mkdirSync(path.dirname(path.join(dir,name)),{recursive:true});fs.copyFileSync(path.join(root,name),path.join(dir,name));}
+  assert.throws(()=>verifyEmbeddingHost(dir),/requalification required/,'distribution admission names the requalification first');
+  assert.deepEqual(verifyEmbeddingHost(dir,{allowAbsentRuntime:true}),{status:'not-packaged',distributable:false},'an unpackaged developer build is unaffected');
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });

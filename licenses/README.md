@@ -53,14 +53,18 @@ Inputs:
 - `android-runtime-classpath.json`: the resolved release and debug runtime classpath for both
   distribution variants. Its fingerprint covers the Gradle dependency declarations; generation fails
   when they change until the snapshot is refreshed.
-- `android/local-speech/runtime-manifest.json` and the pinned upstream local-speech manifests.
-  `onnxruntime-MIT.txt`, `whisper-MIT.txt`, `cmudict-BSD-2-Clause.txt`,
-  `piper-ljspeech-medium-MODEL_CARD.txt` and `piper-voices-README.md` must match the SHA-256 values
-  in `vendor/eliza/packages/app/scripts/local-speech/reference-manifest.json`.
-- `config/browser-speech.json` for the web build's in-browser speech recognition:
-  `whisper-tiny.en-onnx-MODEL_CARD.md` (the pinned ONNX conversion's model card) and
-  `onnxruntime-web/ThirdPartyNotices.txt` (ONNX Runtime v1.30.0, for the libraries statically
-  linked into the shipped WebAssembly) must match the SHA-256 values recorded there.
+- `android/voice-host/qualified-voice-host.json`, the record of the on-device speech engine:
+  `libelizainference` (llama.cpp/ggml; Paradee-8M TTS with misaki G2P and statically linked
+  eSpeak NG; the ASR slot; Silero VAD) and every voice bundle file. The schema is in
+  `scripts/voice-host.mjs` and `docs/fused-speech.md`. Each source component and each model or
+  data file is listed with its licence: eSpeak NG (GPL-3.0-or-later) is flagged copyleft, Paradee,
+  misaki and the ASR slot model are Apache-2.0, Silero VAD is MIT. The record carries no licence
+  files, so canonical SPDX texts stand in and are flagged `licence-text-missing-from-package`;
+  the bundle itself ships the eSpeak NG, misaki and spaCy notices. A component with no verified
+  licence is listed as `UNVERIFIED` and flagged, with its reason in `unverified-allowlist.json`.
+  Phonon-2 (the intended ASR, CC-BY-4.0) is listed and flagged once its files enter the record.
+  Until the record exists, no speech entries are generated. No other inference runtime is an input:
+  the web build has no in-browser speech engine (`test/llama-cpp-only.test.mjs`).
 - `vendor/eliza/LICENSE` at the commit pinned by `upstream.lock.json` (read only).
 - `ODbL-1.0.txt` for OpenStreetMap-derived map data served by the configured Maps endpoint.
 
@@ -81,7 +85,8 @@ sources for the existing mediabunny and OCR notices.
 staged runtime) record the reason for each item whose licence could not be established from
 shipped metadata. They gate nothing: an item is listed and flagged
 `unverified` whether or not it has an entry, and the reason is printed as its obligation note.
-A missing or stale entry is printed as a `LICENCE NOTE`. A reason is not legal sign-off. A font
+A missing or stale entry is printed as a `LICENCE NOTE`; an entry with `requires: <path>` names
+the record that ships its item and is reported as stale only once that record exists. A reason is not legal sign-off. A font
 entry there carries an exact file hash; the `unresolved-font-licence` check reports a payload
 file with those bytes as an unresolved font. No font is listed there today.
 

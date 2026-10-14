@@ -1,4 +1,4 @@
-import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
+import { AttachmentRefusedError, reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import type { GmailInboxReceipt } from './cloud-protocol.ts';
 
 type Bag = Record<string, unknown>;
@@ -8,7 +8,10 @@ export interface InboxOperationRecord {
   review: Bag | null; receipt: GmailInboxReceipt | null;
   /** The local draft a send was started from. Local only: it is never part of the proposal the
    * provider sees. A confirmed send clears only copies of this exact draft with the sent content. */
-  source?: { draftId: string };
+  source?: { draftId: string;
+    /** The revision of that draft's saved local copy when Send was reviewed. A saved copy still at this
+     * revision after the send, holding other text, is an earlier version of the sent email. */
+    savedRevision?: string };
   /** The composer email a send or draft review was made from. Local only. The review can be
    * confirmed only while the composer holds that same email (same local draft, which belongs to
    * one From account) with exactly the reviewed content. */
@@ -59,13 +62,14 @@ export function checkOutgoingAttachments(files: readonly { name: string; dataBas
 }
 export interface OpaqueMailAttachment { name: string; mimeType: string; dataBase64: string; size: number; sha256: string; opaque: true }
 /** Byte-copy review for a save of any type: the name and encoding are checked and the bytes hashed.
- * Content is never decoded, previewed or handed to a viewer. */
+ * Content is never decoded, previewed or handed to a viewer. A failed check is an AttachmentRefusedError. */
 export async function reviewOpaqueAttachment(file: { name: string; mimeType: string; dataBase64: string }): Promise<OpaqueMailAttachment> {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: reject control characters in untrusted names.
   if (!file || typeof file.name !== 'string' || !file.name.trim() || file.name.length > 120 || /[\\/\x00-\x1f\x7f]/.test(file.name) || file.name === '.' || file.name === '..'
-    || typeof file.dataBase64 !== 'string' || file.dataBase64.length > 7 * 1024 * 1024) throw new Error('Invalid attachment name or encoding');
-  const raw = atob(file.dataBase64);
-  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024) throw new Error('Attachment exceeds 5 MiB');
+    || typeof file.dataBase64 !== 'string' || file.dataBase64.length > 7 * 1024 * 1024) throw new AttachmentRefusedError('Invalid attachment name or encoding');
+  let raw: string;
+  try { raw = atob(file.dataBase64); } catch { throw new AttachmentRefusedError('Invalid attachment name or encoding'); }
+  if (btoa(raw) !== file.dataBase64 || raw.length > 5 * 1024 * 1024) throw new AttachmentRefusedError('Attachment exceeds 5 MiB');
   const bytes = Uint8Array.from(raw, c => c.charCodeAt(0));
   const sha256 = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), b => b.toString(16).padStart(2, '0')).join('');
   const mimeType = typeof file.mimeType === 'string' && /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i.test(file.mimeType) ? file.mimeType.toLowerCase() : 'application/octet-stream';
@@ -73,13 +77,22 @@ export async function reviewOpaqueAttachment(file: { name: string; mimeType: str
 }
 const digest = async (text: string) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))),b=>b.toString(16).padStart(2,'0')).join('');
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value));
+/** A send the saved receipt says succeeded, with the local draft it came from: the state in which local
+ * copies of that draft are removed. */
+const sentFromDraft = (record: InboxOperationRecord) => record.phase === 'observed' && record.proposal.kind === 'send' && record.receipt?.state === 'succeeded' && !!record.source;
+/** The provider's receipt reports the same succeeded send, with the same provider message, as the saved one. */
+const sameSend = (saved: GmailInboxReceipt, receipt: GmailInboxReceipt) => receipt.requestId === saved.requestId && receipt.kind === saved.kind && receipt.reviewDigest === saved.reviewDigest
+  && receipt.state === 'succeeded' && typeof receipt.providerResult?.messageId === 'string' && !!receipt.providerResult.messageId && receipt.providerResult.messageId === saved.providerResult?.messageId;
 /** One durable selected-account intent. No recovery path dispatches an effect. */
 export class InboxOperation {
   private record: InboxOperationRecord | null = null;
   private busy = false;
+  /** A confirmed send loaded from storage whose receipt the provider has not reported again in this
+   * session. Its source draft is left out of snapshots, so cleanup keeps every local copy. */
+  private unconfirmedSource = false;
   private controller = new AbortController();
   constructor(private readonly deps: InboxOperationDependencies) {}
-  snapshot() { return this.record ? copy(this.record) : null; }
+  snapshot() { if (!this.record) return null; const value = copy(this.record); if (this.unconfirmedSource) delete value.source; return value; }
   stop() { this.controller.abort(); }
   private check() { if (!this.deps.active() || this.controller.signal.aborted) throw new DOMException('Inbox account changed','AbortError'); }
   private async key() { return InboxOperation.storeKey(this.deps.owner,this.deps.grantId); }
@@ -102,17 +115,27 @@ export class InboxOperation {
   private async exclusive<T>(run:()=>Promise<T>) { if(this.busy)throw new Error('An Inbox operation is already pending');this.busy=true;try{this.check();return await run();}finally{this.busy=false;} }
   private async save(next: InboxOperationRecord | null) {
     this.check();const result=await this.deps.store.compareExchange(await this.key(),this.record,next);this.check();
-    if(result.status!=='saved')throw new Error('Inbox operation changed. Reload its receipt before continuing.');this.record=next;
+    if(result.status!=='saved')throw new Error('Inbox operation changed. Reload its receipt before continuing.');this.record=next;if(!next)this.unconfirmedSource=false;
   }
   async load() { return this.exclusive(async()=>{
     const value=await this.deps.store.read<InboxOperationRecord>(await this.key());this.check();
-    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId))||(value.composer!==undefined&&(!value.composer||typeof value.composer.draftId!=='string'||!value.composer.draftId))))throw new Error('Invalid saved Inbox operation');
-    this.record=value;return this.snapshot();
+    if(value && (value.version!==1||value.owner!==this.deps.owner||value.grantId!==this.deps.grantId||!value.requestId||!value.proposal||!['preparing','review','dispatching','observed'].includes(value.phase)||(value.source!==undefined&&(!value.source||typeof value.source.draftId!=='string'||!value.source.draftId||(value.source.savedRevision!==undefined&&(typeof value.source.savedRevision!=='string'||!value.source.savedRevision))))||(value.composer!==undefined&&(!value.composer||typeof value.composer.draftId!=='string'||!value.composer.draftId))))throw new Error('Invalid saved Inbox operation');
+    this.record=value;this.unconfirmedSource=false;
+    // Cleanup that resumes after a reload acts on a receipt saved earlier. Local copies are removed only
+    // when the provider still reports that send; no receipt read, a failed read or a different answer
+    // keeps them, and the receipt says the local draft stays on this device.
+    if(value&&sentFromDraft(value))this.unconfirmedSource=!await this.providerAgrees(value);
+    return this.snapshot();
   }); }
-  async prepare(proposal: Bag, source?: { draftId: string }) { return this.exclusive(async()=>{
+  private async providerAgrees(record: InboxOperationRecord) {
+    if(typeof this.deps.client.gmailOperation!=='function'||!record.receipt)return false;
+    try{const receipt=await this.deps.client.gmailOperation(record.grantId,record.requestId,this.controller.signal);this.check();return sameSend(record.receipt,receipt);}
+    catch{this.check();return false;}
+  }
+  async prepare(proposal: Bag, source?: { draftId: string; savedRevision?: string }) { return this.exclusive(async()=>{
     if(this.record)throw new Error('Review the saved operation before starting another.');
     const clean=copy(proposal);if(new TextEncoder().encode(JSON.stringify(clean)).length>7.5*1024*1024)throw new Error('Message exceeds the supported review size');
-    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId}}:{}),...(source&&composerKind(proposal.kind)&&typeof source.draftId==='string'&&source.draftId?{composer:{draftId:source.draftId}}:{})});
+    await this.save({version:1,owner:this.deps.owner,grantId:this.deps.grantId,requestId:crypto.randomUUID(),proposal:clean,phase:'preparing',review:null,receipt:null,...(source&&proposal.kind==='send'&&typeof source.draftId==='string'&&source.draftId?{source:{draftId:source.draftId,...(typeof source.savedRevision==='string'&&source.savedRevision?{savedRevision:source.savedRevision}:{})}}:{}),...(source&&composerKind(proposal.kind)&&typeof source.draftId==='string'&&source.draftId?{composer:{draftId:source.draftId}}:{})});
     await this.reviewCurrent();return this.snapshot();
   }); }
   /** Explicit review recovery is an idempotent prepare, never provider dispatch. */
@@ -158,7 +181,12 @@ export class InboxOperation {
     // A prepared response after an attempted dispatch remains uncertain locally; never re-enable Send.
     await this.save({...record,receipt:copy(receipt),phase:receipt.state==='prepared'?(record.phase==='dispatching'?'dispatching':record.review?'review':'preparing'):'observed'});
   }
-  async refresh() { return this.exclusive(async()=>{if(!this.record)throw new Error('No saved operation');await this.observe(await this.deps.client.gmailOperation(this.record.grantId,this.record.requestId,this.controller.signal));return this.snapshot();}); }
+  async refresh() { return this.exclusive(async()=>{if(!this.record)throw new Error('No saved operation');
+    const prior=this.record.receipt,receipt=await this.deps.client.gmailOperation(this.record.grantId,this.record.requestId,this.controller.signal);this.check();
+    await this.observe(receipt);
+    // A held cleanup proceeds once the provider, asked again, reports the same send as the saved receipt.
+    if(this.unconfirmedSource&&prior&&sameSend(prior,receipt))this.unconfirmedSource=false;
+    return this.snapshot();}); }
   async clear() { return this.exclusive(async()=>{
     if(!this.record)return;
     if(!['review','preparing'].includes(this.record.phase)&&!['succeeded','rejected'].includes(this.record.receipt?.state||''))throw new Error('Outcome is unresolved. Check the existing receipt; do not repeat this message.');

@@ -20,8 +20,20 @@ async function change(update:(index:NoteOriginIndex)=>NoteOriginIndex){
 }
 /** Reads the saved links once. A failed read shows no links; it never invents one. */
 export function loadNoteOrigins(){return loading??=readNoteOrigins().then(index=>{cache=index;for(const listener of listeners)listener();},()=>{loading=null;});}
-/** Device calendar row ids are provider-assigned and can be reused, so native events are not linked. */
-export const noteOriginSupported=(kind:NoteOriginKind)=>kind==='reminder'||!Capacitor.isNativePlatform();
+/** Reminders and in-app (browser) events are linked by their ids. Device calendar row ids are
+ * provider-assigned and can be reused after a deletion, so a native event is linked by the
+ * creationId Alpha saved it with, which the pinned calendar reader returns on events this app
+ * created (elizaOS/eliza#35912). That id is a link, not proof of ownership: another app with
+ * calendar write access can set the same fields. */
+export const noteOriginSupported=(kind:NoteOriginKind)=>kind==='reminder'||kind==='event';
+const CREATION_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+/** The note-origin key of a listed calendar event: its creationId on Android (absent for events
+ * Alpha did not create, which then have no link), its series or event id in the browser calendar. */
+export function eventNoteOriginId(event:Bag|undefined):string|undefined{
+ if(!event)return undefined;
+ if(Capacitor.isNativePlatform())return typeof event.creationId==='string'&&CREATION_ID.test(event.creationId)?event.creationId:undefined;
+ const id=event.seriesId||event.id;return id==null||id===''?undefined:String(id);
+}
 /** Links a record that was just saved to the note its draft came from. Resolves false when the link
  * was not stored; the saved record itself is never affected. */
 export async function rememberNoteOrigin(kind:NoteOriginKind,id:string,value:unknown):Promise<boolean>{
@@ -39,7 +51,7 @@ export function installNoteOriginAdapter(Component:Bag,views:Bag){
  let opening=false;
  views.calendar.render=(state:Bag,api:Bag)=>{
   const out=render(state,api),selected=out.ev&&state.open?(state.events||[]).find((e:Bag)=>e.id===state.open):undefined;
-  const origin=selected?.alphaReminderId?savedNoteOrigin('reminder',selected.alphaReminderId):selected?.alphaCalendarId?savedNoteOrigin('event',String(selected.nativeEvent?.seriesId||selected.alphaCalendarId)):undefined;
+  const origin=selected?.alphaReminderId?savedNoteOrigin('reminder',selected.alphaReminderId):selected?.alphaCalendarId?savedNoteOrigin('event',eventNoteOriginId(selected.nativeEvent)||''):undefined;
   if(!origin||!out.ev)return out;
   const openId=state.open;
   // The title is the note's current one. A link whose note is gone names no note at all.

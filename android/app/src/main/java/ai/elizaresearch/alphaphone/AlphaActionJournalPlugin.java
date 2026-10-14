@@ -78,8 +78,7 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
   * the process. Such a call is rejected: nothing was reviewed, approved or handed to Clock.
   */
  private void clockWork(PluginCall call,Runnable task){
-  try{worker().execute(task);}
-  catch(java.util.concurrent.RejectedExecutionException retired){call.reject("Clock review closed before this step started; nothing was sent to Clock");}
+  PluginWorkers.submit(worker(),task,()->call.reject("Clock review closed before this step started; nothing was sent to Clock"));
  }
  @PluginMethod public void reviewClock(PluginCall call){
   clockWork(call,()->{try{
@@ -90,11 +89,11 @@ public final class AlphaActionJournalPlugin extends ActionJournalPlugin {
     entry.put("clockReview",clockMarker(entry,"reviewing"));store.update(scope,id,previous->entry);
    }
    clockUi(()->{
-    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed())return;try{worker().execute(()->{if(destroyed())return;try{synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
+    ClockAgentReview.show(getActivity(),scope+":"+id,approved,accepted->{if(destroyed())return;PluginWorkers.submit(worker(),()->{if(destroyed())return;try{synchronized(store.lock()){JSONObject entry=clockEntry(store,scope,id,operationId),clock=entry.getJSONObject("clockReview");
       if(!"reviewing".equals(clock.getString("phase"))){call.resolve(clockReply(clock,approved.getString("action")));return;}
       JSObject reply=new JSObject();if(accepted){String token=java.util.UUID.randomUUID().toString();clock.put("phase","approved").put("reviewToken",token);reply.put("reviewToken",token);}else{clock.put("phase","cancelled").put("result",ClockAgentReview.result(approved.getString("action"),"failed"));reply=clockReply(clock,approved.getString("action"));}
       store.update(scope,id,previous->entry);call.resolve(reply);
-     }}catch(Exception refusal){if(!destroyed())call.reject("Clock review expired or was retired");}});}catch(java.util.concurrent.RejectedExecutionException retired){call.reject("Clock review retired");}});
+     }}catch(Exception refusal){if(!destroyed())call.reject("Clock review expired or was retired");}},()->call.reject("Clock review retired"));});
     return null;
    });
   }catch(Exception refusal){call.reject("Exact approved Clock review unavailable");}});

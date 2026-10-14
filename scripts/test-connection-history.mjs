@@ -12,6 +12,7 @@ const { CloudProtocol, CloudProvisionAcceptedError } = await import('../apps/app
 const { PersonalProtocolError } = await import('../apps/app/src/runtime/cloud-personal-protocol.ts');
 const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
 const { phoneContextMessage } = await import('../apps/app/src/runtime/phone-context.ts');
+const { findStoppedUserTurn } = await import('../apps/app/src/runtime/stopped-reply-match.ts');
 const { RemoteProtocol } = await import('../apps/app/src/runtime/remote-protocol.ts');
 const { presentDeviceRecordOperation } = await import('../apps/app/src/runtime/device-record-presentation.ts');
 const subscriptionEntitlement = await import('../apps/app/src/runtime/subscription-entitlement.ts');
@@ -102,7 +103,7 @@ const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.()
 const sandbox = { ...subscriptionEntitlement, AlphaClientError, browserLocalAgentEnabled:true, retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:true, devSurfacesEnabled:true, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
   PersonalProtocolError, personalIntent:async()=>null, savePersonalIntent:async(_owner,intent)=>intent, clearPersonalIntent:async()=>{},
   RemoteProtocol, remoteCredentialStore, nativeRemoteRequest, DeviceActions, presentDeviceRecordOperation, actionScope:async value=>Buffer.from(value).toString('base64url').slice(0,32), negotiateEnabledViews:async()=>'',
-  Capacitor:{getPlatform:()=>'web'},aospImage:false,SMS_SEND_CAPABILITY:'sms.send.v1', setTimeout:(callback,ms)=>setTimeout(callback,ms===15000?20:ms), clearTimeout, Intl, Date, Buffer, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, DevelopmentCloudAgentProtocol, CloudProvisionAcceptedError, phoneContextMessage, nativeCloudRequest,
+  Capacitor:{getPlatform:()=>'web'},aospImage:false,SMS_SEND_CAPABILITY:'sms.send.v1', setTimeout:(callback,ms)=>setTimeout(callback,ms===15000?20:ms), clearTimeout, Intl, Date, Buffer, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, DevelopmentCloudAgentProtocol, CloudProvisionAcceptedError, phoneContextMessage, findStoppedUserTurn, nativeCloudRequest,
   cloudCredentialStore: { read: async () => credential, write: async (_environment, value) => { credential = value; }, clear: async () => { credential = null; } },
   openConnectionBrowser: async () => { throw new Error('Unexpected browser effect'); },
   isAndroid: false, localStorage: { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) },
@@ -251,7 +252,7 @@ try {
   for(const [failure,expected] of [
     [{kind:'insufficient_credits',message:'Synthetic upstream text',transient:false},/^Eliza Cloud declined this AI request for your account's billing\. Check your account in Settings\. Alpha Phone did not retry your message, and nothing is purchased automatically\./],
     [{kind:'rate_limited',message:'Synthetic upstream text',transient:true},/^The AI request rate limit was reached\. Wait a moment before sending again\. Alpha Phone did not retry your message\.$/],
-    [{kind:'provider_issue',message:'Synthetic upstream text',transient:true},/^The agent could not complete this response\.$/],
+    [{kind:'provider_issue',message:'Synthetic upstream text',transient:true},/^The agent’s model provider could not be reached; nothing was retried\.$/],
   ]){
     const before=remote.failureReplies||0;remote.failureReply=failure;
     const refused=await controller.send('Refused turn',{view:'home',revision:13,sensitive:false},'refused-'+failure.kind,new AbortController().signal).then(()=>null,error=>error);

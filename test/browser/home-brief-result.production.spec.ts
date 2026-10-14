@@ -244,3 +244,32 @@ test('calendar permission denied: Home says access is off and shows no event, ca
   await expect(origin(page)).toHaveText('Harbour team');
   expect(await harness(page, f => f.unexpected)).toEqual([]);
 });
+
+test('the Home calendar card shows when the provider read completed, not when Home first drew its rows', async ({ page }) => {
+  test.setTimeout(120_000);
+  // The read finishes, then the app's follow-up work (pending creations) takes two minutes before
+  // Home can draw the rows. The card must name the read, not the draw.
+  await page.clock.install();
+  await flagOffAndroid(page, { calendar: { access: 'granted', calendars: [{ id: '7', name: 'Harbour team', account: 'owner@example.invalid' }], events: [{ id: '42', calendarId: '7', title: 'Quay inspection', ...soon() }] } });
+  await page.addInitScript(() => {
+    const w = window as any, base = w.Capacitor, native = base.nativePromise;
+    const record = w.readTiming = { completed: [] as number[], held: 0 };
+    base.nativePromise = async (plugin: string, method: string, input: any) => {
+      const result = await native(plugin, method, input);
+      if (plugin === 'AlphaCalendar' && method === 'list' && result?.status === 'ready') record.completed.push(Date.now());
+      if (plugin === 'AlphaCalendar' && method === 'pendingCreations' && record.held++ === 0) await new Promise(resolve => setTimeout(resolve, 120_000));
+      return result;
+    };
+  });
+  await page.goto('/');
+  await expect.poll(() => page.evaluate(() => (window as any).readTiming.held), { timeout: 30_000 }).toBeGreaterThan(0);
+  const completed = await page.evaluate(() => (window as any).readTiming.completed[0] as number);
+  await page.clock.fastForward('02:01');
+  const card = calendarCard(page);
+  await expect(card).toContainText('Quay inspection', { timeout: 20_000 });
+  const drawnAt = await page.evaluate(() => Date.now());
+  expect(drawnAt - completed).toBeGreaterThanOrEqual(120_000);
+  await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveText(`Read ${await when(page, completed)}`);
+  expect(await when(page, completed)).not.toBe(await when(page, drawnAt));
+  expect(await harness(page, f => f.unexpected)).toEqual([]);
+});

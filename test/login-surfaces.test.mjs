@@ -170,7 +170,10 @@ test('Cloud and Google sign-in leave Alpha for the user\'s own browser', () => {
   const connection = read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java');
   const open = connection.slice(connection.indexOf('public void openExternal('), connection.indexOf('public void openExternal(') + 900);
   assert.match(open, /Intent intent = new Intent\(Intent\.ACTION_VIEW, Uri\.parse\(url\.toASCIIString\(\)\)\); intent\.addCategory\(Intent\.CATEGORY_BROWSABLE\);/);
-  assert.match(open, /host\.equals\("eliza\.app"\) \|\| host\.endsWith\("\.eliza\.app"\) \|\| host\.equals\("accounts\.google\.com"\)/);
+  // Exact production hosts (eliza.app, cloud.eliza.app, accounts.google.com); staging only with test mocks.
+  assert.match(open, /if \(!ConnectionRoutes\.externalHost\(url\.getScheme\(\), url\.getHost\(\), url\.getPort\(\), BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS\)\) throw new IllegalArgumentException\(\);/);
+  const routes = read('android/app/src/main/java/ai/elizaresearch/alphaphone/ConnectionRoutes.java');
+  assert.match(routes, /if\("eliza\.app"\.equals\(value\)\|\|"cloud\.eliza\.app"\.equals\(value\)\|\|"accounts\.google\.com"\.equals\(value\)\)return true;/);
   assert.doesNotMatch(open, /setPackage\(getContext\(\)\.getPackageName\(\)\)|AlphaBrowserPlugin/, 'never opened in Alpha\'s own browser');
   // Alpha registers no general web handler, so a sign-in page cannot resolve back into Alpha.
   for (const manifest of walk('android', file => file.endsWith('AndroidManifest.xml') && !/[\\/](test|androidTest|build)[\\/]/.test(file))) {

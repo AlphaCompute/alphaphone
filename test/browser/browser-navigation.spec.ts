@@ -53,3 +53,20 @@ test('rendered browser supports address navigation, Back, Forward, Reload and St
  await navigate('slow');await expect.poll(()=>slow).toBe(1);await menu('Stop loading');await expect(page.getByText('Loading stopped. Reload to open this page.',{exact:true})).toBeVisible();await expect(page.getByRole('img',{name:'Secure connection',exact:true})).toHaveCount(0);
  release();await menu('Reload page');await expect(heading('slow')).toBeVisible();await expect(page.getByText('Loading stopped. Reload to open this page.',{exact:true})).toHaveCount(0);
 });
+test('a file chosen in a framed page reaches that page only, never the host document, the network or the agent',async({page})=>{
+ // Test-owned fixture page and a synthetic file; nothing is uploaded anywhere.
+ const requests:string[]=[];page.on('request',request=>{if(!request.url().startsWith('http://127.0.0.1'))requests.push(request.method()+' '+request.url());});
+ await page.route('https://upload.example/form',route=>route.fulfill({contentType:'text/html',body:'<label>Choose file<input type="file" id="f"></label><output id="o"></output><script>f.onchange=async()=>{const file=f.files[0];o.textContent=file.name+" | "+file.size+" | "+await file.text();};</script>'}));
+ await setup(page);
+ await page.evaluate(async()=>{const {registerPlugin}=await import('/src/platform-plugins.ts');await registerPlugin<any>('AlphaBrowser').navigate({session:'navigation-test',id:'nav',url:'https://upload.example/form'});});
+ const frame=page.frameLocator('[data-browser-surface=nav] iframe');
+ await frame.getByLabel('Choose file').setInputFiles({name:'synthetic-upload.txt',mimeType:'text/plain',buffer:Buffer.from('Synthetic upload body')});
+ await expect(frame.locator('#o')).toHaveText('synthetic-upload.txt | 21 | Synthetic upload body');
+ // Choosing a file is not a navigation: the tab keeps its committed address.
+ expect(await page.evaluate(()=>(window as any).navEvents.at(-1))).toMatchObject({url:'https://upload.example/form',committed:true,error:''});
+ // The opaque-origin frame keeps the file: the host document, its storage and the agent context never see it.
+ expect(await page.evaluate(()=>document.body.innerText)).not.toContain('Synthetic upload body');
+ expect(await page.evaluate(()=>JSON.stringify({...localStorage})+JSON.stringify({...sessionStorage}))).not.toMatch(/synthetic-upload|Synthetic upload body/);
+ expect(JSON.stringify(await page.evaluate(async()=>(await import('/src/runtime/alpha-client.ts')).alphaClient.getState().context))).not.toMatch(/synthetic-upload|Synthetic upload body/);
+ expect(requests).toEqual(['GET https://upload.example/form']);
+});

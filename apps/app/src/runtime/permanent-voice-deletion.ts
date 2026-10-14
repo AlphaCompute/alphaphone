@@ -8,9 +8,10 @@
  * confirmed deletion or returns to the state before it. It never guesses: any evidence that
  * the note or the recording now belongs to something else leaves the row under review.
  *
- * Pure. The caller holds the Notes deletion-effects lock, has read every input after taking
- * it, and applies this only to rows written by an earlier process, so no effect of the
- * interrupted operation can still be in flight.
+ * The plan is pure. The caller holds the Notes deletion-effects lock, has read every input
+ * after taking it, and applies this only to rows written by an earlier process (and, in the
+ * browser, not claimed by a live view), so no effect of the interrupted operation can still be
+ * in flight. The lease and claim helpers at the end of this module are not pure.
  */
 export type PermanentDeletionEvidence={
  /**
@@ -58,4 +59,52 @@ export function planInterruptedPermanentDeletion(evidence:PermanentDeletionEvide
  if(receipt==='removed')return recording.inAudioTrash?'restore-recording':'review';
  // `unknown` (never dispatched) or `restored` (a restore already gave it back): live recording, saved note.
  return recording.inAudioTrash?'review':'retire';
+}
+
+/**
+ * Renderer-held lease on a deletion recovery row (MVP-15). The Android native passes (the 6-hour
+ * WorkManager job and the plugin-load pass) cannot take this renderer's Web Lock, so a live renderer
+ * marks each row it is between steps on, or still shows under review with its Restore button, with
+ * `lease.until`. The native passes leave a leased row exactly as it is and may finish it only after
+ * the lease has expired (NotesDeletionLease.java). The lease is renewed on every step and on every
+ * deletion-status pass, which Trash maintenance repeats at least every 15 minutes while the shell
+ * is alive, so it outlives the gap between passes and expires soon after the renderer is gone.
+ */
+export const PERMANENT_DELETION_LEASE_MS=20*60*1000;
+export type DeletionLease={until:number};
+/** The row with a lease running from now. Nothing else in the row changes. */
+export function leasedDeletionRow<T extends object>(row:T,now:number):T&{lease:DeletionLease}{
+ return {...row,lease:{until:now+PERMANENT_DELETION_LEASE_MS}};
+}
+/** The same deletion row, whatever its lease. */
+export function sameDeletionRow(a:object,b:object):boolean{
+ return JSON.stringify({...a,lease:undefined})===JSON.stringify({...b,lease:undefined});
+}
+/** True when the row's lease is due for renewal: absent, malformed, or less than half left. */
+export function deletionLeaseDue(row:object,now:number):boolean{
+ const until=(row as {lease?:Partial<DeletionLease>}).lease?.until;
+ return typeof until!=='number'||!Number.isFinite(until)||until-now<PERMANENT_DELETION_LEASE_MS/2;
+}
+
+/**
+ * Origin-wide claim on the deletions a live view started. Each view holds a shared Web Lock per
+ * row it started until the row retires or the view goes away (the browser releases it then).
+ * Another tab never settles a row that a live view still holds; per-process bookkeeping alone
+ * could not tell such a row from one an earlier, closed view left.
+ */
+const claimPrefix='alpha.notes-deletion-claim.v1:';
+const claims=new Map<string,()=>void>();
+export function claimDeletion(id:string):void{
+ if(claims.has(id)||!navigator.locks?.request)return;
+ let release:()=>void=()=>{};
+ const held=new Promise<void>(resolve=>{release=resolve;});
+ claims.set(id,release);
+ void navigator.locks.request(claimPrefix+id,{mode:'shared'},()=>held).catch(()=>{claims.delete(id);});
+}
+export function releaseDeletionClaim(id:string):void{claims.get(id)?.();claims.delete(id);}
+/** True when another live view of this origin holds the claim on this row. */
+export async function deletionClaimedElsewhere(id:string):Promise<boolean>{
+ if(claims.has(id)||!navigator.locks?.query)return false;
+ const state=await navigator.locks.query();
+ return [...(state.held||[]),...(state.pending||[])].some(lock=>lock.name===claimPrefix+id);
 }

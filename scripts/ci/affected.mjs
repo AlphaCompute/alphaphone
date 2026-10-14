@@ -4,11 +4,25 @@ import { pathToFileURL } from 'node:url';
 
 export const referenceOnly = path => /^(docs\/|design\/)/.test(path) || /^(README\.md|AGENTS\.md|LICENSE|LICENSE\.md)$/.test(path);
 
+// Reference data that node tests read, so a change to it must run repository verification
+// (never a browser, Android or prepare lane). Derived from `grep -o 'docs/[^ ]*' test/*.test.mjs`:
+// every docs/*.json (requirements, dependency-audit dispositions and snapshot, the
+// mvp-remaining-work inventory), and every Markdown file test/docs-links.test.mjs scans,
+// which is README.md and docs/**/*.md outside docs/market-research/. That set includes
+// ci-cost-policy.md (embedded ruleset), core-loop-audit.md, decisions.md and the inventories.
+export const testReadReference = path =>
+  /^docs\/.*\.json$/.test(path) ||
+  (/^docs\/.*\.md$/.test(path) && !/^docs\/market-research\//.test(path)) ||
+  path === 'README.md';
+
 // Unknown paths run everything. Only explicitly non-executable reference data is ignored.
 export function affected(paths) {
   const result = { verify: false, browser: false, android: false, prepare: false };
   for (const path of paths) {
-    if (referenceOnly(path)) continue;
+    if (referenceOnly(path)) {
+      if (testReadReference(path)) result.verify = true;
+      continue;
+    }
     result.verify = true;
     if (/^test\/browser\//.test(path) || path === 'playwright.config.ts' || path === 'scripts/storage-specs.mjs') {
       result.browser = true;
@@ -20,9 +34,10 @@ export function affected(paths) {
       result.android = true;
     } else if (path === '.github/workflows/resident-prepare.yml') {
       result.prepare = true;
-    } else if (/^\.github\/workflows\/(resident-android|bun-spawn-seccomp|android-emulator)\.yml$/.test(path)) {
+    } else if (/^\.github\/workflows\/(resident-android|bun-spawn-seccomp|android-emulator|digest-restart|dependency-audit)\.yml$/.test(path)) {
       // Explicit qualification/diagnostics; resident push/nightly runs are opt-in by repository variable,
-      // and the emulator evidence workflow has no trigger but a dispatch.
+      // and the emulator evidence and digest process-recovery workflows have no trigger but a dispatch.
+      // The advisory audit is scheduled and dispatched only; its script and test run in verify.
     } else if (/^android\//.test(path)) {
       result.android = true;
     } else if (/^apps\/app\//.test(path)) {
