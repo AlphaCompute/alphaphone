@@ -76,7 +76,8 @@ public class PasswordVaultFillInstrumentedTest {
    find(By.res("android", "autofill_save_yes"), "Android's Save prompt").click();
    assertTrue("Alpha's save sheet opens", device.wait(Until.hasObject(By.pkg(BuildConfig.APPLICATION_ID).text(Pattern.compile("(Save|Update saved) password\\?"))), 10_000));
    find(By.pkg(BuildConfig.APPLICATION_ID).text("Save"), "Save in Alpha's sheet").click();
-   if (device.wait(Until.hasObject(By.pkg(Pattern.compile("com\\.android\\.(systemui|settings)"))), 3_000)) PasswordVaultFixture.confirmDeviceCredential();
+   // Saving always asks for the device credential (PasswordSaveActivity.save).
+   PasswordVaultFixture.confirmDeviceCredential();
    assertTrue("Saved", device.wait(Until.hasObject(By.text("Password saved")), 10_000) || device.wait(Until.gone(By.pkg(BuildConfig.APPLICATION_ID).text("Save")), 5_000));
 
    // Fill into the exact package and signer it was saved for, after the device credential.
@@ -84,7 +85,8 @@ public class PasswordVaultFillInstrumentedTest {
    UiObject2 offered = offer();
    assertNotNull("Alpha offers a fill to the package the password was saved for", offered);
    offered.click();
-   if (device.wait(Until.hasObject(By.pkg(Pattern.compile("com\\.android\\.(systemui|settings)"))), 5_000)) PasswordVaultFixture.confirmDeviceCredential();
+   // Every fill authenticates in the picker; no earlier unlock is reused.
+   PasswordVaultFixture.confirmDeviceCredential();
    find(By.text(username), "The saved sign-in is listed for this package").click();
    String expected = PasswordFillFixtureActivity.expectedStatus(username, secret);
    for (int i = 0; i < 50 && !expected.equals(status()); i++) SystemClock.sleep(100);
@@ -95,7 +97,7 @@ public class PasswordVaultFillInstrumentedTest {
    UiObject2 again = offer();
    assertNotNull("Offered again", again);
    again.click();
-   if (device.wait(Until.hasObject(By.pkg(Pattern.compile("com\\.android\\.(systemui|settings)"))), 3_000)) PasswordVaultFixture.confirmDeviceCredential();
+   PasswordVaultFixture.confirmDeviceCredential();
    find(By.pkg(BuildConfig.APPLICATION_ID).text("Cancel"), "Cancel in the fill sheet").click();
    SystemClock.sleep(1000);
    assertEquals("Cancel leaves the form empty", "user=;password=empty", status());
@@ -121,7 +123,7 @@ public class PasswordVaultFillInstrumentedTest {
    UiObject2 locked = offer();
    assertNotNull("Offered while locked (authentication-gated)", locked);
    locked.click();
-   assertTrue("A locked vault asks for the device credential before listing sign-ins", device.wait(Until.hasObject(By.pkg(Pattern.compile("com\\.android\\.(systemui|settings)"))), 10_000));
+   assertTrue("A locked vault asks for the device credential before listing sign-ins", PasswordVaultFixture.credentialPromptShown(10_000));
    device.pressBack();
    assertFalse("No secret in logcat", PasswordVaultFixture.logcatSince(started).contains(secret));
   } finally {

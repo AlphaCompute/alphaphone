@@ -193,6 +193,13 @@ test('managed Google bridge refuses scope escalation, mutations, malformed query
   assert.equal((await pending).status,409,'logout prevents publishing an in-flight calendar result');
  }finally{await f.close();}
 });
+test('a Cloud refusal whose wait is only in Retry-After reaches the redeem retry time (#410)',async()=>{
+ const {SubscriptionRedeemError}=await import('../apps/app/src/runtime/subscription-entitlement.ts');
+ const store={read:async()=>({token:secret,credentialId,userId:owner,organizationId:org}),write:async()=>{},clear:async()=>{}};
+ // Synthetic Anthropic-style 429: no wait in the body, Retry-After from the transport.
+ const client=new CloudProtocol('production',async()=>({status:429,data:{type:'error',error:{type:'rate_limit_error',message:'Synthetic'}},retryAfter:'45'}),store,async()=>{});
+ await assert.rejects(client.redeemSubscriptionCode('SYNTHETIC0000CODE',randomUUID(),new AbortController().signal),error=>error instanceof SubscriptionRedeemError&&error.code==='rate-limited'&&error.retryAfterMs===45000);
+});
 
 // In-app sign-in through the development host (email code): the Steward session, PKCE material and
 // the minted key stay in the host; the page receives only the outcome and a reference. Synthetic.

@@ -206,6 +206,17 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
   await release(page);
  });
 
+ test('a format v2 entitlement shows the share of the period allowance left, not an amount of money',async({page})=>{
+  const now=Math.floor(Date.now()/1000);
+  // Synthetic micro-dollar figures (Cloud's allowance unit), not a product allowance.
+  await boot(page,await entitlements({ver:2,allowance:undefined,plan_allowance:{unit:'usd_micros',granted:4_000_000,remaining:1_000_000,periodStart:now-86400,resetsAt:now+86400}}));
+  await admitted(page);
+  const panel=await openAgent(page);
+  await expect(panel.getByText(/25% of this billing period's plan allowance is left\. Resets /)).toBeVisible();
+  await expect(panel).not.toContainText('$');
+  await release(page);
+ });
+
  test('a trialing plan is admitted',async({page})=>{
   await boot(page,{...await entitlements(),plan:'trialing'});
   await admitted(page);await openAgent(page);await expect(page.getByText('Synthetic plan · trial',{exact:true})).toBeVisible();await release(page);
@@ -305,6 +316,43 @@ test.describe('entitlement route unavailable: billing snapshot fallback, never c
 });
 
 test.describe('outages and offline use',()=>{
+ test('frequent Home returns are throttled but returning from plan management rechecks',async({page})=>{
+  await boot(page,{...await entitlements(),plan:'none',holdProvider:false});await needsPlan(page);await idle(page);
+  const checks=async()=>(await calls(page)).filter(c=>c.path==='/api/v1/subscription/entitlement').length;
+  const before=await checks();
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());
+  await expect.poll(checks).toBe(before+1);await idle(page);
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());await idle(page);
+  expect(await checks()).toBe(before+1);
+  await page.evaluate(()=>(window as any).planController.residentManagePlan());await idle(page);
+  await page.evaluate(()=>(window as any).planController.recheckPlanOnReturn());
+  await expect.poll(checks).toBe(before+2);
+ });
+ test('billing refusals refresh plan state once per minute without stopping the resident',async({page})=>{
+  await boot(page,{...await entitlements(),holdProvider:false});await expect.poll(()=>configured(page)).toBe(1);await idle(page);
+  const checks=async()=>(await calls(page)).filter(c=>c.path==='/api/v1/subscription/entitlement').length;
+  const before=await checks(),stops=(await calls(page)).filter(c=>c.method==='stop').length;
+  await page.evaluate(()=>(window as any).planController.recheckPlanAfterRefusal());
+  await expect.poll(checks).toBe(before+1);
+  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription?.kind)).toBe('active');
+  await page.evaluate(()=>(window as any).planController.recheckPlanAfterRefusal());
+  expect(await checks()).toBe(before+1);
+  expect((await calls(page)).filter(c=>c.method==='stop')).toHaveLength(stops);
+ });
+ test('an ended cached plan window cannot keep the Cloud binding during an outage',async({page})=>{
+  const record=JSON.stringify({version:1,environment:'production',credentialId:CREDENTIAL,userId:USER,organizationId:null,status:'active',planName:'Synthetic plan',verifiedAt:Date.now()-1000,endsAt:Date.now()-1});
+  await boot(page,{identity:'offline',holdProvider:false,storage:{'alpha.connection.plan-admission.v1':record}});await started(page);await idle(page);
+  expect((await calls(page)).some(c=>c.method==='clearProvider')).toBe(true);
+  expect(await configured(page)).toBe(0);
+ });
+ test('a failed background refresh does not renew the verified plan timestamp',async({page})=>{
+  await boot(page,{...await entitlements({rfa:Math.floor(Date.now()/1000)+4}),holdProvider:false});
+  await expect.poll(()=>configured(page)).toBe(1);await idle(page);
+  const before=await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'));
+  await fixture(page,{route:'503'});
+  await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription?.refreshFailed),{timeout:10000}).toBe(true);
+  expect(await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'))).toBe(before);
+ });
  test('a billing outage without a recent plan is "needs plan" with a retry',async({page})=>{
   await boot(page,{route:'503'});
   await needsPlan(page);await started(page);
@@ -378,7 +426,9 @@ test.describe('redeem a subscription code',()=>{
   await page.getByRole('button',{name:'Redeem code',exact:true}).click();
   await expect(page.getByRole('alert')).toHaveText('This code could not be redeemed. Check the code and try again.');
   expect(await page.evaluate(()=>(window as any).planFixture.bodies.length)).toBe(1);
-  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveValue('');
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveValue(CODE);
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveAttribute('aria-invalid','true');
+  await expect(page.getByRole('textbox',{name:'Subscription code'})).toHaveAttribute('aria-describedby','alpha-redeem-error');
   expect(await configured(page)).toBe(0);
   // Text that cannot be a code is refused locally with the same answer; nothing is sent.
   await page.getByRole('textbox',{name:'Subscription code'}).fill('not-a-code');
