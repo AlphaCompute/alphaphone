@@ -242,7 +242,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
         { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
-        ...(options.digests ? [{ name: 'AlphaHostedResults', methods: withListeners(['beginBackground', 'cancelBackground', 'configureBackground', 'disableBackground', 'syncInbox', 'inboxHistory', 'status', 'pendingResult', 'consumeResult', 'pendingSourceRenewal',
+        ...(options.digests ? [{ name: 'AlphaHostedResults', methods: withListeners(['beginBackground', 'cancelBackground', 'configureBackground', 'disableBackground', 'syncInbox', 'inboxHistory', 'status', 'pendingResult', 'consumeResult', 'pendingSourceRenewal', 'settleSourceRenewal',
           ...(options.schedules?.native ? ['nativeSourceIdentity', 'nativeSourceConsent', 'scheduleSourceRenewal', 'clearSourceRenewal'] : [])]) }] : []),
         ...(options.calendar || options.schedules?.native ? [{ name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts', ...(options.schedules?.native ? ['requestWorkflowReadAccess', 'workflowCalendars'] : [])]) }] : []),
       ],
@@ -294,7 +294,10 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
           if (method === 'syncInbox') { d.syncs++; for (const row of d.results) if (!d.inbox.some(saved => saved.runId === row.runId)) d.inbox.push(structuredClone(row)); persist(); return { entries: structuredClone(d.inbox) }; }
           if (method === 'inboxHistory') { d.histories++; return { entries: structuredClone(d.inbox) }; }
           if (method === 'status') return { enabled: false, backgroundEnabled: false };
-          if (method === 'pendingSourceRenewal') { const sourceId = d.pendingRenewal; d.pendingRenewal = null; return sourceId ? { sourceId } : {}; }
+          // A Renew tap (#485): the native record's token, the exact selection and expiry it was armed
+          // for. It stays pending until the renderer settles it.
+          if (method === 'pendingSourceRenewal') { const source = d.sources.find((row: any) => row.id === d.pendingRenewal); return source?.live ? { token: 'renewal-' + source.id, question: false, selection: source.live, expiresAt: Date.parse(source.expiresAt) } : {}; }
+          if (method === 'settleSourceRenewal') { if (input.token !== 'renewal-' + d.pendingRenewal) throw Error('Renewal tap changed'); d.pendingRenewal = null; return {}; }
           if (method === 'pendingResult') return {};
           // The phone enrollment the consent is bound to, and the consent Android records for one source.
           if (method === 'nativeSourceIdentity') return { provider: 'native', ...enrollment() };
@@ -308,8 +311,8 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
             d.grants[input.sourceId] = { ...grant, scope: structuredClone(input.scope), expiresAt: input.expiresAt, revoked: false };
             return grant;
           }
-          if (method === 'scheduleSourceRenewal') { d.renewals.push('arm:' + input.sourceId); return {}; }
-          if (method === 'clearSourceRenewal') { d.renewals.push('clear:' + input.sourceId); return {}; }
+          if (method === 'scheduleSourceRenewal') { d.renewals.push('arm:' + (input.selection?.sourceId ?? input.sourceId)); return {}; }
+          if (method === 'clearSourceRenewal') { d.renewals.push('clear:' + (input.selection?.sourceId ?? input.sourceId)); return {}; }
         }
         if (plugin === 'Agent') {
           if (method === 'getStatus') return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
