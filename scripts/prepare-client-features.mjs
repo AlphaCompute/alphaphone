@@ -104,7 +104,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== 'a5afdd9825a3bb6c0088c4b7174a78e336ceca93') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== '87d9bd96477f37a01c27ac76f6c5b3a3bff3faad') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',

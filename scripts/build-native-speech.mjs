@@ -5,9 +5,16 @@ import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {verifyPinnedUpstream} from './pinned-upstream-source.mjs';
+import {verifyCommittedWorkspace} from '../vendor/eliza/packages/app/scripts/lib/immutable-workspace-source.mjs';
 const root=path.resolve(import.meta.dirname,'..');
-verifyPinnedUpstream(root);
-const source=path.join(root,'vendor/eliza');
+const {commit:sourceCommit}=verifyPinnedUpstream(root);
+const source=process.env.ALPHA_ELIZA_NATIVE_SOURCE?path.resolve(process.env.ALPHA_ELIZA_NATIVE_SOURCE):path.join(root,'vendor/eliza');
+verifyCommittedWorkspace(source,sourceCommit,{generatedDirectories:['.cache/elizavoice-android']});
+const nativeRelative='plugins/plugin-local-inference/native/llama.cpp';
+const expectedNative=execFileSync('git',['-C',source,'ls-tree','HEAD',nativeRelative],{encoding:'utf8'}).trim().split(/\s+/)[2];
+const nativeCommit=execFileSync('git',['-C',path.join(source,nativeRelative),'rev-parse','HEAD'],{encoding:'utf8'}).trim();
+if(nativeCommit!==expectedNative)throw Error('Native build checkout differs from the pinned gitlink');
+execFileSync('git',['-C',path.join(source,nativeRelative),'diff','--exit-code','HEAD','--','.'],{stdio:'ignore'});
 const {selectHostAsrAssets,QWEN3_ASR_ASSETS}=await import(pathToFileURL(path.join(source,'plugins/plugin-local-inference/src/host-asr-assets.ts')));
 let asrRoot=process.env.ALPHA_ASR_MODEL_DIR;
 if(!asrRoot){
@@ -19,8 +26,11 @@ asrRoot=path.resolve(asrRoot);
 const selected=selectHostAsrAssets(asrRoot);
 async function hash(file){const h=createHash('sha256');for await(const bytes of fs.createReadStream(file))h.update(bytes);return h.digest('hex');}
 for(const item of selected.assets){const file=path.join(asrRoot,item.path);if(fs.statSync(file).size!==item.bytes||await hash(file)!==item.sha256)throw Error(`ASR asset differs from upstream pin: ${item.path}`);}
-const output=path.join(root,'artifacts/native-voice');
-execFileSync(process.execPath,[path.join(source,'packages/app/scripts/paradee-voice/build-native.ts'),'--workspace',path.join(root,'.eliza/native-voice-build'),'--out',output],{stdio:'inherit'});
+const output=path.join(root,'artifacts/native-voice'),baseOutput=path.join(root,'artifacts/native-voice-base');
+execFileSync(process.execPath,[path.join(source,'packages/app/scripts/paradee-voice/build-native.ts'),'--workspace',path.join(root,'.eliza/native-voice-build'),'--out',baseOutput,...(process.env.ALPHA_SPEECH_MODEL_CACHE?['--model-cache',path.resolve(process.env.ALPHA_SPEECH_MODEL_CACHE)]:[])],{stdio:'inherit'});
+// Keep the shared builder output reusable by other consumers before adding Alpha's ASR assets.
+fs.rmSync(output,{recursive:true,force:true});
+fs.cpSync(baseOutput,output,{recursive:true,mode:fs.constants.COPYFILE_FICLONE});
 const bundle=path.join(output,'assets/paradee-voice/v1');
 const manifestPath=path.join(bundle,'manifest.json'),manifest=JSON.parse(fs.readFileSync(manifestPath));
 for(const item of selected.assets){const target=path.join(bundle,item.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(asrRoot,item.path),target,fs.constants.COPYFILE_FICLONE);if(await hash(target)!==item.sha256)throw Error('Staged ASR asset changed');manifest.files.push(item);}
@@ -36,7 +46,7 @@ for(const name of noticeFiles){
 }
 fs.writeFileSync(manifestPath,JSON.stringify(manifest,null,2)+'\n');
 const recordPath=path.join(output,'build-record.json'),record=JSON.parse(fs.readFileSync(recordPath));
-record.sourceCommit=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
+if(record.sourceCommit!==sourceCommit||record.nativeCommit!==nativeCommit)throw Error('Shared voice build record differs from the pinned source revisions');
 record.asrBackend=selected.backend;
 for(const item of [...selected.assets,...addedNotices,{path:'manifest.json'}]){
  const relative='assets/paradee-voice/v1/'+item.path,file=path.join(output,relative);

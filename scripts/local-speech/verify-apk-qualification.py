@@ -60,6 +60,22 @@ def qualify_native(apk, record, source_commit, build_record_digest):
     if not assets or not any(row.get('path') == 'assets/paradee-voice/v1/manifest.json' for row in assets):
         differences.append('Native speech has no qualified model inventory')
     with zipfile.ZipFile(apk) as archive:
+        manifest_name = 'assets/paradee-voice/v1/manifest.json'
+        try:
+            manifest = json.loads(archive.read(manifest_name))
+            inventory = manifest['files']
+            if not isinstance(inventory, list) or not inventory:
+                raise ValueError('empty model inventory')
+            qualified_assets = {row['path']: row for row in assets}
+            for entry in inventory:
+                relative = entry['path']
+                if not isinstance(relative, str) or any(part in ('', '.', '..') for part in relative.split('/')) or '\\' in relative:
+                    raise ValueError('invalid model path')
+                expected = {'path': 'assets/paradee-voice/v1/' + relative, 'bytes': entry['bytes'], 'sha256': entry['sha256']}
+                if qualified_assets.get(expected['path']) != expected:
+                    differences.append(expected['path'] + ': absent from qualified model inventory')
+        except (KeyError, ValueError, TypeError, zipfile.BadZipFile):
+            differences.append('Native speech model manifest is missing or invalid')
         for row in assets:
             name = row.get('path', '')
             if not name.startswith('assets/paradee-voice/v1/') or archive.namelist().count(name) != 1:

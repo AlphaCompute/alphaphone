@@ -30,6 +30,7 @@ public final class LocalSpeechInstrumentedTest {
   String transcript;
   start=SystemClock.elapsedRealtime();
   try(LocalSpeechEngine engine=new LocalSpeechEngine(models)){
+   engine.prepare();
    evidence.put("loadMs",SystemClock.elapsedRealtime()-start);start=SystemClock.elapsedRealtime();transcript=engine.transcribe(human);evidence.put("humanTranscript",transcript).put("asrMs",SystemClock.elapsedRealtime()-start).put("humanDurationMs",human.length/16);
    String lower=transcript.toLowerCase(Locale.ROOT);for(String word:new String[]{"nightfall","yellow","lamps","light","quarter"})assertTrue("Human recording transcript contains "+word,lower.contains(word));
    assertEquals("Digital silence creates no invented text","",engine.transcribe(new float[16000]));
