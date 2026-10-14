@@ -24,7 +24,7 @@ function build(t, row, extra = {}) {
 }
 // Everything verify-apks records for a distributable release.
 const DISTRIBUTABLE = { mode: "release", signed: true, signerSha256: SIGNER, distributable: true, runtime: "PACKAGED", runtimeNotices: true,
-  voiceHost: { packaged: false, asr: false, differences: [], functionalAcceptance: null }, licenceBlockers: [] };
+  voiceHost: { packaged: true, asr: true, differences: [], qualified: true }, licenceBlockers: [] };
 const descriptor = (signerSha256 = SIGNER, versionCode = 4) => ({ schema: 1, signerSha256, lastRelease: { versionCode, versionName: null, recordedAt: null } });
 
 test("unit arguments require an alias that is neither a name nor a serial pattern", () => {
@@ -69,9 +69,10 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   assert.match(refusal({ runtime: undefined }), /unpackaged runtime \(resident runtime not recorded\)/);
   assert.match(refusal({ runtimeNotices: false }), /notices lack the packaged runtime/);
   // On-device voice is optional; a packaged bundle needs exact bytes and recorded functional acceptance.
-  assert.match(refusal({ voiceHost: { packaged: true, asr: false, differences: ["assets/voice/v1/x: differs"], functionalAcceptance: null } }), /unqualified on-device voice \(bytes differ from the voice-host record, functional acceptance pending or failed\)/);
-  assert.match(refusal({ voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: { passed: false } } }), /unqualified on-device voice \(functional acceptance pending or failed\)/);
-  assert.equal(admit({ voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: { passed: true } } }).distributable, true);
+  assert.match(refusal({ voiceHost: { packaged: true, asr: true, differences: ["assets/paradee-voice/v1/x: differs"], qualified: false } }), /unqualified on-device voice \(bytes differ from the voice-host record, device qualification pending\)/);
+  assert.match(refusal({ voiceHost: { packaged: true, asr: true, differences: [], qualified: false } }), /unqualified on-device voice \(device qualification pending\)/);
+  assert.match(refusal({ voiceHost: { packaged: false, asr: false, differences: [], qualified: false } }), /no on-device voice packaged/);
+  assert.equal(admit({ voiceHost: { packaged: true, asr: true, differences: [], qualified: true } }).distributable, true);
   assert.match(refusal({ voiceHost: undefined }), /on-device voice admission was not recorded/);
   assert.match(refusal({ testMocks: true }), /test-mocks build/);
   assert.match(refusal({ bundleAudit: "failed" }), /flag-off bundle audit/);
@@ -79,7 +80,7 @@ test("a pilot or acceptance unit never gets a non-distributable release, and eve
   assert.match(refusal({ releaseAdmission: { failures: [], blockers: ["release signer is unset in android/release-signer.json"], signerMatches: false } }), /release signer is unset/);
   // All open blockers are listed together, once each.
   const all = refusal({ distributable: false, signed: false, signerSha256: null, runtime: "NOT_PACKAGED", licenceBlockers: [font, font],
-    voiceHost: { packaged: true, asr: false, differences: [], functionalAcceptance: null } });
+    voiceHost: { packaged: true, asr: true, differences: [], qualified: false } });
   const listed = all.split("\n").filter(line => line.startsWith("  - "));
   assert.deepEqual(listed.map(line => line.slice(4).split(/[:(]/)[0].trim()), ["unsigned release", "unpackaged runtime", "unqualified on-device voice"]);
   assert.match(all, /--build debug rehearses the same steps on a disposable emulator/);

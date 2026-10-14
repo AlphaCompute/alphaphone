@@ -1,9 +1,9 @@
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarPlugin.java
-@@ -18,6 +18,28 @@ public abstract class CalendarPlugin extends Plugin {
+@@ -18,6 +18,28 @@
   private final CalendarCreationStore creations;
   protected CalendarPlugin(CalendarConfiguration configuration){this.configuration=java.util.Objects.requireNonNull(configuration);this.creations=new CalendarCreationStore(configuration);}
- 
+
 + /** Opt-in host persistence after native review. The default engine keeps its existing behavior. */
 + protected boolean deferReviewedDeletion(){return false;}
 + protected JSObject enqueueReviewedDeletion(org.json.JSONObject target,String operationId)throws Exception{throw new UnsupportedOperationException("Deletion journal unavailable");}
@@ -29,7 +29,7 @@
   private boolean allowed(){return getPermissionState("calendar")==PermissionState.GRANTED;}
   private JSObject statusValue(String status){JSObject v=new JSObject();v.put("status",status);return v;}
   private void status(PluginCall c,String status){c.resolve(statusValue(status));}
-@@ -89,11 +111,12 @@ public abstract class CalendarPlugin extends Plugin {
+@@ -89,11 +111,12 @@
      try{
      if(!workflowForeground()||!allowed()||!unlocked()){deleting.set(false);status(c,"unavailable");return;}
      String title=snapshot.event.getAsString("title"),zone=snapshot.event.getAsString("eventTimezone");
@@ -43,7 +43,7 @@
        ArrayList<ContentProviderOperation> operations=snapshot.assertions();operations.add(ContentProviderOperation.newDelete(CalendarContract.Events.CONTENT_URI).withSelection(CalendarContract.Events._ID+"=?",new String[]{Long.toString(snapshot.id)}).withExpectedCount(1).build());
        getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);
        try(Cursor row=getContext().getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,snapshot.id),new String[]{CalendarContract.Events.DELETED},null,null,null)){if(row==null||row.moveToFirst()&&row.getInt(0)==0)throw new IllegalStateException("Deletion readback unavailable");}
-@@ -185,7 +208,7 @@ public abstract class CalendarPlugin extends Plugin {
+@@ -185,7 +208,7 @@
      if(!location.trim().isEmpty())message+="\nLocation: "+location;
      if(!description.trim().isEmpty())message+="\n\n"+description;
      if(!read)message+="\n\n"+NO_ATTENDEES;
@@ -52,7 +52,7 @@
      android.widget.TextView text=new android.widget.TextView(getActivity());text.setText(message);text.setPadding(32,16,32,16);android.widget.ScrollView scroll=new android.widget.ScrollView(getActivity());scroll.addView(text);
      deleteDialog=new android.app.AlertDialog.Builder(getActivity()).setTitle(action+" calendar event?").setView(scroll).setNegativeButton("Cancel",(dialog,which)->{}).setPositiveButton(read?"Share with agent":action+" event",(dialog,which)->{
       resolved[0]=true;if(!allowed()||!unlocked()||!operationId.equals(activeAgentOperation)){outcome[0]=statusValue("permission-required");return;}
-@@ -193,6 +216,7 @@ public abstract class CalendarPlugin extends Plugin {
+@@ -193,6 +216,7 @@
       try{
        if(!sourceRevision.equals(CalendarEventGuard.sourceRevision(getContext().getContentResolver(),sourceId,configuration.accountName,configuration.localCalendarName)))throw new IllegalStateException();
        if(!create){CalendarEventGuard.Snapshot latest=CalendarEventGuard.read(getContext().getContentResolver(),snapshot.id,sourceId);if(latest==null||!latest.revision.equals(snapshot.revision))throw new IllegalStateException();}
@@ -62,7 +62,7 @@
         dispatched=true;android.content.ContentProviderResult[] result=getContext().getContentResolver().applyBatch(CalendarContract.AUTHORITY,operations);if(create)eventId=ContentUris.parseId(result[result.length-1].uri);
 --- a/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
 +++ b/plugins/plugin-native-calendar/android/src/main/java/ai/eliza/plugins/calendar/CalendarEventGuard.java
-@@ -43,10 +43,140 @@ public final class CalendarEventGuard {
+@@ -43,10 +43,140 @@
   private static long number(ContentValues values,String key){Long value=values.getAsLong(key);return value==null?0:value;}
   private static boolean empty(ContentValues values,String key){String value=values.getAsString(key);return value==null||value.isEmpty();}
   private static boolean same(String value,ContentValues values,String key){String actual=values.getAsString(key);return value.equals(actual==null?"":actual);}

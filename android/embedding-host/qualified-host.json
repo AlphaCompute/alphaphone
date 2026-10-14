@@ -59,26 +59,26 @@
   ],
   "requalification": {
     "required": true,
-    "atPin": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
-    "forkPin": "7efee003752402e8c73edb4677e5ef397c3104a7",
-    "reason": "The pin move to bc71e21f3b50 changed the engine gitlink (ea8b3f2dfc26 to 7efee0037524, elizaOS/llama.cpp#58: CVE-2026-107183, and CVE-2026-52132 for the /rerank top_n bound, via elizaOS/eliza#36126) and the native build input packages/app/scripts/stage-elizavoice-lib.ts. The reviewed libraries below were built from the earlier source, so distribution builds refuse them until a new receipt is reviewed and staged (node scripts/prepare-embedding-host.mjs --build, then node scripts/stage-embedding-host.mjs --receipt).",
+    "atPin": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+    "forkPin": "3f131ab9a4967d4e96ba4436c1232286b68bab4d",
+    "reason": "The pin moves to bc71e21f3b50 and then 644d56c93df9 changed the engine gitlink (ea8b3f2dfc26 to 7efee0037524 for CVE-2026-107183, then to 3f131ab9a496 for Paradee-8M, native misaki G2P and voice ABI 18) and the native build inputs: elizavoice-jni now registers its natives with RegisterNatives (JNI_OnLoad only, -DELIZA_VOICE_JNI_CLASS) and its Java class is an input. The reviewed libraries below were built from the earlier source, so distribution builds refuse them until a new receipt is reviewed and staged (node scripts/prepare-embedding-host.mjs --build, then node scripts/stage-embedding-host.mjs --receipt). The app's engine must also equal the voice host engine (android/voice-host/qualified-voice-host.json; Gradle :app:verifyParadeeAppLinkage).",
     "candidateBuild": {
-      "evidence": "B: built on a development machine on 2026-10-13 with node scripts/prepare-embedding-host.mjs --fork <clean checkout at 7efee0037524> --abi arm64-v8a --build (NDK 29.0.13113456). ELF ABI, 16 KiB LOAD alignment, the embedding symbols and every voice symbol checked by that script. Not reviewed, not staged, not run on an emulator or a device; the receipt is not committed.",
+      "evidence": "B: built on a development machine on 2026-10-14 from eliza develop 4028a73e (llama.cpp gitlink 3f131ab9, the gitlink of this pin) with the upstream paradee-voice build-native.ts (engine) and the upstream elizavoice-jni CMake with -DELIZA_VOICE_JNI_CLASS=ai/elizaresearch/alphaphone/ElizaVoiceNative (full subset, no source rewrite). Only JNI_OnLoad is exported, every eliza_inference_* import resolves against the engine, 16 KiB LOAD alignment. The engine bytes are the voice host record's arm64-v8a engine. Not built through prepare-embedding-host (no receipt), not reviewed, not staged, not run on an emulator or a device.",
       "libraries": [
         {
           "name": "libelizainference.so",
-          "sha256": "4777df2e3b0bcc259bc17d075e451fe0820aede44865d3a794974e415e254f68",
-          "bytes": 6206736
+          "sha256": "32d8722ba808c5c414349729974a710829b05b48d272744a679f2c0f538a1898",
+          "bytes": 7372200
         },
         {
           "name": "libelizavoicejni.so",
-          "sha256": "1163689900afce49d262ffc1b2a8640acf6b872627362721640d97ecc0f8605e",
-          "bytes": 1010056
+          "sha256": "666e4b4995319f8e7b88dee224ed90e511826a0776f8b635fe8d6d4d6cdc6a6f",
+          "bytes": 110224
         },
         {
           "name": "libc++_shared.so",
-          "sha256": "35e56d209d7f28a79bf1e263cbf1e4bafc5038448dea0a954cba0423a28f0f6b",
-          "bytes": 1304848
+          "sha256": "cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c",
+          "bytes": 1253544
         }
       ]
     }

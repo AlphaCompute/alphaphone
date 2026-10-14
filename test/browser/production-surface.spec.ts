@@ -271,7 +271,7 @@ test('production ignores the development render-failure hook', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toBeVisible();
 });
 
-test('production signed-out voice requires Cloud without capture, upload or local fallback under the shipped CSP', async ({ page }) => {
+test('production signed-out voice stays on-device with no capture, upload or Cloud route under the shipped CSP', async ({ page }) => {
   const violations = await trackCsp(page);
   const foreign: string[] = [], uploads: string[] = [], engines: string[] = [];
   // Stop a regression before it can contact a provider or upload anything.
@@ -304,13 +304,14 @@ test('production signed-out voice requires Cloud without capture, upload or loca
   await page.goto('/');
   await page.getByRole('button', { name: 'Notes', exact: true }).click();
   await page.getByRole('button', { name: 'Record and transcribe', exact: true }).click();
-  await expect(page.getByText('Sign in to Eliza Cloud to use voice.',{exact:true})).toBeVisible();
-  const connect=page.getByRole('button',{name:'Connect Eliza Cloud',exact:true});await expect(connect).toBeEnabled();
-  for(const name of ['Start recording','Record without transcription','Use development voice','Use browser voice','Use on-device voice','Transcribe on this device','Type transcript instead'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
-  await connect.click();
-  const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account).toBeVisible();
-  await expect(account.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toHaveCount(0);
-  await expect(account.getByText(/Eliza Cloud sign-in is available in the Alpha Phone Android app/)).toBeVisible();
+  // A browser production build has no local agent here: local speech is unavailable, never Cloud.
+  await expect(page.getByText('Local speech needs the local agent on this computer. Connect it, or use the keyboard.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'On-device speech unavailable',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Cancel recording',exact:true})).toBeEnabled();
+  for(const name of ['Connect Eliza Cloud','Transcribe with Eliza Cloud','Start recording','Record without transcription','Use development voice','Use browser voice','Use on-device voice','Transcribe on this device','Type transcript instead'])await expect(page.getByRole('button',{name,exact:true})).toHaveCount(0);
+  await expect(page.getByText('Sign in to Eliza Cloud to use voice.',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Cancel recording',exact:true}).click();
+  await expect(page.getByRole('button',{name:'On-device speech unavailable',exact:true})).toHaveCount(0);
   expect(await page.evaluate(()=>(window as any).voiceGate)).toEqual({microphone:0,recorders:0,audio:0,workers:0,playback:0});
   expect(uploads).toEqual([]);expect(engines).toEqual([]);expect(foreign).toEqual([]);
   expect(await violations()).toEqual([]);

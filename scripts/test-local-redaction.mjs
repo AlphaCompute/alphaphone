@@ -72,7 +72,7 @@ async function request(route,body,credential=token){
 }
 async function start(){
  const log=fs.openSync(path.join(fixture,'launcher.log'),'a',0o600);
- child=spawn(process.execPath,['scripts/start-local-remote.mjs'],{cwd:product,detached:true,stdio:['ignore',log,log],env:{...process.env,ALPHA_BUN:wrapper,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ALPHA_LOCAL_ASR:'off',ALPHA_LOCAL_TTS:'off',ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}});fs.closeSync(log);
+ child=spawn(process.execPath,['scripts/start-local-remote.mjs'],{cwd:product,detached:true,stdio:['ignore',log,log],env:{...process.env,ALPHA_BUN:wrapper,ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',ELIZA_SECRET_SWAP_ENABLED:'true',ELIZA_PII_SWAP_ENABLED:'true'}});fs.closeSync(log);
  let exited=false;child.once('exit',()=>{exited=true;});const deadline=Date.now()+180000;
  while(true){
   if(exited)throw Error('Isolated runtime exited before readiness.');

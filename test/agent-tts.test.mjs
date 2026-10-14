@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,mkdirSync,rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join} from 'node:path';
-import {agentTtsEnvironment} from '../scripts/agent-tts.mjs';
-test('host TTS requires an explicit installed library and rejects ambiguous configuration',()=>{
- assert.deepEqual(agentTtsEnvironment({}),{});assert.deepEqual(agentTtsEnvironment({ALPHA_LOCAL_TTS:'off',ALPHA_TTS_LIBRARY:'relative'}),{});
- assert.throws(()=>agentTtsEnvironment({ALPHA_LOCAL_TTS:'required'}),/Configure/);assert.throws(()=>agentTtsEnvironment({ALPHA_LOCAL_TTS:'invalid'}),/auto, off or required/);assert.throws(()=>agentTtsEnvironment({ALPHA_TTS_LIBRARY:'relative'}),/absolute/);assert.throws(()=>agentTtsEnvironment({ELIZA_KOKORO_MODEL_DIR:'/tmp/unused'}),/Configure/);assert.throws(()=>agentTtsEnvironment({ALPHA_TTS_MODEL_DIR:'/tmp/unused'}),/renamed to the upstream ELIZA_KOKORO_MODEL_DIR/);
+import {agentTtsEnvironment as configure} from '../scripts/agent-tts.mjs';
+test('TTS is opt-in, off is authoritative, required refuses absent configuration',()=>{
+ assert.deepEqual(configure({}),{}); assert.deepEqual(configure({ELIZA_PARADEE_ENABLED:'0',ELIZA_PARADEE_MODEL_DIR:'/missing'}),{});
+ assert.throws(()=>configure({ELIZA_PARADEE_ENABLED:'1'}),/absolute/);
+ assert.throws(()=>configure({ELIZA_PARADEE_ENABLED:'invalid'}),/must be 1, 0 or unset/);
+ assert.throws(()=>configure({ELIZA_PARADEE_MODEL_DIR:'/missing',ELIZA_INFERENCE_LIBRARY:'/missing'}),/reviewed SHA-256/);
 });
-test('host TTS rejects unverified voice assets before enabling the agent',()=>{
- const root=mkdtempSync(join(tmpdir(),'alpha-tts-config-'));try{const library=join(root,'native');writeFileSync(library,'fixture');mkdirSync(join(root,'voices'));writeFileSync(join(root,'kokoro-82m-v1_0.gguf'),'unverified');writeFileSync(join(root,'voices/af_bella.bin'),'unverified');assert.throws(()=>agentTtsEnvironment({ALPHA_TTS_LIBRARY:library,ELIZA_KOKORO_MODEL_DIR:root}),/checksum/);}finally{rmSync(root,{recursive:true,force:true});}
+test('the earlier Alpha-only and Kokoro speech names are refused with their upstream replacement',()=>{
+ assert.throws(()=>configure({ALPHA_LOCAL_TTS:'off'}),/ALPHA_LOCAL_TTS was renamed to the upstream ELIZA_PARADEE_ENABLED/);
+ assert.throws(()=>configure({ALPHA_TTS_MODEL_DIR:'/models'}),/renamed to the upstream ELIZA_PARADEE_MODEL_DIR/);
+ assert.throws(()=>configure({ALPHA_TTS_LIBRARY:'/lib'}),/renamed to the upstream ELIZA_INFERENCE_LIBRARY/);
+ assert.throws(()=>configure({ELIZA_KOKORO_MODEL_DIR:'/models'}),/Retired speech configuration/);
 });

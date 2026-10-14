@@ -221,7 +221,7 @@ test('Inbox card never reads mail from Home and shows the account and read time 
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:/Unread, Synthetic sender A/})).toBeVisible();
  await page.evaluate(()=>{(window as any).overviewMail.fail=true;});
- await page.getByRole('button',{name:'Refresh',exact:true}).click();
+ await page.getByRole('button',{name:'Refresh inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
  await returnToApps(page);
  await expect(card).toHaveAttribute('aria-description',/^Open to retry · last read \d{1,2}:\d{2}/);

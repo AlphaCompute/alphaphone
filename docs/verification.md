@@ -252,6 +252,60 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Pin move to 644d56c93d (2026-10-14): shared voice stack
+
+Branch `claude/mvp-final` (not pushed). alphaphone#493 (`codex/shared-contract-pin-oct14`, not
+merged on `main` on 2026-10-14) was merged in and its speech adapters adopted: the shared
+paradee-voice library (`:local-speech`, `AlphaParadeeSpeech`, `AlphaLocalSpeechEngine`), the host
+Paradee and ASR routes, the registered-JNI embedding contract and its pin `644d56c93d` (elizaOS
+develop, containing #36153, #36157, #36158, #36168 and #36194; llama.cpp gitlink `3f131ab9`,
+voice ABI 18). elizaOS/eliza#36212 (Phonon-2) is open, so the ASR slot holds Qwen3-ASR (P-55).
+Development machine, load average 25 to 45 from other sessions. No emulator, device or hosted run.
+
+- `npm run upstream:verify`: source verified at `644d56c93d`; reachability re-recorded
+  (`develop` reaches the pin, 36 commits behind, 2026-10-14).
+- `npm run verify`: exit 0, run again at the final content (prepare-client, `tsc --noEmit`, node tests 1170 of 1170 plus
+  `scripts/test-notes-query-flow.ts`, `npm run build`, `npm run audit:bundle` PASS, 389 files,
+  `testMocks=false`).
+- Voice staging (class B inputs): `node scripts/android-stage-voice-models.mjs --from <build-native output> --from <models>`
+  staged both engines and the whole bundle, including the ASR slot pair, with every byte equal to
+  `android/voice-host/qualified-voice-host.json`; `node scripts/paradee-runtime.mjs` and
+  `node scripts/voice-host.mjs --verify` admitted them (`qualified:false`).
+- Gradle `--offline -PELIZA_ALLOW_UNPACKAGED_RUNTIME=1 -x :app:verifyEmbeddingHost`, with the
+  voice outputs staged and the candidate embedding host libraries (the voice host engine plus the
+  registered `ElizaVoiceNative` JNI; not reviewed) copied into the ignored app `jniLibs`:
+  `:app:compile{Standalone,Launcher}DebugAndroidTestJavaWithJavac`,
+  `:app:compile{Standalone,Launcher}ReleaseJavaWithJavac` and `:sense:compileReleaseJavaWithJavac`
+  BUILD SUCCESSFUL, with `:local-speech:verifySpeechInputs`, `:app:verifyParadeeAppLinkage` and
+  `:app:verifyVoiceHost` passing. `:app:assembleStandaloneDebug` then built a **developer** APK
+  (1,044,070,938 bytes): both ABIs carry `libelizainference.so` equal to the record,
+  `libparadeevoicejni.so` (built by Gradle from the pinned JNI source) and the app JNI, and
+  `assets/paradee-voice/v1` carries Paradee, misaki, eSpeak NG data, VAD and the ASR pair. It has
+  no resident runtime payload and skipped the embedding-host admission: build evidence only, not
+  a distribution build, never installed or run. The candidate libraries were removed afterwards.
+- `npm run android:build:local` was not run to completion: its input check passes, and
+  `npm run agent:build-embedding-host` stops because the embedding host needs a person (a
+  reviewed receipt at this pin; see `android/embedding-host/qualified-host.json`). The input
+  report also names the unqualified voice host and the release signer.
+- Playwright `chromium`, the 84 speech, voice, audio and transcription spec files: 694 passed,
+  2 failed, then fixed (the chat review policy region label) and passed when re-run. The seven
+  formerly skipped or fixme Web Speech specs now run through agent speech stubbed at the agent
+  boundary (`agentBrowserVoice`): 57 passed.
+- Playwright `chromium`, full lane (3,241 tests, 2.1 h at load average 30 to 120): 3,167 passed,
+  61 failed, 13 skipped. The 42 failing test locations re-run alone with two workers: 97 passed
+  and 3 failed again, none in speech: `accessibility-sweep.spec.ts` launcher Calendar at 200% text
+  (the day strip sits under the dock), `gmail-grant-recovery.spec.ts` (expects a sentence that is
+  in no source at the previous head, `main` or #493) and the `context-selection.spec.ts` mail
+  neighbor switch (the thread chip it clicks is not rendered after `main`'s Gmail conversation
+  changes, which arrived through #493). They are recorded as open.
+- Playwright `production`: 243 passed, 2 failed (both expected Cloud Notes speech in production);
+  updated for on-device Notes speech, then those files passed 51 of 51.
+- Resident dependency audit at the pin: the same advisory and version set as at `bc71e21f3b`,
+  every finding dispositioned; dispositions carried forward.
+- Not run: any instrumented class (LocalSpeech, LocalSpeechBridge, SpeechSentenceCancellation,
+  VoiceNoteReadAloud, ResidentAlwaysPresent), on-device voice qualification, an emulator, an AOSP
+  image, live Cloud or a device.
+
 ## Merge of main into claude/mvp-final (2026-10-13): source, test and compile checks only
 
 Branch `claude/mvp-final` (not pushed) merged `origin/main` at `e4ee4505d` (163 commits, issue work

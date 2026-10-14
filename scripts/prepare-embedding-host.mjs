@@ -1,13 +1,10 @@
 // Consumer-owned preparation of the pinned fused Android engine and relocated JNI host.
 // Produces isolated artifacts only; does not alter vendor, package an APK or select runtime providers.
-// The same CPU build serves embeddings and on-device voice (ASR, Kokoro TTS, VAD); the receipt
-// records the voice symbol check separately so scripts/stage-embedding-host.mjs --receipt-voice
-// can admit it for android/voice-host/qualified-voice-host.json. --abi x86_64 builds the emulator host.
 import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {VOICE_FUSED_SYMBOLS,missingSymbols,voiceJniSymbols} from './stage-embedding-host.mjs';
+import {nativeInputPaths,nativeJavaPath,nativeBinding,nativeInputs,nativeGenerated,nativeCmakeOptions,verifyNativeJava,nativeRequiredSymbols,verifyNativeSymbols} from './embedding-native-contract.mjs';
 const root=path.resolve(import.meta.dirname,'..'),upstream=path.join(root,'vendor/eliza');
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
 for(let i=0;i<args.length;i++){if(args[i]==='--build'||args[i]==='--remap-build-path')continue;if(['--fork','--output','--abi'].includes(args[i])){if(!args[++i]||args[i].startsWith('--'))throw Error('Missing option value');}else throw Error('Unknown option');}
@@ -37,10 +34,13 @@ if(!fs.existsSync(toolchain))throw Error('Existing NDK toolchain required');
 let existing=path.dirname(output);while(!fs.existsSync(existing))existing=path.dirname(existing);
 const disk=fs.statfsSync(existing);if(args.includes('--build')&&disk.bavail*disk.bsize<6*1024**3)throw Error('Native build requires at least 6 GiB free; no cleanup is performed');
 const staging=path.join(output,'source'),inputs=[];
-const files=['packages/app/scripts/stage-elizavoice-lib.ts','packages/app/scripts/build-helpers/arm64-simd.ts','packages/app/scripts/build-helpers/verify-fused-symbols.ts','packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt','packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp'];
+const source=relative=>execFileSync('git',['-C',upstream,'show',pin+':'+relative],{encoding:'utf8',maxBuffer:4*1024*1024});
+const cpp=source(nativeInputPaths.at(-1)),cmake=source(nativeInputPaths.at(-2)),jniBinding=nativeBinding(cpp,cmake,identity);
+if(jniBinding.mode==='registered')verifyNativeJava(cpp,source(nativeJavaPath));
+const files=nativeInputs(jniBinding);
 for(const relative of files){
  const original=execFileSync('git',['-C',upstream,'show',pin+':'+relative],{encoding:'utf8',maxBuffer:4*1024*1024});
- const generated=relative.endsWith('.cpp')?original.replaceAll('Java_ai_elizaos_app_','Java_'+identity.replaceAll('.','_')+'_').replaceAll('ai/elizaos/app/',''+identity.replaceAll('.','/')+'/'):original;
+ const generated=nativeGenerated(relative,original,identity,jniBinding);
  const target=path.join(staging,relative);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,generated);
  const sha=value=>createHash('sha256').update(value).digest('hex');inputs.push({path:relative,sourceSha256:sha(original),generatedSha256:sha(generated)});
 }
@@ -48,7 +48,7 @@ fs.mkdirSync(path.dirname(path.join(staging,forkPath)),{recursive:true});fs.syml
 const nativeSource=path.join(staging,'packages/app/platforms/android/app/src/main/elizavoice-jni');
 const commands=[
  [process.execPath,path.join(staging,'packages/app/scripts/stage-elizavoice-lib.ts'),'--abi',abi,'--variant','cpu'],
- ['cmake','-S',nativeSource,'-B',path.join(output,'jni-build'),'-G','Ninja',`-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,`-DANDROID_ABI=${abi}`,'-DANDROID_PLATFORM=android-23','-DCMAKE_BUILD_TYPE=Release',`-DELIZAVOICE_FFI_INCLUDE_DIR=${path.join(fork,'tools/omnivoice/include')}`],
+ ['cmake','-S',nativeSource,'-B',path.join(output,'jni-build'),'-G','Ninja',`-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,`-DANDROID_ABI=${abi}`,'-DANDROID_PLATFORM=android-23','-DCMAKE_BUILD_TYPE=Release',...nativeCmakeOptions(jniBinding),`-DELIZAVOICE_FFI_INCLUDE_DIR=${path.join(fork,'tools/omnivoice/include')}`],
  ['cmake','--build',path.join(output,'jni-build'),'--target','elizavoicejni','-j','2'],
 ];
 // Without a remap the compiler embeds this output directory in the libraries (__FILE__ in the
@@ -58,32 +58,25 @@ const commands=[
 const remap=args.includes('--remap-build-path'),REMAPPED_ROOT='/alphaphone-embedding-host';
 if(remap&&[staging,fork].some(directory=>/\s/.test(directory)))throw Error('Build path remapping needs paths without whitespace');
 const remapEnv=remap?{CCC_OVERRIDE_OPTIONS:['#',...[[staging,REMAPPED_ROOT],[fork,REMAPPED_ROOT+'/'+forkPath],[path.join(output,'jni-build'),REMAPPED_ROOT+'/jni-build']].map(([from,to])=>`+-ffile-prefix-map=${from}=${to}`)].join(' ')}:{};
-const receipt={pin,forkPin,identity,abi,inputs,commands,env:{ANDROID_HOME:sdk,ELIZA_NDK_VERSION:ndkVersion,CMAKE_BUILD_PARALLEL_LEVEL:'2',...remapEnv},buildPathRemapped:remap,built:false,packaged:false,runtimePolicyChanged:false};
+const receipt={pin,forkPin,identity,abi,inputs,...(jniBinding.mode==='registered'?{jniBinding}:{}),commands,env:{ANDROID_HOME:sdk,ELIZA_NDK_VERSION:ndkVersion,CMAKE_BUILD_PARALLEL_LEVEL:'2',...remapEnv},buildPathRemapped:remap,built:false,packaged:false,runtimePolicyChanged:false};
 fs.writeFileSync(path.join(output,'PREPARATION.json'),JSON.stringify(receipt,null,2)+'\n');
 if(args.includes('--build')){
  for(const [executable,...argv] of commands)execFileSync(executable,argv,{cwd:staging,env:{...process.env,...receipt.env},stdio:'inherit'});
  const tools=path.join(ndk,'toolchains/llvm/prebuilt',process.platform==='darwin'?'darwin-x86_64':'linux-x86_64','bin');
  const libraries=[path.join(staging,'packages/app/platforms/android/app/src/main/jniLibs',abi,'libelizainference.so'),path.join(staging,'packages/app/platforms/android/app/src/main/jniLibs',abi,'libc++_shared.so'),path.join(output,'jni-build/libelizavoicejni.so')];
- const voiceMissing=[];
  receipt.libraries=libraries.map(file=>{
   const symbols=execFileSync(path.join(tools,'llvm-nm'),['-D','--defined-only',file],{encoding:'utf8',maxBuffer:16*1024*1024});
-  // Voice capability is recorded, not required: an embedding-only qualification stays valid.
-  if(path.basename(file)==='libelizainference.so')voiceMissing.push(...missingSymbols(symbols,VOICE_FUSED_SYMBOLS));
-  if(path.basename(file)==='libelizavoicejni.so')voiceMissing.push(...missingSymbols(symbols,voiceJniSymbols(identity)));
   const elf=execFileSync(path.join(tools,'llvm-readelf'),['-W','-h','-l','-d',file],{encoding:'utf8'});
   if(!elf.includes(abi==='arm64-v8a'?'AArch64':'Advanced Micro Devices X86-64')||/NEEDED[^\n]*musl/i.test(elf))throw Error('Wrong native engine ABI');
-  const required=path.basename(file)==='libelizainference.so'?['eliza_inference_embed','eliza_inference_embed_with_options','eliza_inference_abi_version']:path.basename(file)==='libelizavoicejni.so'?['nativeEmbed','nativeEmbedUtf8','nativeEmbedWithOptionsUtf8'].map(name=>'Java_'+identity.replaceAll('.','_')+'_ElizaVoiceNative_'+name):[];
+  const required=path.basename(file)==='libelizainference.so'?['eliza_inference_embed','eliza_inference_embed_with_options','eliza_inference_abi_version']:path.basename(file)==='libelizavoicejni.so'?nativeRequiredSymbols(jniBinding):[];
   for(const symbol of required)if(!symbols.split('\n').some(line=>line.trim().endsWith(' '+symbol)))throw Error('Required embedding symbol missing');
-  if(path.basename(file)==='libelizavoicejni.so'&&symbols.includes('Java_ai_elizaos_app_'))throw Error('Unrelocated JNI identity');
+  if(path.basename(file)==='libelizavoicejni.so')verifyNativeSymbols(symbols,jniBinding);
   const loads=elf.split('\n').filter(line=>/^\s*LOAD\s/.test(line));
   if(!loads.length||loads.some(line=>parseInt(line.trim().split(/\s+/).at(-1),16)<16384))throw Error('Native library is not 16 KiB compatible');
   return {path:file,sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex'),bytes:fs.statSync(file).size,requiredSymbols:required,alignment16KiB:true};
  });
  if(git(fork,'rev-parse','HEAD')!==forkPin||git(fork,'status','--porcelain'))throw Error('Engine source changed during build');
- // Symbol presence is not capability: asr_stream_* are exported stubs at ABI v16. The runtime
- // still probes the ABI version and *_supported() before use.
- receipt.voiceSymbols={fused:VOICE_FUSED_SYMBOLS,jni:voiceJniSymbols(identity),missing:voiceMissing,verified:voiceMissing.length===0};
  receipt.built=true;
  fs.writeFileSync(path.join(output,'PREPARATION.json'),JSON.stringify(receipt,null,2)+'\n');
 }
-console.log(JSON.stringify({receipt:path.join(output,'PREPARATION.json'),built:receipt.built,voiceSymbolsVerified:receipt.voiceSymbols?.verified??null,packaged:false,runtimePolicyChanged:false}));
+console.log(JSON.stringify({receipt:path.join(output,'PREPARATION.json'),built:receipt.built,packaged:false,runtimePolicyChanged:false}));

@@ -6,12 +6,13 @@ runtime and no speech worker. Speech in a browser takes one of two routes:
 - **Local agent (local-first).** The private local agent on the same computer runs speech
   natively on libelizainference, the llama.cpp-based engine ([fused speech](fused-speech.md)).
   Audio goes only to that agent, over the authenticated development bridge.
-- **Eliza Cloud.** The disclosed opt-in route bound to the signed-in account (decision
-  **P-07** in [decisions.md](decisions.md)). In a browser build it is available only on
-  development surfaces; flag-off builds select Cloud as described in P-07.
+- **Eliza Cloud.** Available only in test-mocks builds and on explicit development surfaces.
+  Production speech stays on the device (decision **P-43** in [decisions.md](decisions.md)); a
+  missing agent never falls back to Cloud.
 
-Decision **P-42** removed the earlier in-browser recognizer: one local engine,
-libelizainference, because the earlier runtimes were too slow and used too much memory. Chat
+Decision **P-42** removed the earlier in-browser recognizer (and with elizaOS/eliza#36153 the
+shared ONNX browser recognizer is gone upstream too): one local engine, libelizainference,
+because the earlier runtimes were too slow and used too much memory. Chat
 **Talk** opens voice inside the chat sheet and keeps the current app and draft. Notes uses the
 same recorder with a Notes destination. A recording stays in the app until the user chooses to
 transcribe it, and a reviewed transcript is sent only when the user presses Send.
@@ -21,10 +22,9 @@ transcribe it, and a reviewed transcript is sent only when the user presses Send
 ## Without a local agent
 
 `BrowserVoice.localSpeechStatus()` returns
-`{ready: false, playback: true, execution: 'browser', route: 'local-agent', reason: 'local-agent-required'}`
-and never names an engine or model. `ready` is recognition readiness; `playback` says read-aloud
-can still use the browser's own local voices (`playback` is `false` where `speechSynthesis` is
-missing). `transcribeLocalRecording()` rejects with code
+`{ready: false, playback: false, execution: 'browser', route: 'local-agent', reason: 'local-agent-required'}`
+(`local-agent-starting` while the resident starts) and never names an engine or model. There is
+no Web Speech fallback (P-43): without the agent, replies are read as text. `transcribeLocalRecording()` rejects with code
 `local-agent-required` ("Connect the local agent to transcribe on this computer."). The recorder
 shows the `local-agent` failure state: the recording is kept, and the user can connect the
 agent and transcribe again, or type the transcript. Nothing falls back to Cloud or to any other
@@ -35,8 +35,8 @@ engine on its own.
 | Step | What happens |
 | --- | --- |
 | Readiness | `speechRequest()` with no audio asks the agent whether ASR is ready. |
-| Transcribe | The browser decodes the clip and resamples it to a 16 kHz mono PCM16 WAV (`apps/app/src/browser/recording-pcm.ts`). It posts the WAV to the agent: `/api/asr/whisper` today (phase 1, provider `standalone-whisper.cpp`). Phase 2 moves to `/api/asr/local-inference` (provider `local-inference`) once upstream ships a standalone libelizainference host ASR worker. |
-| Read aloud | `synthesizeSpeech()` posts text to `/api/tts/kokoro`. The agent runs Kokoro on libelizainference through the upstream `host-tts-worker`. With no agent, read-aloud uses the browser's own Web Speech voices (`speechSynthesis`, local voices only). That is the operating system's speech, not an Alpha engine; the owner should confirm it is wanted. |
+| Transcribe | The browser decodes the clip and resamples it to a 16 kHz mono PCM16 WAV (`apps/app/src/browser/recording-pcm.ts`). It posts the WAV to the agent at `POST /api/asr/libelizainference` (provider `local-inference`), the shared ASR service over the voice bundle's ASR slot (`apps/app/src/browser/local-transcription.ts`). A changed agent selection during decoding or recognition, or an empty transcript, fails without trying another provider. |
+| Read aloud | `synthesizeSpeech()` posts text to `POST /api/tts/paradee`. The agent runs Paradee-8M on libelizainference through the shared Paradee worker (provider `libelizainference-paradee`). With no agent, read-aloud is unavailable and the reply stays as text. |
 | Cancel | Cancel, a hidden page (`visibilitychange`), `pagehide` or a change of agent session aborts the request. The agent sees the abort, and a late result is discarded. |
 
 | State (`data-voice-state` on the recorder) | Shown to the user |
@@ -63,6 +63,10 @@ as `engine` and `model` are recorded only when the route reports them; they are 
   16 kHz mono WAV and the transcript reports the `local-agent` route. The Cloud cases are also
   covered here.
 - `test/browser/browser-audio.spec.ts`: `pagehide` aborts a pending local-agent transcription.
+- `test/browser/note-read-aloud.spec.ts`, `reading-review.spec.ts`, `dev-voicemail-audio.spec.ts`,
+  `dev-workflow-automatic-speech.spec.ts`, `dev-workflow-speech.spec.ts`, `dev-maps-voice.spec.ts`
+  and `dev-speech-account-switch.spec.ts`: read-aloud through agent speech, stubbed at the agent
+  boundary (`agentBrowserVoice` in `test/browser/voice-fixture.ts`); no `speechSynthesis` exists.
 - `test/browser/production-surface.spec.ts` (production project): the built bundle contains no
   `browser-speech/` assets, no inference runtime and no speech model.
 - `test/llama-cpp-only.test.mjs`: no tracked path, lockfile package or web source names a

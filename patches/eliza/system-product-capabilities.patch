@@ -15,40 +15,40 @@
      // (issue #9967). This plugin stays a thin Capacitor binding: read via the
 @@ -39,7 +43,7 @@
      }
- 
+
      @PluginMethod
 -    fun requestRole(call: PluginCall) {
 +    open fun requestRole(call: PluginCall) {
          if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
              call.reject("Android role requests require Android 10 or newer")
              return
-@@ -52,6 +56,11 @@
-             return
-         }
- 
-+        if (!isRoleEnabled(roleName)) {
-+            call.reject("Role unavailable in this product")
+@@ -49,6 +53,11 @@
+         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
+         if (roleName.isNullOrEmpty() || androidRole == null) {
+             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
 +            return
 +        }
 +
-         val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
-         if (!roleManager.isRoleAvailable(androidRole)) {
-             call.reject("$androidRole is not available on this device")
-@@ -84,6 +93,11 @@
-             return
-         }
- 
 +        if (!isRoleEnabled(roleName)) {
 +            call.reject("Role unavailable in this product")
+             return
+         }
+
+@@ -81,6 +90,11 @@
+         val androidRole = SystemDeviceReader.ROLE_MAP[roleName]
+         if (roleName.isNullOrEmpty() || androidRole == null) {
+             call.reject("role must be one of ${SystemDeviceReader.ROLE_MAP.keys.joinToString(", ")}")
 +            return
 +        }
 +
-         val roleManager = context.getSystemService(Context.ROLE_SERVICE) as RoleManager
-         call.resolve(roleRequestResult(roleName, roleManager.isRoleHeld(androidRole), result.resultCode))
-     }
++        if (!isRoleEnabled(roleName)) {
++            call.reject("Role unavailable in this product")
+             return
+         }
+
 @@ -203,7 +217,7 @@
      }
- 
+
      @PluginMethod
 -    fun setFlashlight(call: PluginCall) {
 +    open fun setFlashlight(call: PluginCall) {

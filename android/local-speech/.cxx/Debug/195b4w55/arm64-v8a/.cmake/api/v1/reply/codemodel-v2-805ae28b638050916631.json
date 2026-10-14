@@ -1,0 +1,87 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"childIndexes" : 
+					[
+						1
+					],
+					"jsonFile" : "directory-.-Debug-f5ebdc15457944623624.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.10.0"
+					},
+					"projectIndex" : 0,
+					"source" : "."
+				},
+				{
+					"build" : "elizavoice-jni",
+					"jsonFile" : "directory-elizavoice-jni-Debug-cb711ceec7c2ff618e67.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.22"
+					},
+					"parentIndex" : 0,
+					"projectIndex" : 1,
+					"source" : "/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/app/src/main/elizavoice-jni",
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"name" : "Debug",
+			"projects" : 
+			[
+				{
+					"childIndexes" : 
+					[
+						1
+					],
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "paradeevoicejni"
+				},
+				{
+					"directoryIndexes" : 
+					[
+						1
+					],
+					"name" : "elizavoice-jni",
+					"parentIndex" : 0,
+					"targetIndexes" : 
+					[
+						0
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 1,
+					"id" : "paradeevoicejni::@76957b80eee69e05596f",
+					"jsonFile" : "target-paradeevoicejni-Debug-833fad6375b2d7920626.json",
+					"name" : "paradeevoicejni",
+					"projectIndex" : 1
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/android/local-speech/.cxx/Debug/195b4w55/arm64-v8a",
+		"source" : "/tmp/claude-501/-Users-shawwalters-Documents-alphaphone/64d469c3-a277-49bf-9ffb-2a1b72247eb0/scratchpad/wt-final/vendor/eliza/packages/app/platforms/android/paradee-voice/src/main/cpp"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

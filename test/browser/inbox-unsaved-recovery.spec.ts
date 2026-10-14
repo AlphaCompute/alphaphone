@@ -11,7 +11,7 @@ async function retained(page:any,expected:{body:string;toQ?:string;cc?:string[]}
 }
 async function setup(page:any,owner='owner-a'){
  await page.goto('/');await page.evaluate(async owner=>{
- const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');const slots=()=>JSON.parse(localStorage.getItem('test-inbox-saved')||'{}');
+ const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');const slots=()=>JSON.parse(localStorage.getItem('test-inbox-saved')||'{}');
  s.read=async key=>structuredClone(slots()[key]??null);s.compareExchange=async(key,expected,value)=>{const data=slots();if(JSON.stringify(data[key]??null)!==JSON.stringify(expected))return {status:'conflict'};if(value===null)delete data[key];else data[key]=value;localStorage.setItem('test-inbox-saved',JSON.stringify(data));return {status:'saved'};};
  const f=(window as any).emailRecoveryFixture={mutations:0};const client={gmailAccounts:async()=>[{connectionId:'grant',label:'Mailbox '+owner,connected:true,grantedCapabilities:['google.gmail.triage']}],gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false}),gmailPrepareOperation:async()=>{f.mutations++;throw Error('Must not prepare provider writes');}};
  c.getCloudClient=()=>({client,sessionId:'session-'+owner} as any);const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:owner,sessionId:'session-'+owner,credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;

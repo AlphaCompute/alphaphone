@@ -53,14 +53,16 @@ Inputs:
 - `android-runtime-classpath.json`: the resolved release and debug runtime classpath for both
   distribution variants. Its fingerprint covers the Gradle dependency declarations; generation fails
   when they change until the snapshot is refreshed.
-- `android/voice-host/qualified-voice-host.json`, the qualification record of the on-device speech
-  engine: the llama.cpp-based `libelizainference` voice host (ASR, Kokoro TTS, VAD) and its GGUF
-  models. The schema is in `docs/fused-speech.md`. Each fused source component (llama.cpp, ggml and
-  mtmd; the elizaOS voice sources; Silero VAD; libc++) and each model is listed with its licence.
-  A `licenseFile` named by the record must match its `licenseSha256`; `cmudict-BSD-2-Clause.txt`
-  is kept for the Kokoro lexicon. A component or model with no verified licence is listed as
-  `UNVERIFIED` and flagged, with its reason in `unverified-allowlist.json`. Model terms that are
-  not an open-source licence (for example the Gemma Terms of Use) are flagged, never blocking.
+- `android/voice-host/qualified-voice-host.json`, the record of the on-device speech engine:
+  `libelizainference` (llama.cpp/ggml; Paradee-8M TTS with misaki G2P and statically linked
+  eSpeak NG; the ASR slot; Silero VAD) and every voice bundle file. The schema is in
+  `scripts/voice-host.mjs` and `docs/fused-speech.md`. Each source component and each model or
+  data file is listed with its licence: eSpeak NG (GPL-3.0-or-later) is flagged copyleft, Paradee,
+  misaki and the ASR slot model are Apache-2.0, Silero VAD is MIT. The record carries no licence
+  files, so canonical SPDX texts stand in and are flagged `licence-text-missing-from-package`;
+  the bundle itself ships the eSpeak NG, misaki and spaCy notices. A component with no verified
+  licence is listed as `UNVERIFIED` and flagged, with its reason in `unverified-allowlist.json`.
+  Phonon-2 (the intended ASR, CC-BY-4.0) is listed and flagged once its files enter the record.
   Until the record exists, no speech entries are generated. No other inference runtime is an input:
   the web build has no in-browser speech engine (`test/llama-cpp-only.test.mjs`).
 - `vendor/eliza/LICENSE` at the commit pinned by `upstream.lock.json` (read only).

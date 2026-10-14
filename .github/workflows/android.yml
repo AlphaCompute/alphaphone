@@ -54,10 +54,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: npm run verify
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
-      # On-device speech is the fused libelizainference engine (llama.cpp/ggml) only. This job stages
-      # no voice bundle, so its APKs report local speech unavailable; the record is still checked.
-      - name: Verify the on-device voice qualification record
-        run: node scripts/stage-embedding-host.mjs --verify-voice --allow-unpackaged-runtime
+      # On-device speech is the shared paradee-voice library on libelizainference (llama.cpp/ggml):
+      # Paradee-8M TTS with misaki G2P and the bundle's ASR slot. This lane stages no native voice
+      # outputs, so Gradle compiles the real Java API unpackaged and the APKs report speech unavailable.
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
       # Distribution build: flag-off whatever the runner exports. This job stages no

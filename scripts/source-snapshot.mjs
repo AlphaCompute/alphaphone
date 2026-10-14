@@ -14,14 +14,15 @@ roots.push('android/app/src/launcher','android/app/src/standalone','android/app/
  'android/notification-fixture/build.gradle','android/notification-fixture/src',
  'scripts/build-android.mjs','scripts/android-build-preflight.mjs','scripts/toolchain.mjs','scripts/verify-upstream.mjs',
  'scripts/pinned-upstream-source.mjs','scripts/verify-apks.mjs','scripts/apk.mjs','scripts/source-snapshot.mjs');
-// The on-device voice qualification and its staging/verification code are APK inputs: the voice
-// bundle bytes (assets/voice) and native engine (jniLibs) are captured below with the payload.
-roots.push('android/voice-host','android/embedding-host',
+// The on-device voice record and its staging/verification code are APK inputs. The staged voice
+// outputs are identified by their build record (every file's SHA-256), not re-hashed (about 1 GB).
+roots.push('android/voice-host','android/embedding-host','android/paradee-voice','android/local-speech/build.gradle',
+ '.eliza/paradee-voice/native/build-record.json',
  'scripts/stage-embedding-host.mjs','scripts/prepare-embedding-host.mjs',
- 'scripts/android-stage-voice-models.mjs','scripts/android-voice-lexicon.mjs');
+ 'scripts/android-stage-voice-models.mjs','scripts/voice-host.mjs','scripts/paradee-runtime.mjs');
 // Resident payload and generated Java are consumed directly by Gradle. Capture
 // their exact bytes, provenance and reproduction inputs, excluding web assets/dependencies.
-roots.push('android/app/src/main/assets/agent','android/app/src/main/assets/voice','android/app/src/main/jniLibs',
+roots.push('android/app/src/main/assets/agent','android/app/src/main/jniLibs',
  'android/app/build/generated/local-agent/java',
  'android/app/build/generated/local-agent/source-manifest.json',
  'upstream.lock.json',

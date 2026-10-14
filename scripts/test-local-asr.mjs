@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import './retired-host-speech-proof.mjs';
 /** Actual local synthesized speech -> local ASR. No user audio or remote upload. */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -42,7 +43,7 @@ try {
   assert.equal(silence.status,422);checks.silenceHttpStatus=silence.status;
  } else await assert.rejects(()=>transcribeLocal(silenceAudio,'audio/wav',AbortSignal.timeout(120000)), /No usable speech was recognized/);
  checks.silenceRejected=true;
- const modelPath=process.env.ALPHA_ASR_MODEL||join(homedir(),'.cache/alphaphone-asr/tiny.en/ggml-model.bin');
+ const modelPath=join(process.env.ELIZA_ASR_MODEL_DIR||join(homedir(),'.cache/alphaphone-asr'),'asr/eliza-1-asr.gguf');
  const report={testedAt:new Date().toISOString(),scope:http?'Authenticated loopback HTTP and real host ASR; not Android microphone acceptance':'Real host ASR helper; not HTTP or Android microphone acceptance',phrase,transcript:result.text,engine:result.engine,language:result.language,durationSeconds:result.durationSeconds,elapsedMs:Date.now()-started,audioBytes:audio.length,modelSha256:createHash('sha256').update(await readFile(modelPath)).digest('hex'),checks};
  await mkdir('test-results',{recursive:true});await writeFile('test-results/local-asr'+(http?'-http':'')+'.json',JSON.stringify(report,null,2)+'\n');
  console.log(JSON.stringify(report));

@@ -14,7 +14,7 @@ export async function reviewBrowserReading(url:string,signal:AbortSignal,valid:(
  const border=theme.getPropertyValue('--line').trim();if(border)dialog.style.setProperty('--bd',border);
  const title=document.createElement('h2');title.textContent='Read page excerpt';
  const source=document.createElement('p');source.textContent=new URL(url).origin;source.style.overflowWrap='anywhere';
- const explanation=document.createElement('p');explanation.textContent='Review or paste the text you want to hear. Speech uses a device-local browser voice; this text is not sent to your agent or saved.';
+ const explanation=document.createElement('p');explanation.textContent='Review or paste the text you want to hear. Speech runs on this device through your local agent’s on-device voice; the text is used only to read it aloud and is not saved.';
  const label=document.createElement('label');label.textContent='Excerpt to read';
  const field=document.createElement('textarea');field.setAttribute('aria-label','Excerpt to read');field.maxLength=5000;field.rows=7;field.style.cssText='box-sizing:border-box;width:100%;font:inherit;background:var(--s2,#eee);color:inherit;border:1px solid var(--bd,#aaa);border-radius:8px;padding:8px';label.append(field);
  const status=document.createElement('p');status.setAttribute('role','status');status.setAttribute('aria-label','Reading status');status.textContent='Up to 5,000 characters. Review the text before reading.';

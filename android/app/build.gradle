@@ -113,6 +113,7 @@ android {
 if (appLinkHost) androidComponents { onVariants(selector().all()) { variant -> variant.sources.manifests.addStaticManifestFile(appLinksManifest) } }
 dependencies {
  implementation project(':eliza-network-policy')
+ implementation project(':local-speech')
  implementation 'androidx.browser:browser:1.9.0'
     implementation "androidx.work:work-runtime:2.11.0"
  implementation project(':capacitor-android')
@@ -152,16 +153,6 @@ def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }
 
-// On-device voice (fused libelizainference ASR/Kokoro/VAD) is packaged only from bytes that match
-// android/voice-host/qualified-voice-host.json. An APK without assets/voice is valid: local speech
-// then reports unavailable and the product stays on the Cloud route (P-07).
-def verifyVoiceHost = tasks.register('verifyVoiceHost', Exec) {
- workingDir rootProject.projectDir.parentFile
- def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify-voice']
- if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
- commandLine args
-}
-tasks.named('preBuild').configure { dependsOn verifyVoiceHost }
 
 // The authenticated source receipt travels with every application APK, binding audits to built bytes.
 def nativePatchAssets = layout.buildDirectory.dir('generated/native-patch-assets')
@@ -171,3 +162,18 @@ def stageNativePatchReceipt = tasks.register('stageNativePatchReceipt', Copy) {
  into(nativePatchAssets)
 }
 tasks.named('preBuild').configure { dependsOn stageNativePatchReceipt }
+
+// On-device voice: the shared paradee-voice library (:local-speech) links libelizainference but does
+// not package it; the app packages its resident host's engine, so the two must be identical bytes.
+// Staged voice outputs must also be the bytes android/voice-host/qualified-voice-host.json records.
+// The listener APK packages its own verified copy of the engine.
+def unpackagedRuntime = project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME')?.toString() == '1'
+def verifyParadeeAppLinkage = tasks.register('verifyParadeeAppLinkage', Exec) {
+ workingDir rootProject.projectDir.parentFile
+ commandLine(['node', 'scripts/paradee-runtime.mjs', '--app-linkage'] + (unpackagedRuntime ? ['--allow-absent'] : []))
+}
+def verifyVoiceHost = tasks.register('verifyVoiceHost', Exec) {
+ workingDir rootProject.projectDir.parentFile
+ commandLine(['node', 'scripts/voice-host.mjs', '--verify'] + (unpackagedRuntime ? ['--allow-absent'] : []))
+}
+tasks.named('preBuild').configure { dependsOn verifyParadeeAppLinkage, verifyVoiceHost }

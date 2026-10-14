@@ -56,7 +56,7 @@ public final class ListeningService extends Service {
  private volatile Thread capture;
  private volatile AudioRecord record;
  private final Object engineLock=new Object();
- private ai.elizaresearch.alphaphone.ListenerSpeech engine;
+ private volatile ai.eliza.voice.NativeAsr engine;
  private AudioManager audio;
  private final Runnable reapply=this::apply;
  /**
@@ -179,7 +179,7 @@ public final class ListeningService extends Service {
  private void loadEngine(){
   synchronized(engineLock){
    if(destroyed||engine!=null)return;
-   try{engine=ai.elizaresearch.alphaphone.ListenerSpeech.open(this);if(!destroyed)Listener.speechUnavailable=false;}
+   try{engine=ai.eliza.voice.VoiceAssets.install(this).openAsr();if(!destroyed)Listener.speechUnavailable=false;}
    catch(Throwable failed){Log.w(TAG,"Local speech model unavailable: "+failed.getClass().getSimpleName());if(!destroyed){Listener.speechUnavailable=true;main.post(reapply);}}
   }
  }
@@ -215,6 +215,7 @@ public final class ListeningService extends Service {
 
  private synchronized void stopCapture(){
   Listener.epoch.invalidate();
+  ai.eliza.voice.NativeAsr active=engine;if(active!=null)try{active.cancel();}catch(RuntimeException unavailable){/* Epoch fencing still drops late recognition. */}
   Thread thread=capture;
   capture=null;analyse=false;
   AudioRecord current=record;record=null;
@@ -263,7 +264,7 @@ public final class ListeningService extends Service {
    recognizer.execute(()->{
     String text=null;
     try{
-     ai.elizaresearch.alphaphone.ListenerSpeech local;
+     ai.eliza.voice.NativeAsr local;
      synchronized(engineLock){local=engine;}
      if(local==null||!analyse||!Listener.epoch.current(ticket))return;
      // Never recognise speech while the listener's own indicator is hidden; converge on the main thread.

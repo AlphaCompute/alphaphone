@@ -17,9 +17,9 @@
  *     SHA-256 of its archive (or, for a coordinate with no archive, its metadata file) from
  *     android/gradle/verification-metadata.xml, the checksum Gradle enforces on every build.
  *     Gradle is not run here.
- *   - android/voice-host/qualified-voice-host.json: SHA-256 and size of each voice-qualified
- *     libelizainference library per ABI (none until an ABI is voice-qualified), of each pinned
- *     speech model (open rows are skipped) and of the generated Kokoro lexicon.
+ *   - android/voice-host/qualified-voice-host.json: SHA-256 and size of each recorded
+ *     libelizainference engine library per ABI and of every voice bundle file (Paradee GGUF, misaki
+ *     lexicon, eSpeak NG data, the ASR slot pair, Silero VAD, notices).
  *   - android/embedding-host/qualified-host.json: SHA-256 of the reviewed ARM64 embedding host
  *     libraries and the pinned embedding model.
  *   - upstream.lock.json: the pinned elizaOS commit.
@@ -146,12 +146,13 @@ const WITH_RESIDENT_RUNTIME = 'apk (only one that packages the resident runtime)
 function embeddingHostComponents(root) {
   if (!exists(root, EMBEDDING_HOST)) return [];
   const host = readJson(root, EMBEDDING_HOST);
+  const hostScope = exists(root, 'vendor/eliza/packages/app/platforms/android/paradee-voice/consumer.gradle') ? 'legacy qualification record; incompatible with current Paradee engine; not current packaged bytes' : WITH_RESIDENT_RUNTIME;
   const source = `${EMBEDDING_HOST} (elizaOS ${host.pin}, engine ${host.forkPin}, qualification receipt sha256 ${host.qualificationReceiptSha256})`;
   return [
     ...host.libraries.map(library => ({
       type: 'library', 'bom-ref': `embedding-host:${host.abi}/${library.name}`, name: `${library.name} (${host.abi})`, version: library.name === 'libc++_shared.so' ? 'Android NDK C++ runtime' : `engine ${host.forkPin}`,
       hashes: [{alg: 'SHA-256', content: library.sha256}], licenses: library.name === 'libc++_shared.so' ? licenses('Apache-2.0 WITH LLVM-exception') : undefined,
-      properties: [property('ships-in', WITH_RESIDENT_RUNTIME), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
+      properties: [property('ships-in', hostScope), property('abi', host.abi), property('bytes', library.bytes), property('source', source)],
     })),
     {type: 'machine-learning-model', 'bom-ref': `embedding-model:${path.basename(host.model.path)}`, name: path.basename(host.model.path), version: `${host.model.dimensions} dimensions`,
       hashes: [{alg: 'SHA-256', content: host.model.sha256}],
@@ -221,7 +222,7 @@ function apkComponents(root, directory) {
   });
 }
 
-/** The libelizainference voice host: its qualified libraries per ABI, its pinned speech models and the Kokoro lexicon. */
+/** The libelizainference voice host: its recorded engine libraries per ABI and every bundle file it pins. */
 function voiceHostComponents(root) {
   if (!exists(root, VOICE_HOST)) return [];
   const record = readJson(root, VOICE_HOST);
@@ -230,23 +231,14 @@ function voiceHostComponents(root) {
   const out = [];
   for (const abi of record.abis)
     for (const library of abi.libraries)
-      out.push({type: 'library', 'bom-ref': `voice-host:${abi.abi}/${library.name}`, name: `${library.name} (${abi.abi})`, version: `elizaOS fused fork ${record.forkPin}`,
+      out.push({type: 'library', 'bom-ref': `voice-host:${abi.abi}/${library.name}`, name: `${library.name} (${abi.abi})`, version: `elizaOS llama.cpp fork ${record.forkPin}`,
         hashes: [{alg: 'SHA-256', content: library.sha256}],
-        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', library.bytes), property('source', VOICE_HOST), property('eliza-pin', record.pin)]});
-  // Open model rows (sha256 null) are not pinned and cannot be staged, so they are not components.
+        properties: [property('ships-in', 'apk'), property('abi', abi.abi), property('bytes', library.bytes), property('source', VOICE_HOST), property('eliza-pin', record.pin), property('qualified', record.qualified === true)]});
   for (const model of pinnedVoiceModels(record))
-    out.push({type: 'machine-learning-model', 'bom-ref': `voice-model:${model.role}/${model.name}`, name: model.name, version: model.revision,
-      hashes: [{alg: 'SHA-256', content: model.sha256}], licenses: licenses(model.license || UNVERIFIED),
-      externalReferences: [{type: 'distribution', url: model.source}],
-      properties: [property('ships-in', 'apk'), property('role', model.role), property('bytes', model.bytes), property('source-revision', model.revision),
-        ...(model.path ? [property('path', model.path)] : []), property('source', VOICE_HOST)]});
-  const lexicon = record.lexicon;
-  if (lexicon && lexicon.sha256 !== null)
-    out.push({type: 'data', 'bom-ref': `voice-lexicon:${lexicon.path}`, name: lexicon.name, version: lexicon.source.revision,
-      hashes: [{alg: 'SHA-256', content: lexicon.sha256}], licenses: licenses(lexicon.license),
-      externalReferences: [{type: 'distribution', url: lexicon.source.url}],
-      properties: [property('ships-in', 'apk'), property('role', 'lexicon'), property('bytes', lexicon.bytes), property('source-revision', lexicon.source.revision),
-        property('source-sha256', lexicon.source.sha256), property('path', lexicon.path), property('source', VOICE_HOST)]});
+    out.push({type: ['tts-model', 'asr-model', 'asr-mmproj', 'vad-model'].includes(model.role) ? 'machine-learning-model' : 'data', 'bom-ref': `voice-model:${model.path}`, name: model.name, version: model.sha256.slice(0, 12),
+      hashes: [{alg: 'SHA-256', content: model.sha256}], licenses: licenses(!model.license || model.license === 'UNVERIFIED' ? UNVERIFIED : model.license),
+      ...(model.url ? {externalReferences: [{type: 'distribution', url: model.url}]} : {}),
+      properties: [property('ships-in', 'apk'), property('role', model.role), property('bytes', model.bytes), property('path', model.path), property('origin', model.source), property('source', VOICE_HOST)]});
   return out;
 }
 

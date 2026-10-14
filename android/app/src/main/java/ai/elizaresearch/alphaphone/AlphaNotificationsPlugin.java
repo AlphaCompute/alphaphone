@@ -69,13 +69,16 @@ public class AlphaNotificationsPlugin extends Plugin {
   if(token==null||!token.equals(pending.optString("token")))throw new IllegalStateException("Pending tap changed");
   if(Boolean.TRUE.equals(call.getBoolean("discard",false))){if(!pending.optBoolean("question"))throw new IllegalStateException("Tap purpose changed");workflowTaps().settleQuestion(token,true);call.resolve();return;}
   if(pending.optBoolean("question")){addQuestionNotice(pending);org.json.JSONObject notice=pending.optJSONObject("notice");if(notice==null||!notice.getString("revision").equals(call.getString("noticeRevision")))throw new IllegalStateException("Question notice changed");}else if(call.getString("noticeRevision")!=null)throw new IllegalStateException("Tap purpose changed");
-  requireNoticeForeground();workflowTaps().consume(token);manager().cancel("alpha-workflow-"+pending.getString("operationId"),0);call.resolve();
+  requireNoticeForeground();
+  // A completed approval Ask leaves the approval waiting: keep its notice and tap, only the question is settled.
+  if(pending.optBoolean("question")&&WorkflowNoticeDelivery.approvalId(pending.getString("operationId"))){workflowTaps().releaseApprovalQuestion(token);call.resolve();return;}
+  workflowTaps().consume(token);manager().cancel("alpha-workflow-"+pending.getString("operationId"),0);call.resolve();
  }
  /** Question excerpts are read only while unlocked and only from the exact still-posted own notice. */
  private void addQuestionNotice(org.json.JSONObject pending)throws Exception{
   requireNoticeForeground();String tag="alpha-workflow-"+pending.getString("operationId");
   for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag.equals(row.getTag())){
-   Notification n=row.getNotification();if(!WorkflowNoticePoster.CHANNEL.equals(n.getChannelId())||n.visibility==Notification.VISIBILITY_SECRET)return;
+   Notification n=row.getNotification();String expectedChannel=WorkflowNoticeDelivery.approvalId(pending.getString("operationId"))?WorkflowNoticePoster.APPROVAL_CHANNEL:WorkflowNoticePoster.CHANNEL;if(!expectedChannel.equals(n.getChannelId())||n.visibility==Notification.VISIBILITY_SECRET)return;
    String identity=id(identity(row));pending.put("notice",new org.json.JSONObject().put("id",identity).put("revision",identity).put("source","own").put("appLabel","Alpha Phone").put("title",bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200)).put("text",bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000)));return;
   }
  }

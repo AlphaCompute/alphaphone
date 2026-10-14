@@ -208,7 +208,7 @@ test('a production dependency with a copyleft or unknown licence is listed and f
   assert.match(entry('scheduler').obligations[0].note, /replace the library/);
   // None of it reaches a release gate: flags in a release row are a record only.
   const row = {mode: 'release', distributable: true, testMocks: false, bundleAudit: 'passed', signed: true, runtime: 'PACKAGED', runtimeNotices: true,
-    releaseAdmission: {failures: [], blockers: [], signerMatches: true}, voiceHost: {packaged: false, asr: false, differences: [], functionalAcceptance: null},
+    releaseAdmission: {failures: [], blockers: [], signerMatches: true}, voiceHost: {packaged: true, asr: true, differences: [], qualified: true},
     licenceFlags: licenceFlagRecords(result.entries), licenceBlockers: []};
   assert.ok(row.licenceFlags.some(item => item.name === 'react-dom' && item.flags.includes('copyleft-strong')));
   assert.deepEqual(releaseBlockers(row), []);
@@ -235,6 +235,13 @@ test('the notices carry no entries for the removed speech runtimes or models', (
   // Spelled in pieces so the repository-wide search (test/llama-cpp-only.test.mjs) stays clean.
   const banned = new RegExp(['on' + 'nx', 'sher' + 'pa', 'k2' + 'fsa', 'pi' + 'per-voices'].join('|'), 'i');
   assert.deepEqual(fresh.entries.filter(entry => banned.test(`${entry.name}\n${entry.version}\n${entry.source}`)).map(entry => entry.name), []);
+});
+test('Paradee notices preserve the eSpeak license and exclude the retired speech runtime', () => {
+  const {entries} = fresh;
+  const espeak = entries.find(row => row.name.startsWith('eSpeak NG'));
+  assert.equal(espeak.license, 'GPL-3.0-or-later');
+  assert.match(espeak.text, /GNU GENERAL PUBLIC LICENSE/);
+  assert.equal(entries.some(row => row.name.startsWith('Sherpa-ONNX')), false);
 });
 
 function scratchRoot(t, {ownNodeModules = false} = {}) {

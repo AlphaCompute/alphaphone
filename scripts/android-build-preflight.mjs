@@ -6,7 +6,7 @@
  *   node scripts/android-build-preflight.mjs --report [--json]     (npm run android:build:inputs)
  *
  * build-android.mjs runs the full check. `--before-prepare` checks only inputs that
- * android:build:local does not produce (the pinned checkout and the on-device voice bundle), so
+ * android:build:local does not produce (the pinned checkout and the on-device voice outputs), so
  * that chain stops before the long runtime preparation instead of after it.
  * `--report` lists every input of the strict distribution build with its state and whether a
  * script or a person supplies it. It reads files only, builds nothing and always exits 0.
@@ -15,7 +15,8 @@ import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST, verifyEmbeddingHost, verifyVoiceHost} from './stage-embedding-host.mjs';
+import {verifyEmbeddingHost} from './stage-embedding-host.mjs';
+import {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST, verifyVoiceHost} from './voice-host.mjs';
 import {BUILD_TOOLCHAIN, HUMAN_ACTION, QUALIFIED_HOST, stagedLibraries} from './build-embedding-host.mjs';
 
 export {VOICE_ASSET_ROOT, VOICE_HOST_MANIFEST};
@@ -31,28 +32,30 @@ function readHead(directory) {
   }
 }
 
-/** Inputs no preparation step produces: the pinned checkout and the on-device voice bundle. */
-export function checkoutProblems(root, {voiceHost = verifyVoiceHost} = {}) {
+/** Inputs no preparation step produces: the pinned checkout and the on-device voice outputs. */
+export function checkoutProblems(root, {voiceHost = verifyVoiceHost, allowUnpackagedRuntime = false} = {}) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
-  problems.push(...voiceHostProblems(root, {voiceHost}));
+  problems.push(...voiceHostProblems(root, {voiceHost, allowUnpackagedRuntime}));
   return problems;
 }
 
 /**
- * The on-device voice bundle (fused libelizainference ASR, Kokoro TTS, Silero VAD). An APK without
- * one is valid: local speech reports unavailable and Cloud voice is unchanged. A staged bundle must
- * match android/voice-host/qualified-voice-host.json byte for byte (Gradle :app:verifyVoiceHost).
+ * The on-device voice outputs (libelizainference with the shared paradee-voice library: Paradee TTS,
+ * misaki G2P, the ASR slot pair, Silero VAD) in .eliza/paradee-voice/native. A distribution build
+ * needs them (speech is on-device only); the explicit unpackaged developer lane may omit them, and
+ * local speech then reports unavailable. Staged outputs must match
+ * android/voice-host/qualified-voice-host.json byte for byte (Gradle :app:verifyVoiceHost).
  */
-export function voiceHostProblems(root, {allowUnpackagedRuntime = true, voiceHost = verifyVoiceHost} = {}) {
+export function voiceHostProblems(root, {allowUnpackagedRuntime = false, voiceHost = verifyVoiceHost} = {}) {
   try {
     voiceHost(root, {allowAbsentRuntime: allowUnpackagedRuntime});
     return [];
   } catch (error) {
-    return [`The on-device voice bundle in ${VOICE_ASSET_ROOT} is not admitted by ${VOICE_HOST_MANIFEST} (${error.message}; Gradle :app:verifyVoiceHost rejects the build). ${FULL_CHAIN} does not produce it: restage it with node scripts/android-stage-voice-models.mjs --from <directory of pinned voice models> (see ${VOICE_GUIDE}), or remove android/app/src/main/assets/voice to build without on-device voice.`];
+    return [`The on-device voice outputs in ${VOICE_ASSET_ROOT} are not admitted by ${VOICE_HOST_MANIFEST} (${error.message}; Gradle :app:verifyVoiceHost rejects the build). ${FULL_CHAIN} does not produce them: stage them with node scripts/android-stage-voice-models.mjs --from <directory of the recorded voice outputs and models> (see ${VOICE_GUIDE}).`];
   }
 }
 
@@ -114,14 +117,16 @@ export function strictBuildInputs(root, preparedSource, {env = process.env, voic
   const head = readHead(path.join(root, 'vendor/eliza'));
   add('pinned upstream checkout', head === pin, 'script', `vendor/eliza ${head ? `at ${head}` : 'not checked out'}; pin ${pin}`, 'git submodule update --init vendor/eliza');
 
-  // On-device voice is optional: an APK without a voice bundle is valid (local speech reports
-  // unavailable; Cloud voice is unchanged). A staged bundle must be the pinned bytes, and verify-apks
-  // records a packaged bundle without functional acceptance as distributable:false.
+  // On-device voice is the only speech route: a distribution build needs the staged outputs, and
+  // verify-apks records a release without a qualified voice host as distributable:false.
   let voiceStatus = null;
   const voice = voiceHostProblems(root, {voiceHost: (...args) => { voiceStatus = voiceHost(...args); return voiceStatus; }});
-  add('on-device voice bundle', voice.length === 0, 'person',
-    voice.length ? voice[0] : voiceStatus?.status === 'not-packaged' ? `not packaged (${VOICE_ASSET_ROOT} absent): local speech reports unavailable and the build is unaffected` : `staged bundle matches ${VOICE_HOST_MANIFEST}`,
-    `Needs a person to supply the pinned voice model files: node scripts/android-stage-voice-models.mjs --from <directory of pinned voice models> (see ${VOICE_GUIDE}), or remove android/app/src/main/assets/voice to build without on-device voice.`);
+  add('on-device voice outputs', voice.length === 0, 'person',
+    voice.length ? voice[0] : `staged outputs match ${VOICE_HOST_MANIFEST}`,
+    `Needs a person to supply the recorded voice outputs and models: node scripts/android-stage-voice-models.mjs --from <directory> (see ${VOICE_GUIDE}).`);
+  add('on-device voice qualified', voiceStatus?.qualified === true, 'person',
+    voiceStatus?.qualified === true ? `${VOICE_HOST_MANIFEST} records device qualification` : `${VOICE_HOST_MANIFEST} is not qualified (no device acceptance recorded)`,
+    'Needs a person: on-device qualification on both ABIs (packages/app/scripts/paradee-voice/qualify) and device acceptance.');
 
   const host = readJson(root, QUALIFIED_HOST), toolchain = readJson(root, BUILD_TOOLCHAIN);
   const libraries = stagedLibraries(root, host);
@@ -162,7 +167,7 @@ export function formatReport(rows) {
   const stopper = open.find(row => row.input === 'embedding host libraries' && row.suppliedBy === 'person');
   if (stopper) lines.push('The chain cannot pass Gradle :app:verifyEmbeddingHost until a person supplies the embedding host libraries.');
   if (person.some(row => row.input === 'release signer')) lines.push('An unset release signer does not stop the build: verify-apks records its releases distributable:false and names them.');
-  if (person.some(row => row.input === 'on-device voice bundle')) lines.push('A staged voice bundle that is not the pinned bytes stops Gradle :app:verifyVoiceHost; removing it builds without on-device voice.');
+  if (person.some(row => row.input === 'on-device voice outputs')) lines.push('Missing or changed voice outputs stop Gradle :app:verifyVoiceHost in a distribution build; an unqualified voice host makes its releases distributable:false.');
   return lines.join('\n');
 }
 
@@ -179,14 +184,14 @@ async function main() {
     console.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatReport(rows));
     return;
   }
-  let problems = checkoutProblems(root);
+  let problems = checkoutProblems(root,{allowUnpackagedRuntime:args.includes('--allow-unpackaged-runtime')});
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.
     const {sourceDirectory} = await import('./local-agent-source.mjs');
     problems = [...preparedRuntimeProblems(root, sourceDirectory(root), {
       allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime'),
       testMocks: args.includes('--test-mocks'),
-    }), ...voiceHostProblems(root, {allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime')})];
+    })];
   }
   if (problems.length) {
     console.error(formatProblems(problems));

@@ -92,7 +92,7 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
-        { name: 'AlphaVoiceCloud', methods: options.voice || options.signedOut ? withListeners(['checkPermissions', 'startRecording', 'stopRecording', 'getRecordingMetrics', 'cancelRecording', 'transcribeRecording', 'saveRecording', 'cancel', 'synthesize', 'play', 'stopPlayback']) : promise(['checkPermissions']) },
+        { name: 'AlphaVoiceCloud', methods: options.voice || options.signedOut ? withListeners(['checkPermissions', 'startRecording', 'stopRecording', 'getRecordingMetrics', 'cancelRecording', 'transcribeRecording', 'localSpeechStatus', 'transcribeLocalRecording', 'saveRecording', 'cancel', 'synthesize', 'play', 'stopPlayback']) : promise(['checkPermissions']) },
         ...(options.voice ? [{ name: 'AlphaNoteAudio', methods: promise(['play', 'stop', 'state', 'describe']) },
           { name: 'AlphaCalendar', methods: withListeners(['list', 'requestAccess', 'pendingCreations', 'listAlerts', 'save', 'acknowledgeCreation']) }] : []),
         { name: 'AlphaBrowser', methods: withListeners(['create', 'navigate', 'present', 'close', 'command', 'bookmarks', 'setBookmark', 'browsingState', 'saveBrowsingState', 'cancelReading', 'reviewQuestion']) },
@@ -110,6 +110,9 @@ async function android(page: Page, options: { clock?: 'opened' | 'unavailable' |
           if (method === 'stopRecording') { v.stops++; return { recordingId: 'recording-' + v.starts, durationMs: 3000 }; }
           // Eliza Cloud transcription, answered for the signed-in account only.
           if (method === 'transcribeRecording') { v.transcriptions.push(structuredClone(input)); if (input.environment !== 'production' || input.credentialId !== id) throw Error('Wrong synthetic Cloud account'); return { text: options.voice, local: false }; }
+          // On-device speech (P-43): the native libelizainference voice host answers status and batch ASR.
+          if (method === 'localSpeechStatus') return options.voice ? { ready: true, playback: true, execution: 'device', provider: 'fused-paradee-asr' } : { ready: false, playback: false, execution: 'device', provider: 'fused-paradee-asr' };
+          if (method === 'transcribeLocalRecording') { v.transcriptions.push(structuredClone(input)); return { text: options.voice, local: true, execution: 'device', provider: 'fused-paradee-asr' }; }
           if (method === 'saveRecording') { const audio = { audioId: input.recordingId, noteId: input.noteId, durationMs: 3000, transcript: input.transcript }; v.saved.push(audio); return audio; }
           if (['cancelRecording', 'cancel', 'stopPlayback'].includes(method)) return {};
         }
@@ -805,16 +808,17 @@ test('loop B / J02 on Android: a recorded note, a resident summary and reviewed 
   await residentHome(page);
   const writes = () => native(page, f => ({ reminders: f.writes.reminders.length, events: f.writes.events.length }));
 
-  // 1. Record with the native recorder, transcribe with Eliza Cloud, review and save the note.
+  // 1. Record with the native recorder, transcribe on the phone (on-device voice host), review and save the note.
   await button(page, 'Notes').click();
   await button(page, 'Record and transcribe').click();
   await button(page, 'Start recording').click();
   await expect(button(page, 'Stop recording')).toBeVisible();
   await button(page, 'Stop recording').click();
-  await button(page, 'Transcribe with Eliza Cloud').click();
+  await button(page, 'Transcribe on this phone').click();
   await expect(page.getByRole('textbox', { name: 'Review transcript', exact: true })).toHaveValue(TRANSCRIPT);
-  // One upload, bound to the signed-in Cloud account; nothing is saved before Save note.
-  expect(await native(page, f => f.voice.transcriptions.map((row: any) => [row.environment, row.credentialId]))).toEqual([['production', '9f1dc45a-4011-4e44-947a-30d999d24fa5']]);
+  // One on-device transcription of this recording, no Cloud upload; nothing is saved before Save note.
+  expect(await native(page, f => f.voice.transcriptions.map((row: any) => row.recordingId))).toEqual(['recording-1']);
+  expect(await native(page, f => f.calls.filter((call: string) => call === 'AlphaVoiceCloud.transcribeRecording'))).toEqual([]);
   expect(await savedNotes(page)).toEqual([]);
   await button(page, 'Save note').click();
   await expect(button(page, 'Play recording')).toBeVisible();

@@ -93,12 +93,8 @@ test('Android coordinates, the voice host and the upstream pin match their recor
   if (fs.existsSync(path.join(ROOT, VOICE_HOST))) {
     const record = read(VOICE_HOST);
     for (const abi of record.abis) for (const library of abi.libraries) assert.equal(byRef.get(`voice-host:${abi.abi}/${library.name}`).hashes[0].content, library.sha256);
-    // Open rows (sha256 null) are not pinned, so they are not components.
-    for (const model of record.models) {
-      if (model.sha256 === null) assert.equal(byRef.has(`voice-model:${model.role}/${model.name}`), false, model.name);
-      else assert.equal(byRef.get(`voice-model:${model.role}/${model.name}`).hashes[0].content, model.sha256);
-    }
-    if (record.lexicon?.sha256) assert.equal(byRef.get(`voice-lexicon:${record.lexicon.path}`).hashes[0].content, record.lexicon.sha256);
+    // Every recorded bundle file (Paradee, misaki, eSpeak NG data, the ASR slot, VAD, notices) is a component.
+    for (const model of record.models) assert.equal(byRef.get(`voice-model:${model.path}`).hashes[0].content, model.sha256, model.path);
   } else assert.deepEqual(sbom.components.filter(component => /^voice-(host|model):/.test(component['bom-ref'])), []);
   const upstream = read('upstream.lock.json');
   assert.equal(sbom.components.find(component => component.name === 'elizaOS').version, upstream.commit);
@@ -114,7 +110,7 @@ test('the embedding host is listed from its reviewed pins, without claiming it i
     assert.equal(prop(component, 'bytes'), String(library.bytes));
     assert.match(prop(component, 'source'), new RegExp(`qualification receipt sha256 ${host.qualificationReceiptSha256}`));
     // The foundation job's unpackaged APKs contain no embedding host; the pin must not read as if they did.
-    assert.equal(prop(component, 'ships-in'), 'apk (only one that packages the resident runtime)');
+    assert.match(prop(component, 'ships-in'), /legacy qualification record; incompatible with current Paradee engine/);
   }
   assert.equal(byRef.get('embedding-model:bge-small-en-v1.5-f16.gguf').hashes[0].content, host.model.sha256);
   assert.equal(prop(byRef.get('embedding-model:bge-small-en-v1.5-f16.gguf'), 'ships-in'), 'apk (only one that packages the resident runtime)');

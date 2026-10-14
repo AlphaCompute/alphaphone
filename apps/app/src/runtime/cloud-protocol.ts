@@ -141,6 +141,12 @@ function mailLinks(value: unknown): GmailLink[] {
   for (const row of value) { const link = safeMailLink(row); if (link && !seen.has(link.href)) { seen.add(link.href); links.push(link); } }
   return links.slice(0, 50);
 }
+/** The complete optional display body; oversized HTML keeps the plain alternative. */
+function mailHtml(value: unknown): {bodyHtml?: string} {
+  if (value !== undefined && value !== null && typeof value !== 'string') throw new CloudProtocolError('invalid-response');
+  return typeof value === 'string' && value && new TextEncoder().encode(value).length <= 512 * 1024
+    ? {bodyHtml: value} : {};
+}
 export class CloudProtocolError extends Error {
   constructor(readonly code: "invalid-response" | "http" | "expired" | "credentials-missing" | "credential-consumed" | "login-active" | "account-changed", readonly status?: number, readonly data?: unknown) {
     super(`Eliza Cloud ${code}${status ? ` (${status})` : ""}`);
@@ -691,9 +697,8 @@ export class CloudProtocol {
     const message = this.gmailMessage(data.message);
     if (message.id !== messageId) throw new CloudProtocolError("invalid-response");
     const metadata=data.message&&typeof data.message==='object'?object(object(data.message).metadata??{}):{};
-    if(data.bodyHtml!==undefined&&data.bodyHtml!==null&&typeof data.bodyHtml!=='string')throw new CloudProtocolError('invalid-response');
     const attachments=Array.isArray(data.attachments)?data.attachments.map(value=>{const a=object(value);const name=typeof a.filename==='string'?a.filename:a.name;if(typeof a.partId!=='string'||typeof name!=='string'||typeof a.mimeType!=='string'||!Number.isSafeInteger(a.size)||(a.size as number)<0||a.supported!==undefined&&typeof a.supported!=='boolean')throw new CloudProtocolError('invalid-response');return {partId:a.partId,name,mimeType:a.mimeType,size:a.size as number,supported:typeof a.supported==='boolean'?a.supported:['application/pdf','text/plain','image/png','image/jpeg','image/webp'].includes(a.mimeType)};}):[];
-    return { message, bodyText: data.bodyText,...(typeof data.bodyHtml==='string'&&data.bodyHtml&&new TextEncoder().encode(data.bodyHtml).length<=512*1024?{bodyHtml:data.bodyHtml}:{}), links: mailLinks(data.links),historyId:typeof metadata.historyId==='string'?metadata.historyId:null,attachments };
+    return { message, bodyText: data.bodyText,...mailHtml(data.bodyHtml), links: mailLinks(data.links),historyId:typeof metadata.historyId==='string'?metadata.historyId:null,attachments };
   }
   async gmailInboxCapabilities(grantId:string,signal:AbortSignal):Promise<GmailInboxCapabilities> {
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/capabilities?${new URLSearchParams({grantId})}`,signal,{authenticated:true});
@@ -707,7 +712,7 @@ export class CloudProtocol {
     const params=new URLSearchParams({grantId,threadId});if(cursor){params.set('offset',String(cursor.offset));params.set('historyId',cursor.historyId);}
     const data=await this.call(`/api/v1/eliza/google/gmail/inbox-v1/thread?${params}`,signal,{authenticated:true});
     if(data.version!==1||data.threadId!==threadId||!Array.isArray(data.messages)||data.messages.length>25||!Number.isSafeInteger(data.total)||!Number.isSafeInteger(data.offset)||data.offset!==(cursor?.offset??0))throw new CloudProtocolError('invalid-response');
-    const messages=data.messages.map(row=>{const item=object(row),message=this.gmailMessage(item.message);if(message.threadId!==threadId||typeof item.bodyText!=='string')throw new CloudProtocolError('invalid-response');return {message,bodyText:item.bodyText,links:mailLinks(item.links),historyId:typeof item.historyId==='string'?item.historyId:null,attachments:Array.isArray(item.attachments)?item.attachments.map(value=>{const a=object(value);if(typeof a.name!=='string'||typeof a.mimeType!=='string'||typeof a.size!=='number'||typeof a.supported!=='boolean')throw new CloudProtocolError('invalid-response');return {partId:typeof a.partId==='string'?a.partId:(()=>{throw new CloudProtocolError('invalid-response')})(),name:a.name,mimeType:a.mimeType,size:a.size,supported:a.supported};}):[]};});
+    const messages=data.messages.map(row=>{const item=object(row),message=this.gmailMessage(item.message);if(message.threadId!==threadId||typeof item.bodyText!=='string')throw new CloudProtocolError('invalid-response');return {message,bodyText:item.bodyText,...mailHtml(item.bodyHtml),links:mailLinks(item.links),historyId:typeof item.historyId==='string'?item.historyId:null,attachments:Array.isArray(item.attachments)?item.attachments.map(value=>{const a=object(value);if(typeof a.name!=='string'||typeof a.mimeType!=='string'||typeof a.size!=='number'||typeof a.supported!=='boolean')throw new CloudProtocolError('invalid-response');return {partId:typeof a.partId==='string'?a.partId:(()=>{throw new CloudProtocolError('invalid-response')})(),name:a.name,mimeType:a.mimeType,size:a.size,supported:a.supported};}):[]};});
     const total=data.total as number,offset=data.offset as number;if(total<offset+messages.length||total>2000||data.nextOffset!==(offset+messages.length<total?offset+messages.length:null))throw new CloudProtocolError('invalid-response');
     const historyId=string(data.historyId);if(cursor&&cursor.historyId!==historyId)throw new CloudProtocolError('invalid-response');return {messages,total,offset,historyId,nextOffset:data.nextOffset as number|null};
   }

@@ -96,23 +96,19 @@ test("the privileged listener is pinned by a reviewed descriptor and must carry 
   assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: "d".repeat(64), signer: SIGNER }), /apkSha256/, "other bytes with the right name and signer are refused");
   assert.throws(() => checkListenerDescriptor(good, { appId: APP, apkSha256: hash, signer: "b".repeat(64) }), /certificateSha256/);
   assert.throws(() => checkListenerDescriptor({ ...good, apkSha256: "x" }, { appId: APP, apkSha256: "x", signer: SIGNER }), /apkSha256/);
-  // The listener uses the same fused libelizainference voice host as Alpha: no other speech runtime.
+  // The listener uses the same libelizainference voice host (shared paradee-voice library) as Alpha.
   const voiceHost = JSON.parse(fs.readFileSync(path.join(root, "android/voice-host/qualified-voice-host.json"), "utf8"));
-  const record = JSON.parse(fs.readFileSync(path.join(root, "android/embedding-host/qualified-host.json"), "utf8"));
-  // A synthetic qualified row (the committed record has no voice-verified ABI yet).
-  const verified = { ...voiceHost, abis: voiceHost.abis.map(row => row.abi === "arm64-v8a" ? { ...row, voiceSymbolsVerified: true } : row) };
-  const entries = ["AndroidManifest.xml", "classes.dex", "assets/voice/v1/manifest.json", ...record.libraries.map(lib => `lib/arm64-v8a/${lib.name}`)];
-  const manifest = roles => JSON.stringify({ format: "alpha-voice-bundle-v1", files: roles.map(role => ({ role })) });
-  const full = () => manifest(["asr-model", "asr-mmproj", "vad-model", "tts-model", "tts-voice", "lexicon"]);
-  assert.deepEqual(checkListenerSpeechBundle(entries, verified, full), ["arm64-v8a"]);
-  assert.throws(() => checkListenerSpeechBundle(entries, voiceHost, full), /no qualified voice host ABI/, "unverified voice symbols are not qualified");
-  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/voice/")), verified, full), /no assets\/voice\/v1\/manifest\.json/, "an APK without the model can never listen");
-  assert.throws(() => checkListenerSpeechBundle(entries, verified, () => manifest(["tts-model", "tts-voice", "lexicon", "vad-model"])), /no asr-model, asr-mmproj/, "a read-aloud-only bundle cannot recognise speech");
-  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), verified, full), /no qualified voice host ABI/);
-  const hashes = Object.fromEntries(record.libraries.map(lib => [`lib/arm64-v8a/${lib.name}`, lib.sha256]));
-  const read = file => JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
-  assert.equal(checkListenerSpeechNatives(["arm64-v8a"], verified, entry => hashes[entry], read), true);
-  assert.throws(() => checkListenerSpeechNatives(["arm64-v8a"], verified, () => "0".repeat(64), read), /differs from the qualified voice host record/);
+  const arm = voiceHost.abis.find(row => row.abi === "arm64-v8a");
+  const entries = ["AndroidManifest.xml", "classes.dex", "assets/paradee-voice/v1/manifest.json", "lib/arm64-v8a/libparadeevoicejni.so", ...arm.libraries.map(lib => `lib/arm64-v8a/${lib.name}`)];
+  const manifest = paths => JSON.stringify({ format: "eliza-paradee-voice-v1", files: paths.map(file => ({ path: file })) });
+  const full = () => manifest([...voiceHost.models.map(row => row.path)]);
+  assert.deepEqual(checkListenerSpeechBundle(entries, voiceHost, full), ["arm64-v8a"]);
+  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("assets/")), voiceHost, full), /no assets\/paradee-voice\/v1\/manifest\.json/, "an APK without the bundle can never listen");
+  assert.throws(() => checkListenerSpeechBundle(entries, voiceHost, () => manifest(voiceHost.models.filter(row => !row.path.startsWith("asr/")).map(row => row.path))), /no asr\/eliza-1-asr\.gguf, asr\/eliza-1-asr-mmproj\.gguf/, "a read-aloud-only bundle cannot recognise speech");
+  assert.throws(() => checkListenerSpeechBundle(entries.filter(name => !name.startsWith("lib/")), voiceHost, full), /no recorded voice host ABI/);
+  const hashes = Object.fromEntries(arm.libraries.map(lib => [`lib/arm64-v8a/${lib.name}`, lib.sha256]));
+  assert.equal(checkListenerSpeechNatives(["arm64-v8a"], voiceHost, entry => hashes[entry]), true);
+  assert.throws(() => checkListenerSpeechNatives(["arm64-v8a"], voiceHost, () => "0".repeat(64)), /differs from the recorded voice host library/);
   assert.doesNotMatch(fs.readFileSync(path.join(root, "scripts/aosp-listener.mjs"), "utf8"), /sherpa|local-speech/i);
 });
 

@@ -6,6 +6,7 @@ import os from 'node:os';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {verifyEmbeddingHost, verifyEmbeddingInputs} from '../scripts/stage-embedding-host.mjs';
+import {nativeInputPaths, nativeBinding, nativeInputs, nativeGenerated} from '../scripts/embedding-native-contract.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const git=(directory,...args)=>execFileSync('git',['-C',directory,...args],{encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 const committed=JSON.parse(fs.readFileSync(path.join(root,'android/embedding-host/qualified-host.json'),'utf8'));
@@ -19,9 +20,12 @@ const sha=value=>createHash('sha256').update(value).digest('hex');
 const qualified=(()=>{
  const record=structuredClone(committed);delete record.requalification;
  record.forkPin=git(path.join(root,'vendor/eliza'),'ls-tree',lockCommit,'plugins/plugin-local-inference/native/llama.cpp').match(/^160000 commit ([a-f0-9]{40})\t/)[1];
- record.inputs=committed.inputs.map(({path:file})=>{
-  const source=execFileSync('git',['-C',path.join(root,'vendor/eliza'),'show',lockCommit+':'+file]);
-  const generated=file.endsWith('.cpp')?source.toString('utf8').replaceAll('Java_ai_elizaos_app_','Java_'+appId.replaceAll('.','_')+'_').replaceAll('ai/elizaos/app/',appId.replaceAll('.','/')+'/'):source;
+ // The build inputs come from the shared native contract at the pin (registered JNI: the Java class too).
+ const show=file=>execFileSync('git',['-C',path.join(root,'vendor/eliza'),'show',lockCommit+':'+file]);
+ const binding=nativeBinding(show(nativeInputPaths.at(-1)).toString('utf8'),show(nativeInputPaths.at(-2)).toString('utf8'),appId);
+ if(binding.mode==='registered')record.jniBinding=binding;
+ record.inputs=nativeInputs(binding).map(file=>{
+  const source=show(file),generated=nativeGenerated(file,source.toString('utf8'),appId,binding);
   return {path:file,sourceSha256:sha(source),generatedSha256:sha(generated)};
  });
  return record;

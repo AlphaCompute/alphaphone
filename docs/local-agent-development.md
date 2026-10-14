@@ -51,38 +51,19 @@ stays unknown.
 
 ## Speech routes and optional local development
 
-Chat voice, Notes dictation and generic Maps/workflow speech select Eliza Cloud in the product. A valid saved Cloud account is required; opening voice must reuse that account rather than request a new sign-in unnecessarily. Notes recordings remain local until the user explicitly requests transcription. Chat voice has a separate conversation controller and does not open Notes. Actual microphone, playback, backend STT selection and Android permission acceptance require their own qualification; text inference readiness does not prove them.
+Product speech stays on the device (P-43): Android uses the on-device libelizainference voice (Paradee-8M TTS and the voice bundle's ASR slot, [fused speech](fused-speech.md)), and a browser uses the local agent on the same computer. Eliza Cloud speech exists only in test-mocks builds, and nothing falls back to Web Speech or to the network. Notes recordings remain local until the user explicitly requests transcription. Actual microphone, playback and Android permission acceptance require their own qualification; text inference readiness does not prove them.
 
-The following local Whisper/Kokoro instructions describe optional development asset qualification, not the default product route. The active Mac comparison profile keeps local ASR and TTS off. A private `local-speech.json` may save supported nonsecret asset settings; explicit environment choices take precedence. Never store credentials in that file or run its audio qualification without authorization.
+The development host runs the same engine: the shared Paradee TTS worker (`POST /api/tts/paradee`) and the shared ASR service (`POST /api/asr/libelizainference`), both on libelizainference. Configuration uses the upstream names only (`scripts/speech-env.mjs`): `ELIZA_INFERENCE_LIBRARY` with its independently reviewed `ELIZA_INFERENCE_LIBRARY_SHA256`, `ELIZA_PARADEE_ENABLED` / `ELIZA_PARADEE_MODEL_DIR` and `ELIZA_ASR_ENABLED` / `ELIZA_ASR_MODEL_DIR`. `1` requires the service, `0` turns it off, and unset enables it only when its model directory is set. The Paradee directory holds the pinned `paradee-8m-v1_0.gguf`, `misaki-en-us.lex` and optionally `espeak-ng-data/`; the ASR directory holds the slot pair under `asr/` and Silero VAD under `vad/` (paths and hashes in `scripts/host-speech-assets.json`). Assets are verified before the worker starts; nothing is downloaded.
 
-Whisper uses the installed assets described in the review ledger. On macOS, browser development selects the installed CLI's automatic compute backend and runs a private synthetic-silence warm-up before starting the agent. This moves first-use kernel compilation into startup. `ALPHA_WHISPER_BACKEND=cpu` explicitly retains CPU execution; other platforms default to CPU. Automatic selection requires the current reproduced runtime source, and a failed warm-up stops startup rather than reporting readiness. This is host acceleration, not Android speech qualification or a guarantee of the device latency target.
-
-When host Kokoro is configured, the agent starts its native worker and loads the speech sanitizer during startup. The worker verifies assets and synthesizes its readiness phrase before reporting ready. The first Listen request shares an in-progress initialization instead of starting another worker. Failed initialization remains retryable, and cancellation still destroys the native context. Disabled host speech does not preload either component. Local playback also prepares sentence-sized chunks, bounded to 300 characters, so the first audio response does not wait for a complete multi-sentence passage. The entire passage is validated before any chunk is submitted; completion still waits for every chunk and Stop cancels the current request without starting the remainder.
-
-For repeatable cold-process qualification with the installed speech settings, run:
+Require both speech services at startup with:
 
 ```sh
-ALPHA_ELIZA_SOURCE=/absolute/path/to/prepared/runtime npm run agent:test-cold-kokoro
-```
-
-This Bun check validates the pinned source and assets, exercises three fresh
-workers without a readiness probe, and verifies cold cancellation/recovery. It
-writes `test-results/cold-kokoro/result.json`. It never sends text to a model
-provider and uses only a fixed synthetic phrase. The opt-in browser case
-`first host speech request plays without a readiness probe` in
-`test/browser/browser-agent-playback.spec.ts` additionally checks actual playback;
-set `ALPHA_REAL_KOKORO=1` and point a serverless Playwright configuration at the
-freshly restarted local dev server. Agent readiness is separate from TTS readiness.
-
-
-
-Require both speech providers at startup with:
-
-```sh
-ALPHA_LOCAL_ASR=required \
-ALPHA_LOCAL_TTS=required \
-ALPHA_TTS_LIBRARY=/absolute/path/to/libelizainference.dylib \
-ELIZA_KOKORO_MODEL_DIR=/absolute/path/to/kokoro \
+ELIZA_ASR_ENABLED=1 \
+ELIZA_PARADEE_ENABLED=1 \
+ELIZA_INFERENCE_LIBRARY=/absolute/path/to/libelizainference.dylib \
+ELIZA_INFERENCE_LIBRARY_SHA256=<reviewed sha256> \
+ELIZA_PARADEE_MODEL_DIR=/absolute/path/to/paradee \
+ELIZA_ASR_MODEL_DIR=/absolute/path/to/asr-bundle \
 npm run dev:local
 ```
 
@@ -93,24 +74,29 @@ permissions (`chmod 600`). For example:
 
 ```json
 {
-  "ALPHA_LOCAL_ASR": "required",
-  "ALPHA_LOCAL_TTS": "required",
-  "ALPHA_TTS_LIBRARY": "/absolute/path/to/libelizainference.dylib",
-  "ELIZA_KOKORO_MODEL_DIR": "/absolute/path/to/kokoro"
+  "ELIZA_ASR_ENABLED": "1",
+  "ELIZA_PARADEE_ENABLED": "1",
+  "ELIZA_INFERENCE_LIBRARY": "/absolute/path/to/libelizainference.dylib",
+  "ELIZA_INFERENCE_LIBRARY_SHA256": "<reviewed sha256>",
+  "ELIZA_PARADEE_MODEL_DIR": "/absolute/path/to/paradee",
+  "ELIZA_ASR_MODEL_DIR": "/absolute/path/to/asr-bundle"
 }
 ```
 
 `npm run dev` and `npm run dev:local` read this file at startup. A file that still uses the
-retired `ALPHA_TTS_MODEL_DIR` key is read as `ELIZA_KOKORO_MODEL_DIR`, with a warning to rename it. Explicit shell
-environment values take precedence, including `ALPHA_LOCAL_TTS=off`. Optional
-saved keys are `ALPHA_WHISPER_BIN`, `ALPHA_ASR_MODEL` and
-`ALPHA_WHISPER_BACKEND`. Only speech modes and absolute asset paths are accepted;
-credentials, arbitrary process settings, symlinks, shared-access files and malformed
-JSON are rejected. With no file, existing environment/default behavior is preserved.
-The file selects installed assets; their existing hash and readiness checks still
-run. It does not download assets or configure speech on Android.
+earlier Alpha-only keys (`ALPHA_LOCAL_TTS`, `ALPHA_LOCAL_ASR`, `ALPHA_TTS_MODEL_DIR`,
+`ALPHA_ASR_MODEL_DIR`, `ALPHA_TTS_LIBRARY`) is read as the upstream names, with a warning to
+rename them; the retired Whisper and Kokoro keys are ignored. In the environment the earlier names
+are refused with their replacement. Explicit shell environment values take precedence, including
+`ELIZA_PARADEE_ENABLED=0`. Only speech modes, the digest and absolute asset paths are accepted;
+credentials, arbitrary process settings, symlinks, shared-access files and malformed JSON are
+rejected. The file does not download assets or configure speech on Android. Speech runs on the
+development computer; text-model inference still uses the configured provider (Qwen
+`qwen-3.8-27b` on Cerebras).
 
-The Kokoro directory must contain the pinned `kokoro-82m-v1_0.gguf` and `voices/af_bella.bin` assets. The launcher checks the model and voice hashes; the host service checks the native library and ABI and warms synthesis before readiness. This command uses already installed qualified assets; it does not download a model or build a native library. `ALPHA_LOCAL_TTS=auto` stays disabled unless a library is explicitly configured, and `off` disables synthesis. Browser phrases are bounded to 500 characters; the transcript player divides longer text into shorter phrases. Speech runs on the development computer; text-model inference still uses the configured hosted provider.
+The earlier cold-Kokoro, paired-Whisper and combined voice-roundtrip campaigns refuse to run
+(`scripts/retired-host-speech-proof.mjs`); their historical evidence below describes the retired
+engines.
 
 Notes recording uses the selected Cloud account. The retired local-agent Notes UI journeys are removed; real browser capture, reviewed saves, cancellation and playback remain covered by the Cloud-bound recording E2E fixtures. Those fixtures use synthetic transport and do not qualify a live Cloud provider. The explicit local-host playback check above remains available for development speech. Native Android speech and physical-device acceptance remain separate.
 

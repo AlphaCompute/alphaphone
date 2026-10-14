@@ -154,10 +154,12 @@ only after Start recording is selected.
 
 The web build has no speech engine of its own. Local speech in a browser runs on the private
 local agent on the same computer, which uses the native llama.cpp-based libelizainference
-engine; without the agent, local transcription reports that the agent is required and the
-recording is kept. Eliza Cloud is the disclosed opt-in route (P-07). The transcript is always
-reviewed before it is saved or used. See
-[browser speech](docs/browser-speech-recognition.md) and [fused speech](docs/fused-speech.md).
+engine (Paradee-8M speech and the voice bundle's ASR); without the agent, local transcription
+reports that the agent is required and the recording is kept. Eliza Cloud speech is only an
+explicit, disclosed opt-in (P-07); there is no Web Speech or automatic network fallback. The
+transcript is always reviewed before it is saved or used. See
+[browser recording and transcription](docs/browser-speech-recognition.md) and
+[fused speech](docs/fused-speech.md).
 
 Deleted notes, including voice notes, move to a Trash inside Notes and are erased
 automatically 3 days after deletion; Undo, Restore, Delete forever and Empty Trash are
@@ -177,14 +179,17 @@ recognize the usual macOS Homebrew JDK/Android SDK locations. The Gradle 8.13
 wrapper is hash-pinned. No Eliza root dependency installation or package
 publication is required for this shell.
 
-On-device speech uses only the llama.cpp-based libelizainference voice host (decision P-42).
-Build and stage it as described in [fused speech](docs/fused-speech.md); the libraries and the
-voice bundle (`android/app/src/main/assets/voice/v1`) are intentionally absent from Git and
-are checked against the qualification record `android/voice-host/qualified-voice-host.json`
-by Gradle's `:app:verifyVoiceHost`. An APK without a voice bundle is valid: local speech then
-reports unavailable and the disclosed Cloud route stays (P-07). A packaged bundle must be the
-exact recorded bytes and needs recorded functional acceptance before a release is distributable.
-No qualified mobile ASR pair exists upstream yet, and the x86_64 voice host is not yet built.
+On-device speech uses only the llama.cpp-based libelizainference engine (decision P-42) through
+the shared elizaOS paradee-voice library: Paradee-8M speech output (P-54) and the voice bundle's
+model-agnostic ASR slot (P-55; Phonon-2 is the intended model). Build and stage it as described in
+[fused speech](docs/fused-speech.md): `node scripts/android-stage-voice-models.mjs --from <dir>`
+writes the engine and the bundle (about 1.1 GB, shipped in the APK assets) to the ignored
+`.eliza/paradee-voice/native`, checked against `android/voice-host/qualified-voice-host.json`
+and `android/paradee-voice/asr-inputs.json` by Gradle (`:local-speech:verifySpeechInputs`,
+`:app:verifyParadeeAppLinkage`, `:app:verifyVoiceHost`). A distribution build needs them; the
+`--allow-unpackaged-runtime` developer lane may omit them, and local speech then reports
+unavailable. The record is not qualified: a release is distributable only after on-device
+qualification on both ABIs and device acceptance.
 
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
@@ -217,8 +222,8 @@ npm run android:build -- --allow-unpackaged-runtime
 `npm run android:build` first runs `scripts/android-build-preflight.mjs` and stops
 (exit 2), before the web sync and Gradle, naming the command to run when the pinned
 `vendor/eliza` checkout, the prepared runtime source or (for distribution builds) the staged
-runtime payload is missing or stale, or when a staged voice bundle is not admitted by the
-voice-host record.
+runtime payload is missing or stale, or when the on-device voice outputs are missing (distribution
+builds) or not admitted by the voice-host record.
 
 Three inputs of a distributable build cannot come from a script, and
 `npm run android:build:inputs` names each with who supplies it:

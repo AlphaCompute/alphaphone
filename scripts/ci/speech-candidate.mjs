@@ -1,23 +1,23 @@
 #!/usr/bin/env node
 /**
  * Hosted half of on-device speech qualification (.github/workflows/android-emulator.yml, job
- * `fused-speech`). The engine is the fused libelizainference (ASR, Kokoro TTS, Silero VAD) recorded
- * in android/voice-host/qualified-voice-host.json; this script checks the APK before the run and
+ * `fused-speech`). The engine is libelizainference with the shared paradee-voice library (Paradee
+ * TTS, misaki G2P, the ASR slot pair, Silero VAD) recorded in
+ * android/voice-host/qualified-voice-host.json; this script checks the APK before the run and
  * packages what the run produced afterwards.
  *
  *   node scripts/ci/speech-candidate.mjs check <app.apk>
  *   node scripts/ci/speech-candidate.mjs package <results-directory> <new-output-directory>
  *
- * `check` refuses an APK whose voice bundle (assets/voice/v1) or x86_64 engine is not the exact
- * qualified bytes, or that carries no voice bundle at all (the emulator would only prove that
- * local speech is unavailable). A bundle without an ASR pair is admitted: no product-qualified
- * mobile ASR pair exists upstream yet, and Kokoro, VAD and the ABI checks can still be exercised.
- * The FusedSpeech transcription methods then skip by assumption, and the packaged result records
- * asrPackaged:false with on-device transcription under notEvidenceFor. `package` copies the
- * instrumentation record, the raw class logs and the exact APK pair into one folder and writes
- * result.json. Nothing is inferred: a run that failed or never started is packaged as that.
+ * `check` refuses an APK whose voice bundle (assets/paradee-voice/v1) or x86_64 engine is not the
+ * exact recorded bytes, or that carries no voice bundle at all (the emulator would only prove that
+ * local speech is unavailable). A bundle without the ASR slot pair is admitted for the TTS and
+ * cancellation classes; the packaged result then records asrPackaged:false with on-device
+ * transcription under notEvidenceFor. `package` copies the instrumentation record, the raw class
+ * logs and the exact APK pair into one folder and writes result.json. Nothing is inferred: a run
+ * that failed or never started is packaged as that.
  *
- * An x86_64 pass here is one ABI on an emulator (evidence class E). Admission still needs the
+ * An x86_64 pass here is one ABI on an emulator (evidence class E). Qualification still needs the
  * arm64-v8a engine on hardware (class D) and a reviewer named by a person; the result never edits
  * qualified-voice-host.json.
  */
@@ -28,44 +28,46 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { FUSED_SPEECH_CLASSES } from "./emulator-suite.mjs";
 
-export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/FusedSpeechInstrumentedTest.java";
+export const CANONICAL_TEST = "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/LocalSpeechInstrumentedTest.java";
+export const BUNDLE = "assets/paradee-voice/v1";
+const SLOT = ["asr/eliza-1-asr.gguf", "asr/eliza-1-asr-mmproj.gguf"];
 export const ABI = "x86_64";
 const sha = bytes => createHash("sha256").update(bytes).digest("hex");
 
-/** Whether the APK's voice bundle lists an ASR text model and its projector. `read(entry)` returns bytes or null. */
+/** Whether the APK's voice bundle lists the ASR slot pair. `read(entry)` returns bytes or null. */
 export function asrPackaged({ read }) {
   try {
-    const files = JSON.parse(read("assets/voice/v1/manifest.json")?.toString("utf8") ?? "null")?.files ?? [];
-    return files.some(row => row.role === "asr-model") && files.some(row => row.role === "asr-mmproj");
+    const files = JSON.parse(read(`${BUNDLE}/manifest.json`)?.toString("utf8") ?? "null")?.files ?? [];
+    return SLOT.every(slot => files.some(row => row.path === slot));
   } catch { return false; }
 }
 
 /** Problems that make an APK unusable for the hosted run; empty when it can run. `read(entry)` returns bytes or null. */
 export function candidateProblems({ names, read }, host) {
   const problems = [];
-  const manifestBytes = read("assets/voice/v1/manifest.json");
-  if (!manifestBytes) return ["the APK carries no on-device voice bundle (assets/voice/v1)"];
+  const manifestBytes = read(`${BUNDLE}/manifest.json`);
+  if (!manifestBytes) return [`the APK carries no on-device voice bundle (${BUNDLE})`];
   let bundle;
-  try { bundle = JSON.parse(manifestBytes.toString("utf8")); } catch { return ["assets/voice/v1/manifest.json is not JSON"]; }
-  const pinned = new Map([...host.models.filter(row => row.sha256 !== null), ...(host.lexicon.sha256 !== null ? [host.lexicon] : [])].map(row => [row.path, row]));
+  try { bundle = JSON.parse(manifestBytes.toString("utf8")); } catch { return [`${BUNDLE}/manifest.json is not JSON`]; }
+  const pinned = new Map(host.models.map(row => [row.path, row]));
   for (const row of bundle.files ?? []) {
-    const expected = pinned.get(row.path), bytes = read(`assets/voice/v1/${row.path}`);
-    if (!expected || !bytes || bytes.length !== expected.bytes || sha(bytes) !== expected.sha256) problems.push(`assets/voice/v1/${row.path} is not a qualified voice file`);
+    const expected = pinned.get(row.path), bytes = read(`${BUNDLE}/${row.path}`);
+    if (!expected || !bytes || bytes.length !== expected.bytes || sha(bytes) !== expected.sha256) problems.push(`${BUNDLE}/${row.path} is not a recorded voice file`);
   }
-  const record = host.abis.find(row => row.abi === ABI);
-  if (!record?.voiceSymbolsVerified) problems.push(`${ABI} has no voice-symbol qualification in android/voice-host/qualified-voice-host.json`);
-  else for (const library of record.libraries) {
-    const bytes = read(`lib/${ABI}/${library.name}`);
-    if (!bytes || bytes.length !== library.bytes || sha(bytes) !== library.sha256) problems.push(`lib/${ABI}/${library.name} differs from the voice-qualified bytes`);
+  const engine = host.abis.find(row => row.abi === ABI)?.libraries.find(library => library.name === "libelizainference.so");
+  if (!engine) problems.push(`${ABI} has no recorded engine in android/voice-host/qualified-voice-host.json`);
+  else {
+    const bytes = read(`lib/${ABI}/libelizainference.so`);
+    if (!bytes || bytes.length !== engine.bytes || sha(bytes) !== engine.sha256) problems.push(`lib/${ABI}/libelizainference.so differs from the recorded engine`);
   }
-  if (!names.some(name => name === `lib/${ABI}/libelizavoicejni.so`)) problems.push(`lib/${ABI}/libelizavoicejni.so is not packaged`);
+  if (!names.some(name => name === `lib/${ABI}/libparadeevoicejni.so`)) problems.push(`lib/${ABI}/libparadeevoicejni.so is not packaged`);
   // No ASR pair is not a refusal: the run records asrPackaged:false and proves nothing about transcription.
   return problems;
 }
 
 function apkReader(file) {
   const names = execFileSync("unzip", ["-Z1", file], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }).split("\n").filter(Boolean);
-  return { names, read: entry => names.includes(entry) ? execFileSync("unzip", ["-p", file, entry], { maxBuffer: 512 * 1024 * 1024 }) : null };
+  return { names, read: entry => names.includes(entry) ? execFileSync("unzip", ["-p", file, entry], { maxBuffer: 1536 * 1024 * 1024 }) : null };
 }
 
 /** Copies the run's record and APK pair into a new folder and says what the record shows. */
@@ -102,8 +104,8 @@ export function packageSpeechRun({ results, output, repository = process.cwd(), 
     // true, false, or null when the APK could not be read; anything but true leaves transcription unproven.
     asrPackaged: asr,
     admission: "not admitted: arm64-v8a on hardware (class D) and a reviewer named by a person are still required; qualified-voice-host.json evidence is edited only by that review",
-    notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Kokoro intelligibility", "physical-device acceptance",
-      ...(asr === true ? [] : ["on-device transcription (no ASR pair was packaged; the FusedSpeech ASR methods skip)"])],
+    notEvidenceFor: ["arm64-v8a", "microphone, speaker or perceptual quality", "Paradee intelligibility", "physical-device acceptance",
+      ...(asr === true ? [] : ["on-device transcription (no ASR slot pair was packaged)"])],
   };
   fs.writeFileSync(path.join(target, "result.json"), `${JSON.stringify(result, null, 2)}\n`, { flag: "wx" });
   return result;
@@ -116,7 +118,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const problems = candidateProblems(apkReader(first), host);
     if (problems.length) { console.error(`Speech candidate refused:\n  - ${problems.join("\n  - ")}`); process.exit(1); }
     const reader = apkReader(first);
-    console.log(`Speech candidate admitted for the ${ABI} emulator run${asrPackaged(reader) ? "" : " without an ASR pair: Kokoro, VAD and ABI only; transcription is not evidenced"}`);
+    console.log(`Speech candidate admitted for the ${ABI} emulator run${asrPackaged(reader) ? "" : " without the ASR slot pair: Paradee and cancellation only; transcription is not evidenced"}`);
   } else if (command === "package" && first && second) {
     let asr = null;
     try { asr = asrPackaged(apkReader("artifacts/standalone-debug.apk")); } catch { /* Unreadable APK: recorded as null. */ }

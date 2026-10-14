@@ -4,154 +4,126 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {ROOT, UNVERIFIED, VOICE_HOST, VOICE_HOST_DEFAULT_COMPONENTS, collectNotices, voiceHostProblems} from '../scripts/generate-licenses.mjs';
+import {ROOT, VOICE_HOST, collectNotices, voiceHostProblems} from '../scripts/generate-licenses.mjs';
 import {buildSbom as generateSbom} from '../scripts/generate-sbom.mjs';
+import {readVoiceHost, verifyVoiceHost, VOICE_ASR_SLOT} from '../scripts/voice-host.mjs';
+import {stageVoiceModels} from '../scripts/android-stage-voice-models.mjs';
 
-// The on-device speech engine is the llama.cpp-based libelizainference voice host. Its
-// qualification record (android/voice-host/qualified-voice-host.json, docs/fused-speech.md)
-// drives the notices and the SBOM. Fixture records only: no real binary or model is read.
-const hex = seed => createHash('sha256').update(seed).digest('hex');
-const commit = seed => hex(seed).slice(0, 40);
-export function voiceHostFixture(overrides = {}) {
-  return {
-    schemaVersion: 1, pin: commit('pin'), forkPin: commit('fork'), identity: 'ai.elizaresearch.alphaphone', provider: 'libelizainference-cpu',
-    abis: [
-      {abi: 'arm64-v8a', release: true, libraryRecord: 'android/embedding-host/qualified-host.json', voiceSymbolsVerified: true, libraries: [
-        {name: 'libelizainference.so', sha256: hex('inference'), bytes: 6199248},
-        {name: 'libelizavoicejni.so', sha256: hex('jni'), bytes: 1016376},
-        {name: 'libc++_shared.so', sha256: hex('libcxx'), bytes: 1304848},
-      ]},
-      // Not built yet: an empty library list is "not yet voice-qualified", not broken input.
-      {abi: 'x86_64', release: false, libraryRecord: null, voiceSymbolsVerified: false, libraries: []},
-    ],
-    models: [
-      {name: 'Kokoro-82M', role: 'tts-model', revision: 'hexgrad/Kokoro-82M@fixture', path: 'tts/kokoro/kokoro-82m-q8.gguf', sha256: hex('kokoro'), bytes: 90_000_000, license: 'Apache-2.0', source: 'https://huggingface.co/hexgrad/Kokoro-82M', status: 'pinned'},
-      {name: 'Kokoro af_sam preset', role: 'tts-voice', revision: 'hexgrad/Kokoro-82M@fixture', path: 'tts/kokoro/af_sam.bin', sha256: hex('af_sam'), bytes: 522240, license: 'Apache-2.0', source: 'https://huggingface.co/hexgrad/Kokoro-82M', status: 'pinned'},
-      {name: 'Silero VAD', role: 'vad-model', revision: 'v5-fixture', path: 'vad/silero-v5.gguf', sha256: hex('vad'), bytes: 2_000_000, license: 'MIT', source: 'https://github.com/snakers4/silero-vad', status: 'pinned'},
-      // A model under non-OSI terms with no licence file held: listed and flagged, never blocking.
-      {name: 'Fixture ASR text model', role: 'asr-model', revision: 'fixture', path: 'asr/text.gguf', sha256: hex('asr'), bytes: 500_000_000, license: 'LicenseRef-Gemma-Terms-of-Use', source: 'https://ai.google.dev/gemma/terms', status: 'pinned'},
-      {name: 'Fixture ASR projector', role: 'asr-mmproj', revision: 'fixture', path: 'asr/eliza-1-asr-mmproj.gguf', sha256: hex('mmproj'), bytes: 100_000_000, source: 'https://example.invalid/asr', status: 'pinned'},
-      // An open row: nothing pinned, so it is neither listed nor staged.
-      {name: 'Open ASR row', role: 'asr-model', path: 'asr/open.gguf', sha256: null, bytes: null, license: null, source: null, revision: null, status: 'open: no qualified pair'},
-    ],
-    lexicon: {name: 'Kokoro en-US lexicon', path: 'g2p/en-us-lexicon.tsv', role: 'lexicon', sha256: hex('lexicon'), bytes: 2584441, license: 'BSD-2-Clause',
-      source: {name: 'CMU Pronouncing Dictionary', url: 'https://example.invalid/cmudict.dict', revision: commit('cmudict'), sha256: hex('cmudict'), bytes: 3618488, notice: 'licenses/cmudict-BSD-2-Clause.txt'}},
-    ...overrides,
-  };
-}
+// The on-device speech engine is libelizainference with the shared paradee-voice library. Its
+// record (android/voice-host/qualified-voice-host.json, docs/fused-speech.md) drives staging,
+// the notices and the SBOM. Fixture bytes only: no real binary or model is read here.
+const sha = value => createHash('sha256').update(value).digest('hex');
+const committed = JSON.parse(fs.readFileSync(path.join(ROOT, VOICE_HOST), 'utf8'));
 
-function scratch(t, record) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-voice-host-'));
-  t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
-  fs.symlinkSync(path.join(ROOT, 'vendor'), path.join(dir, 'vendor'));
-  fs.symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
-  // A writable android/ whose entries point at the checkout, plus the fixture record.
-  fs.mkdirSync(path.join(dir, 'android'));
-  for (const name of fs.readdirSync(path.join(ROOT, 'android'))) if (name !== 'voice-host') fs.symlinkSync(path.join(ROOT, 'android', name), path.join(dir, 'android', name));
-  fs.mkdirSync(path.join(dir, path.dirname(VOICE_HOST)), {recursive: true});
-  fs.writeFileSync(path.join(dir, VOICE_HOST), JSON.stringify(record, null, 2));
-  fs.mkdirSync(path.join(dir, 'apps/app'), {recursive: true});
-  fs.symlinkSync(path.join(ROOT, 'apps/app/public'), path.join(dir, 'apps/app/public'));
-  for (const name of ['package.json', 'package-lock.json', 'upstream.lock.json', 'app.config.json']) fs.copyFileSync(path.join(ROOT, name), path.join(dir, name));
-  fs.cpSync(path.join(ROOT, 'licenses'), path.join(dir, 'licenses'), {recursive: true});
-  return dir;
-}
-
-test('a well-formed voice-host record has no problems', () => {
-  assert.deepEqual(voiceHostProblems(voiceHostFixture()), []);
+test('the committed record satisfies the schema, the pin, the shared Paradee pins and the ASR slot', () => {
+  assert.deepEqual(voiceHostProblems(committed), []);
+  const record = readVoiceHost(ROOT);
+  assert.equal(record.qualified, false, 'not qualified until device acceptance');
+  assert.equal(record.provider, 'libelizainference-paradee');
+  assert.deepEqual(record.abis.map(row => row.abi), ['arm64-v8a', 'x86_64']);
+  const slot = JSON.parse(fs.readFileSync(path.join(ROOT, VOICE_ASR_SLOT), 'utf8'));
+  assert.deepEqual(slot.files.map(row => row.path), ['asr/eliza-1-asr.gguf', 'asr/eliza-1-asr-mmproj.gguf'], 'model-agnostic canonical slot paths');
+  assert.match(slot.intended, /Phonon-2/);
+  const paradee = record.models.find(row => row.role === 'tts-model');
+  assert.equal(paradee.path, 'tts/paradee/paradee-8m-v1_0.gguf');
+  assert.ok(paradee.bytes < 40 * 1024 * 1024, 'Paradee ships in the APK assets');
+  assert.equal(record.models.some(row => /kokoro|\.onnx|\.bin$/i.test(row.path)), false, 'no Kokoro, ONNX or voice preset');
 });
 
-test('the committed Android record satisfies the shared schema', () => {
-  const record = JSON.parse(fs.readFileSync(path.join(ROOT, VOICE_HOST), 'utf8'));
-  assert.deepEqual(voiceHostProblems(record), []);
-});
-
-test('the schema rejects malformed hashes, missing libraries and non-GGUF models', () => {
-  const bad = voiceHostFixture({schemaVersion: 2, forkPin: 'main', abis: [
-    {abi: 'x86_64', libraries: [{name: 'libelizainference.so', sha256: 'ABC', bytes: 0}]},
-    {abi: 'arm64-v8a', voiceSymbolsVerified: true, libraries: []},
-    {abi: 'riscv64'},
-  ]});
-  bad.models.push({name: 'Legacy recognizer', role: 'asr-model', revision: 'r', path: 'asr/encoder.bin', sha256: hex('legacy'), bytes: 1, source: 'https://example.invalid'});
-  bad.models.push({name: 'Unexplained open row', role: 'vad-model', path: 'vad/x.gguf', sha256: null});
-  bad.models.push({name: 'Preset', role: 'tts-voice', revision: 'r', path: 'tts/kokoro/af.gguf', sha256: hex('p'), bytes: 1, source: 'https://example.invalid'});
-  bad.models.push({name: 'Unknown role', role: 'tts', revision: 'r', path: 'tts/x.gguf', sha256: hex('u'), bytes: 1, source: 'https://example.invalid'});
+test('the schema rejects bad hashes, missing ABIs, non-GGUF models, an incomplete ASR slot and unearned qualification', () => {
+  const bad = structuredClone(committed);
+  bad.abis[0].libraries[0].sha256 = 'nope';
+  bad.models.find(row => row.role === 'tts-model').path = 'tts/paradee/paradee.onnx';
+  bad.models = bad.models.filter(row => row.role !== 'asr-mmproj');
+  bad.qualified = true;
   const problems = voiceHostProblems(bad, 'fixture');
-  for (const expected of ['schemaVersion must be 1', 'forkPin must be a 40-character git commit', 'abis[0].libraries[0].sha256 must be a lowercase SHA-256',
-    'abis[0].libraries[0].bytes must be a positive integer', 'abis[1].libraries must list the qualified libraries once voiceSymbolsVerified is true',
-    'abis[2].libraries must be an array', 'models[6].path must be a GGUF file', 'models[7].status must start with "open"',
-    'models[8].path must be a Kokoro voice preset (.bin)', 'models[9].role must be one of'])
-    assert.ok(problems.some(problem => problem.includes(expected)), `${expected}\n${problems.join('\n')}`);
-  assert.ok(voiceHostProblems(voiceHostFixture({abis: []})).some(problem => problem.includes('abis must list at least one ABI')));
+  for (const expected of ['abis[0].libraries[0] needs a lowercase SHA-256', 'must be a GGUF file', 'has no asr-mmproj', 'qualified cannot be true without device execution'])
+    assert.ok(problems.some(problem => problem.includes(expected)), expected);
+  assert.ok(voiceHostProblems({...committed, abis: committed.abis.slice(0, 1)}).some(problem => problem.includes('must record arm64-v8a and x86_64')));
   assert.deepEqual(voiceHostProblems([], 'fixture'), ['fixture: not a JSON object']);
 });
 
-test('notices list the fused libelizainference sources, every pinned model and the lexicon, flagging what is unverified', t => {
-  const dir = scratch(t, voiceHostFixture());
-  const {entries, errors, warnings} = collectNotices(dir);
+test('notices list the engine components and every voice model, flagging eSpeak NG copyleft without blocking', () => {
+  const {entries, errors} = collectNotices(ROOT);
   assert.deepEqual(errors, []);
-  // The requires-scoped reason applies once the record exists, so it is used, not stale. The one
-  // model with no licence and no recorded reason is listed with a note, never an error.
-  assert.deepEqual(warnings, [`Fixture ASR projector (asr-mmproj, GGUF) fixture (sha256 ${hex('mmproj')}; 100000000 bytes): license unverified, with no reason recorded in licenses/unverified-allowlist.json`]);
-  const byName = Object.fromEntries(entries.map(entry => [entry.name, entry]));
-  for (const component of VOICE_HOST_DEFAULT_COMPONENTS) assert.ok(byName[component.name], component.name);
-  const llama = byName['llama.cpp, ggml and mtmd (fused into libelizainference)'];
-  assert.equal(llama.license, 'MIT');
-  assert.match(llama.version, new RegExp(`elizaOS fused fork ${commit('fork')}`));
-  assert.match(llama.source, new RegExp(`arm64-v8a/libelizainference\\.so \\(sha256 ${hex('inference')}; 6199248 bytes\\)`));
-  assert.match(llama.source, /x86_64: not yet voice-qualified; not built/);
-  assert.match(llama.text, /Permission is hereby granted, free of charge/);
-  const voice = byName['elizaOS voice runtime sources (OmniVoice, kokoro_lib, eliza-inference FFI) in libelizainference'];
-  assert.deepEqual([voice.license, voice.flags.includes('unverified')], [UNVERIFIED, true]);
-  assert.match(voice.obligations.find(item => item.flag === 'unverified').note, /fused llama\.cpp fork/);
-  const kokoro = byName['Kokoro-82M (tts-model, GGUF)'];
-  assert.deepEqual([kokoro.license, kokoro.version], ['Apache-2.0', `hexgrad/Kokoro-82M@fixture (sha256 ${hex('kokoro')}; 90000000 bytes)`]);
-  // Non-OSI model terms with no text held are flagged, not an error.
-  const asr = byName['Fixture ASR text model (asr-model, GGUF)'];
-  assert.ok(asr.flags.length > 0, JSON.stringify(asr.flags));
-  assert.deepEqual(byName['Fixture ASR projector (asr-mmproj, GGUF)'].license, UNVERIFIED);
-  assert.equal(byName['Kokoro af_sam preset (tts-voice, Kokoro voice preset)'].license, 'Apache-2.0');
-  // Open rows are not shipped, so they are not listed.
-  assert.ok(!entries.some(entry => entry.name.startsWith('Open ASR row')));
-  // The lexicon carries the CMUdict notice the record names.
-  const lexicon = byName['Kokoro en-US lexicon (lexicon)'];
-  assert.equal(lexicon.license, 'BSD-2-Clause');
-  assert.match(lexicon.text, /Carnegie Mellon/);
+  const espeak = entries.filter(entry => entry.name.startsWith('eSpeak NG'));
+  assert.ok(espeak.length >= 2, 'the linked library and the bundled data');
+  for (const entry of espeak) { assert.equal(entry.license, 'GPL-3.0-or-later'); assert.ok(entry.flags.includes('copyleft-strong')); }
+  for (const name of ['Paradee-8M v1.0 (F32 GGUF) (tts-model)', 'misaki English (US) lexicon (g2p-lexicon)', 'Qwen3-ASR-0.6B Q8_0 (ASR slot model) (asr-model)', 'Silero VAD v5 (GGUF) (vad-model)'])
+    assert.ok(entries.some(entry => entry.name === name), name);
+  assert.equal(entries.find(entry => entry.name.startsWith('Paradee-8M')).license, 'Apache-2.0');
 });
 
-test('a licence file named by the record must match its recorded hash', t => {
-  const record = voiceHostFixture({components: [{name: 'CMU Pronouncing Dictionary (Kokoro lexicon)', license: 'BSD-2-Clause', source: 'https://github.com/cmusphinx/cmudict',
-    licenseFile: 'licenses/cmudict-BSD-2-Clause.txt', licenseSha256: hex('not the file')}]});
-  const dir = scratch(t, record);
-  assert.ok(collectNotices(dir).errors.some(error => error === `licenses/cmudict-BSD-2-Clause.txt does not match the licenseSha256 recorded in ${VOICE_HOST}`));
-  record.components[0].licenseSha256 = createHash('sha256').update(fs.readFileSync(path.join(ROOT, 'licenses/cmudict-BSD-2-Clause.txt'))).digest('hex');
-  fs.writeFileSync(path.join(dir, VOICE_HOST), JSON.stringify(record));
-  const result = collectNotices(dir);
-  assert.deepEqual(result.errors, []);
-  assert.match(result.entries.find(entry => entry.name === 'CMU Pronouncing Dictionary (Kokoro lexicon)').text, /Carnegie Mellon/);
+test('the SBOM lists each recorded engine library per ABI and every bundle file with its hash and size', () => {
+  const sbom = generateSbom(ROOT);
+  const byRef = new Map(sbom.components.map(component => [component['bom-ref'], component]));
+  for (const abi of committed.abis) for (const library of abi.libraries) assert.equal(byRef.get(`voice-host:${abi.abi}/${library.name}`).hashes[0].content, library.sha256);
+  for (const model of committed.models) {
+    const component = byRef.get(`voice-model:${model.path}`);
+    assert.equal(component.hashes[0].content, model.sha256, model.path);
+    assert.equal(component.properties.find(row => row.name === 'alphaphone:bytes')?.value ?? component.properties.find(row => row.name.endsWith('bytes')).value, String(model.bytes));
+  }
 });
 
-test('a malformed record is broken input for the notices', t => {
-  const dir = scratch(t, voiceHostFixture({pin: 'nope'}));
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('pin must be a 40-character git commit')));
+/** A product root with a fixture record, fixture bundle bytes and the shared inputs it must match. */
+function fixtureProduct(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-voice-stage-'));
+  t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
+  const from = path.join(dir, 'from');
+  const record = structuredClone(committed);
+  const write = (relative, content) => { fs.mkdirSync(path.dirname(path.join(from, relative)), {recursive: true}); fs.writeFileSync(path.join(from, relative), content); return {sha256: sha(content), bytes: Buffer.byteLength(content)}; };
+  for (const model of record.models) Object.assign(model, write(model.sourceFile ? path.join(path.dirname(model.path), model.sourceFile) : model.path, `fixture ${model.path}`));
+  for (const abi of record.abis) Object.assign(abi.libraries[0], write(`jniLibs/${abi.abi}/libelizainference.so`, `engine ${abi.abi}`));
+  const inputs = JSON.parse(fs.readFileSync(path.join(ROOT, 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json'), 'utf8'));
+  for (const key of ['paradee', 'lexicon']) { const row = record.models.find(model => model.path === inputs[key].path); inputs[key] = {...inputs[key], sha256: row.sha256, bytes: row.bytes}; }
+  fs.mkdirSync(path.join(dir, 'vendor/eliza/packages/app/platforms/android/paradee-voice'), {recursive: true});
+  fs.writeFileSync(path.join(dir, 'vendor/eliza/packages/app/platforms/android/paradee-voice/inputs.json'), JSON.stringify(inputs, null, 2));
+  fs.mkdirSync(path.join(dir, 'android/voice-host'), {recursive: true});fs.mkdirSync(path.join(dir, 'android/paradee-voice'), {recursive: true});
+  fs.writeFileSync(path.join(dir, VOICE_HOST), JSON.stringify(record, null, 2));
+  const asr = record.models.filter(model => model.role.startsWith('asr-')).map(({path: file, sha256, bytes}) => ({path: file, sha256, bytes}));
+  fs.writeFileSync(path.join(dir, VOICE_ASR_SLOT), JSON.stringify({files: asr}));
+  for (const name of ['upstream.lock.json', 'app.config.json']) fs.copyFileSync(path.join(ROOT, name), path.join(dir, name));
+  return {dir, from, record};
+}
+
+test('staging copies exactly the recorded bytes into the shared paradee-voice layout, ASR slot included', t => {
+  const {dir, from, record} = fixtureProduct(t);
+  assert.deepEqual(verifyVoiceHost(dir, {allowAbsentRuntime: true}), {status: 'not-packaged', qualified: false});
+  assert.throws(() => verifyVoiceHost(dir), /not staged/, 'a distribution build needs the voice outputs');
+  const result = stageVoiceModels(dir, {from: [from]});
+  assert.equal(result.asr, true);
+  const native = path.join(dir, '.eliza/paradee-voice/native');
+  const manifest = JSON.parse(fs.readFileSync(path.join(native, 'assets/paradee-voice/v1/manifest.json'), 'utf8'));
+  assert.equal(manifest.format, 'eliza-paradee-voice-v1');
+  assert.deepEqual(manifest.files.map(row => row.path).sort(), record.models.map(row => row.path).sort());
+  const build = JSON.parse(fs.readFileSync(path.join(native, 'build-record.json'), 'utf8'));
+  assert.deepEqual(build.abis, ['arm64-v8a', 'x86_64']);
+  assert.ok(build.files.some(row => row.path === 'jniLibs/x86_64/libelizainference.so'));
+  // Record admission (the shared runtime check needs the real nested FFI checkout and is skipped here).
+  assert.deepEqual(verifyVoiceHost(dir, {runtime: () => {}}), {status: 'packaged', qualified: false});
+  // A second run with the same bytes is idempotent; changed staged bytes are refused, never repaired.
+  stageVoiceModels(dir, {from: [from]});
+  fs.writeFileSync(path.join(native, 'assets/paradee-voice/v1/vad/silero-vad-v5.gguf'), 'other');
+  assert.throws(() => stageVoiceModels(dir, {from: [from]}), /already exists with other bytes/);
 });
 
-test('the SBOM lists each qualified library per ABI, each pinned model and the lexicon with its hash and size', t => {
-  const dir = scratch(t, voiceHostFixture());
-  const bom = generateSbom(dir);
-  const byRef = new Map(bom.components.map(component => [component['bom-ref'], component]));
-  const library = byRef.get('voice-host:arm64-v8a/libelizainference.so');
-  assert.equal(library.hashes[0].content, hex('inference'));
-  assert.ok(library.properties.some(item => item.name === 'alphaphone:bytes' && item.value === '6199248'));
-  // A fused library's licences are its notice entries; the component says so and is flagged.
-  const prop = (component, name) => component.properties.find(item => item.name === `alphaphone:${name}`)?.value;
-  assert.deepEqual([prop(library, 'licence-expression'), prop(library, 'licence-flags')], ['not recorded in this inventory', 'unverified']);
-  assert.ok(![...byRef.keys()].some(ref => ref.startsWith('voice-host:x86_64/')), 'an ABI that is not voice-qualified lists no library');
-  assert.ok(!byRef.has('voice-model:asr-model/Open ASR row'), 'an open model row is not a component');
-  const lexicon = byRef.get('voice-lexicon:g2p/en-us-lexicon.tsv');
-  assert.deepEqual([lexicon.type, lexicon.hashes[0].content], ['data', hex('lexicon')]);
-  const kokoro = byRef.get('voice-model:tts-model/Kokoro-82M');
-  assert.equal(kokoro.type, 'machine-learning-model');
-  assert.equal(kokoro.hashes[0].content, hex('kokoro'));
-  assert.ok(kokoro.properties.some(item => item.name === 'alphaphone:source-revision' && item.value === 'hexgrad/Kokoro-82M@fixture'));
+test('staging refuses source bytes that differ from the record and missing rows', t => {
+  const {dir, from} = fixtureProduct(t);
+  fs.writeFileSync(path.join(from, 'tts/paradee/misaki-en-us.lex'), 'tampered');
+  assert.throws(() => stageVoiceModels(dir, {from: [from]}), /does not match the pinned tts\/paradee\/misaki-en-us\.lex/);
+  fs.rmSync(path.join(from, 'tts/paradee/misaki-en-us.lex'));
+  assert.throws(() => stageVoiceModels(dir, {from: [from]}), /Missing tts\/paradee\/misaki-en-us\.lex/);
+  assert.equal(fs.existsSync(path.join(dir, '.eliza/paradee-voice/native')), false, 'nothing is staged on refusal');
+});
+
+test('an unrecorded hosted engine rebuild is staged only with the explicit flag and keeps the record unqualified', t => {
+  const {dir, from} = fixtureProduct(t);
+  fs.writeFileSync(path.join(from, 'jniLibs/x86_64/libelizainference.so'), 'rebuilt engine');
+  assert.throws(() => stageVoiceModels(dir, {from: [from]}), /does not match the pinned libelizainference\.so/);
+  stageVoiceModels(dir, {from: [from], unrecordedEngine: true});
+  const record = JSON.parse(fs.readFileSync(path.join(dir, VOICE_HOST), 'utf8'));
+  const row = record.abis.find(abi => abi.abi === 'x86_64');
+  assert.equal(row.libraries[0].sha256, sha('rebuilt engine'));
+  assert.match(row.engineAdmission, /unreviewed workspace build/);
+  assert.equal(record.qualified, false);
 });

@@ -1,10 +1,10 @@
 {
   "schema": 1,
-  "baseCommit": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
+  "baseCommit": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
   "patches": [
     {
       "file": "secure-store-bounded-memory.patch",
-      "sha256": "dc5d631a80258c3df2f90310bf51d1e6875a46d3f2ff6172f3a7648373724446",
+      "sha256": "d1e731a77e347920b9bf53c1f748a02baa9db0743a78d8a24278da1bc58508fb",
       "module": "plugins/plugin-native-secure-store/android",
       "targets": [
         {
@@ -28,7 +28,7 @@
     },
     {
       "file": "system-product-capabilities.patch",
-      "sha256": "3625abf49d4db6efbcc708deadeb2952482a67c1b5f337c9304677528bcb0ecb",
+      "sha256": "7b32f7a16f3ec314518d4fe231b34622f0c9e3dac9dd75ca33bb548e4bcefd73",
       "module": "plugins/plugin-native-system/android",
       "targets": [
         {
@@ -52,24 +52,24 @@
     },
     {
       "file": "reminder-deletion-window.patch",
-      "sha256": "ed9552c8fa50293a7c77050d37bfab055a82ae9a6f120da2116d28b7252fee6a",
+      "sha256": "594365410061a71a6be4f95a353a37541a8a0b0121e3a71346d5cff9060cb9ce",
       "module": "plugins/plugin-native-reminders/android",
       "targets": [
         {
           "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderStore.java",
-          "beforeSha256": "095f7805b1ded1f2b6087185914b9dabb67c1cdc6341c8716f34bb4f9d6cc371",
-          "afterSha256": "7df583854bec16ae17aa6c4defac24b533616c3f47f34cf9d5dd862de006adfb"
+          "beforeSha256": "9173548a0738f0534f0186756dcb21b4ffd29f58691e15248b4770a6b5980569",
+          "afterSha256": "ba96ba19d3e53e71e44516b7970b4783aa158784e9fe8bc278f34832519f2520"
         },
         {
           "path": "plugins/plugin-native-reminders/android/src/main/java/ai/eliza/plugins/reminders/ReminderEngine.java",
-          "beforeSha256": "b05bab06a739a29367551f0a58091c5f14201b28eb25fd492c4bd7845c98dfd3",
-          "afterSha256": "f27bedd21716ff5c78bc5b46535987de20b01da5704398860ad0a7113ffbe08e"
+          "beforeSha256": "e65dae7db0a0e2b391e8105f685476b1a475f9203f8410a9c300ca06f5a2fbe0",
+          "afterSha256": "41787333fc7918eb5f44ce73d2ee99e7999fc99dae2e8f8084863efbc9790af6"
         }
       ]
     },
     {
       "file": "calendar-deletion-window.patch",
-      "sha256": "1a313837ef3cf081ccadf7a2a567a39b77d0bf13ed774d23eddca2debb066e15",
+      "sha256": "8e574ba9b16c8f3dd0a739d5f67a993f9b9f0e24642a87d4c46b121a54423c58",
       "module": "plugins/plugin-native-calendar/android",
       "targets": [
         {

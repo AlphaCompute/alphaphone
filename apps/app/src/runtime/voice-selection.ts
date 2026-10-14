@@ -1,12 +1,16 @@
 import { testMocksEnabled } from '../build-flags';
+import { browserDevProfile } from '../browser/dev-profile';
+import { connectionController } from './connection-ui';
 
-/** Production currently preserves main's Cloud speech policy. Local/manual requests are
- * test-only. This differs from PRD P-01/P-07 and requires a decision (MVP-01). The legacy
- * route choice, its Cloud credit disclosure and the account-availability probe had no
- * production caller and were removed; restore them with the control MVP-01 decides on. */
+/** Production speech stays on this device, including offline and signed-out use.
+ * Unavailable local speech offers recovery/typing; it never changes to a network route. */
 // Plain constants and function exports only: Node contract tests evaluate this source directly.
+const voiceRouteKey = 'alphaphone:voice-route:v1';
 const speakRepliesKey = 'alphaphone:speak-replies:v1';
 const voicePreferencesEvent = 'alpha:voice-preferences';
+/** Storage keys and the change event, for Settings and diagnostics. */
+export function voicePreferenceKeys() { return { route: voiceRouteKey, speakReplies: speakRepliesKey, event: voicePreferencesEvent }; }
+export type VoiceRouteChoice = 'device' | 'cloud';
 export type VoicePreference = 'default' | 'device' | 'agent' | 'manual';
 /**
  * When a spoken turn is sent. 'auto-send' (today's behaviour) sends each finished Cloud
@@ -35,13 +39,39 @@ function write(key: string, value: object): boolean {
 }
 const record = (value: unknown): Record<string, unknown> | null => value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null;
 
+/** The persisted route. Anything but a complete, disclosed Cloud record reads as on-device. */
+export function voiceRoutePreference(): VoiceRouteChoice {
+  if (!testMocksEnabled) return 'device';
+  const value = record(read(voiceRouteKey));
+  // 'cloud-speech-uses-credits' is the disclosure id earlier builds stored; it reads as the same choice.
+  return value && value.version === 1 && value.route === 'cloud' && (value.disclosed === 'cloud-speech-uses-plan' || value.disclosed === 'cloud-speech-uses-credits') && Number.isFinite(value.chosenAt) ? 'cloud' : 'device';
+}
+/**
+ * Persist an explicit route choice. Cloud requires the caller to have shown the Cloud speech
+ * disclosure. Returns false when the choice could not be confirmed in storage; the
+ * route then stays on-device.
+ */
+export function chooseVoiceRoute(route: VoiceRouteChoice, disclosure?: { disclosed: 'cloud-speech-uses-plan' }): boolean {
+  if (!testMocksEnabled && route !== 'device') return false;
+  if (route === 'cloud' && disclosure?.disclosed !== 'cloud-speech-uses-plan') return false;
+  return write(voiceRouteKey, route === 'cloud' ? { version: 1, route, disclosed: disclosure!.disclosed, chosenAt: Date.now() } : { version: 1, route: 'device', chosenAt: Date.now() });
+}
+/** Disclosure shown wherever Cloud speech can be chosen. */
+export function cloudSpeechDisclosure() { return 'Eliza Cloud speech uploads recordings and reply text to your Cloud account and counts toward your plan allowance.'; }
+
 /** Opt-in: replies to voice-originated turns are read aloud. Off unless explicitly enabled. */
 export function speakRepliesEnabled(): boolean { const value = record(read(speakRepliesKey)); return !!value && value.version === 1 && value.enabled === true; }
 /** No Settings control calls this yet (MVP-01); tests use it to seed a retained preference. */
 export function setSpeakReplies(enabled: boolean): boolean { return write(speakRepliesKey, { version: 1, enabled: enabled === true }); }
 
+/** A usable Cloud speech account is signed in for this renderer. */
+export function cloudVoiceAvailable(): boolean {
+  return testMocksEnabled && !browserDevProfile && connectionController.getCloudEnvironment() !== null && connectionController.getCloudClient() !== null;
+}
+
 /** Explicit local/manual routes are available only in test-mocks builds. */
 export function selectVoiceRoute(preference: 'default' | 'device' | 'agent' | 'manual' = 'default'): 'device' | 'cloud' | 'agent' | 'manual' {
+  if (!testMocksEnabled) return 'device';
   if (testMocksEnabled && (preference === 'device' || preference === 'manual')) return preference;
   return 'cloud';
 }

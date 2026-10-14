@@ -28,14 +28,18 @@ the operator's index of build, provisioning, release and support material is the
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `bc71e21f3b` (moved on 2026-10-13, branch
-  `claude/mvp-final`), the elizaOS `develop` head that merged the eleven Alpha upstream pull
-  requests (35906 to 35913, 36123, 36124 and 36126; the last moves llama.cpp to the fork commit
-  with the CVE-2026-107183 fix). `scripts/ci/upstream-reachability.json` records it as identical
-  to `develop` on 2026-10-13, and what each change means for Alpha is in
-  [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move).
+- The upstream pin in `upstream.lock.json` is `644d56c93d` (moved on 2026-10-14, branch
+  `claude/mvp-final`), the same shared-contract pin as alphaphone#493. It contains the shared
+  voice stack: ONNX speech paths removed (elizaOS/eliza#36153), the ASR registry gate (#36157),
+  the standalone Qwen3-ASR and Paradee host workers on libelizainference ABI v17 (#36158), the
+  RegisterNatives JNI v17 with Paradee TTS and ASR cancel (#36168) and the Paradee worker fix
+  (#36194), with the llama.cpp gitlink `3f131ab9` (Paradee-8M, native misaki G2P, voice ABI 18).
+  `scripts/ci/upstream-reachability.json` records `develop` reaching it on 2026-10-14. The
+  previous pin was `bc71e21f3b` (2026-10-13; see
+  [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move)).
   At this pin there are only source and browser test results and Gradle compilation
-  ([verification](verification.md#pin-move-to-bc71e21f3b-2026-10-13-source-and-compile-checks-only));
+  ([verification](verification.md#pin-move-to-644d56c93d-2026-10-14-shared-voice-stack)); voice is
+  recorded in `android/voice-host/qualified-voice-host.json` and is not qualified.
   every other result in this document is at an earlier pin. The engine gitlink changed, so the
   reviewed ARM64 embedding host must be requalified before a distribution build
   (`android/embedding-host/qualified-host.json`). The previous pin, `13c9857598`, was the merge
@@ -194,6 +198,14 @@ Ledger refresh of 2026-10-11 at main `2560eead` (the merge of pull request #392)
 refresh re-derived the table above and the other ledgers from source, tests and the dated
 sections of [verification](verification.md). It ran the docs tests and `npm run verify` and
 produced no evidence of any other class. The newest evidence is the round 8 entry below.
+
+Pin move, 2026-10-14: branch `claude/mvp-final`, upstream pin `644d56c93d` (from `bc71e21f3b`),
+merging alphaphone#493 and consuming the shared voice stack (Paradee-8M, misaki G2P, the ASR slot,
+RegisterNatives JNI). Nothing was pushed and no hosted run was made.
+- Class S and B, development machine: see [verification](verification.md#pin-move-to-644d56c93d-2026-10-14-shared-voice-stack)
+  for `npm run verify`, the browser lanes, the staged voice outputs and a developer APK that packages
+  them (no resident payload, unreviewed embedding host bytes; never installed). The voice host record
+  is not qualified; no E, I, R or D evidence exists for this engine.
 
 Pin move, 2026-10-13: branch `claude/mvp-final`, upstream pin `bc71e21f3b` (from `13c9857598`),
 with the upstream changes consumed. Nothing was pushed and no hosted run was made.

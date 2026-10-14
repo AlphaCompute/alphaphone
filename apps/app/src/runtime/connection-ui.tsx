@@ -378,22 +378,23 @@ function errorMessage(error: unknown): string {
 }
 /** A resident start that does not open the dialog: Home shows the starting state (P-43). */
 let residentStartInBackground = false;
-async function work(message: string, action: (signal: AbortSignal) => Promise<void>, background = false) {
+/** `openOnError`: a background check (the quiet Cloud account restore) that opens the dialog only to report a failure. */
+async function work(message: string, action: (signal: AbortSignal) => Promise<void>, background = false, openOnError = false) {
   if (operation) return;
   const controller = new AbortController(); operation = controller; residentStartInBackground = background;
   update({ busy: true, ...(background ? {} : { open: true }), message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
-    if(background&&!state.open){update({error:errorMessage(error),message:''});return;}
+    if(background&&!openOnError&&!state.open){update({error:errorMessage(error),message:''});return;}
     if (expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
       const previous = active; retire('Sign-in required'); detachService();
       try { await previous.cloud.disconnect(); }
       catch { update({ error: 'The expired connection is detached, but its stored credential could not be removed.', open: true, message: '' }); return; }
     }
-    update({ error: errorMessage(error), open: true, message: '' });
+    update({ error: errorMessage(error), ...(background&&!state.open?{purpose:'cloud-account' as const}:{}), open: true, message: '' });
   }
-  finally { if (operation === controller) { operation = null; residentStartInBackground = false; } update({ busy: false }); }
+  finally { if (operation === controller) { operation = null; residentStartInBackground = false; } update({ busy: false, ...(background&&!state.open?{message:''}:{}) }); }
 }
 /** Start (or restart) the resident. A failure leaves the `recovering` state with a Retry, never "no agent". */
 async function startResident(message = RESIDENT_STARTING, background = true) {
@@ -1341,10 +1342,10 @@ export const connectionController = {
               const current=await cloudCredentialStore.read('production');signal.throwIfAborted();
               if(restoreEpoch!==epoch||current?.credentialId!==expected.credentialId||current?.credentialReference!==expected.credentialReference)throw Error('Cloud account changed. Try again.');
               await verifyService(makeCloud('production'),signal,expected);
-            });
+            },true,true);
             if(restoreEpoch!==epoch||state.error||service?.identity.credentialId!==expected.credentialId)return;
           }
-        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;});return;}
+        }catch(error){if(canRestore())await work('Checking your Cloud account…',async()=>{throw error;},true,true);return;}
       }
       // A build that cannot use Eliza Cloud signs a saved Cloud service out on every start, whatever is selected
       // (an offline choice included): the marker and, best effort and unawaited, the stored Cloud key. Only that

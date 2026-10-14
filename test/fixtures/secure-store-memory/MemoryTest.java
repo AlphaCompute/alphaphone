@@ -46,6 +46,18 @@ public final class MemoryTest {
    android.util.AtomicFile.corruptNextCommit=mode;
    try{store.write("corrupt","{}");throw new AssertionError("Corrupted committed bytes accepted: "+mode);}catch(IllegalStateException expected){}
   }
+  // A reduced host limit must retain old data, permit shrinking, and refuse growth.
+  String retained="{\"body\":\""+"R".repeat(60000)+"\"}";
+  store.write("retained",retained);
+  JsonCredentialSlots reduced=new JsonCredentialSlots(new File(args[0]),"fixture",slot->32768,slot->cap);
+  if(!retained.equals(reduced.read("retained")))throw new AssertionError("Retained limit lost old data");
+  String shrunk="{\"body\":\""+"R".repeat(50000)+"\"}";
+  reduced.write("retained",shrunk);
+  try{reduced.write("retained",retained);throw new AssertionError("Retained data grew");}catch(JsonCredentialSlots.CapacityException expected){}
+  if(!shrunk.equals(reduced.read("retained")))throw new AssertionError("Capacity refusal changed bytes");
+  try{reduced.write("new-retained",retained);throw new AssertionError("New oversized slot accepted");}catch(JsonCredentialSlots.CapacityException expected){}
+  reduced.write("retained","{}");
+  try{reduced.write("retained",shrunk);throw new AssertionError("Shrunk slot grew past new cap");}catch(JsonCredentialSlots.CapacityException expected){}
   System.out.println("PASS 32 MiB authenticated write/read/CAS with 192 MiB heap");
  }
 }

@@ -22,7 +22,7 @@
        }
       } catch (Exception error) { if (out != null) file.failWrite(out); throw error; }
      }
-@@ -128,18 +126,42 @@
+@@ -128,17 +126,41 @@
   public String read(String name) throws Exception {
    String slot=slotHash(name);int limit=retainedLimit(name);
    synchronized(LOCK) {
@@ -40,7 +40,7 @@
 +   if(value!=null)parseJson(value);
 +   return value;
    }
-  }
++ }
 + /** End the ciphertext/plaintext buffer lifetimes before parsing nested JSON strings. */
 + private String readAuthenticated(String slot,int limit)throws Exception {
 +   AtomicFile file=slotFile(slot);
@@ -71,10 +71,9 @@
 +     finally{Arrays.fill(joined,(byte)0);}
 +    }finally{Arrays.fill(buffer,(byte)0);for(byte[] piece:pieces)Arrays.fill(piece,(byte)0);}
 +   }catch(FileNotFoundException missing){if(file.getBaseFile().exists()||new File(file.getBaseFile().getPath()+".bak").exists())throw missing;return null;}
-+ }
+  }
   public void remove(String name)throws Exception {
    synchronized(LOCK){
-    AtomicFile file=slotFile(slotHash(name));file.delete();
 @@ -153,13 +175,14 @@
     return true;
    }

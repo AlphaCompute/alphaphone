@@ -53,8 +53,7 @@ export function createDevelopmentVault():ElizaPasswordsPlugin & {readonly select
    records.set(id,{id,label,username:String(input.username||''),bindings,secret,updatedAt:Date.now()});
    return input.generate?{id,generated:true as const,length}:{id};
   },
-  // The native protected editor has no browser counterpart; Alpha's own form uses save().
-  async openEditor():Promise<never>{throw fail('unavailable','The protected editor exists only on Android');},
+  async openEditor():Promise<never>{throw fail('unavailable','The protected native password editor is unavailable in browser development.');},
   async remove({id}){need();if(!records.delete(id))throw fail('invalid','Password no longer exists');return {removed:true as const};},
   async reset(){need();throw fail('invalid','Saved passwords are not damaged');},
   async reveal({id}){need();const r=records.get(id);if(!r)throw fail('invalid','Password no longer exists');surface(r.label,r.secret);return {shown:true as const,hidesAfterMs:30_000};},

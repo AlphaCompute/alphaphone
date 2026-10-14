@@ -63,38 +63,18 @@ jobs:
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
-      # On-device speech is the fused libelizainference engine (llama.cpp/ggml) only. The fused-speech
-      # suite needs the x86_64 voice host and the pinned voice bundle inside the developer APK.
-      - name: Initialize the pinned fused engine checkout
+      # On-device speech is the shared paradee-voice library on libelizainference (Paradee-8M TTS,
+      # misaki G2P, the ASR slot pair, Silero VAD). A developer APK that can speak needs the staged
+      # voice outputs (scripts/android-stage-voice-models.mjs) AND an embedding host built from the
+      # same engine bytes (Gradle :app:verifyParadeeAppLinkage). The hosted job cannot produce that
+      # pair yet: the embedding host at this pin needs a reviewed receipt (requalification), and the
+      # Paradee GGUF/lexicon are not published for download. Refuse instead of building an APK that
+      # would only prove local speech is unavailable.
+      - name: Refuse the fused-speech suite until hosted voice staging exists
         if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
-        run: git -C vendor/eliza submodule update --init --recursive plugins/plugin-local-inference/native/llama.cpp
-      - name: Build the x86_64 voice host and admit it into this workspace only
-        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
-        timeout-minutes: 75
         run: |
-          node scripts/prepare-embedding-host.mjs --fork vendor/eliza/plugins/plugin-local-inference/native/llama.cpp \
-            --output "$RUNNER_TEMP/voice-host-x86_64" --abi x86_64 --build
-          # A hosted rebuild is not a reviewed qualification: the receipt says so, and the edited
-          # record is never committed. These APKs are developer APKs and never distributable.
-          node -e 'const fs=require("fs"),f=process.argv[1],r=JSON.parse(fs.readFileSync(f));r.qualifiedAt="unreviewed hosted CI build "+process.env.GITHUB_RUN_ID;fs.writeFileSync(f,JSON.stringify(r,null,2)+"\n")' "$RUNNER_TEMP/voice-host-x86_64/PREPARATION.json"
-          node scripts/stage-embedding-host.mjs --receipt-voice "$RUNNER_TEMP/voice-host-x86_64/PREPARATION.json"
-      # Model bytes only; every hit is size/hash verified again when it is staged.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
-        with:
-          path: .eliza/voice-models
-          key: voice-models-${{ hashFiles('android/voice-host/qualified-voice-host.json') }}
-      - name: Acquire and stage the pinned voice bundle
-        if: inputs.suite == 'fused-speech' || inputs.suite == 'all'
-        timeout-minutes: 20
-        run: |
-          node -e 'const m=require("./android/voice-host/qualified-voice-host.json");for(const r of m.models.filter(r=>r.sha256))console.log(r.path+" "+r.source);console.log("cmudict.dict "+m.lexicon.source.url)' |
-          while read -r file url; do
-            test -f ".eliza/voice-models/$file" || { mkdir -p "$(dirname ".eliza/voice-models/$file")"; curl -fsSL --retry 3 -o ".eliza/voice-models/$file" "$url"; }
-          done
-          # --record writes the lexicon hash into this workspace's record only when none is committed.
-          node scripts/android-voice-lexicon.mjs --cmudict .eliza/voice-models/cmudict.dict --record
-          node scripts/android-stage-voice-models.mjs --from .eliza/voice-models
+          echo "::error::fused-speech needs staged Paradee voice outputs and a same-engine embedding host; see docs/fused-speech.md (hosted staging is an open item)"
+          exit 1
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
       - name: Build flag-off developer APKs with their instrumentation APKs
@@ -143,7 +123,7 @@ jobs:
             artifacts/test-mocks/*.json
             android/app/build/reports/
             android/voice-host/qualified-voice-host.json
-            android/app/src/main/assets/voice/v1/manifest.json
+            .eliza/paradee-voice/native/build-record.json
           retention-days: 3
 
   # (c) The default instrumentation run on both distributions.

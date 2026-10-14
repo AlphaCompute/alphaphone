@@ -1,180 +1,308 @@
 {
-  "schemaVersion": 1,
-  "description": "On-device voice host: fused libelizainference (llama.cpp/ggml/mtmd, Kokoro-82M, Silero VAD) through the relocated libelizavoicejni. The only on-device speech engine. Rows are filled by actual qualification runs; nothing here claims emulator or device execution.",
-  "pin": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
-  "forkPin": "7efee003752402e8c73edb4677e5ef397c3104a7",
+  "schemaVersion": 2,
+  "description": "On-device voice host: libelizainference (llama.cpp/ggml; Paradee-8M TTS with native misaki G2P and eSpeak NG out-of-lexicon fallback, the bundle's model-agnostic ASR slot, Silero VAD) through the shared paradee-voice Java API (ai.eliza.voice) and RegisterNatives JNI. The only on-device speech engine; no ONNX. These are the exact bytes scripts/android-stage-voice-models.mjs may stage; nothing here claims emulator, device or user acceptance.",
+  "pin": "644d56c93df9e410b1ef4297f961cb1df9e7d152",
+  "forkPin": "3f131ab9a4967d4e96ba4436c1232286b68bab4d",
   "identity": "ai.elizaresearch.alphaphone",
-  "provider": "libelizainference-cpu",
+  "provider": "libelizainference-paradee",
+  "qualified": false,
+  "nativeOutput": ".eliza/paradee-voice/native",
   "bundle": {
-    "format": "alpha-voice-bundle-v1",
-    "assetRoot": "android/app/src/main/assets/voice/v1",
-    "deviceDirectory": "noBackupFilesDir/voice/v1",
-    "textModel": false
+    "format": "eliza-paradee-voice-v1",
+    "assetRoot": "assets/paradee-voice/v1",
+    "deviceDirectory": "filesDir/paradee-voice-v1",
+    "install": "Shipped in the APK assets (Paradee GGUF ~32 MB, lexicon, eSpeak NG data, VAD and the ASR pair ~1 GB) and copied to app storage with per-file SHA-256 verification on first use (ai.eliza.voice.VoiceAssets.install). No download."
+  },
+  "asrSlot": {
+    "record": "android/paradee-voice/asr-inputs.json",
+    "paths": [
+      "asr/eliza-1-asr.gguf",
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "current": "Qwen3-ASR-0.6B Q8_0",
+    "intended": "Phonon-2 (elizaOS/eliza#36212, open)"
   },
   "abis": [
     {
       "abi": "arm64-v8a",
       "release": true,
-      "variant": "cpu",
-      "libraryRecord": "android/embedding-host/qualified-host.json",
-      "libraries": [],
-      "requiredFusedSymbols": [
-        "eliza_inference_abi_version",
-        "eliza_inference_create",
-        "eliza_inference_destroy",
-        "eliza_inference_mmap_acquire",
-        "eliza_inference_asr_transcribe",
-        "eliza_inference_kokoro_load",
-        "eliza_inference_kokoro_synthesize_ipa_alloc",
-        "eliza_inference_kokoro_sample_rate",
-        "eliza_inference_free_pcm",
-        "eliza_inference_vad_supported",
-        "eliza_inference_vad_open",
-        "eliza_inference_vad_process",
-        "eliza_inference_vad_reset",
-        "eliza_inference_vad_close"
+      "libraries": [
+        {
+          "name": "libelizainference.so",
+          "sha256": "32d8722ba808c5c414349729974a710829b05b48d272744a679f2c0f538a1898",
+          "bytes": 7372200
+        },
+        {
+          "name": "libc++_shared.so",
+          "sha256": "cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c",
+          "bytes": 1253544
+        }
       ],
-      "requiredJniSymbols": [
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextCreateUtf8",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextDestroy",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVoiceAbiVersion",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeAsrTranscribe",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSynthesizeIpa",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSampleRate",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadSupported",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadOpen",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadProcessBatch",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadReset",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadClose"
-      ],
-      "abiVersionMin": 16,
-      "alignment16KiB": true,
-      "voiceSymbolsVerified": false,
-      "voiceQualificationReceiptSha256": null,
-      "note": "Release ABI. Shares the embedding host bytes (same receipt); voice symbols are not yet checked on those bytes. Admit with node scripts/stage-embedding-host.mjs --receipt-voice <PREPARATION.json>."
+      "jni": {
+        "paradeeVoice": {
+          "name": "libparadeevoicejni.so",
+          "class": "ai/eliza/voice/VoiceNative",
+          "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
+          "referenceBuild": {
+            "sha256": "eb6e696ade29aa49f0a12870c317d337807dc981cf66a15c0e51c645900853a8",
+            "bytes": 46384
+          }
+        },
+        "app": {
+          "name": "libelizavoicejni.so",
+          "class": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
+          "builtBy": "upstream elizavoice-jni CMake with -DELIZA_VOICE_JNI_CLASS=ai/elizaresearch/alphaphone/ElizaVoiceNative (full subset, no source rewrite); packaged through the embedding host record",
+          "referenceBuild": {
+            "sha256": "666e4b4995319f8e7b88dee224ed90e511826a0776f8b635fe8d6d4d6cdc6a6f",
+            "bytes": 110224
+          }
+        }
+      },
+      "abiVersion": 18,
+      "paradeeSupported": true,
+      "asrSupported": true,
+      "alignment16KiB": true
     },
     {
       "abi": "x86_64",
       "release": false,
-      "variant": "cpu",
-      "libraryRecord": null,
-      "libraries": [],
-      "requiredFusedSymbols": [
-        "eliza_inference_abi_version",
-        "eliza_inference_create",
-        "eliza_inference_destroy",
-        "eliza_inference_mmap_acquire",
-        "eliza_inference_asr_transcribe",
-        "eliza_inference_kokoro_load",
-        "eliza_inference_kokoro_synthesize_ipa_alloc",
-        "eliza_inference_kokoro_sample_rate",
-        "eliza_inference_free_pcm",
-        "eliza_inference_vad_supported",
-        "eliza_inference_vad_open",
-        "eliza_inference_vad_process",
-        "eliza_inference_vad_reset",
-        "eliza_inference_vad_close"
+      "libraries": [
+        {
+          "name": "libelizainference.so",
+          "sha256": "c4fdbeea795477993e4c711aaed612828fa1b1181d54eff3f2f112ba85c76f86",
+          "bytes": 7920568
+        },
+        {
+          "name": "libc++_shared.so",
+          "sha256": "2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256",
+          "bytes": 1229808
+        }
       ],
-      "requiredJniSymbols": [
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextCreateUtf8",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeContextDestroy",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVoiceAbiVersion",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeAsrTranscribe",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSynthesizeIpa",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeKokoroSampleRate",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadSupported",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadOpen",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadProcessBatch",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadReset",
-        "Java_ai_elizaresearch_alphaphone_ElizaVoiceNative_nativeVadClose"
-      ],
-      "abiVersionMin": 16,
-      "alignment16KiB": true,
-      "voiceSymbolsVerified": false,
-      "voiceQualificationReceiptSha256": null,
-      "note": "Debug and emulator only (release abiFilters stay arm64-v8a). Not yet built: node scripts/prepare-embedding-host.mjs --abi x86_64 --build, then --receipt-voice."
+      "jni": {
+        "paradeeVoice": {
+          "name": "libparadeevoicejni.so",
+          "class": "ai/eliza/voice/VoiceNative",
+          "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
+          "referenceBuild": {
+            "sha256": "7e5b293cadc505b00b571cb61a7b34ab411b07cf573e080c47d501a692dc437e",
+            "bytes": 45672
+          }
+        },
+        "app": {
+          "name": "libelizavoicejni.so",
+          "class": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
+          "builtBy": "upstream elizavoice-jni CMake with -DELIZA_VOICE_JNI_CLASS=ai/elizaresearch/alphaphone/ElizaVoiceNative (full subset, no source rewrite); packaged through the embedding host record",
+          "referenceBuild": {
+            "sha256": "bee4c43a4809279381e576f6ed715e20e4dc5f81237f2bd9c04f56ac428e20a7",
+            "bytes": 116264
+          }
+        }
+      },
+      "abiVersion": 18,
+      "paradeeSupported": true,
+      "asrSupported": true,
+      "alignment16KiB": true
+    }
+  ],
+  "components": [
+    {
+      "name": "llama.cpp, ggml and mtmd (libelizainference)",
+      "license": "MIT",
+      "source": "https://github.com/elizaOS/llama.cpp (fork of ggml-org/llama.cpp)"
+    },
+    {
+      "name": "elizaOS voice runtime sources (Paradee graph, kokoro layers, eliza-inference FFI, elizavoice-jni) in libelizainference",
+      "license": "UNVERIFIED",
+      "source": "https://github.com/elizaOS/llama.cpp tools/paradee, tools/kokoro, tools/omnivoice; https://github.com/elizaOS/eliza packages/app/platforms/android"
+    },
+    {
+      "name": "misaki G2P (C++ port in libelizainference)",
+      "license": "Apache-2.0",
+      "source": "https://github.com/hexgrad/misaki (fba1236595f2d2bf21d414ba6e57d25256afada3), ported in elizaOS/llama.cpp tools/misaki-g2p"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 (statically linked into libelizainference)",
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/tree/1.52.0"
+    },
+    {
+      "name": "Silero VAD (graph in libelizainference)",
+      "license": "MIT",
+      "source": "https://github.com/snakers4/silero-vad"
+    },
+    {
+      "name": "LLVM libc++ (libc++_shared.so from the Android NDK)",
+      "license": "Apache-2.0 WITH LLVM-exception",
+      "source": "https://github.com/llvm/llvm-project/tree/main/libcxx"
     }
   ],
   "models": [
     {
-      "name": "Eliza-1 ASR text model",
+      "name": "Paradee-8M v1.0 (F32 GGUF)",
+      "path": "tts/paradee/paradee-8m-v1_0.gguf",
+      "role": "tts-model",
+      "sha256": "9a18ae710211fab04129e00bc0cde04484c0cf8d80bb19e51df7e331ae83a254",
+      "bytes": 32072768,
+      "license": "Apache-2.0",
+      "source": "Converted by llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --outtype f32 from huggingface.co/sahilmahendrakar/Paradee-8M-v1.0@c7f83f86c04e84d0ae94cbe1aad7618e0544f80a (pins in tools/paradee/pins.json); byte-identical to the fork pin"
+    },
+    {
+      "name": "misaki English (US) lexicon",
+      "path": "tts/paradee/misaki-en-us.lex",
+      "role": "g2p-lexicon",
+      "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+      "bytes": 12947790,
+      "license": "Apache-2.0",
+      "source": "Converted by llama.cpp tools/misaki-g2p/convert_misaki_lexicon.py from github.com/hexgrad/misaki@fba1236595f2d2bf21d414ba6e57d25256afada3 us_gold/us_silver; byte-identical to the fork pin"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: phontab",
+      "path": "tts/paradee/espeak-ng-data/phontab",
+      "role": "g2p-data",
+      "sha256": "1b40690667e1e9aa1ba5e5234773c799e7e72ea751426e5150423d53c3f24fa2",
+      "bytes": 58652,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: phonindex",
+      "path": "tts/paradee/espeak-ng-data/phonindex",
+      "role": "g2p-data",
+      "sha256": "384e5fa6f714ba5356c58008249b78699c31c1ad044b243068d263fb806b7d73",
+      "bytes": 43316,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: phondata",
+      "path": "tts/paradee/espeak-ng-data/phondata",
+      "role": "g2p-data",
+      "sha256": "a0b643b155cb6b12628d9e7865b57d9fca0d35844614f2594a5e009c80c80bb4",
+      "bytes": 554740,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: intonations",
+      "path": "tts/paradee/espeak-ng-data/intonations",
+      "role": "g2p-data",
+      "sha256": "031a105bf6bb2ebcd73a2c579ccfb42469b27266db0078af65ae298fd3588b21",
+      "bytes": 2312,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: en_dict",
+      "path": "tts/paradee/espeak-ng-data/en_dict",
+      "role": "g2p-data",
+      "sha256": "1053f74a34af38abb6fbd64b7838dacbc655a687c48ce1bb663d364a127b05de",
+      "bytes": 168204,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: lang/gmw/en",
+      "path": "tts/paradee/espeak-ng-data/lang/gmw/en",
+      "role": "g2p-data",
+      "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+      "bytes": 140,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "eSpeak NG 1.52.0 English data: lang/gmw/en-US",
+      "path": "tts/paradee/espeak-ng-data/lang/gmw/en-US",
+      "role": "g2p-data",
+      "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+      "bytes": 257,
+      "license": "GPL-3.0-or-later",
+      "source": "https://github.com/espeak-ng/espeak-ng/archive/refs/tags/1.52.0.tar.gz (sha256 bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23)"
+    },
+    {
+      "name": "Qwen3-ASR-0.6B Q8_0 (ASR slot model)",
       "path": "asr/eliza-1-asr.gguf",
       "role": "asr-model",
-      "sha256": null,
-      "bytes": null,
-      "license": null,
-      "source": null,
-      "revision": null,
-      "status": "open: upstream names no product-qualified, mobile-sized ASR text GGUF; the only pinned pair is labelled retired pre-Gemma and is not admitted here"
+      "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
+      "bytes": 804749248,
+      "license": "Apache-2.0",
+      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), Qwen3-ASR-0.6B-Q8_0.gguf",
+      "sourceFile": "Qwen3-ASR-0.6B-Q8_0.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf"
     },
     {
-      "name": "Eliza-1 ASR audio projector",
+      "name": "Qwen3-ASR-0.6B Q8_0 audio projector (ASR slot mmproj)",
       "path": "asr/eliza-1-asr-mmproj.gguf",
       "role": "asr-mmproj",
-      "sha256": null,
-      "bytes": null,
-      "license": null,
-      "source": null,
-      "revision": null,
-      "status": "open: paired with asr-model"
-    },
-    {
-      "name": "Kokoro-82M v1.0",
-      "path": "tts/kokoro/kokoro-82m-v1_0.gguf",
-      "role": "tts-model",
-      "sha256": "165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c",
-      "bytes": 162546720,
+      "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
+      "bytes": 214392480,
       "license": "Apache-2.0",
-      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/tts/kokoro/kokoro-82m-v1_0.gguf",
-      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
-      "status": "pinned (upstream plugins/plugin-native-inference/src/aosp-voice-download.ts and host-tts-worker.ts)"
+      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+      "sourceFile": "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
     },
     {
-      "name": "Kokoro-82M af_sam voice preset",
-      "path": "tts/kokoro/af_sam.bin",
-      "role": "tts-voice",
-      "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
-      "bytes": 522240,
-      "license": "Apache-2.0",
-      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/voice/kokoro/voices/af_sam.bin",
-      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
-      "status": "pinned (the preset upstream BionicSpeechInstrumentedTest and the AOSP download use)"
-    },
-    {
-      "name": "Silero VAD v5",
+      "name": "Silero VAD v5 (GGUF)",
       "path": "vad/silero-vad-v5.gguf",
       "role": "vad-model",
       "sha256": "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
       "bytes": 620736,
       "license": "MIT",
-      "source": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/voice/vad/silero-vad-v5.gguf",
-      "revision": "1e4c73713e11f7ff42bc2a686cc5b178c8cac14f",
-      "status": "pinned by sha256 and size (upstream model-catalog/voice-model-versions.json); the URL at this revision is not yet confirmed by Alpha"
+      "source": "https://huggingface.co/elizaos/eliza-1 (revision 1e4c73713e11f7ff42bc2a686cc5b178c8cac14f), vad/silero-vad-v5.gguf",
+      "url": "https://huggingface.co/elizaos/eliza-1/resolve/1e4c73713e11f7ff42bc2a686cc5b178c8cac14f/bundles/e2b/vad/silero-vad-v5.gguf"
+    },
+    {
+      "name": "eSpeak-NG-NOTICE.txt",
+      "path": "notices/eSpeak-NG-NOTICE.txt",
+      "role": "notice",
+      "sha256": "46300c2f2b561c9d295bb73936da519f3718339a5b7b554599fa66ae8f227707",
+      "bytes": 1295,
+      "license": "GPL-3.0-or-later",
+      "source": "Notice shipped with the voice bundle by packages/app/scripts/paradee-voice/build-native.ts"
+    },
+    {
+      "name": "espeak-ng-COPYING",
+      "path": "notices/espeak-ng-COPYING",
+      "role": "notice",
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "bytes": 35147,
+      "license": "GPL-3.0-or-later",
+      "source": "Notice shipped with the voice bundle by packages/app/scripts/paradee-voice/build-native.ts"
+    },
+    {
+      "name": "misaki-Apache-2.0.txt",
+      "path": "notices/misaki-Apache-2.0.txt",
+      "role": "notice",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "bytes": 11357,
+      "license": "Apache-2.0",
+      "source": "Notice shipped with the voice bundle by packages/app/scripts/paradee-voice/build-native.ts"
+    },
+    {
+      "name": "misaki-NOTICE.txt",
+      "path": "notices/misaki-NOTICE.txt",
+      "role": "notice",
+      "sha256": "5322c2d07903ac2cc255d5b731343fa266e082cb281371bb6ee6656233f08320",
+      "bytes": 961,
+      "license": "Apache-2.0",
+      "source": "Notice shipped with the voice bundle by packages/app/scripts/paradee-voice/build-native.ts"
+    },
+    {
+      "name": "spaCy-MIT.txt",
+      "path": "notices/spaCy-MIT.txt",
+      "role": "notice",
+      "sha256": "3f4378e67708fecacd3e27651c8bc0f977cf20789e19da0d81a2840e7cf573a2",
+      "bytes": 1128,
+      "license": "MIT",
+      "source": "Notice shipped with the voice bundle by packages/app/scripts/paradee-voice/build-native.ts"
     }
   ],
-  "lexicon": {
-    "name": "Kokoro en-US lexicon (from the CMU Pronouncing Dictionary)",
-    "path": "g2p/en-us-lexicon.tsv",
-    "role": "lexicon",
-    "sha256": "7d6114d502c1c63bb83bc6e176e21dd5120166c5992973f18ae9f917a12d0cd4",
-    "bytes": 2584441,
-    "license": "BSD-2-Clause",
-    "generator": "scripts/android-voice-lexicon.mjs",
-    "source": {
-      "name": "CMU Pronouncing Dictionary",
-      "url": "https://raw.githubusercontent.com/cmusphinx/cmudict/74790861f652b15e4ac49015a90074ad62a27690/cmudict.dict",
-      "revision": "74790861f652b15e4ac49015a90074ad62a27690",
-      "sha256": "81917843c7f44ce2b094ac63873c2c7a4cf802040792c455ba3ca406891c3d22",
-      "bytes": 3618488,
-      "notice": "licenses/cmudict-BSD-2-Clause.txt"
-    },
-    "status": "generated and recorded",
-    "intelligibility": "unqualified"
-  },
   "evidence": {
-    "buildReceipt": null,
+    "classes": "B (APK-input libraries built and symbol-checked) plus host runs on macOS arm64 of the same fork commit; no E/I/R/D",
+    "build": "Both ABIs built from eliza develop 4028a73e (llama.cpp gitlink 3f131ab9, the same gitlink as the pin) with packages/app/scripts/paradee-voice/build-native.ts and NDK 28.2. Voice ABI 18, paradee_supported()=1, asr_supported()=1, LOAD alignment 16 KiB, eSpeak NG 1.52.0 linked statically. Each JNI library exports only JNI_OnLoad.",
+    "hostGates": "macOS arm64 host build of the same fork commit: test-paradee-parity PASS (SNR 58.0-76.2 dB, gate 35 dB); ASR WER 0.0257 on 100 LibriSpeech utterances (limit 0.06); Paradee to ASR round-trip WER 0.0386 (limit 0.08, needs elizaOS/eliza#36194, included in the pin). Host evidence only; not Android execution.",
     "emulatorDeviceExecuted": false,
     "deviceExecuted": false,
-    "functionalAcceptance": null
-  }
+    "userAccepted": false
+  },
+  "acceptance": "Not qualified. Requires on-device qualification on both ABIs (packages/app/scripts/paradee-voice/qualify: ASR WER and Paradee round trip) and device/user acceptance before qualified may become true."
 }

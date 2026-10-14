@@ -30,6 +30,9 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await expect.poll(()=>page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return c.getSnapshot().cloudAccount?.userId;})).toBe(owner);
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toEqual([]);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
+  expect(await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().open)).toBe(false);
   const voice=await page.evaluate(async()=>{
    const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),binding=c.getCloudClient()!,{BrowserVoice}=await import('/src/browser/voice.ts'),v=new BrowserVoice();
    (v as any).transcribeLocalRecording=()=>{throw Error('Local speech must not run');};

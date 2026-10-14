@@ -17,6 +17,8 @@ const replacement = [];
 const runtimeTargets = [];
 const mail = { externalId: 'mail/id', threadId: 'thread', subject: 'Synthetic subject', from: 'Fixture sender', fromEmail: 'sender@example.invalid', to: ['owner@example.invalid'], snippet: 'Synthetic preview', receivedAt: '2026-09-29T12:00:00Z', isUnread: true };
 const grant = 'grant/one';
+const formattedMail = '<table><tr><td><img src="https://images.example.invalid/logo.png">Formatted mail</td></tr></table>';
+const htmlBody = () => mode === 'bad-html' ? 7 : mode === 'large-html' ? '😀'.repeat(131073) : formattedMail;
 const conversationId = 'ed694c7a-d9a7-4a8c-a547-533040bc1c79';
 let pendingObserved;
 const agent = () => ({ id, agentName: 'Synthetic agent', status: 'running', executionTier: mode === 'shared' ? 'shared' : 'dedicated-lazy',
@@ -69,7 +71,12 @@ const server = http.createServer(async (req, res) => {
           data = { messages: [mail], syncedAt: '2026-09-29T12:00:00Z', ...(mode === 'paged' ? { nextPageToken: pageToken ? null : 'opaque+/token=' } : mode === 'repeat-token' ? { nextPageToken: pageToken } : {}), ...(mode === 'revision' ? { mailboxHistoryId: '18446744073709551615' } : mode === 'bad-revision' ? { mailboxHistoryId: 12345 } : {}) };
         }
         else if (url.pathname.endsWith('/inbox-v1/capabilities')) data = { version: 1, from: 'owner@example.invalid', threads: true, send: false, providerDrafts: false, mailboxMutations: true, attachments: true, providerExactlyOnce: false, atomicDraftReplacement: false, ...(mode === 'read-state' ? { readState: true } : mode === 'bad-read-state' ? { readState: 'yes' } : {}) };
-        else { assert.equal(url.searchParams.get('messageId'), mail.externalId); data = { message: mail, bodyText: '<script>plain untrusted email text</script>' }; }
+        else if (url.pathname.endsWith('/inbox-v1/thread')) {
+          assert.equal(url.searchParams.get('threadId'), mail.threadId);
+          data = { version: 1, threadId: mail.threadId, historyId: 'thread-revision', total: 1, offset: 0, nextOffset: null,
+            messages: [{ message: mail, bodyText: 'Complete plain alternative', bodyHtml: htmlBody(), historyId: 'message-revision', attachments: [] }] };
+        }
+        else { assert.equal(url.searchParams.get('messageId'), mail.externalId); data = { message: mail, bodyText: '<script>plain untrusted email text</script>', bodyHtml: htmlBody() }; }
       }
       else if (req.url === '/api/v1/eliza/google/disconnect') { assert.equal(req.method, 'POST'); assert.deepEqual(body, { side: 'owner', connectionId: grant }); data = mode === 'bad-disconnect' ? {} : { ok: true }; }
       else if (req.url === '/api/v1/eliza/google/status?side=owner') data = { configured: true, connected: false, reason: 'disconnected', connectionId: null, grantedCapabilities: [] };
@@ -123,6 +130,19 @@ try {
   assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).messages[0].id, mail.externalId);
   assert.equal((await client.gmailSearch(grant, 'in:inbox', signal(), 50)).messages[0].id, mail.externalId);
   assert.equal((await client.gmailRead(grant, mail.externalId, signal())).bodyText, '<script>plain untrusted email text</script>');
+  assert.equal((await client.gmailRead(grant, mail.externalId, signal())).bodyHtml, formattedMail);
+  const formattedThread = await client.gmailThread(grant, mail.threadId, signal());
+  assert.equal(formattedThread.messages[0].bodyHtml, formattedMail, 'conversation loading preserves the complete formatted body');
+  assert.equal(formattedThread.messages[0].historyId, 'message-revision');
+  mode = 'bad-html';
+  await assert.rejects(client.gmailRead(grant, mail.externalId, signal()), error => error.code === 'invalid-response');
+  await assert.rejects(client.gmailThread(grant, mail.threadId, signal()), error => error.code === 'invalid-response');
+  mode = 'large-html';
+  assert.equal((await client.gmailRead(grant, mail.externalId, signal())).bodyHtml, undefined);
+  const oversizedThread = await client.gmailThread(grant, mail.threadId, signal());
+  assert.equal(oversizedThread.messages[0].bodyHtml, undefined, 'an oversized formatted body is never silently truncated');
+  assert.equal(oversizedThread.messages[0].bodyText, 'Complete plain alternative');
+  mode = 'ok';
   assert.equal((await client.gmailSearch(grant, 'in:inbox', signal())).nextPageToken, null, 'absent cursor means last page');
   mode = 'paged';
   const first = await client.gmailSearch(grant, 'in:inbox', signal());
@@ -187,7 +207,7 @@ try {
   mode = 'ok'; await make('staging').login(signal());
   assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
   await client.disconnect();
-  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, revocation of a replaced key before the new one is stored (failed revocation does not block), agent list/detail, dedicated/shared conversation routing and send, Gmail scopes (cumulative grants)/status/account/search/read, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
+  process.stdout.write('PASS: synthetic HTTP Cloud login, credential preference/storage, restart, revocation of a replaced key before the new one is stored (failed revocation does not block), agent list/detail, dedicated/shared conversation routing and send, Gmail scopes (cumulative grants)/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
   server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
 }

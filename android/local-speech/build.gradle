@@ -1,0 +1,34 @@
+// Shared native speech API and build policy come from the exact reviewed pin.
+def paradee = file('../../vendor/eliza/packages/app/platforms/android/paradee-voice')
+if (!paradee.isDirectory()) {
+ ext.elizaSpeechSourceDir = file('../../vendor/eliza/packages/app/platforms/android/local-speech')
+ apply from: new File(ext.elizaSpeechSourceDir, 'consumer.gradle')
+} else {
+ def nativeOutput = file('../../.eliza/paradee-voice/native')
+ def unpackaged = project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME')?.toString() == '1'
+ if (unpackaged && !nativeOutput.exists()) {
+  // Explicit developer APK: real Java API, no native engine or model assets.
+  // Calls report unavailable; this lane cannot provide speech acceptance evidence.
+  apply plugin: 'com.android.library'
+  android {
+   namespace 'ai.eliza.voice'
+   compileSdk 36
+   defaultConfig { minSdk 26 }
+   sourceSets.main {
+    java.srcDirs = [new File(paradee, 'src/main/java')]
+    manifest.srcFile new File(paradee, 'src/main/AndroidManifest.xml')
+   }
+   compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+  }
+ } else {
+  ext.elizaParadeeSourceDir = paradee
+  ext.elizaParadeeNativeDir = nativeOutput
+  ext.elizaParadeePackageInference = false
+  apply from: new File(paradee, 'consumer.gradle')
+ }
+ def verifySpeechInputs = tasks.register('verifySpeechInputs', Exec) {
+  workingDir rootProject.projectDir.parentFile
+  commandLine(['node', 'scripts/paradee-runtime.mjs'] + (unpackaged ? ['--allow-absent'] : []))
+ }
+ tasks.named('preBuild').configure { dependsOn verifySpeechInputs }
+}

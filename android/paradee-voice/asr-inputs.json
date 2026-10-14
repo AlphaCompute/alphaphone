@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "description": "Model-agnostic ASR slot of the on-device voice bundle. libelizainference loads whichever ASR pair sits at these canonical bundle paths (asr/eliza-1-asr.gguf and asr/eliza-1-asr-mmproj.gguf); changing the ASR model means changing only this record (paths stay, bytes/sha256/model change) and restaging. scripts/paradee-runtime.mjs admits exactly these two files.",
+  "slot": "asr",
+  "model": "Qwen3-ASR-0.6B Q8_0 (ggml-org/Qwen3-ASR-0.6B-GGUF@928ab958557df9aa2ef1c93e0e83c7ad0933fae2), the upstream mobile-voice@1.0.0 ASR entry",
+  "license": "Apache-2.0",
+  "intended": "Phonon-2 (elizaOS/eliza#36212: Phonon-2 default mobile ASR, streaming ASR JNI, llama.cpp main 533d0d89). Open and not merged on 2026-10-14; when it lands at the pinned develop commit, replace these rows with the Phonon-2 GGUF pair from that bundle record. Phonon-2 weights are CC-BY-4.0 (attribution required; flag, do not block).",
+  "install": "APK assets (assets/paradee-voice/v1/asr/), copied to app storage and SHA-256 verified on first use by ai.eliza.voice.VoiceAssets.install",
+  "files": [
+    {
+      "path": "asr/eliza-1-asr.gguf",
+      "bytes": 804749248,
+      "sha256": "bca259818b50ca7c4c05e9bdb35a5dc04fa039653a6d6f3f0f331f96f6aa1971",
+      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), file Qwen3-ASR-0.6B-Q8_0.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/Qwen3-ASR-0.6B-Q8_0.gguf"
+    },
+    {
+      "path": "asr/eliza-1-asr-mmproj.gguf",
+      "bytes": 214392480,
+      "sha256": "41a342b5e4c514e968cb756de6cd1b7be39eff43c44c57a2ef5fc6522e36603d",
+      "source": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF (revision 928ab958557df9aa2ef1c93e0e83c7ad0933fae2), file mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
+      "url": "https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF/resolve/928ab958557df9aa2ef1c93e0e83c7ad0933fae2/mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+    }
+  ]
+}

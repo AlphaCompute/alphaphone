@@ -1,89 +1,124 @@
 #!/usr/bin/env node
 /**
- * Stage the on-device voice bundle into the APK assets from operator-supplied files.
+ * Stage the on-device voice outputs (.eliza/paradee-voice/native) from operator-supplied files.
  *
- *   node scripts/android-stage-voice-models.mjs --from <directory> [--lexicon <file>]
+ *   node scripts/android-stage-voice-models.mjs --from <directory> [--from <directory> ...]
  *   node scripts/android-stage-voice-models.mjs --plan
+ *   node scripts/android-stage-voice-models.mjs --from <directory> ... --unrecorded-engine   (hosted CI only)
  *
- * Every model row of android/voice-host/qualified-voice-host.json that has recorded bytes is looked
- * up in <directory> by its bundle path (for example tts/kokoro/kokoro-82m-v1_0.gguf) or by its file
- * name, checked by size and SHA-256, and copied into android/app/src/main/assets/voice/v1. The
- * lexicon comes from scripts/android-voice-lexicon.mjs (default .eliza/voice-lexicon/en-us-lexicon.tsv).
- * Rows without recorded bytes (the ASR pair today) are never staged, so local ASR stays
- * unavailable and the product stays on the Cloud route. Nothing is downloaded or repaired: an
- * existing target with other bytes is refused. `--plan` prints the pinned rows and their sources.
+ * Every row of android/voice-host/qualified-voice-host.json (the engine library per ABI and every
+ * bundle file: Paradee GGUF, misaki lexicon, eSpeak NG data, the ASR slot pair, Silero VAD and the
+ * notices) is looked up in the --from directories by its bundle path, its upstream build output
+ * path (assets/paradee-voice/v1/<path>, jniLibs/<abi>/<name>, <abi>/<name>), its file name or its
+ * recorded sourceFile, then checked by size and SHA-256 and copied. The result is the layout the
+ * shared paradee-voice consumer.gradle reads: jniLibs/<abi>/libelizainference.so, the bundle
+ * manifest at assets/paradee-voice/v1/manifest.json and build-record.json, which
+ * scripts/paradee-runtime.mjs and scripts/voice-host.mjs verify before Gradle runs.
+ *
+ * The bundle ships in the APK assets (about 1.1 GB with the ASR pair) and the app copies it to
+ * its storage with per-file hash verification on first use. Nothing is downloaded or repaired;
+ * an existing output with other bytes is refused. Staging grants no qualification.
+ *
+ * `--unrecorded-engine` is for hosted developer-APK runs that rebuild the engine with the shared
+ * builder: a rebuild cannot reproduce the recorded bytes (build IDs), so the rebuilt engine is
+ * staged and this workspace's record is rewritten to name it with engineAdmission
+ * 'unreviewed workspace build'. That record must never be committed; every model byte must still
+ * match exactly, and the result is never distributable (the record stays qualified:false).
  */
 import {createHash} from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {VOICE_ASSET_ROOT, VOICE_BUNDLE_FORMAT, VOICE_HOST_MANIFEST, pinnedVoiceFiles, readVoiceHost, verifyVoiceHost} from './stage-embedding-host.mjs';
-import {DEFAULT_OUTPUT} from './android-voice-lexicon.mjs';
+import {PARADEE_SOURCE} from './paradee-runtime.mjs';
+import {VOICE_ASSET_ROOT, VOICE_BUNDLE_ASSETS, VOICE_BUNDLE_FORMAT, VOICE_HOST_MANIFEST, readVoiceHost, verifyVoiceHost} from './voice-host.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const digest = file => {
+  const hash = createHash('sha256'), fd = fs.openSync(file, 'r'), buffer = Buffer.alloc(4 * 1024 * 1024);
+  try { let n; while ((n = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, n)); } finally { fs.closeSync(fd); }
+  return hash.digest('hex');
+};
 
-/** Finds a pinned row's bytes under `from`, by bundle path first and then by file name. */
-export function locate(from, row) {
-  for (const candidate of [path.join(from, row.path), path.join(from, path.basename(row.path))]) {
+/** Finds a pinned row's bytes under one of `from`. Returns null when no candidate exists. */
+export function locate(from, row, candidates, {acceptOther = false} = {}) {
+  for (const directory of from) for (const relative of candidates) {
+    const candidate = path.join(directory, relative);
     if (!fs.existsSync(candidate)) continue;
-    if (fs.lstatSync(candidate).isSymbolicLink()) throw new Error(`Refusing linked input ${candidate}`);
-    if (fs.statSync(candidate).size === row.bytes && hash(candidate) === row.sha256) return candidate;
-    throw new Error(`${candidate} does not match the pinned ${row.path} (${row.sha256}, ${row.bytes} bytes)`);
+    if (fs.lstatSync(candidate).isSymbolicLink()) throw Error(`Refusing linked input ${candidate}`);
+    if (acceptOther || (fs.statSync(candidate).size === row.bytes && digest(candidate) === row.sha256)) return candidate;
+    throw Error(`${candidate} does not match the pinned ${row.path ?? row.name} (${row.sha256}, ${row.bytes} bytes)`);
   }
   return null;
 }
 
-export function stageVoiceModels(productRoot, {from, lexicon = path.join(productRoot, DEFAULT_OUTPUT)}) {
-  const manifest = readVoiceHost(productRoot);
-  const rows = manifest.models.filter(row => row.sha256 !== null).map(row => ({path: row.path, role: row.role, sha256: row.sha256, bytes: row.bytes}));
-  if (manifest.lexicon.sha256 === null) throw new Error(`No lexicon is recorded in ${VOICE_HOST_MANIFEST}; run node scripts/android-voice-lexicon.mjs --cmudict <cmudict.dict> --record first`);
-  const files = [];
+export function stageVoiceModels(productRoot, {from, unrecordedEngine = false}) {
+  const record = readVoiceHost(productRoot);
+  const directories = from.map(directory => path.resolve(directory));
+  const rows = [];
+  for (const model of record.models) {
+    const names = [model.path, `${VOICE_BUNDLE_ASSETS}/${model.path}`, `assets/paradee-voice/v1/${model.path}`, path.basename(model.path), ...(model.sourceFile ? [model.sourceFile, `${path.dirname(model.path)}/${model.sourceFile}`] : [])];
+    const source = locate(directories, model, names);
+    if (!source) throw Error(`Missing ${model.path} (${model.sourceFile ?? path.basename(model.path)}) in ${from.join(', ')}; pinned source: ${model.source}`);
+    rows.push({target: `${VOICE_BUNDLE_ASSETS}/${model.path}`, bundlePath: model.path, sha256: model.sha256, bytes: model.bytes, source});
+  }
+  for (const abi of record.abis) {
+    const engine = abi.libraries.find(lib => lib.name === 'libelizainference.so');
+    const source = locate(directories, engine, [`jniLibs/${abi.abi}/${engine.name}`, `${abi.abi}/${engine.name}`], {acceptOther: unrecordedEngine});
+    if (!source) throw Error(`Missing ${abi.abi}/${engine.name} in ${from.join(', ')}`);
+    const actual = {sha256: digest(source), bytes: fs.statSync(source).size};
+    if (actual.sha256 !== engine.sha256 || actual.bytes !== engine.bytes) {
+      // Only reachable with --unrecorded-engine: this workspace's record names the rebuilt bytes.
+      Object.assign(engine, actual);abi.engineAdmission = 'unreviewed workspace build (hosted CI; never commit this record)';
+    }
+    rows.push({target: `jniLibs/${abi.abi}/${engine.name}`, sha256: engine.sha256, bytes: engine.bytes, source});
+  }
+  if (record.abis.some(abi => abi.engineAdmission)) {
+    record.qualified = false;
+    fs.writeFileSync(path.join(productRoot, VOICE_HOST_MANIFEST), `${JSON.stringify(record, null, 2)}\n`);
+  }
+  const output = path.join(productRoot, VOICE_ASSET_ROOT);
+  for (let p = output; p !== productRoot && p !== path.dirname(p); p = path.dirname(p))
+    if (fs.existsSync(p) && fs.lstatSync(p).isSymbolicLink()) throw Error('Voice outputs must not traverse a link');
   for (const row of rows) {
-    const source = locate(path.resolve(from), row);
-    if (!source) throw new Error(`Missing ${row.path} in ${from}; pinned source ${manifest.models.find(item => item.path === row.path).source}`);
-    files.push({...row, source});
+    const destination = path.join(output, row.target);
+    if (fs.existsSync(destination) && (fs.lstatSync(destination).isSymbolicLink() || fs.statSync(destination).size !== row.bytes || digest(destination) !== row.sha256))
+      throw Error(`${path.relative(productRoot, destination)} already exists with other bytes; review before replacing`);
   }
-  const lexiconRow = pinnedVoiceFiles(manifest).find(row => row.role === 'lexicon');
-  if (!fs.existsSync(lexicon) || fs.statSync(lexicon).size !== lexiconRow.bytes || hash(lexicon) !== lexiconRow.sha256)
-    throw new Error(`${lexicon} is not the recorded lexicon (${lexiconRow.sha256}); regenerate it with node scripts/android-voice-lexicon.mjs`);
-  files.push({...lexiconRow, source: lexicon});
-  const target = path.join(productRoot, VOICE_ASSET_ROOT);
-  // Inside the product tree no directory on the way to the assets may be a link.
-  for (let p = target; p !== productRoot && p !== path.dirname(p); p = path.dirname(p)) if (fs.existsSync(p) && fs.lstatSync(p).isSymbolicLink()) throw new Error('Voice assets must not traverse a link');
-  for (const row of files) {
-    const destination = path.join(target, row.path);
-    if (fs.existsSync(destination) && (fs.lstatSync(destination).isSymbolicLink() || hash(destination) !== row.sha256))
-      throw new Error(`${path.relative(productRoot, destination)} already exists with other bytes; review before replacing`);
-  }
-  for (const row of files) {
-    const destination = path.join(target, row.path);
+  for (const row of rows) {
+    const destination = path.join(output, row.target);
     fs.mkdirSync(path.dirname(destination), {recursive: true});
     if (!fs.existsSync(destination)) fs.copyFileSync(row.source, destination, fs.constants.COPYFILE_EXCL);
   }
-  const bundle = {format: VOICE_BUNDLE_FORMAT, qualifiedVoiceHostSha256: hash(path.join(productRoot, VOICE_HOST_MANIFEST)),
-    files: files.map(({source, ...row}) => row).sort((a, b) => a.path.localeCompare(b.path))};
-  fs.writeFileSync(path.join(target, 'manifest.json'), `${JSON.stringify(bundle, null, 2)}\n`);
-  return {staged: bundle.files.map(row => row.path), asr: bundle.files.some(row => row.role === 'asr-model')};
+  const inputs = JSON.parse(fs.readFileSync(path.join(productRoot, PARADEE_SOURCE, 'inputs.json'), 'utf8'));
+  const bundleFiles = rows.filter(row => row.bundlePath).map(row => ({path: row.bundlePath, bytes: row.bytes, sha256: row.sha256})).sort((a, b) => a.path.localeCompare(b.path));
+  const manifest = {format: VOICE_BUNDLE_FORMAT, model: inputs.paradee.path, lexicon: inputs.lexicon.path, espeakDir: 'tts/paradee', files: bundleFiles};
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`, manifestFile = path.join(output, VOICE_BUNDLE_ASSETS, 'manifest.json');
+  if (fs.existsSync(manifestFile) && fs.readFileSync(manifestFile, 'utf8') !== manifestText) throw Error(`${path.relative(productRoot, manifestFile)} already exists with other content; review before replacing`);
+  fs.writeFileSync(manifestFile, manifestText);
+  const files = [{path: `${VOICE_BUNDLE_ASSETS}/manifest.json`, bytes: Buffer.byteLength(manifestText), sha256: createHash('sha256').update(manifestText).digest('hex')},
+    ...rows.map(row => ({path: row.target, bytes: row.bytes, sha256: row.sha256}))].sort((a, b) => a.path.localeCompare(b.path));
+  fs.writeFileSync(path.join(output, 'build-record.json'), `${JSON.stringify({inputs, abis: record.abis.map(row => row.abi), files}, null, 2)}\n`);
+  return {staged: files.map(row => row.path), asr: bundleFiles.some(row => row.path.startsWith('asr/'))};
 }
 
 function main() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === '--plan') {
-    const manifest = readVoiceHost(root);
-    for (const row of manifest.models) console.log(`${row.path}\t${row.sha256 ?? 'not pinned'}\t${row.bytes ?? '-'}\t${row.source ?? row.status}`);
-    console.log(`${manifest.lexicon.path}\t${manifest.lexicon.sha256 ?? 'not recorded'}\tgenerated by ${manifest.lexicon.generator} from ${manifest.lexicon.source.url}`);
+    const record = readVoiceHost(root);
+    for (const abi of record.abis) for (const lib of abi.libraries) console.log(`${abi.abi}/${lib.name}\t${lib.sha256}\t${lib.bytes}`);
+    for (const row of record.models) console.log(`${row.path}\t${row.sha256}\t${row.bytes}\t${row.source}`);
     return;
   }
-  const option = name => { const index = args.indexOf(name); return index < 0 ? undefined : args[index + 1]; };
+  const from = [];let unrecordedEngine = false;
   for (let i = 0; i < args.length; i++) {
-    if (['--from', '--lexicon'].includes(args[i]) && args[i + 1] && !args[i + 1].startsWith('--')) { i++; continue; }
-    throw new Error('Usage: node scripts/android-stage-voice-models.mjs --from <directory> [--lexicon <file>] | --plan');
+    if (args[i] === '--unrecorded-engine') { unrecordedEngine = true; continue; }
+    if (args[i] === '--from' && args[i + 1] && !args[i + 1].startsWith('--')) { from.push(args[++i]); continue; }
+    throw Error('Usage: node scripts/android-stage-voice-models.mjs --from <directory> [--from <directory> ...] [--unrecorded-engine] | --plan');
   }
-  if (!option('--from')) throw new Error('--from <directory of pinned voice models> is required');
-  const result = stageVoiceModels(root, {from: option('--from'), ...(option('--lexicon') ? {lexicon: path.resolve(option('--lexicon'))} : {})});
-  const admission = verifyVoiceHost(root, {allowAbsentRuntime: true});
-  console.log(JSON.stringify({...result, admission: admission.status, note: result.asr ? 'ASR pair staged' : 'No ASR pair staged: localSpeechStatus reports ready:false and the product stays on Cloud'}, null, 2));
+  if (!from.length) throw Error('--from <directory of pinned voice outputs and models> is required');
+  const result = stageVoiceModels(root, {from, unrecordedEngine});
+  const admission = verifyVoiceHost(root);
+  console.log(JSON.stringify({...result, admission: admission.status, qualified: admission.qualified, note: 'Integrity only: on-device qualification and device acceptance are still required.'}, null, 2));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

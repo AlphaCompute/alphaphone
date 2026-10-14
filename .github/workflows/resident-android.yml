@@ -145,10 +145,10 @@ jobs:
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
-      # On-device speech is the fused libelizainference engine only; this archive stages no voice
-      # bundle (local speech reports unavailable, Cloud voice unchanged). The record is still checked.
-      - name: Verify the on-device voice qualification record
-        run: node scripts/stage-embedding-host.mjs --verify-voice --allow-unpackaged-runtime
+      # On-device speech is libelizainference with the shared paradee-voice library only; this archive
+      # stages no voice outputs (local speech reports unavailable). The record is still checked.
+      - name: Verify the on-device voice host record
+        run: node scripts/voice-host.mjs --verify --allow-absent
       - name: Prepare and qualify fresh resident source with normal hooks
         env:
           NODE_OPTIONS: --max-old-space-size=4096

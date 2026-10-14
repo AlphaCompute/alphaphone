@@ -1,3 +1,4 @@
+import {browserLocalSpeechStatus,transcribeWithSelectedBrowserAgent} from './local-transcription';
 import {devSurfacesEnabled} from '../build-flags';
 import {browserCloudVoice,browserCloudCredential} from './cloud-connection';
 import type {LocalAgentProtocol} from '../runtime/local-agent';
@@ -43,7 +44,7 @@ export class BrowserVoice extends WebPlugin {
  async localSpeechStatus(){return this.withAgentSpeech(async signal=>{
   // The entrypoint binds this facade after browser factories have registered.
   const connectionController=await this.connection;signal.throwIfAborted();
-  const agent=connectionController.getBrowserSpeechAgent();if(agent){const result=await agent.speechRequest(undefined,signal);return {ready:result.ready===true,execution:'browser',route:'local-agent'};}
+  if(connectionController.getBrowserSpeechAgent())return browserLocalSpeechStatus(()=>connectionController.getBrowserSpeechAgent(),signal);
   // No agent speech yet: the browser never loads a model, inference runtime or Web Speech voice
   // itself (speech runs only through the agent's libelizainference). Replies are read as text.
   return {ready:false,playback:false,execution:'browser',route:'local-agent',reason:['starting','recovering'].includes(connectionController.getSnapshot().kind??'')?'local-agent-starting':'local-agent-required'};
@@ -57,10 +58,9 @@ export class BrowserVoice extends WebPlugin {
   const clip=this.capture.get(input.recordingId);if(!clip)throw Error('Record a clip first.');
   return this.withAgentSpeech(async signal=>{
    const connectionController=await this.connection;signal.throwIfAborted();
-   const agent=connectionController.getBrowserSpeechAgent();
-   if(agent){const selectedSession=agent.session;const audio=await recordingPcmWav(clip.blob,signal);if(connectionController.getBrowserSpeechAgent()!==agent||agent.session!==selectedSession)throw new DOMException('Voice selection changed','AbortError');const result=await agent.speechRequest(audio,signal);return {text:result.text,local:true,execution:'browser',route:'local-agent',language:'en'};}
    // No silent fallback to Cloud or to an in-browser engine; the recording stays in this app.
-   throw speechError('local-agent-required','Connect the local agent to transcribe on this computer.');
+   if(!connectionController.getBrowserSpeechAgent())throw speechError('local-agent-required','Connect the local agent to transcribe on this computer.');
+   return transcribeWithSelectedBrowserAgent(()=>connectionController.getBrowserSpeechAgent(),()=>recordingPcmWav(clip.blob,signal),signal);
   },requestId);
  }
 

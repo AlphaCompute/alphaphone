@@ -59,12 +59,15 @@ export function createOnDeviceVoice() {
       if (result.execution !== (Capacitor.isNativePlatform()?'device':'browser') || result.local !== true || typeof result.text !== 'string' || !result.text.trim()) throw new Error('No usable on-device transcript');
       return result;
     }); },
-    async speak(text: string, signal: AbortSignal) {
+    async speak(text: string, signal: AbortSignal, onStarted?:()=>void, strictDrain=false, options?:{queue?:boolean;assertCurrent?:()=>void}) {
       const chunks = planLocalSpeech(text);
       return operation(signal, async (_requestId, interrupted, ownedSignal) => {
+        let started=false;
         for (const chunk of chunks) {
-          check(); ownedSignal.throwIfAborted();
-          await Promise.race([speakLocalText(chunk, ownedSignal, undefined, false, {execution:Capacitor.isNativePlatform()?'device':'browser',assertCurrent:check}), interrupted]);
+          check(); options?.assertCurrent?.(); ownedSignal.throwIfAborted();
+          const playback=speakLocalText(chunk, ownedSignal, ()=>{if(!started){started=true;onStarted?.();}}, options?.queue??false, {execution:Capacitor.isNativePlatform()?'device':'browser',assertCurrent:()=>{check();options?.assertCurrent?.();}},strictDrain);
+          // Conversation capture may resume only after the native speaker confirms cleanup.
+          if(strictDrain)await playback;else await Promise.race([playback,interrupted]);
         }
       });
     },

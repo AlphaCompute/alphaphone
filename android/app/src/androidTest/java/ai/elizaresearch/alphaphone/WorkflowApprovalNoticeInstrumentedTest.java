@@ -32,6 +32,9 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
   assertEquals(WorkflowNoticePoster.APPROVAL_CHANNEL,approval.getChannelId());assertEquals(10*60000L,approval.getTimeoutAfter());assertEquals(Notification.VISIBILITY_PRIVATE,approval.visibility);assertNotNull(approval.publicVersion);
   assertEquals(0,approval.flags&Notification.FLAG_AUTO_CANCEL);assertTrue("A tap only opens the run; there is no approve action",approval.actions==null||approval.actions.length==0);
   assertThrows(IllegalArgumentException.class,()->poster.approval(WorkflowNoticeDelivery.APPROVAL_TITLE,WorkflowNoticeDelivery.APPROVAL_BODY,0,tap));
+  Notification.Action ask=poster.question(tap);
+  assertEquals("Ask Alpha",ask.title);assertEquals(tap,ask.actionIntent);assertNull("Ask has no inline send input",ask.getRemoteInputs());
+  if(android.os.Build.VERSION.SDK_INT>=31)assertTrue("Ask requires unlock",ask.isAuthenticationRequired());
   Notification step=poster.step("Fixture title","Fixture body",tap).build();
   assertEquals(WorkflowNoticePoster.CHANNEL,step.getChannelId());assertEquals(WorkflowNoticeDelivery.STEP_NOTICE_TIMEOUT_MS,step.getTimeoutAfter());assertEquals(Notification.VISIBILITY_PRIVATE,step.visibility);assertNotNull(step.publicVersion);
  }
@@ -64,6 +67,24 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    long timeout=notice.getTimeoutAfter();assertTrue("Times out at the approval expiry",timeout>0&&timeout<=10*60000L);
    assertFalse("Redacted: no route identity in the notice",notice.extras.toString().contains(run)||notice.extras.toString().contains("fixture-flow"));
    String token=WorkflowNoticeTapsFactory.create(context).token(id);assertNotNull(token);
+   assertEquals(1,notice.actions.length);assertEquals("Ask Alpha",notice.actions[0].title);
+   notice.actions[0].actionIntent.send();
+   long questionEnd=SystemClock.elapsedRealtime()+15000;JSONObject question=new JSONObject();
+   while(SystemClock.elapsedRealtime()<questionEnd){question=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(question.optBoolean("question"))break;SystemClock.sleep(100);}
+   assertEquals(run,question.optString("runId"));assertTrue(question.optBoolean("question"));assertTrue(question.optBoolean("retained"));
+   assertEquals(WorkflowNoticeDelivery.APPROVAL_TITLE,question.getJSONObject("notice").getString("title"));
+   assertEquals(WorkflowNoticeDelivery.APPROVAL_BODY,question.getJSONObject("notice").getString("text"));
+   assertFalse("Explicit Cancel settles only the question",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",discard:true})").has("error"));
+   assertNotNull("Cancel retains approval notice",active(manager,id));
+   assertEquals("succeeded",new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(id).getString("status"));
+   notice.actions[0].actionIntent.send();
+   long askedEnd=SystemClock.elapsedRealtime()+15000;JSONObject asked=new JSONObject();
+   while(SystemClock.elapsedRealtime()<askedEnd){asked=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(asked.optBoolean("question"))break;SystemClock.sleep(100);}
+   assertTrue(asked.optBoolean("question"));
+   assertFalse("Use in conversation settles only the question",call("Capacitor.Plugins.AlphaNotifications.consumeWorkflowTap({token:"+JSONObject.quote(token)+",noticeRevision:"+JSONObject.quote(asked.getJSONObject("notice").getString("revision"))+"})").has("error"));
+   assertNotNull("A completed Ask keeps the waiting approval's notice",active(manager,id));assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
+   assertEquals(token,WorkflowNoticeTapsFactory.create(context).token(id));
+   assertEquals("succeeded",new JSONObject(store.readCredentialSlot(WorkflowNoticeDelivery.APPROVAL_SLOT)).getJSONObject(id).getString("status"));
    notice.contentIntent.send();
    long end=SystemClock.elapsedRealtime()+15000;JSONObject pending=new JSONObject();
    while(SystemClock.elapsedRealtime()<end){pending=call("Capacitor.Plugins.AlphaNotifications.pendingWorkflowTap()");if(token.equals(pending.optString("token")))break;SystemClock.sleep(100);}
@@ -129,9 +150,9 @@ public final class WorkflowApprovalNoticeInstrumentedTest {
    AppNavigation.liveMode();awaitSignedOutStartup(store);call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    assertTrue(call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:\"bad\"})").has("error"));
-   StatusBarNotification original=row(manager,id);assertNotNull("Malformed owner must not sign out or remove the matching notice",original);PendingIntent stale=original.getNotification().contentIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
+   StatusBarNotification original=row(manager,id);assertNotNull("Malformed owner must not sign out or remove the matching notice",original);PendingIntent stale=original.getNotification().contentIntent,staleAsk=original.getNotification().actions[0].actionIntent;String token=WorkflowNoticeTapsFactory.create(context).token(id);
    call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-next-owner\",agentId:\"fixture-agent\"}})");awaitGone(manager,id,"Other owner's notice removed");
-   assertThrows(PendingIntent.CanceledException.class,()->stale.send());assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
+   assertThrows(PendingIntent.CanceledException.class,()->stale.send());assertThrows(PendingIntent.CanceledException.class,()->staleAsk.send());assertEquals(0,WorkflowNoticeTapsFactory.create(context).pending().length());
    assertEquals("owner-changed",call("Capacitor.Plugins.AlphaHostedResults.postWorkflowApprovalNotice("+input+")").getString("status"));
    JSONObject returned=call("Capacitor.Plugins.AlphaHostedResults.withdrawOtherOwnerApprovalNotices({owner:{origin:\"https://workflow-fixture.invalid\",ownerId:\"fixture-owner\",agentId:\"fixture-agent\"}})");assertEquals(1,returned.getJSONArray("suspended").length());assertNull(row(manager,id));
    assertEquals("succeeded",call("Capacitor.Plugins.AlphaHostedResults.resumeWorkflowApprovalNotice("+input+")").getString("status"));
