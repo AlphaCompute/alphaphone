@@ -776,7 +776,8 @@ async function connectResident(signal: AbortSignal) {
     update({residentInference:bound.binding==='cloud'?'cloud':bound.binding==='unbound'?'unavailable':'unknown'});
     // The agent is running. A sign-in that is still required keeps the (non-dismissible) sign-in
     // dialog; everything else is a notice beside the running agent, never a gate.
-    const notice=admission.notice,error=bound.error??notice?.error;
+    // Both a refused sign-in and an unconfirmed unbind are shown; neither hides the other.
+    const notice=admission.notice,error=[notice?.error,bound.error].filter(Boolean).join(' ')||undefined;
     if(notice?.open||error)update({open:true,purpose:'agent',message:notice?.message??'',error:error??''});
     else if(notice?.message)update({message:notice.message});
     await restoreSavedHistory(signal);await refreshActionReview(signal);
