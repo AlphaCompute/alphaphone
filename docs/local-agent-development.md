@@ -345,3 +345,24 @@ The October 3 qualification used `artifacts/calendar-preferences-review/artifact
 An isolated redaction-on campaign on this source passes five real-provider credential formats, streaming, and owner/contact restoration after an actual host restart. All eleven captured outbound body checks exclude the synthetic raw contacts and credential suffix. Incoming storage now masks complete credentials before the model sees them; nested JSON text/fragments are also protected with exact source-span restoration and bounded decoding. All 97 selected runtime/security tests and all 157 repository tests/typecheck/build pass.
 
 Failed live attempts led to this repair and remain recorded under `test-results/current-redaction-live/`; passing results are in its `storage/` directory. `test-results/encoded-credential-review/` contains source/test evidence. The broader stage-one invalid-native-source failure was subsequently traced to a stale fixture that omitted the intentional single repair attempt. The fixture correction and combined 485-case campaign pass; production runtime behavior is unchanged. Native integration, wider model reliability and current-head full hosted qualification remain open. No Android build ran.
+
+## Google service QA in a separate browser profile
+
+Use `ALPHA_BROWSER_CLOUD_PROFILE=/private/separate/profile npm run dev:ui -- --port 5209 --strictPort`
+for Google-service-only QA without another agent backend. Sign in through the normal
+Eliza Cloud flow. Google authorization is separate from both that Cloud identity
+and the inference provider; use **Settings → Accounts → Google accounts**, Inbox's
+**Connect Gmail**, or Calendar's connection button.
+
+The shared connection panel requests Gmail and Calendar read access. It reports
+server-returned grants, offers explicit calendar selection, and keeps provider events
+read-only and separate from app/native Calendar writes. Gmail permission upgrades
+retain already-selected Calendar read access. Event writes and mail sending are not
+part of read-only qualification.
+
+**Disconnect Google account** removes the entire stored Google connection (Gmail
+and Calendar together), verifies account readback, and invalidates both views. It does
+not delete the Google account, mail or events. An uncertain disconnect remains
+unconfirmed; the user can check again. Reconnect uses the normal Google consent flow.
+Calendar selection contains only nonsecret source identifiers scoped to the Cloud
+user and organization. No provider tokens or calendar event content are stored in it.
