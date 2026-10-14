@@ -197,8 +197,17 @@ test('selected outbound model context carries no names, album names, sizes, modi
 });
 
 test('agent album observes only while open and falls back to a bounded fresh catalog',()=>{
- assert.match(java,/new PermittedMediaCatalog\(getContext\(\),false,/);
- assert.match(java,/catalog\.watch\(watching\)/);
+ // One catalog and one review for both permitted-media surfaces, observed only while a view is open.
+ assert.match(java,/catalog=photos\.permittedCatalog\(\);review=photos\.permittedReview\(\);/);
+ assert.doesNotMatch(java,/new PermittedMediaCatalog\(|new PermittedMediaReview\(/,'the device library constructs no second catalog or review');
+ assert.match(java,/catalog\.watch\("library",watching\)/);
+ const photos=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaPhotosPlugin.java','utf8');
+ assert.match(photos,/permitted=new PermittedMediaCatalog\(getContext\(\),false,\(\)->\{if\(!destroyed\)notifyListeners\("libraryChanged"/,'Photos observes only while its grid is open; unrelated writes do not revoke playback');
+ assert.match(photos,/permitted\.watch\("photos",active\)/);
+ const camera=readFileSync('apps/app/src/prototype/camera-adapter.ts','utf8');
+ assert.match(camera,/watchLibrary\(!disposed&&!document\.hidden&&!!photosApi\?\.isActive\(\)&&permittedLibrary\(\)\)/);
+ const catalogSource=readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/PermittedMediaCatalog.java','utf8');
+ assert.match(catalogSource,/boolean wanted=!watchers\.isEmpty\(\)&&!closed;/,'the observer is registered only while some view watches');
  assert.match(java,/out\.put\("reset",true\)/);
  assert.match(adapter,/watch\(!!scope && scope.scope !== 'denied' && !scope.locked\)/);
  const agent=adapter.slice(adapter.indexOf('const agent: LibraryAgent'),adapter.indexOf('mountedAgent = agent;'));

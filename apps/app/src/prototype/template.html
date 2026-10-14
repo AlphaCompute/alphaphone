@@ -19,9 +19,10 @@
 <div data-alpha-layer="home" onFocusCapture="{{focusAppContent}}" role="region" aria-label="Home" aria-hidden="{{homeHidden}}" inert="{{homeHidden}}" style="position: absolute; inset: 44px 0 0; z-index: 10; box-sizing: border-box; overflow-y:auto; overflow-x:hidden; scroll-padding-bottom:110px">
 <div data-alpha-home-layout style="min-height:100%;display:flex;flex-direction:column;padding:20px 0 108px;box-sizing:border-box">
 <sc-if value="{{storageAccessWarning}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
-  <!-- The only way into Alpha's notifications (docs/gesture-zones.md): a visible control below
-       Android's status bar. The top-edge swipe is Android's and opens Android's own shade. -->
-  <div class="alpha-shade-row"><button class="alpha-shade-handle" data-alpha-shade-handle aria-label="Open notifications" aria-controls="alpha-notifications" aria-expanded="false" onClick="{{openShade}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bell}}"></path></svg><span>Notifications</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.down}}"></path></svg></button></div>
+  <!-- Launcher Home only (docs/gesture-zones.md, #416, #417): Android's shade is the one
+       notification and quick-settings surface. This visible control asks Android to open it, as
+       a pull down on empty Home does; the top-edge swipe stays Android's. Alpha draws no shade. -->
+  <sc-if value="{{showShadeButton}}"><div class="alpha-shade-row"><button class="alpha-shade-handle" data-alpha-shade-handle aria-label="Open notifications" aria-description="Opens Android's notifications and quick settings" onClick="{{openSystemShade}}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.bell}}"></path></svg><span>Notifications</span><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.down}}"></path></svg></button></div></sc-if>
   <div class="scr" style="display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px; scroll-padding-left: 24px; touch-action: pan-x; flex-shrink: 0">
     <button class="home-calendar-card" data-alpha-home-calendar data-alpha-home-calendar-event="{{homeCalendarHasEvent}}" data-alpha-home-calendar-meta="{{homeCalendarHasMeta}}" data-alpha-home-calendar-overdue="{{homeCalendarOverdue}}" onClick="{{goCalendar}}" aria-label="{{homeCalendarLabel}}" aria-description="{{homeCalendarDescription}}" style="flex-shrink: 0; scroll-snap-align: start; border-radius: 30px; background: var(--acc); color: #ffffff; padding: 22px; box-sizing: border-box">
       <div class="home-calendar-head">
@@ -2567,6 +2568,7 @@
       </div>
     </div>
   </sc-if>
+  <sc-if value="{{contacts.nativeManaged}}"><div style="padding:12px 24px;display:flex;gap:8px;flex-wrap:wrap"><p role="status" style="width:100%;margin:0">{{contacts.nativeStatus}}</p><sc-if value="{{contacts.nativeAccess}}"><button disabled="{{contacts.nativeBusy}}" onClick="{{contacts.nativeRequest}}">Choose Contacts access</button></sc-if><button disabled="{{contacts.nativeBusy}}" onClick="{{contacts.nativeRefresh}}">Refresh contacts</button><sc-if value="{{contacts.nativeMore}}"><button disabled="{{contacts.nativeBusy}}" onClick="{{contacts.nativeLoadMore}}">Load more contacts</button></sc-if></div></sc-if>
   <div class="scr" style="flex-grow: 1; overflow-y: auto; padding-bottom: 130px; touch-action: pan-y">
     <sc-if value="{{contacts.hasFavs}}">
       <div class="scr" style="display: flex; gap: 6px; overflow-x: auto; padding: 8px 14px 10px; touch-action: pan-x">
@@ -2612,9 +2614,9 @@
       <div style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
         <button class="ib" aria-label="Back to contacts" onClick="{{contacts.d.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <span style="flex-grow: 1"></span>
-        <button class="ib" aria-label="{{contacts.d.favLabel}}" aria-pressed="{{contacts.d.fav}}" onClick="{{contacts.d.toggleFav}}"><svg class="i" viewBox="0 0 24 24" style="{{contacts.d.favCss}}"><path d="{{ic.star}}"></path></svg></button>
+        <sc-if value="{{contacts.nativePrototype}}"><button class="ib" aria-label="{{contacts.d.favLabel}}" aria-pressed="{{contacts.d.fav}}" onClick="{{contacts.d.toggleFav}}"><svg class="i" viewBox="0 0 24 24" style="{{contacts.d.favCss}}"><path d="{{ic.star}}"></path></svg></button></sc-if>
         <button class="ib" aria-label="Edit contact" onClick="{{contacts.d.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
-        <button class="ib" aria-label="Delete contact" onClick="{{contacts.d.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
+        <sc-if value="{{contacts.nativePrototype}}"><button class="ib" aria-label="Delete contact" onClick="{{contacts.d.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button></sc-if>
       </div>
       <div class="scr" style="flex-grow: 1; overflow-y: auto; padding: 8px 0 130px; touch-action: pan-y">
         <div style="display: flex; flex-direction: column; align-items: center; padding: 0 24px">
@@ -3980,6 +3982,8 @@
         <sc-if value="{{chatRecorder.review}}"><textarea aria-label="Review transcript" disabled="{{chatRecorder.transcriptDisabled}}" value="{{chatRecorder.transcript}}" onChange="{{chatRecorder.onTranscript}}" style="width:100%;flex:1;min-height:112px;box-sizing:border-box;background:var(--s2);border:0;border-radius:16px;padding:12px;color:var(--fg);font:inherit;line-height:1.45;resize:vertical"></textarea></sc-if>
         <sc-if value="{{chatRecorder.typeChoice}}"><button class="tap" onClick="{{chatRecorder.typeInstead}}" style="min-height:44px;padding:8px 12px;border-radius:20px;background:var(--s2);color:var(--fg)">Type transcript instead</button></sc-if>
       </div>
+      <sc-if value="{{chatRecorder.canMute}}"><button class="tap" onClick="{{chatRecorder.toggleMute}}" style="min-height:44px;padding:8px 16px;border-radius:16px;background:var(--s2);color:var(--fg)">{{chatRecorder.muteLabel}}</button></sc-if>
+      <sc-if value="{{chatRecorder.needsPlaybackUnlock}}"><button class="tap" onClick="{{chatRecorder.unlockPlayback}}" style="min-height:44px;padding:8px 16px;border-radius:16px;background:var(--s2);color:var(--fg)">Enable sound</button></sc-if>
       <button class="tap" aria-label="{{chatRecorder.primaryLabel}}" disabled="{{chatRecorder.primaryDisabled}}" onClick="{{chatRecorder.stop}}" style="display:flex;align-items:center;justify-content:center;gap:10px;min-height:56px;flex-shrink:0;padding:10px 16px;border-radius:28px;background:var(--acc);color:#fff;font:inherit;font-weight:600"><svg class="i" viewBox="0 0 24 24" style="width:24px;height:24px;flex-shrink:0"><path d="{{chatRecorder.primaryIcon}}"></path></svg><span>{{chatRecorder.primaryLabel}}</span></button>
       <sc-if value="{{chatRecorder.review}}"><button class="tap" aria-label="{{chatRecorder.pauseLabel}}" onClick="{{chatRecorder.toggle}}" style="display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;flex-shrink:0;padding:8px 16px;border-radius:22px;background:var(--s2);color:var(--fg);font:inherit"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="{{chatRecorder.pauseIcon}}"></path></svg><span>{{chatRecorder.pauseLabel}}</span></button></sc-if>
     </section>
@@ -4168,9 +4172,12 @@
 </sc-if>
 
 
-<!-- No heads-up banner: Alpha shows only real notices, through the shade (AlphaNotifications). -->
+<!-- No heads-up banner: Alpha posts real notices as Android notifications; Android shows them. -->
 
-
+<!-- Development stand-in for Android's shade (ELIZA_DEV_ALLOW_TEST_MOCKS=1 browser builds only,
+     simulatedShade). A browser has no SystemUI, so this simulates it for development tests.
+     Product builds, including every APK, render nothing here: Android's shade is the surface (#416). -->
+<sc-if value="{{simulatedShade}}">
 <sc-if value="{{isOn}}">
 <div data-alpha-layer="shade" id="alpha-notifications" role="region" aria-label="Notifications" aria-hidden="{{shadeHidden}}" inert="{{shadeHidden}}" onKeyDown="{{shadeKey}}" style="position: absolute; inset: 0; z-index: 66; background: var(--bg); transform: translateY({{shadeY}}); transition: transform .55s cubic-bezier(.19,1,.22,1); display: flex; flex-direction: column; padding: 56px 14px 0; box-sizing: border-box">
 <sc-if value="{{storageAccessWarning}}"><p role="alert" class="storage-access-warning">{{storageAccessWarning}}</p></sc-if>
@@ -4210,6 +4217,7 @@
     <button class="ib" aria-label="Settings" onClick="{{goSettings}}" style="background: var(--s2)"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.gear}}"></path></svg></button>
   </div>
 </div>
+</sc-if>
 </sc-if>
 
 

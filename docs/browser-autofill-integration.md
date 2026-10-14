@@ -64,3 +64,12 @@ A future system-credential-provider integration requires separate browser/image
 qualification, including provider failure, passkey creation/use, origin binding
 and private-profile behavior. Alpha is not a passkey provider. This source policy
 and handoff do not establish live passkey or password acceptance.
+Passkeys are outside the MVP (issue #402) and are not an acceptance item here; see [prototype browser integration](prototype-browser-integration.md).
+
+## Login surface inventory
+
+`config/login-surfaces.json` (issue #404) lists every website, other-app and Alpha-owned credential surface with its binding rule, provider status and remaining gates. `test/login-surfaces.test.mjs` fails when a password field or credential autocomplete token appears in renderer or native sources without an inventory entry, and keeps Alpha-owned renderer forms ineligible until they are native, origin-bound surfaces.
+
+The native HTTP-auth prompt currently excludes provider fill/save. WebView reports only the host, not an authenticated request URL, port or frame, and resource redirects are not fully observable. Manual entry remains available. Navigation history must not be used as proof of origin. A reviewed engine-origin binding is required before enabling fill/save. The JVM fixture checks refusal even for apparently matching navigation history, alongside the shared password policy's independent field rules; it does not run a provider or Android's structure code.
+
+Run both distribution variants through the root build/test owner. Retain terminal results separately from this source description. Additional acceptance remains: official Proton login/unlock/warning/save/re-fill; cross-origin iframe matching; provider authentication pause/resume; background/recreation; tab-switch stale dataset rejection; TLS-certificate failure; physical Pixel compatibility; and explicit AOSP default-provider provisioning if selected. No real provider account or APK installation is part of this change.
