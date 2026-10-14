@@ -60,6 +60,7 @@ import { installHomeLauncher } from './prototype/home-launcher';
 import { setLocalePreferences } from './prototype/locale-time';
 import { installTextScale } from './runtime/text-scale';
 import { installDockClearance } from './runtime/dock-clearance';
+import { canvasGeometry, isEditing, keyboardFreeHeight } from './runtime/canvas-geometry';
 import { installToastLayer } from './runtime/toast-layer';
 import './prototype/prototype.css';
 import './prototype/phone.css';
@@ -180,6 +181,7 @@ function Phone() {
       if (Number.isFinite(info.bottomInset)) document.documentElement.style.setProperty('--native-bottom-inset', `${info.bottomInset}px`);
       size();
     }).catch(() => {});
+    const freeHeight = keyboardFreeHeight();
     const size = () => {
       // Android WebView can expand innerWidth/visualViewport to overflowing content
       // during rotation. Feeding that back into the phone canvas leaves portrait
@@ -197,18 +199,18 @@ function Phone() {
       const tools = devSurfacesEnabled && !isAndroid && !mock ? document.querySelector<HTMLElement>('.alpha-dev-tools') : null;
       const toolsInset = tools ? Math.max(56, Math.ceil(tools.getBoundingClientRect().height + (parseFloat(getComputedStyle(tools).bottom) || 0) + 2)) : 0;
       const available = Math.max(1, height - banner - (desktop ? 48 : 0) - toolsInset);
-      // Standalone Android uses the available width without magnifying the
-      // portrait canvas in landscape. Keep the launcher presentation unchanged.
-      const landscape = !desktop && window.screen.width > window.screen.height && width > layoutHeight;
-      const fluidNative = isAndroid && !launcherPresentation;
-      const scale = desktop ? Math.min(1, available / 915) : landscape ? Math.max(0.1, Math.min(width, window.screen.height) / 412) : fluidNative ? Math.min(1, width / 412) : width / 412;
-      document.documentElement.style.setProperty('--phone-scale', String(scale));
-      document.documentElement.style.setProperty('--phone-width', landscape ? `calc(100vw / ${scale})` : `${fluidNative ? width / scale : 412}px`);
-      document.documentElement.style.setProperty('--phone-height', `${desktop ? 915 : available / scale}px`);
-      document.documentElement.style.setProperty('--phone-left', `${desktop ? (width - 412 * scale) / 2 : 0}px`);
-      document.documentElement.style.setProperty('--phone-top', `${banner + (desktop ? 24 : 0)}px`);
+      // Measured width and keyboard-free height decide the arrangement (runtime/canvas-geometry.ts).
+      // Standalone touch windows keep their own density; the launcher keeps its fitted canvas.
+      const input = { width, layoutHeight, available, desktop, fluid: isAndroid || coarse, launcher: launcherPresentation, screenShort: Math.min(window.screen.width, window.screen.height), editing: isEditing(document.activeElement) };
+      const geometry = canvasGeometry(input, freeHeight(width, layoutHeight, input.editing), banner);
+      document.documentElement.style.setProperty('--phone-scale', String(geometry.scale));
+      document.documentElement.style.setProperty('--phone-width', geometry.width);
+      document.documentElement.style.setProperty('--phone-height', `${geometry.height}px`);
+      document.documentElement.style.setProperty('--phone-left', `${geometry.left}px`);
+      document.documentElement.style.setProperty('--phone-top', `${geometry.top}px`);
       document.documentElement.classList.toggle('browser-desktop', desktop);
-      document.documentElement.classList.toggle('alpha-landscape', landscape);
+      document.documentElement.classList.toggle('alpha-landscape', geometry.landscape);
+      document.documentElement.classList.toggle('alpha-wide', geometry.wide);
 
     };
     const bannerObserver=new ResizeObserver(size);const bannerElement=testMocksEnabled&&mock?document.querySelector('.mock-mode-banner'):null;if(bannerElement)bannerObserver.observe(bannerElement);
