@@ -39,20 +39,20 @@ test('Reset Alpha data records the reset, revokes Cloud keys best effort within 
  assert.match(authenticated,/main\.postDelayed\(reset,REVOCATION_DEADLINE_MS\)/,'a deadline resets even when revocation hangs');
  assert.match(authenticated,/finally\{main\.post\(reset\);\}/,'revocation always ends in the reset');
  assert.match(authenticated,/dispatched\.compareAndSet\(false,true\)/,'the reset is dispatched once');
- assert.match(authenticated,/AlphaDataReset\.revokeCloudKeys\(context,REVOCATION_DEADLINE_MS-500\)/,'the live path uses the shared bounded revocation');
+ assert.match(authenticated,/ResetCloudRevocation\.revoke\(context,REVOCATION_DEADLINE_MS-500\)/,'the live path uses the shared bounded revocation');
  const notice=authenticated.indexOf('showRevocationNotice();');
  assert.ok(notice>record&&notice<revoke,'a blocking notice covers the revocation window');
  assert.match(source,/setCancelable\(false\)/);
  assert.match(source,/REVOCATION_DEADLINE_MS=8000;/);
- const reset=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaDataReset.java'),'utf8');
- const shared=reset.slice(reset.indexOf('static void revokeCloudKeys('),reset.indexOf('static void dispatchAndExit('));
+ const reset=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/ResetCloudRevocation.java'),'utf8');
+ const shared=reset.slice(reset.indexOf('static void revoke('));
  assert.match(shared,/CloudKeyRevocation\.revoke\(environment,/,'revocation goes through the exact self-revocation policy');
  assert.match(shared,/revocation\.join\(Math\.max\(1,deadlineMs\)\)/,'revocation is bounded by the deadline');
  assert.match(shared,/AlphaCredentialStore\.readSlotBeforeAttach\(context,"cloud:"\+environment\)/);
  // The pending-reset launch path (a reset interrupted after it was recorded) revokes before it wipes.
  const application=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaApplication.java'),'utf8');
- assert.match(application,/AlphaDataReset\.pending\(base\)\)\{AlphaDataReset\.revokeCloudKeys\(base,AlphaDataReset\.PENDING_REVOCATION_DEADLINE_MS\);AlphaDataReset\.dispatchAndExit\(this\);\}/);
- assert.match(reset,/PENDING_REVOCATION_DEADLINE_MS=4000;/);
+ assert.match(application,/AlphaDataReset\.pending\(base\)\)\{ResetCloudRevocation\.revoke\(base,ResetCloudRevocation\.PENDING_DEADLINE_MS\);AlphaDataReset\.dispatchAndExit\(this\);\}/);
+ assert.match(reset,/PENDING_DEADLINE_MS=4000;/);
 });
 test('production refuses a direct (bring-your-own) provider key before reading it',()=>{
  const source=readFileSync(resolve(import.meta.dirname,'../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java'),'utf8');

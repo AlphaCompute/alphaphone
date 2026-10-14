@@ -19,25 +19,6 @@ final class AlphaDataReset {
    try{android.system.Os.fsync(directory);}finally{android.system.Os.close(directory);}
   }finally{if(out!=null)file.failWrite(out);}
  }
- /** A pending reset found at launch revokes for at most this long before wiping (it blocks startup). */
- static final long PENDING_REVOCATION_DEADLINE_MS=4000;
- /**
-  * Best effort and bounded: asks Eliza Cloud to revoke this phone's saved sign-in key(s) through
-  * the exact self-revocation policy (CloudKeyRevocation), one attempt per environment. Blocks the
-  * calling thread for at most deadlineMs and never throws; network I/O runs on its own thread.
-  * Reads slots with the given context's files only, so it also runs before the Application is
-  * attached (the pending-reset launch path).
-  */
- static void revokeCloudKeys(Context context,long deadlineMs){
-  Thread revocation=new Thread(()->{
-   for(String environment:CloudKeyRevocation.environments(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)){
-    try{String saved=AlphaCredentialStore.readSlotBeforeAttach(context,"cloud:"+environment);if(saved!=null)CloudKeyRevocation.revoke(environment,new org.json.JSONObject(saved).optString("token",null),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);}
-    catch(Exception ignored){/* Unreadable or absent: nothing to revoke. */}
-   }
-  },"alpha-reset-cloud-revocation");
-  revocation.setDaemon(true);revocation.start();
-  try{revocation.join(Math.max(1,deadlineMs));}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}
- }
  /** Never resumes the old runtime, including when Android refuses or the Binder call fails. */
  static void dispatchAndExit(Context context){
   try{ActivityManager manager=context.getSystemService(ActivityManager.class);if(manager!=null)manager.clearApplicationUserData();}

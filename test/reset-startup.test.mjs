@@ -25,6 +25,7 @@ class NativeSourceHost {static int started;static void configure(Runnable r){sta
 class NativeDeletionCoordinator {static NativeDeletionCoordinator get(android.content.Context c){return new NativeDeletionCoordinator();}void start(){NativeSourceHost.started++;}}
 class AlphaCrashLog {static void install(android.content.Context c){NativeSourceHost.started++;}}
 class AlphaNoteAudioPlugin {static void scheduleTrashBackstop(android.content.Context c){NativeSourceHost.started++;}}
+class ResetCloudRevocation {static final long PENDING_DEADLINE_MS=4000;static int revocations;static void revoke(android.content.Context c,long ms){if(!AlphaDataReset.pending(c))throw new AssertionError("revocation only for a recorded reset");revocations++;}}
 `);
   put('ai/elizaresearch/alphaphone/ResetStartupTest.java',`package ai.elizaresearch.alphaphone;
 public class ResetStartupTest {
@@ -35,6 +36,8 @@ public class ResetStartupTest {
   AlphaDataReset.record(app);check(AlphaDataReset.pending(new AlphaApplication()));
   for(int mode=0;mode<3;mode++){android.app.ActivityManager.mode=mode;try{AlphaApplication restarted=new AlphaApplication();restarted.attachBaseContext(app);throw new AssertionError("Providers would initialize before onCreate");}catch(android.os.Process.Exit stopped){}check(NativeSourceHost.started==0);check(AlphaDataReset.pending(app));}
   check(android.app.ActivityManager.calls==3);
+  // Every interrupted-reset launch asks Cloud to revoke the saved sign-in before dispatching.
+  check(ResetCloudRevocation.revocations==3);
   // Simulated system completion: only this fixture directory is erased. Fresh launch initializes.
   for(java.io.File f:android.content.Context.data.listFiles())check(f.delete());
   check(!AlphaDataReset.pending(app));app.attachBaseContext(app);app.onCreate();check(NativeSourceHost.started==7);

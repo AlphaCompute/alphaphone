@@ -58,7 +58,7 @@ public final class AlphaResetPlugin extends Plugin {
   final android.os.Handler main=new android.os.Handler(android.os.Looper.getMainLooper());
   main.postDelayed(reset,REVOCATION_DEADLINE_MS);
   Thread revocation=new Thread(()->{
-   try{AlphaDataReset.revokeCloudKeys(context,REVOCATION_DEADLINE_MS-500);}
+   try{ResetCloudRevocation.revoke(context,REVOCATION_DEADLINE_MS-500);}
    finally{main.post(reset);}
   },"alpha-reset-cloud-revocation-owner");
   revocation.setDaemon(true);revocation.start();

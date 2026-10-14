@@ -6,7 +6,7 @@ public final class AlphaApplication extends android.app.Application {
   super.attachBaseContext(base);
   // Runs before ContentProvider/AndroidX Startup initialization, including WorkManager. A reset
   // interrupted after it was recorded still asks Eliza Cloud to revoke the saved sign-in first.
-  if(!android.os.Process.isIsolated()&&AlphaDataReset.pending(base)){AlphaDataReset.revokeCloudKeys(base,AlphaDataReset.PENDING_REVOCATION_DEADLINE_MS);AlphaDataReset.dispatchAndExit(this);}
+  if(!android.os.Process.isIsolated()&&AlphaDataReset.pending(base)){ResetCloudRevocation.revoke(base,ResetCloudRevocation.PENDING_DEADLINE_MS);AlphaDataReset.dispatchAndExit(this);}
  }
  @Override public void onCreate(){
   super.onCreate();NativeDigestHost host=new NativeDigestHost(this);NativeSourceHost.configure(host::read);NativeOwnerReminderHost owner=new NativeOwnerReminderHost(this);NativeSourceHost.configureOwnerReminderContext(owner::read);
