@@ -43,8 +43,10 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "note": "Historical JNI reference at c7a9a0d7e7ea399ead4016727737d2d975f2d5ba; rebuild and inspect the JNI bridge for the current pin before qualification.",
-            "sourcePin": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba"
+            "note": "Unstripped Debug JNI bridge built by Gradle :local-speech:assembleDebug at the current pin; exports only JNI_OnLoad with 16 KiB LOAD alignment. Build inspection only; no Android execution.",
+            "sourcePin": "87d9bd96477f37a01c27ac76f6c5b3a3bff3faad",
+            "bytes": 364632,
+            "sha256": "7d2a65c8c2e2db95713a281d4cbfe36ca8ba5e69f1692961bd2e26d364d70379"
           }
         },
         "app": {
@@ -86,8 +88,10 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "note": "Historical JNI reference at c7a9a0d7e7ea399ead4016727737d2d975f2d5ba; rebuild and inspect the JNI bridge for the current pin before qualification.",
-            "sourcePin": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba"
+            "note": "Unstripped Debug JNI bridge built by Gradle :local-speech:assembleDebug at the current pin; exports only JNI_OnLoad with 16 KiB LOAD alignment. Build inspection only; no Android execution.",
+            "sourcePin": "87d9bd96477f37a01c27ac76f6c5b3a3bff3faad",
+            "bytes": 348960,
+            "sha256": "6bff5009b8619cd6d8a3149a12cc05fb6a99ff4d793a1702bc36d1ee16282a57"
           }
         },
         "app": {
@@ -322,7 +326,7 @@
   ],
   "evidence": {
     "classes": "B (APK-input libraries built and symbol-checked on a development machine); no E/I/R/D",
-    "build": "Both Android ABIs built on 2026-10-14 from Eliza 87d9bd96477f and llama.cpp 56e70ff2a0ca using the shared paradee-voice builder and NDK 28.2.13676358, with MTMD_VIDEO=OFF. Binary inspection reports voice ABI 18, Paradee and ASR support enabled, 85 eliza_inference exports and 16 KiB LOAD alignment. These are development build bytes, not a claim of path-independent reproducibility. JNI reference builds below remain historical until rebuilt. No Android execution or device acceptance is claimed.",
+    "build": "Both Android ABIs built on 2026-10-14 from Eliza 87d9bd96477f and llama.cpp 56e70ff2a0ca using the shared paradee-voice builder and NDK 28.2.13676358, with MTMD_VIDEO=OFF. Binary inspection reports voice ABI 18, Paradee and ASR support enabled, 85 eliza_inference exports and 16 KiB LOAD alignment. These are development build bytes, not a claim of path-independent reproducibility. The Paradee JNI bridge was rebuilt by Gradle for both ABIs and exports only JNI_OnLoad with 16 KiB alignment; the embedding JNI reference remains historical. No Android execution or device acceptance is claimed.",
     "hostGates": "Not rerun at this pin. Earlier host evidence for the same Phonon-2 GGUF (elizaOS/eliza#36212, macOS arm64): batch and streaming transcripts exact under -Xcheck:jni, Paradee to Phonon-2 round trip exact. Host evidence only; not Android execution.",
     "emulatorDeviceExecuted": false,
     "deviceExecuted": false,
