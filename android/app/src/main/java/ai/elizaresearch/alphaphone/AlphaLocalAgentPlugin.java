@@ -81,13 +81,23 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(refusal==null)invalidateOwnCalls();
   return refusal;
  }
- /** Stored provider admission generation; null when absent, legacy or no longer valid. Never writes. */
+ /** Stored provider admission generation; NO_PROVIDER_GENERATION when no provider is stored (the agent runs unbound and surfaces attach to it as to a bound one); null when legacy or no longer valid. Never writes. */
  private static String storedProviderGeneration(AlphaCredentialStore store){
   try{
    String saved=store.readCredentialSlot("local-agent-provider:v1");if(saved==null)return LocalAgentProviderAdmission.NO_PROVIDER_GENERATION;
    String cloud="elizacloud".equals(new JSONObject(saved).optString("provider"))?store.readCredentialSlot("cloud:production"):null;
    return LocalAgentProviderAdmission.currentGeneration(saved,cloud);
   }catch(Exception unavailable){return null;}
+ }
+ /**
+  * A system broadcast starts the resident only while no surface is stopping it or changing its
+  * provider. The check and ElizaAgentService.start share lifecycleLock, as start() does, so a stop
+  * cannot slip between them. The epoch is left alone: a running resident is not restarted and its
+  * attached surfaces keep their in-flight calls.
+  */
+ static ResidentScheduleRearm.Decision startResidentIfAdmissible(Context context,String action,boolean userUnlocked,boolean runtimePackaged,boolean ownerEnabled){
+  return ResidentScheduleRearm.admitAndStart(lifecycleLock,action,userUnlocked,runtimePackaged,ownerEnabled,
+   ()->accepting&&!stopping&&credentialMutationEpoch<0&&credentialShutdownRequest==-1,()->ElizaAgentService.start(context));
  }
  private void rejectPending(PluginCall call,String message){synchronized(lifecycleLock){if(pending.remove(call))call.reject(message);}}
 
@@ -147,10 +157,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  private void rejectSuperseded(PluginCall call){synchronized(lifecycleLock){if(pending.remove(call))call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");}}
 
- private boolean runtimePackaged() {
+ private boolean runtimePackaged() { return runtimePackaged(getContext()); }
+ /** True when this build carries the on-device runtime bundle and its launcher. */
+ static boolean runtimePackaged(Context context) {
   try {
-   try(var ignored=getContext().getAssets().open("agent/agent-bundle.js")){}
-   return new File(getContext().getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile();
+   try(var ignored=context.getAssets().open("agent/agent-bundle.js")){}
+   return new File(context.getApplicationInfo().nativeLibraryDir,"libeliza_bun.so").isFile();
   } catch(Exception unavailable) { return false; }
  }
  /** Hosted inference stays on Qwen through Cerebras; the model is not selectable. */
@@ -243,7 +255,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static boolean directProviderAllowed(boolean testMocks){return testMocks;}
  @PluginMethod public void configureProvider(PluginCall call) {
   if(!directProviderAllowed(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)){call.reject("Alpha Phone uses your Eliza Cloud plan for AI.");return;}
-  if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
+  if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version.");return;}
   String key=call.getString("apiKey",""),model=call.getString("model",CEREBRAS_PROVIDER_MODEL);
   if(!validProviderToken(key,1024)||!model.matches("[A-Za-z0-9][A-Za-z0-9._/-]{0,127}")){call.reject("Enter a valid Cerebras key.");return;}
   if(!CEREBRAS_PROVIDER_MODEL.equals(model)){call.reject("Alpha Phone uses "+CEREBRAS_PROVIDER_MODEL+" on Cerebras.");return;}
@@ -300,6 +312,22 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static String cloudProviderToken(String saved,String credentialId,long now) throws Exception {return LocalAgentProviderAdmission.cloudProviderToken(saved,credentialId,now);}
  static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {LocalAgentProviderAdmission.applyProviderEnvironment(provider,cloudSaved,env,now);}
  static final String PROVIDER_MODEL_PATTERN=LocalAgentProviderAdmission.PROVIDER_MODEL_PATTERN;
+ /**
+  * No admitted plan, Cloud unreachable without a recent plan, or signed out: the agent runs with no
+  * hosted inference. Every provider credential and selector is removed, so no request can reach a
+  * model provider; the pinned upstream runtime answers chat turns as provider-less (no_provider).
+  */
+ static void applyUnboundEnvironment(java.util.Map<String,String> env){
+  for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
+   "CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER",
+   "ELIZA_LOCAL_EMBEDDING_MODEL_PATH","ELIZA_LOCAL_EMBEDDING_DIMENSIONS"})env.remove(name);
+  env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
+  env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","false");
+  // No embedding download: the packaged on-device embedding model is enabled when present (configureLocalEmbeddings).
+  env.put("ELIZA_DISABLE_LOCAL_EMBEDDINGS","true");
+  env.put("ELIZA_LOCAL_EMBEDDING_ENABLED","0");
+  env.put("ELIZA_HOST_CONTEXT_REVISION","boot:"+java.util.UUID.randomUUID().toString());
+ }
  static JSObject providerIdentity(String saved) {
   try{return new JSObject(LocalAgentProviderAdmission.providerIdentity(saved).toString());}
   catch(org.json.JSONException impossible){throw new IllegalStateException(impossible);}
@@ -365,6 +393,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    try{applyProviderEnvironment(provider,cloudSaved,applied,System.currentTimeMillis());env.clear();env.putAll(applied);}
    catch(Exception unusable){provider=null;saved=null;cloudSaved=null;}
   }
+  // No usable provider: every provider credential and selector is removed (applyUnboundEnvironment).
+  if(provider==null)applyUnboundEnvironment(env);
   if(provider==null||!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
@@ -391,9 +421,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   String requestId=call.getString("requestId");
   if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
-   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.");return;}
-   // Decision P-43: no provider slot is not a reason to refuse the start; provider admission and
-   // generation checks apply only to the attach/rebind path below.
+   if(!runtimePackaged()){call.reject("On-device agent is unavailable in this version.");return;}
+   // No provider is required: without an admitted Eliza Cloud plan the agent runs unbound.
    final AlphaCredentialStore providerStore=new AlphaCredentialStore(getContext());
    // Hosted inference is distinct from an on-device language-model payload.
    getContext().getSharedPreferences("CapacitorStorage",Context.MODE_PRIVATE).edit().putString("eliza:mobile-runtime-mode","cloud-hybrid").apply();

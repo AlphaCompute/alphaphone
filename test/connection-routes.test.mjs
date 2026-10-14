@@ -22,6 +22,9 @@ test('the transport applies the origin policy before any connection and never to
   assert.ok(request.indexOf(later)>guard,`${later} comes after the origin guard`);
  const service=request.indexOf('if(!ConnectionRoutes.managedService(');
  assert.ok(service>guard&&service<request.indexOf('openConnection()')&&service<request.indexOf('call.getObject("headers"'),'managed path admission precedes transport/header handling');
+ // #406: the header allowlist is the pure policy run above, not an inline list that could re-admit device declarations.
+ assert.match(request,/if \(!ConnectionRoutes\.admittedHeader\(normalized, BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS\)\) throw new IllegalArgumentException\(\);/);
+ assert.doesNotMatch(request,/Set\.of\("accept"/,'no inline header allowlist');
  assert.doesNotMatch(request,/storage\(|CredentialSlot|AlphaCredentialStore|secure(Read|Write|Remove)/,'request() has no credential-slot access');
 });
 

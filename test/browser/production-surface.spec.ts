@@ -188,7 +188,7 @@ test('deferred apps are absent and root views show honest unconnected states', a
   for (const deferred of ['Phone', 'Messages', 'Contacts', 'Wallet']) await expect(page.getByRole('button', { name: deferred, exact: true })).toHaveCount(0);
   const states: Record<string, RegExp> = {
     Inbox: /Connect Eliza Cloud/, Workflows: /Connect your remote agent in Settings\. Reminders on this phone stay available\./, Notes: /No notes yet/,
-    Photos: /No photos/, Maps: /Map tiles are not connected/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
+    Photos: /No photos/, Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
   };
   for (const [view, expected] of Object.entries(states)) {
     await page.goto('/?tools=1');
@@ -328,7 +328,7 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
     {name:'DeviceApps',methods:methods(['buildInfo'])},
-    {name:'Agent',methods:methods(['getStatus','start','stop','configureCloudProvider','request'])},
+    {name:'Agent',methods:methods(['getStatus','start','stop','configureCloudProvider','clearProvider','providerStatus','request'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
     {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
@@ -339,6 +339,8 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
     if(plugin==='AlphaVoiceCloud')return{microphone:'granted'};
     if(plugin==='Agent'){
      if(method==='getStatus')return{packaged:mode!=='unpackaged',state:'stopped',serviceActive:false,socketListening:false};
+     if(method==='clearProvider')return{configured:false};
+     if(method==='providerStatus')return{provider:'elizacloud',configured:false};
      if(method==='request'){
       const body=input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:
        input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:
@@ -365,12 +367,20 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   const agentCalls=async()=>((await page.evaluate(()=>(window as any).residentCalls)) as any[]).filter(c=>c.plugin==='Agent').map(c=>c.method);
   if(mode!=='unpackaged')await expect.poll(agentCalls).toContain('start');
   for(const retired of ['without AI','Continue offline','Connect an agent'])expect(await page.locator('body').innerText()).not.toContain(retired);
-  const dialog=page.getByRole('dialog',{name:'Your agent'});
   // Every Alpha Phone needs an Eliza Cloud account with a plan: signed out, the sign-in dialog opens
-  // by itself and cannot be dismissed; without an admissible plan the plan notice opens beside the
-  // running agent. Otherwise nothing opens by itself.
+  // by itself and cannot be dismissed. Without an admissible plan a non-blocking notice beside the
+  // running agent offers Redeem code and Choose a plan; its Redeem code opens the plan panel. A
+  // sign-in that changed underneath admission is reported in the dialog. Otherwise nothing opens.
   const signedOut=mode==='signed-out'||mode==='legacy-offline'||mode==='unpackaged',needsPlan=mode==='empty'||mode==='unavailable';
-  if(!signedOut&&!needsPlan){
+  const dialog=page.getByRole('dialog',{name:needsPlan?'Eliza Cloud account & plan':'Your agent'});
+  if(needsPlan){
+   const notice=page.getByRole('region',{name:'Eliza Cloud plan notice'});
+   await expect(notice).toContainText('Your agent is running on this phone. AI replies need an Eliza Cloud plan');
+   await expect(page.getByRole('dialog')).toHaveCount(0);
+   await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
+   await notice.getByRole('button',{name:'Redeem code',exact:true}).click();
+  }
+  if(!signedOut&&!needsPlan&&mode!=='replaced'){
    await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
    await expect(page.getByRole('dialog')).toHaveCount(0);
    await page.getByRole('button',{name:'Settings',exact:true}).click();
@@ -420,7 +430,7 @@ test('resident always present (P-43): a kept local-apps choice and a saved sign-
   const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
   w.Capacitor={PluginHeaders:[
    {name:'DeviceApps',methods:methods(['buildInfo'])},
-   {name:'Agent',methods:methods(['getStatus','start','stop','request'])},
+   {name:'Agent',methods:methods(['getStatus','start','stop','clearProvider','providerStatus','request'])},
    {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureRemove','secureCompareExchange','request','cancel','openExternal'])},
    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','addListener','removeListener'])},
    {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
@@ -430,6 +440,8 @@ test('resident always present (P-43): a kept local-apps choice and a saved sign-
    if(plugin==='DeviceApps')return{launcher:false,version:'resident-fixture'};
    if(plugin==='AlphaNotifications')return{permissionGranted:true,appEnabled:true};
    if(plugin==='Agent'&&method==='getStatus')return{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+   if(plugin==='Agent'&&method==='clearProvider')return{configured:false};
+   if(plugin==='Agent'&&method==='providerStatus')return{provider:'elizacloud',configured:false};
    if(plugin==='Agent'&&method==='request'){
     const body=input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{};
     return {status:200,body:JSON.stringify(body)};

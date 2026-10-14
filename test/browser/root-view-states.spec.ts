@@ -14,7 +14,7 @@ const EMPTY: Record<View, RegExp> = {
   Browser: /No open pages|New tab/,
   Camera: /Camera unavailable or permission denied/,
   Photos: /^No photos$/,
-  Maps: /Map tiles are not connected/,
+  Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/,
   Notes: /No notes yet/,
   Files: /No recent files/,
   Workflows: /Connect your remote agent in Settings\. Reminders on this phone stay available/,

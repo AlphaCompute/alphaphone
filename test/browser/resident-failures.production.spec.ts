@@ -33,7 +33,8 @@ const KINDS = {
   insufficient_credits: "Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. Local apps and on-device speech keep working.",
   provider_issue: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
   generation_timeout: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
-  no_provider: 'AI is not set up for your agent. Sign in with Eliza Cloud to set up hosted inference; nothing was retried.',
+  // Bound to an admitted plan, yet the agent ran without a provider: a recheck is offered.
+  no_provider: 'Your agent answered without its Eliza Cloud AI connection. Check Eliza Cloud again; nothing was retried.',
 } as const;
 
 for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', 'error'] as const) {
@@ -56,8 +57,8 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
       await manage.click();
       await expect.poll(() => stub(page, s => s.opened)).toEqual(['https://cloud.eliza.app/cloud/billing']);
     } else {
-      if (kind === 'no_provider') await expect(page.getByRole('button', { name: /^Set up AI/ })).toHaveCount(1);
-      else await expect(page.getByRole('button', { name: /^(Manage plan|Set up AI)/ })).toHaveCount(0);
+      if (kind === 'no_provider') await expect(page.getByRole('button', { name: /^Check Eliza Cloud again/ })).toHaveCount(1);
+      else await expect(page.getByRole('button', { name: /^(Manage plan|Check Eliza Cloud again|Set up AI)/ })).toHaveCount(0);
       // Agent connection no longer says the agent is ready.
       await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
       await button(page, 'Settings').click();
@@ -74,6 +75,35 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
     expect(foreign).toEqual([]);
   });
 }
+
+// The on-device agent runs without Eliza Cloud inference when the account has no plan (P-43). A chat
+// turn gets the agent's honest answer in the conversation with the plan actions, never "Set up AI".
+for (const frame of ['done', 'error'] as const) test(`a provider-less turn without a plan (${frame} frame) answers honestly and offers Redeem code or choose a plan`, async ({ page }) => {
+  test.setTimeout(120_000);
+  const foreign = await fenceNetwork(page);
+  await flagOffAndroid(page);
+  await residentStub(page, { accounts: [{ ...owner, plan: 'none' }] });
+  await residentHome(page);
+  // No plan is a notice beside the running agent, not a gate.
+  await expect(page.getByRole('region', { name: 'Eliza Cloud plan notice' })).toContainText('AI replies need an Eliza Cloud plan');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await harness(page, f => f.calls.filter((call: string) => call === 'Agent.start').length)).toBeGreaterThan(0);
+  expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('configureCloudProvider')))).toEqual([]);
+  await setStub(page, { stream: { failure: 'no_provider', frame } });
+  await send(page, 'Asked without a plan');
+  await expect(conversation(page).getByText(/^I'm running on this phone, but AI replies need an Eliza Cloud plan\./)).toHaveCount(1);
+  await expect(page.getByText(/Set up AI/)).toHaveCount(0);
+  await expect(page.getByText(/PRIVATE_PROVIDER_ERROR_CANARY/)).toHaveCount(0);
+  const plan = page.getByRole('button', { name: /^Redeem code or choose a plan/ });
+  await expect(plan).toHaveCount(1);
+  await plan.click();
+  await expect(page.getByRole('dialog', { name: 'Eliza Cloud account & plan' })).toBeVisible();
+  // Nothing was purchased or opened, and the message was sent once.
+  expect(await stub(page, s => s.opened)).toEqual([]);
+  expect(await harness(page, f => f.streams)).toBe(1);
+  expect(await harness(page, f => f.unexpected)).toEqual([]);
+  expect(foreign).toEqual([]);
+});
 
 test('without a network the resident says AI needs a connection, sends nothing, and clears the notice when back online', async ({ page, context }) => {
   test.setTimeout(120_000);

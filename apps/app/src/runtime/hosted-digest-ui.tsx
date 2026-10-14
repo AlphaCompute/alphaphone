@@ -1,3 +1,4 @@
+import {hostedTapResolver,reviewHostedNoticeQuestion} from './hosted-notice-question';
 import {iconStyle} from '../icon-style';
 import {registerPlugin} from '../platform-plugins';
 import {openDomainRecovery} from '../browser/domain-recovery';
@@ -5,7 +6,7 @@ import {browserDevProfile} from '../browser/dev-profile';
 import {browserScreenLocked} from '../browser/screen-locked';
 import { holdPhoneInert } from './modal-inert';
 import { browserHostedResults } from '../browser/hosted-results';
-import { devSurfacesEnabled } from '../build-flags';
+import { devSurfacesEnabled, testMocksEnabled } from '../build-flags';
 import { browserLocalAgentEnabled } from './local-agent';
 import { NativeResultInbox, configureHostedBackground } from './hosted-background';
 import { createDigestInbox, type ResultInbox } from './digest-inbox';
@@ -25,6 +26,8 @@ import {
  digestStatusLabel,
  digestRan,
  digestZoneNote,
+ missedRunNowOffers,
+ type MissedRunNow,
  rememberRetainedDigests,
  DIGEST_SOURCE_MAX_HOURS,
 	type DigestCapabilities,
@@ -44,11 +47,17 @@ type Pending = {
  /** Renewal: after the new source saves, these loops move to it (same mutation IDs on retry). */
  rebind?:Array<{id:string;expectedVersionId:string;mutationId:string;spec:Record<string,unknown>}>;
  renews?:string;
+ /** Run now of this missed record (#394): hidden here once confirmed; the agent returns the same run on repeat. */
+ missedRunId?:string;
 };
 const nativeSources=registerPlugin<{nativeSourceConsent(input:Record<string,unknown>):Promise<Record<string,unknown>>;nativeSourceIdentity(input:{sessionId:string}):Promise<Record<string,unknown>>;scheduleSourceRenewal(input:{sourceId:string;expiresAt:number}):Promise<void>;clearSourceRenewal(input:{sourceId:string}):Promise<void>;pendingSourceRenewal():Promise<{sourceId?:string}>;addListener(event:'renewSource',listener:()=>void):Promise<{remove():Promise<void>}>}>('AlphaHostedResults');
 const nativeCalendars=registerPlugin<{requestWorkflowReadAccess():Promise<{status:string}>;workflowCalendars():Promise<{status:string;calendars:Array<{id:string;name:string;account:string;sourceRevision:string}>}>}>('AlphaCalendar');
 function canSyncResults(){return !document.hidden&&(isAndroid||(document.documentElement.dataset.devBackground!=='true'&&!browserScreenLocked()));}
-export function HostedDigestPanel() {
+export function HostedDigestPanel({composeQuestion,canComposeQuestion}:{composeQuestion?:(draft:string,sessionId:string)=>boolean;canComposeQuestion?:(sessionId:string)=>boolean}={}) {
+ const questionClose=useRef<undefined|(()=>void)>(undefined);
+ const questionBusy=useRef(false);
+ const resolveTap=useRef(hostedTapResolver());
+ useEffect(()=>()=>questionClose.current?.(),[]);
 	const panel = useRef<HTMLElement>(null);
 	const connection = useSyncExternalStore(
 		connectionController.subscribe,
@@ -69,6 +78,7 @@ export function HostedDigestPanel() {
 		[review, setReview] = useState<Pending | null>(null),
 		[pending, setPending] = useState<Pending | null>(null),
 		[available, setAvailable] = useState(false);
+	const [ranMissed, setRanMissed] = useState<ReadonlySet<string>>(new Set());
     useEffect(()=>{if(!isAndroid)return;let stopped=false;const listener=delegationNative.addListener('cloudDelegationCallback',()=>{if(!stopped)setOpen(true);}).catch(()=>null);void delegationNative.readDelegationCallback().then(r=>{if(r.callback&&!stopped)setOpen(true);}).catch(()=>{});return()=>{stopped=true;void listener.then(l=>l?.remove());};},[]);
 	const [text, setText] = useState(""),
 		[label, setLabel] = useState("My reviewed tasks"),
@@ -107,17 +117,28 @@ export function HostedDigestPanel() {
 		};
 	}, []);
     useEffect(()=>{if(isAndroid)return;let live=true;const update=()=>{void hostedResultNative.status().then(value=>{if(live){setNoticeEnabled(value.enabled);setBackgroundEnabled(value.backgroundEnabled===true);}}).catch(()=>{});};update();window.addEventListener('alpha:hosted-notices-changed',update);return()=>{live=false;window.removeEventListener('alpha:hosted-notices-changed',update);};},[]);
-    const checkTap = async (requestSignal?:AbortSignal) => {
-        if(!canSyncResults())return;
+    const checkTap = (requestSignal?:AbortSignal) => resolveTap.current(async () => {
+        if(!canSyncResults()||questionBusy.current||questionClose.current)return;
         const b=binding.current;
         try {
             const result=await resolveHostedResultTap(hostedResultNative,b?.notices ?? null,requestSignal ?? b?.controller.signal ?? new AbortController().signal);
             if(result.kind==='none'||!canSyncResults()||requestSignal?.aborted)return;
             if(b && binding.current!==b)return;
-            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage('Opened the saved result from this account and agent.');}
+            let unreviewable=false;
+            if(result.kind==='ready' && b&&result.question){
+                const current=()=>mounted.current&&binding.current===b&&b.notices.current()&&canSyncResults()&&!connectionController.getSnapshot().open;
+                // Failures after the dialog closes stay visible beside the saved result instead of in a closed panel.
+                const report=(value:string)=>{if(!mounted.current||binding.current!==b)return;setOpen(true);setFocusedRun(result.result.runId);setMessage(value);};
+                questionBusy.current=true;
+                questionClose.current=reviewHostedNoticeQuestion({signal:b.controller.signal,result,current,recheck:()=>resolveHostedResultTap(hostedResultNative,b.notices,b.controller.signal),canCompose:()=>canComposeQuestion?.(b.sessionId)??false,consume:()=>hostedResultNative.consumeResult({token:result.token}),discard:async()=>{if(!hostedResultNative.releaseResultQuestion)throw Error('Question release unavailable');await hostedResultNative.releaseResultQuestion({token:result.token});},compose:draft=>{if(!composeQuestion?.(draft,b.sessionId))throw Error('Conversation unavailable');setOpen(false);},report,unreviewable:()=>{unreviewable=true;},closed:()=>{questionBusy.current=false;questionClose.current=undefined;}});
+                if(!questionClose.current)questionBusy.current=false;
+                // An unreviewable Ask opens like an ordinary tap, which consumes it instead of re-reporting on every poll.
+                if(!unreviewable)return;
+            }
+            if(result.kind==='ready' && b){const history=await b.inbox.history();if(binding.current!==b||!canSyncResults())return;setOpen(true);setResults(history);setFocusedRun(result.result.runId);setTap({token:result.token,runId:result.result.runId,sessionId:b.sessionId});setMessage(unreviewable?'This result cannot be reviewed for a question here, so its saved history is open instead.':'Opened the saved result from this account and agent.');}
             else {setOpen(true);setMessage(result.kind==='other-account'?'Connect the matching account and agent to open this saved result. No account was switched.':'This result link needs a verified connection and retained history. No workflow was restarted.');}
         } catch { if(!b || binding.current===b)setMessage('Result link is waiting for a verified connection.'); }
-    };
+    });
     useEffect(()=>{const listener=hostedResultNative.addListener('pendingResult',()=>{void checkTap();}).catch(()=>null);void checkTap();return()=>{void listener.then(value=>value?.remove());};},[]);
     useEffect(()=>{
         if(!open||!tap||!canSyncResults()||binding.current?.sessionId!==tap.sessionId)return;
@@ -182,6 +203,7 @@ export function HostedDigestPanel() {
 	useEffect(() => {
 		const selected = connectionController.getWorkflowClient();
 		binding.current?.controller.abort();
+        questionClose.current?.();
 		binding.current = null;
 		setAvailable(false);setNativeReady(false);setBackgroundEnabled(false);setNoticeEnabled(false);setFeatures({nativeEvening:false,sourcePause:false,dossier:false});
 		setResults([]);rememberRetainedDigests(null);setFocusedRun(null);setTap(null);setRenewing(null);
@@ -214,7 +236,7 @@ export function HostedDigestPanel() {
             const notices:HostedResultBinding={scope:slot.slice('hosted-digests:v1:'.length),origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,current:()=>!disposed&&binding.current?.sessionId===session.sessionId&&connectionController.getSnapshot().session?.sessionId===session.sessionId,revalidate:signal=>client.available(signal),history:()=>inbox.history()};
             let ready=false;
             if(isAndroid){
-                const cloud=connection.kind==='cloud'?await secureConnectionStore.read<Record<string,unknown>>(`cloud-runtime:${session.sessionId}`):null;
+                const cloud=testMocksEnabled&&connection.kind==='cloud'?await secureConnectionStore.read<Record<string,unknown>>(`cloud-runtime:${session.sessionId}`):null;
                 controller.signal.throwIfAborted();
                 if(connectionController.getSnapshot().session?.sessionId!==session.sessionId)return;
                 ready=await configureHostedBackground({...cloud,mode:connection.kind,origin:session.origin,ownerId:session.ownerId,agentId:session.agentId,sessionId:session.sessionId},controller.signal);
@@ -316,6 +338,13 @@ export function HostedDigestPanel() {
     }
     const renewalLoops=(id:string|null)=>id?loops.filter(l=>!l.removed&&l.spec.enabled&&l.spec.sourceId===id).map(l=>({id:l.id,expectedVersionId:l.versionId,mutationId:crypto.randomUUID(),spec:{version:1,template:l.spec.template,timeZone:l.spec.timeZone,localTime:l.spec.localTime,enabled:true}})):[];
     const renewalNote=(id:string|null)=>{const moved=renewalLoops(id);return moved.length?`\nRenewal: ${moved.map(l=>l.spec.template+' at '+l.spec.localTime).join(', ')} ${moved.length===1?'moves':'move'} to this source when you confirm.`:'';};
+    // A missed occurrence is never replayed; Run now is one new, separately reviewed run (#394).
+    const missedOffers=available?missedRunNowOffers(binding.current?.sessionId===connection.session?.sessionId?results:[],loops,sources):new Map<string,MissedRunNow>();
+    function reviewMissedRunNow(offer:MissedRunNow){
+     setMessage('');
+     setReview({path:'dossier',body:{sourceId:offer.sourceId,sourceRevision:offer.sourceRevision,mutationId:offer.mutationId,confirmed:true},missedRunId:offer.runId,summary:`Run the missed ${new Date(offer.scheduledAt).toLocaleString()} morning digest now?\nThis starts one new, separate run that reads ${offer.sourceLabel} as they are now and sends them to this agent’s configured text model. The missed occurrence stays recorded as missed and nothing from that time is replayed. Confirming this again later returns the same run, not another one. Your schedule and next digest do not change. Model usage is billed by this agent.`});
+     requestAnimationFrame(()=>document.getElementById('hosted-digest-review')?.focus());
+    }
 	async function submit(value: Pending) {
 		const b = binding.current;
 		if (!b || busy || mutationBusy.current) return;
@@ -349,6 +378,7 @@ export function HostedDigestPanel() {
             if(value.path==='sources/revoke'&&isAndroid&&typeof body.id==='string')void nativeSources.clearSourceRenewal({sourceId:body.id}).catch(()=>{});
             if(value.nativeConsent&&binding.current===b)setSourceId(value.nativeConsent.sourceId);
             if(value.renews&&binding.current===b)setRenewing(null);
+            if(value.missedRunId&&binding.current===b){const id=value.missedRunId;setRanMissed(prior=>new Set([...prior,id]));}
 			if (binding.current !== b) return;
 			await b.storage.remove(b.slot + ":pending");
 			setPending(null);
@@ -497,7 +527,7 @@ export function HostedDigestPanel() {
 						</button>
 					</section>
 				) : review ? (
-					<section>
+					<section id="hosted-digest-review" tabIndex={-1}>
 						<h2>Review</h2>
 						<p style={{ whiteSpace: "pre-wrap" }}>{review.summary}</p>
 						<button disabled={busy} onClick={() => void submit(review)}>
@@ -708,6 +738,7 @@ export function HostedDigestPanel() {
 								{digestSummaryText(result)}
 							</pre>
                             {digestRan(result)&&result.source.type!=='live_selected_native_read'&&<details><summary>Execution details</summary><pre style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',font:'inherit',width:'100%'}}>{JSON.stringify(result.output,null,2)}</pre></details>}
+                            {missedOffers.has(result.runId)&&!ranMissed.has(result.runId)&&<button disabled={busy||!!pending||!!review} aria-label="Review Run now for this missed digest" onClick={()=>reviewMissedRunNow(missedOffers.get(result.runId)!)}>Run now</button>}
 						</article>
 					))}
 			</section>

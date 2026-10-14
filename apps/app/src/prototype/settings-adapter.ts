@@ -17,6 +17,7 @@ import { browserLocalAgentEnabled } from '../runtime/local-agent';
 import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-conversation';
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
+import { retireGmailBackground } from '../runtime/gmail-background';
 import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
@@ -205,6 +206,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     if (!cloud || !account.connectionId || gmailBusy) return;
     if (!window.confirm(googleDisconnectConfirmation(account.label))) return;
     gmailBusy = account.connectionId; gmailNotice = ''; changed();
+    // Native background state is retired alongside the revoke; it never gates it.
+    const retirement = retireGmailBackground(account.connectionId);
     try {
       const result = await disconnectGmailAccount(cloud.client, account.connectionId, new AbortController().signal);
       if (owner !== instance || connectionController.getCloudClient()?.sessionId !== cloud.sessionId) return;
@@ -215,7 +218,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       window.dispatchEvent(new CustomEvent(GMAIL_ACCOUNTS_CHANGED, { detail: { source: 'settings' } }));
       window.dispatchEvent(new Event(GOOGLE_ACCOUNTS_CHANGED));
     } catch { if (owner === instance) { gmailNotice = disconnectMessage('unconfirmed', account.label); gmail = 'Authorization not verified'; } }
-    finally { gmailBusy = ''; if (owner === instance) changed(); }
+    finally { await retirement.settled(); gmailBusy = ''; if (owner === instance) changed(); }
   }
   /** Android shows its own role dialog; the result is read back from getStatus, never assumed. */
   async function requestHome(api: Bag) {
@@ -357,7 +360,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const connection = connectionController.getSnapshot();
     const account = connection.cloudAccount;
     const target = connection.session ? connection.name : 'Not connected';
-    const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):'Remote agent';
+    const runtimeLocation=!connection.session?'Not connected':connection.kind==='resident'?(Capacitor.isNativePlatform()?'On this device':'On this computer · development'):testMocksEnabled?'Remote agent':'Unsupported connection';
     const cloudLabel = account ? account.email||`Account ${account.userId.slice(0, 8)}` : 'Not signed in';
     const manage = (page: string) => () => void device.openSettings({ page }).then(opened => { const notice = broaderPageNotice(page, opened); if (notice) api.toast(notice); }, () => api.toast('This Android settings page is unavailable.'));
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
@@ -443,7 +446,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
           page.groups.push(group([{kNav:true,label:'Eliza Cloud account & plan',lbl:'Eliza Cloud account & plan',val:plan.keyExpiring?'Sign-in expiring':plan.plan,hasVal:true,chev:true,noAB:true,go:()=>api.set({page:'cloud-plan'})}]));
           if(state.page==='cloud-plan'){
-            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan)];
+            // The agent always runs on this phone; the plan decides only whether Eliza Cloud AI is connected.
+            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent','Running on this phone'),info('AI replies',plan.inference)];
             if(plan.endsAt)rows.push(info(plan.status==='active'||plan.status==='trialing'||plan.status==='past_due'?'Plan runs until':'Plan ended',day(plan.endsAt)));
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
             const actions:Bag[]=plan.signedIn?[
@@ -451,7 +455,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
               {kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()},
               {kNav:true,label:'Manage plan',lbl:'Manage plan',chev:true,noAB:true,go:()=>void connectionController.residentManagePlan()},
               {kNav:true,label:'Sign out',lbl:'Sign out of Eliza Cloud',chev:true,noAB:true,go:()=>void connectionController.cloudSignOut()},
-            ]:plan.offline?[{kNav:true,label:'Check plan again',lbl:'Check plan again',chev:true,noAB:true,go:()=>void connectionController.startLocal()}]
+            ]:plan.offline?[{kNav:true,label:'Check plan again',lbl:'Check plan again',chev:true,noAB:true,go:()=>connectionController.recheckPlanOnReturn()}]
             :[{kNav:true,label:'Sign in with Eliza Cloud',lbl:'Sign in with Eliza Cloud',chev:true,noAB:true,go:()=>void connectionController.residentCloudLogin()}];
             out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Eliza Cloud account & plan',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group(rows),group(actions)]});
           }

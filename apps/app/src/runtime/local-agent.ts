@@ -289,7 +289,7 @@ export async function configureLocalProvider(apiKey:string,model:string=LOCAL_PR
   // (Inline flag read: this module is also imported by Node tests without Vite.)
   if(!(import.meta.env!==undefined&&import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS==='1'))throw Error('Alpha Phone uses your Eliza Cloud plan for AI.');
   if(!Capacitor.isNativePlatform())throw Error('Configure the development provider on the host.');
-  if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version. Connect a remote agent or use Eliza Cloud.');
+  if(!await localAgentPackaged())throw Error('On-device agent is unavailable in this version.');
   if(!native.configureProvider)throw Error('Model provider setup is unavailable.');
   if(model!==LOCAL_PROVIDER_MODEL)throw Error(`Alpha Phone uses ${LOCAL_PROVIDER_MODEL} on Cerebras.`);
   return native.configureProvider({apiKey,model});
@@ -304,7 +304,7 @@ export async function clearLocalProvider():Promise<LocalProviderStatus> {
   const cleared=await native.clearProvider();
   if(record(cleared).configured!==false)throw Error('The provider key could not be confirmed removed.');
   const status=await localProviderStatus();
-  if(status.configured&&status.provider==='cerebras')throw Error('The provider key could not be confirmed removed.');
+  if(status.configured)throw Error('The provider key could not be confirmed removed.');
   return status;
 }
 

@@ -1,3 +1,4 @@
+import {configureGmailBackground,withdrawGmailBackground,pendingGmailNotice,consumeGmailNotice,onGmailNotice} from '../runtime/gmail-background';
 import {prepareMailHtml} from '../runtime/mail-html';
 import {readGmailAccountChoice,saveGmailAccountChoice} from '../runtime/gmail-account-selection';
 import {GmailReadAhead} from '../runtime/gmail-read-ahead';
@@ -79,6 +80,23 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let newerMail = false,spamTrashSearch=false;
   /** Gmail mailbox revision reported with the first page of the loaded list, when the server sends one. */
   let firstPageRevision: string | null = null;
+  const watchSelectedMail=()=>{const binding=connectionController.getCloudClient();if(binding)void configureGmailBackground(binding.credentialId,selected).catch(()=>{});};
+  let noticeAttempt=0;
+  async function openNotice(){
+    if(document.hidden||!shell)return;
+    const noticeShell=shell,attempt=++noticeAttempt;
+    try{
+      const tap=await pendingGmailNotice(),binding=connectionController.getCloudClient(),owner=connectionController.getSnapshot().cloudAccount;
+      if(document.hidden||shell!==noticeShell||attempt!==noticeAttempt||!tap||!binding||!owner||binding.credentialId!==tap.credentialId||owner.userId!==tap.userId)return;
+      const rows=await binding.client.gmailAccounts(new AbortController().signal);
+      const current=()=>!document.hidden&&shell===noticeShell&&attempt===noticeAttempt&&connectionController.getCloudClient()?.sessionId===binding.sessionId&&connectionController.getCloudClient()?.credentialId===tap.credentialId;
+      if(!current())return;
+      const account=rows.find(row=>row.connectionId===tap.grantId&&gmailReadable(row));if(!account)return;
+      // Consumption rechecks the native generation. A tap opens only the Inbox list, never marks a message read.
+      await consumeGmailNotice(tap.token);if(!current()||!shell)return;
+      accounts=rows;accountsChecked=true;accountsSession=binding.sessionId;folder='inbox';spamTrashSearch=false;publish({q:null,open:null});selectAccount(account,true);shell.openView?.('inbox',{open:null,q:null});
+    }catch{/* A stale, locked or revoked tap cannot reveal another account's Inbox. */}
+  }
   const folderQuery: Record<Folder, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', archive: 'in:archive', trash: 'in:trash', starred:'is:starred', all:'-in:spam -in:trash',spam:'in:spam' };
   let loadedQuery = '', nextPageToken: string | null = null, folder: Folder = 'inbox';
   // Provider drafts are listed separately from messages.
@@ -208,6 +226,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   });
   provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear() {
+    noticeAttempt++;
     invalidateList();spamTrashSearch=false;
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null });
@@ -275,7 +294,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const dropped=previous!==selected||(!!previous&&grantChange.dropReadCache);
       if(dropped){inboxPreview=null;hasUnread=false;if(selected)setAttention({state:'loading',unread:undefined,unreadMore:false,source:null,updatedAt:null});}
       if(hint&&hint!==selected)readAhead.invalidate();
-      saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null);
+      saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null);watchSelectedMail();
       const retained=preserveSelection&&!!selected&&!dropped;
       if(!retained){void attachmentNative.cancel().catch(()=>{});attachmentView=null;contextReview=null;thread=null;messages=[];body=null;}
       void provider.bind(selected); void drafts.bind(selected, accounts.find(a => a.connectionId === selected)?.label || '');
@@ -290,7 +309,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     invalidateList();
     if (operation && !force) return;
     if (operation) { generation++; operation.abort(); operation = null; phase = 'ready'; }
-    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;inboxPreview=null;homeFailure=null;hasUnread=false;selected = gmailReadable(a) ? a.connectionId! : '';saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null); void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
+    void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;inboxPreview=null;homeFailure=null;hasUnread=false;selected = gmailReadable(a) ? a.connectionId! : '';saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,selected||null);watchSelectedMail(); void provider.bind(selected); void drafts.bind(selected, a.label); messages = []; body = null; thread = null; nextPageToken = null; loadedQuery = ''; failure = null;
     status = selected ? 'Loading Gmail…' : 'This account needs Gmail authorization';
     publish({ open: null, nativeMailSelection: null });
     if (selected) void load();
@@ -664,11 +683,11 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const swipe = current.sw?.((dx: number, dy: number) => { if (dx >= 0 || Math.abs(dx) < Math.abs(dy)) return false; void swipeArchive(m); return true; }) ?? { down: () => {}, up: () => {} };
       const name = sentView ? (m.to.length ? `To: ${m.to.join(', ')}` : 'To: (no recipients)') : m.from; return { name, ini: (sentView ? m.to[0] || '?' : m.from).slice(0, 1).toUpperCase(), subj: m.subject || '(no subject)',
       snip: m.snippet, time: date(m.receivedAt), nameW: m.unread ? '700' : '500', subjCss: 'color:var(--fg)',
-      dot: m.unread ? 'var(--acct)' : 'transparent', clip: !!m.hasAttachments, tx: 0,
+      dot: m.unread ? 'var(--acct)' : 'transparent', clip: !!m.hasAttachments, tx: 0, current: st.open === m.id ? 'true' : 'false',
       down: swipe.down, up: swipe.up,
       label: `${m.unread ? 'Unread, ' : ''}${name}, ${m.subject}${m.hasAttachments ? ', has attachments' : ''}`, open: () => void open(m) }; });
     if (draftsView()) rows.splice(0, rows.length, ...providerDrafts.map(d => { const name = d.to.length ? `Draft to ${d.to.join(', ')}` : 'Draft (no recipients)';
-      return { name, ini: 'D', subj: d.subject || '(no subject)', snip: d.snippet, time: date(d.updatedAt), nameW: '500', subjCss: 'color:var(--fg)', dot: 'transparent', clip: false, tx: 0,
+      return { name, ini: 'D', subj: d.subject || '(no subject)', snip: d.snippet, time: date(d.updatedAt), nameW: '500', subjCss: 'color:var(--fg)', dot: 'transparent', clip: false, tx: 0, current: 'false',
         down: () => {}, up: () => {}, label: `Gmail draft, ${name}, ${d.subject || '(no subject)'}`, open: () => void openDraft(d) }; }));
     const linkRows = (source: NonNullable<typeof body>) => { const cached = linkRowCache.get(source); if (cached) return cached; const seen = new Set<string>(), list: GmailLink[] = [];
       for (const link of [...(source.links || []), ...linkifyMailText(source.bodyText)]) if (link.href.startsWith('https://') && !seen.has(link.href) && list.length < 50) { seen.add(link.href); list.push(link); }
@@ -710,16 +729,19 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     openInboxHandler = () => this.openView?.('inbox', { open: null, q: null });
     this.inboxConnectionUnsubscribe = connectionController.subscribe(() => {
       const next = connectionController.getCloudClient()?.sessionId;
-      if (next !== sessionId) { sessionId = next; clear(); }
+      // Renderer hydration/reconnect is not a native credential transition. Native admission
+      // and the encrypted credential observer invalidate genuine owner changes.
+      if (next !== sessionId) { sessionId = next; clear(); if(next)void openNotice(); }
       const nextAgent = connectionController.getSnapshot().session?.sessionId;
       if (nextAgent !== agentSession) { contextReview=null;agentSession = nextAgent; publish({ nativeMailSelection: null }); }
     });
+    this.gmailNoticeListener=onGmailNotice(()=>void openNotice());void openNotice();
     this.inboxVisibility=()=>{if(document.hidden){readAhead.pause();stopBodyReads();}};
     document.addEventListener('visibilitychange',this.inboxVisibility);
-    this.inboxResume = DailyApps.addListener('appResumed', () => { if (api?.isActive()) { if (!operation) void refreshAccounts(true); } }).catch(() => null);
+    this.inboxResume = DailyApps.addListener('appResumed', () => { void openNotice(); if (api?.isActive()) { if (!operation) void refreshAccounts(true); } }).catch(() => null);
     // Settings can disconnect an account; re-check instead of showing a revoked mailbox.
     this.inboxAccountsChanged = (event: Event) => {
-      invalidateList();saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,null);
+      void withdrawGmailBackground().catch(()=>{});invalidateList();saveGmailAccountChoice(connectionController.getSnapshot().cloudAccount,null);
       if ((event as CustomEvent).detail?.source === 'inbox') return;
       if (api?.isActive() && !operation) { void refreshAccounts(); return; }
       // Drop provider content now; the next open re-checks accounts and rebinds drafts per account.
@@ -732,6 +754,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
   };
   p.componentWillUnmount = function () {
+    noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
     document.removeEventListener('visibilitychange',this.inboxVisibility);
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
     shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);

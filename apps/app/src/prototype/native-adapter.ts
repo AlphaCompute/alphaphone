@@ -1,4 +1,5 @@
 import {browserDevProfile} from '../browser/dev-profile';
+import { testMocksEnabled } from '../build-flags';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';

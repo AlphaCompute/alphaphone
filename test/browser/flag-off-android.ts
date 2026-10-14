@@ -237,7 +237,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         { name: 'DeviceApps', methods: promise(['buildInfo']) },
         { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap', ...(options.document ? ['perform', 'readSelected', 'forgetSelected', 'describeSelected'] : [])]) },
         ...(options.document ? [{ name: 'AlphaMailAttachments', methods: promise(['readSelected', 'retainSourceReference', 'openSourceReference', 'cancel']) }] : []),
-        { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
+        { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'clearProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
         { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
@@ -313,7 +313,10 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         }
         if (plugin === 'Agent') {
           if (method === 'getStatus') return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
-          if (method === 'providerStatus') return { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' };
+          // The native provider slot (never renderer-readable): bound by configureCloudProvider, removed by clearProvider.
+          if (method === 'providerStatus') return slots['native:local-agent-provider'] ? { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' } : { provider: 'elizacloud', configured: false };
+          if (method === 'configureCloudProvider') { slots['native:local-agent-provider'] = String(input.credentialId); persist(); return {}; }
+          if (method === 'clearProvider') { delete slots['native:local-agent-provider']; persist(); return { configured: false }; }
           if (method === 'request') {
             const result = await request(input.method || 'GET', input.path, input.body ? JSON.parse(input.body) : {}, input.headers || {});
             // A lost acknowledgement: the agent applied the request, but its response never arrives.

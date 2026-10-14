@@ -21,9 +21,9 @@ Alpha source: `apps/app/src/runtime/subscription-entitlement.ts`, `cloud-protoco
 - The on-device agent ALWAYS runs (owner directive 2026-10-13: "there should NEVER be no agent
   connected"). Plan state decides only whether Eliza Cloud inference (and other Cloud managed
   services) is bound into it. Without an admissible plan, offline or signed out, the agent runs
-  with Cloud inference unbound; a send reports the upstream provider failure ("Set up AI") and the
-  "Your agent" dialog offers Redeem code / Choose a plan. Local tools, scheduling, approvals,
-  notices and on-device speech keep working. Cloud is never a replacement agent (decision P-43).
+  with Cloud inference unbound and answers chat and assistant requests honestly (a plan is needed,
+  or Cloud is unreachable) with Redeem code / Choose a plan actions. Local tools, scheduling,
+  approvals, notices and on-device speech keep working. Cloud is never a replacement agent (decision P-43).
 - Once a plan was verified on the phone recently, local apps, on-device speech and local tools do
   not depend on an online billing check (offline grace, section 4).
 - Nothing is purchased automatically: no overage purchase, upgrade or retry that spends money.
@@ -129,11 +129,11 @@ routes, refusal bodies with `retryAfterSeconds`, 402 `allowance_exhausted` with 
 | No saved sign-in (first run, signed out) | Sign-in dialog; no local-only bypass; it cannot be dismissed. The agent runs behind it | no |
 | Valid entitlement, plan `active` or `trialing` | Plan name and the Cloud allowance | yes |
 | Valid entitlement, plan `past_due` | Plan name, "Payment is past due" warning and "Manage plan in Eliza Cloud" | yes |
-| Valid entitlement, plan `canceled` or `none` | Plan notice beside the running agent, in a dialog that opens once at admission and can be closed (Redeem code, Choose a plan); the plan panel shows "<plan> has ended" or "No active plan" with Check plan again | no |
+| Valid entitlement, plan `canceled` or `none` | Non-blocking plan notice beside the running agent (Redeem code, Choose a plan); the plan panel shows "<plan> has ended" or "No active plan" with Check plan again | no |
 | Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` bind, `grace`/`past_due`/`unpaid` bind with the warning, `canceled`/`incomplete_expired`/`not_applicable` need a plan | as mapped |
 | Route absent and the billing snapshot is absent or reports no known state | Plan notice; "Plan status unavailable" with Check plan again, Redeem code and Choose a plan | no |
 | Billing outage (5xx, timeout) after identity succeeded | Bound when this sign-in had an admitting plan verified within the last 7 days ("Plan status unavailable"); otherwise the plan notice with a retry | as stated |
-| Cloud unreachable at start (identity or plan read fails in transport) | "Cloud cannot be reached" notice, closable. The stored binding is left as it was (Cloud decides each request once reachable); a plan verified for this sign-in within 7 days is shown as the current plan | unchanged |
+| Cloud unreachable at start (identity or plan read fails in transport) | "Cloud cannot be reached" notice, closable. With a plan verified for this sign-in within 7 days the stored binding is kept (Cloud decides each request once reachable); otherwise it is removed | kept / no |
 | Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`), never trusted; plan notice with a retry | no |
 | Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
 | Plan reported `canceled`/`none` by a background refresh or a return to the app | Cloud inference is unbound (native restarts the process without the provider; history kept); the plan notice is shown | unbound |

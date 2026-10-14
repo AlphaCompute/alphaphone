@@ -223,6 +223,48 @@ export interface DigestResult {
 	output: unknown;
 	error: string | null;
 }
+/** One reviewed Run now offer for a missed occurrence; see `missedRunNowOffers`. */
+export interface MissedRunNow {
+	runId: string;
+	sourceId: string;
+	sourceRevision: string;
+	sourceLabel: string;
+	scheduledAt: string;
+	/** Derived from the missed record: a repeat or retry returns the same run, never a second one. */
+	mutationId: string;
+}
+/** Agent submission identity for Run now of one missed record. Null when the record id cannot form one. */
+export function missedRunNowMutationId(runId: string): string | null {
+	return /^[A-Za-z0-9][A-Za-z0-9_-]{0,100}$/.test(runId) ? "missed-run-now-" + runId : null;
+}
+/**
+ * Explicit Run now for a missed scheduled digest (#394). The missed record is never replayed or
+ * changed and nothing runs automatically: the owner reviews and confirms one new, separate run that
+ * reads the reviewed phone sources as they are now (the agent's on-demand dossier). Offered only for
+ * the newest result of an active morning loop over a current native source whose revision the loop
+ * is bound to, and only while no newer result exists for that loop, that source, or any on-demand run.
+ * Keyed by missed runId.
+ */
+export function missedRunNowOffers(results: DigestResult[], loops: DigestLoop[], sources: DigestSource[], now = Date.now()): Map<string, MissedRunNow> {
+	const offers = new Map<string, MissedRunNow>();
+	for (const result of results) {
+		if (result.status !== "missed") continue;
+		const loop = loops.find((l) => l.id === result.workflowId);
+		if (!loop || loop.removed || !loop.active || !loop.spec.enabled || loop.spec.template !== "morning") continue;
+		const source = sources.find((s) => s.id === loop.spec.sourceId);
+		if (!source || source.revoked || source.live?.provider !== "native" || source.revision !== loop.spec.sourceRevision) continue;
+		if (!(Date.parse(source.expiresAt) > now) || (loop.sourceState && loop.sourceState !== "current")) continue;
+		// Any newer on-demand run (a dossier is never a listed loop) supersedes it too, whatever its
+		// source: after a renewal rebinds the loop, the earlier Run now still hides the offer instead
+		// of re-offering a submission the agent has already bound to the old source.
+		const superseding = (other: DigestResult) => other.workflowId === loop.id || other.source?.id === source.id || !loops.some((l) => l.id === other.workflowId);
+		if (results.some((other) => other.cursor > result.cursor && superseding(other))) continue;
+		const mutationId = missedRunNowMutationId(result.runId);
+		if (!mutationId) continue;
+		offers.set(result.runId, { runId: result.runId, sourceId: source.id, sourceRevision: source.revision, sourceLabel: source.label, scheduledAt: result.scheduledAt, mutationId });
+	}
+	return offers;
+}
 export interface DigestStorage {
 	read<T>(slot: string): Promise<T | null>;
 	write(slot: string, value: unknown): Promise<void>;

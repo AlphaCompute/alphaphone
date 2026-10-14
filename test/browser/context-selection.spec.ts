@@ -195,6 +195,10 @@ test.describe('mail',()=>{
   await page.getByRole('button',{name:'Inbox',exact:true}).click();
   await page.getByText('Reviewed message',{exact:true}).first().click();
   await expect(page.getByRole('region',{name:'Email message'})).toContainText('REVIEWED_BODY');
+  // The thread loads on request (Show conversation); its other message is then a chip under the open one.
+  await page.getByRole('button',{name:'Show conversation',exact:true}).click();
+  await expect(page.getByText('Fixture sender: Neighbor message',{exact:true})).toBeVisible();
+  await expect(page.getByRole('region',{name:'Email message'})).toContainText('REVIEWED_BODY');
   await page.getByRole('button',{name:'Review email with agent',exact:true}).click();
   const sharing=page.getByRole('dialog',{name:'Review email sharing'});
   await expect(sharing).toContainText('REVIEWED_BODY');

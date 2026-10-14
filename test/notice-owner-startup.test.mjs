@@ -36,7 +36,7 @@ for(const [name,options] of [['failed start',{credential:{credentialId:'revoked'
  const f=fixture(options),pending=f.controller.initialize();await Promise.resolve();assert.deepEqual(f.transitions,[]);f.release();await pending;await f.drain();assert.deepEqual(f.transitions,[null]);assert.equal(f.controller.getSnapshot().session,null);assert.equal(f.controller.getSnapshot().startupResolved,true);
 });
 
-test('reconnects retire the session while busy, and the notice owner update carries that state',()=>{
+test('reconnects retire the session while busy, and the notice owner update carries that state',async()=>{
  // The real controller marks the connection busy before Continue / Check plan again / pairing
  // retires the session; the coordinator (tested directly) defers a null owner until it settles.
  const controller=readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8'),adapter=readFileSync('apps/app/src/prototype/workflow-adapter.ts','utf8');

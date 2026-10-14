@@ -18,6 +18,9 @@ final class AlphaCredentialStore {
  static final String NOTES_DRAFT="notes-draft:v1:device";
  /** Reminder-to-note back-references: identity only, at most 200 links (runtime/note-origin.ts). */
  static final String NOTE_ORIGINS="note-origins:v1:device";
+ interface CloudChangeObserver {void changed()throws Exception;}
+ private static CloudChangeObserver cloudChange=()->{};
+ static void observeCloudChanges(CloudChangeObserver observer){synchronized(JsonCredentialSlots.LOCK){cloudChange=observer;}}
  private final JsonCredentialSlots slots;
  private final Context context;
  private final Runnable assertOwner;
@@ -27,6 +30,8 @@ final class AlphaCredentialStore {
   slots=new JsonCredentialSlots(new File(context.getApplicationContext().getNoBackupFilesDir(),"connection-credentials"),"alpha.connection.aes.v1",AlphaCredentialStore::slotLimit,AlphaCredentialStore::retainedLimit);
  }
  static int slotLimit(String name){
+  if("sms-send-ledger:v1:device".equals(name))return 1024*1024;
+  if("gmail-background:v1".equals(name))return 2*1024*1024;
   if("native-delete-journal:v1".equals(name))return 4*1024*1024;
   if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;
   if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;
@@ -86,6 +91,9 @@ final class AlphaCredentialStore {
     if(conflict)return false;
     if(LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name))return before!=null||value!=null;
     if(java.util.Objects.equals(before,value))return false;
+    // No stored provider: the running agent was launched unbound (removing a provider stops it),
+    // so no process holds a Cloud key and a sign-in change never needs to stop the agent.
+    if(provider==null)return false;
     String environment=provider==null?"production":new org.json.JSONObject(provider).optString("environment","production");
     return name.equals("cloud:"+environment)&&!LocalAgentProviderAdmission.sameCloudCredential(before,value);
    }
@@ -93,6 +101,7 @@ final class AlphaCredentialStore {
     if(conflict)return false;
     if(!LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name)&&java.util.Objects.equals(before,value))return true;
     if(!java.util.Objects.equals(before,slots.read(name))||!java.util.Objects.equals(provider,slots.read(LocalAgentProviderAdmission.PROVIDER_SLOT)))throw new IllegalStateException("Credential changed");
+    if(LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name)||"cloud:production".equals(name)&&!LocalAgentProviderAdmission.sameCloudCredential(before,value))cloudChange.changed();
     invalidateProviderAdmission(name,value);
     if(value==null)slots.remove(name);
     else slots.write(name,LocalAgentProviderAdmission.PROVIDER_SLOT.equals(name)?LocalAgentProviderAdmission.withoutAdmission(value):value);

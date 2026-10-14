@@ -44,7 +44,7 @@ async function android(page: Page, options: AndroidOptions) {
     w.Capacitor = { PluginHeaders: [
         { name: 'AlphaDeletions', methods: methods(['pending']) },
       { name: 'DeviceApps', methods: methods(['buildInfo']) },
-      { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request']) },
+      { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'clearProvider', 'providerStatus', 'request']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
       { name: 'AlphaNotifications', methods: methods(['status', 'crossAppStatus', 'addListener', 'removeListener']) },
       { name: 'AlphaHostedResults', methods: methods(['disableBackground']) },
@@ -61,8 +61,9 @@ async function android(page: Page, options: AndroidOptions) {
       if (plugin === 'AlphaHostedResults' && method === 'disableBackground') return {};
       if (plugin === 'Agent') {
         if (method === 'getStatus') return { packaged: options.packaged !== false, state: 'stopped', serviceActive: false, socketListening: false };
-        // A held stop lets a test cancel sign-out before any revocation request is issued.
-        if (method === 'stop' && w.holdStop) await new Promise<void>(resolve => { w.releaseStop = resolve; });
+        // A held unbind lets a test cancel sign-out before any revocation request is issued.
+        if (method === 'clearProvider') { if (w.holdStop) await new Promise<void>(resolve => { w.releaseStop = resolve; }); return { configured: false }; }
+        if (method === 'providerStatus') return { provider: 'elizacloud', configured: false };
         // A packaged runtime whose start fails, or that answers but is not running yet.
         if (method === 'start' && options.start === 'reject') throw Error('Local agent failed to start.');
         if (method === 'request') {
@@ -135,14 +136,18 @@ for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origi
     await expect(welcome.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
     expectRemoteUntouched(await nativeCalls(page));
     expect((await secureValues(page))[remoteSlot]).toBe(saved[remoteSlot]);
+    // #406: the saved hosted choice becomes the resident agent and is kept aside, not deleted.
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1')!))).toEqual([legacy.selection]);
     await page.reload();
     await expect(page.getByRole('dialog', { name: 'Your agent' })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     const calls = await nativeCalls(page);
     expectRemoteUntouched(calls);
-    // Signed out: no transport request of any kind; the resident runs with no provider bound.
+    // Signed out and offline: no transport request of any kind. The resident agent always runs on
+    // the phone (owner directive 2026-10-13), without Cloud AI until the owner signs in.
     expect(calls.filter(call => call.plugin === 'AlphaConnection' && call.method === 'request')).toEqual([]);
+    expect(calls.filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     expect(calls.filter(call => call.plugin === 'Agent').map(call => call.method)).not.toContain('configureCloudProvider');
     expect((await secureValues(page))[remoteSlot]).toBe(saved[remoteSlot]);
     expect(foreign).toEqual([]);
@@ -228,7 +233,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
     await page.getByRole('button', { name: 'Sign out', exact: true }).click();
     if (mode === 'cancelled') {
-      // Cancel while the resident agent is still stopping: sign-out still removes the local key.
+      // Cancel while Cloud AI is still being unbound: sign-out still removes the local key.
       await page.waitForFunction(() => typeof (window as any).releaseStop === 'function');
       await page.getByRole('button', { name: 'Cancel', exact: true }).click();
       await page.evaluate(() => { (window as any).holdStop = false; (window as any).releaseStop(); });
@@ -245,8 +250,9 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     // A cancelled sign-out sends none. The key is presented to no other host in any outcome.
     expect(revocations.map(call => [call.url, call.authorization])).toEqual(mode === 'cancelled' ? [] : [['https://api.eliza.app/api/v1/api-keys/current', 'Bearer synthetic-cloud-key']]);
     expect(calls.filter(call => call.authorization && !call.url?.startsWith('https://api.eliza.app/'))).toEqual([]);
-    // This sign-out stops the resident process before its key is revoked, and the local key is always removed.
-    const stop = calls.findIndex((call, index) => index >= before && call.plugin === 'Agent' && call.method === 'stop');
+    // This sign-out unbinds Cloud AI (native stops a process holding the key) before the key is
+    // revoked, and the local key is always removed. The agent itself keeps running afterwards.
+    const stop = calls.findIndex((call, index) => index >= before && call.plugin === 'Agent' && call.method === 'clearProvider');
     expect(stop).toBeGreaterThan(-1);
     expect(calls.slice(before).some(call => call.plugin === 'AlphaHostedResults' && call.method === 'disableBackground')).toBe(true);
     if (mode !== 'cancelled') expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
@@ -254,6 +260,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     await expect(page.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
     // P-43: sign-out unbinds inference only; the resident restarted and the outcome says so.
     if (mode !== 'cancelled') await expect(status).toContainText('Your agent is running. Sign in to Eliza Cloud to turn AI back on.');
+    await expect.poll(async () => (await nativeCalls(page)).slice(before).filter(call => call.plugin === 'Agent' && call.method === 'start').length).toBeGreaterThan(0);
     await page.reload();
     // Signed out after a restart: the sign-in dialog opens by itself while the resident runs.
     await expect(page.getByRole('dialog', { name: 'Your agent', exact: true })).toBeVisible();
@@ -359,7 +366,10 @@ for (const saved of [
     expect(await slotRecords(page)).toEqual(kept);
     expect(await page.evaluate(keys => Object.fromEntries(keys.map(key => [key, localStorage.getItem(key)])), Object.keys(LOCAL_DATA))).toEqual(LOCAL_DATA);
     expect(await page.evaluate(key => localStorage.getItem(key), CLOUD_SERVICE)).toBeNull();
-    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual(saved.selection);
+    // #406: a saved Cloud agent becomes the resident agent and is kept aside; other choices are unchanged.
+    const hostedChoice = (saved.selection as { kind: string }).kind === 'cloud';
+    expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual(hostedChoice ? { kind: 'resident' } : saved.selection);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1') || 'null'))).toEqual(hostedChoice ? [saved.selection] : null);
     await expect(chooser.getByText(/Connected ·/)).toHaveCount(0);
     // A later start changes nothing further, and no request left the page at any point.
     await page.reload();

@@ -24,7 +24,7 @@ async function boot(page: Page, mode: Mode) {
     const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
     w.Capacitor = { PluginHeaders: [
       { name: 'DeviceApps', methods: methods(['buildInfo']) },
-      { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'request']) },
+      { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'configureCloudProvider', 'clearProvider', 'providerStatus', 'request']) },
       { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
       { name: 'AlphaNotifications', methods: methods(['status', 'crossAppStatus', 'addListener', 'removeListener']) },
       { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
@@ -35,6 +35,8 @@ async function boot(page: Page, mode: Mode) {
       if (plugin === 'AlphaVoiceCloud') return { microphone: 'granted' };
       if (plugin === 'Agent') {
         if (method === 'getStatus') return { packaged: true, state: 'stopped', serviceActive: false, socketListening: false };
+        if (method === 'clearProvider') return { configured: false };
+        if (method === 'providerStatus') return { provider: 'elizacloud', configured: false };
         if (method === 'request') {
           const body = input.path === '/api/auth/me' ? { identity: { id, kind: 'owner' }, access: { role: 'OWNER', mode: 'local' } }
             : input.path === '/api/agents' ? { agents: [{ id, name: 'Alpha', status: 'running' }] }
@@ -99,6 +101,11 @@ for (const [name, panel] of Object.entries(PANELS)) {
     test('a kept sign-in Cloud cannot reach is offered as a retry that says what failed; the agent keeps running', async ({ page }) => {
       await boot(page, 'offline');
       expect(await agentCalls(page)).not.toContain('configureCloudProvider');
+      // Beside the running agent, a closable notice says Cloud is unreachable; the owner dismisses it.
+      const notice = page.getByRole('region', { name: 'Eliza Cloud plan notice' });
+      await expect(notice).toContainText('Eliza Cloud cannot be reached right now. Your agent is running on this phone');
+      await notice.getByRole('button', { name: 'Dismiss plan notice', exact: true }).click();
+      await expect(notice).toHaveCount(0);
       await panel.open(page);
       const dialog = page.getByRole('dialog', { name: panel.heading });
       await expect(dialog.getByRole('button', { name: panel.retry, exact: true })).toBeVisible();

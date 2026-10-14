@@ -9,7 +9,9 @@
 // native Agent or AlphaConnection plugin, the resident runtime, Eliza Cloud, Cerebras or a device.
 import type { Page } from '@playwright/test';
 
-export interface StubAccount { token: string; userId: string; email: string; balance: number; userStatus?: number; inbox?: string }
+export interface StubAccount { token: string; userId: string; email: string; balance: number; userStatus?: number; inbox?: string;
+  /** 'none': the billing snapshot reports a canceled plan, so no plan admits Cloud inference. */
+  plan?: 'none' }
 export type StubStream =
   /** Native refuses the stream call before anything reaches the runtime. */
   | 'reject'
@@ -84,6 +86,8 @@ export async function residentStub(page: Page, options: ResidentStubOptions = {}
     if (pauseOnly) w.Capacitor.PluginHeaders.push({ name: 'AlphaHostedResults', methods: [{ name: 'disableBackground', rtype: 'promise' }] });
     w.Capacitor.nativePromise = async (plugin: string, method: string, input: any) => {
       if (pauseOnly && plugin === 'AlphaHostedResults' && method === 'disableBackground') { s.order.push('pause background delivery'); persist(); return {}; }
+      // Removing a stored provider stops the process launched with it (AlphaCredentialStore requiresShutdown).
+      if (plugin === 'Agent' && method === 'clearProvider' && f.slots['native:local-agent-provider']) { s.order.push('Agent.stop'); persist(); }
       if (plugin === 'Agent' && ['start', 'stop', 'configureCloudProvider'].includes(method)) { s.order.push(method === 'configureCloudProvider' ? 'configureCloudProvider ' + input.credentialId : 'Agent.' + method); persist(); }
       if (plugin === 'Agent' && method === 'start' && s.start === 'reject') { f.calls.push('Agent.start'); throw Error('Local agent failed to start.'); }
       if (plugin === 'Agent' && method === 'request' && input.path === '/api/agents' && s.start === 'starting') { f.calls.push('Agent.request'); return { status: 200, body: JSON.stringify({ agents: [{ id: '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11', name: 'Alpha', status: 'starting' }] }) }; }
@@ -117,7 +121,7 @@ export async function residentStub(page: Page, options: ResidentStubOptions = {}
           if (path === '/api/v1/user') { if (owner.userStatus && owner.userStatus !== 200) return { status: owner.userStatus, data: {} }; return { status: 200, data: { success: true, data: { id: owner.userId, email: owner.email } } }; }
           if (path === '/api/v1/credits/balance') { s.order.push('credits ' + owner.email); persist(); return { status: 200, data: { balance: owner.balance } }; }
           // The billing snapshot answers the plan while the entitlement route is absent (404, from the base harness).
-          if (path === '/api/v1/billing/limits') { s.order.push('plan ' + owner.email); persist(); return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } }; }
+          if (path === '/api/v1/billing/limits') { s.order.push('plan ' + owner.email); persist(); return { status: 200, data: { success: true, data: { v2: { subscription: { status: 'available', value: { planKey: 'plus_monthly', state: owner.plan === 'none' ? 'canceled' : 'active', currentPeriodEnd: '2099-01-01T00:00:00.000Z' } } } } } }; }
           if (path === '/api/v1/eliza/google/accounts') return { status: 200, data: owner.inbox ? [{ configured: true, connected: true, reason: 'connected', connectionId: 'grant-' + owner.userId.slice(0, 8), grantedCapabilities: ['google.gmail.triage'], identity: { email: owner.inbox } }] : [] };
         }
         return base(plugin, method, input);

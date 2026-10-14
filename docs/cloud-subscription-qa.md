@@ -92,11 +92,10 @@ not reuse production codes.
 8. Revoke the grant with `revoke-subscription-grants.ts`; on the next return to the app or
    refresh, Cloud AI is unbound, the agent keeps running, and the plan notice offers **Redeem
    code** / **Choose a plan** (the plan panel shows **Choose a plan** or **Your plan has ended**).
-   A chat message then reports the provider failure ("Set up AI"); nothing is sent to Cloud.
+   A chat message then gets the agent's honest "AI replies need an Eliza Cloud plan" answer.
 9. Airplane mode after a successful admission, then relaunch: the agent runs, a closable "Eliza
-   Cloud cannot be reached" notice is shown in Settings › Agent connection and the stored binding
-   is left as it was. Airplane mode on a never-admitted sign-in: the agent runs without Cloud AI
-   and the same notice is shown.
+   Cloud cannot be reached" notice is shown and the stored binding is kept. Airplane mode on a
+   never-admitted sign-in: the agent runs without Cloud AI and the same notice is shown.
 10. **Reset Alpha data**: the local reset completes; the old key no longer authenticates
     (`GET /api/v1/user` with it returns 401) when Cloud was reachable.
 11. Sign-in key expiry warning: shown within 14 days of the key's `expiresAt` (CLI keys last 90

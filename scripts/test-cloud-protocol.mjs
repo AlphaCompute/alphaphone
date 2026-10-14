@@ -8,6 +8,10 @@ if (!process.execArgv.includes('--experimental-transform-types')) {
   process.exit(child.status ?? 1);
 }
 const { CloudProtocol } = await import('../apps/app/src/runtime/cloud-protocol.ts');
+// Hosted agents are development infrastructure (#406): the product adapter has no agent route.
+const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
+for (const method of ['listAgents', 'agentDetail', 'personal', 'phoneRequest', 'setPhoneTarget', 'listConversations', 'messages', 'createConversation', 'send'])
+  assert.equal(method in CloudProtocol.prototype, false, `production CloudProtocol has no ${method}`);
 const id = '72475cd0-e135-4c42-a9e2-fb5fe0820ada';
 const sessionId = 'd32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 const token = 'synthetic-cloud-session';
@@ -102,26 +106,32 @@ const store = {
   async clear() { saved = null; },
 };
 const opened = [];
-const make = (environment = 'production') => new CloudProtocol(environment, request, store, async (url, signal) => { signal.throwIfAborted(); opened.push(url); });
+const browser = async (url, signal) => { signal.throwIfAborted(); opened.push(url); };
+// Managed services (login, identity, Gmail, revocation) run on the CloudProtocol that product builds ship;
+// only the hosted-agent routes use the development subclass, over the same credential store.
+const make = (environment = 'production') => new CloudProtocol(environment, request, store, browser);
+const makeAgents = (environment = 'production') => new DevelopmentCloudAgentProtocol(environment, request, store, browser);
 const signal = () => new AbortController().signal;
 try {
   const client = make();
+  assert.equal(Object.getPrototypeOf(client), CloudProtocol.prototype, 'managed services are tested on the shipped class');
+  const agents = makeAgents();
   await client.login(signal());
   assert.equal(saved.token, token, 'session token preferred over legacy API key');
   assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}`);
   assert.equal((await client.identity(signal())).userId, id);
-  assert.equal((await client.listAgents(signal()))[0].id, id);
-  assert.equal((await client.listConversations(id, signal()))[0].id, conversationId);
-  assert.equal((await client.createConversation(id, 'Fixture', signal())).id, conversationId);
-  assert.equal((await client.send(id, conversationId, 'Hello', { clientMessageId: 'synthetic-message', signal: signal() })).text, 'Synthetic response');
+  assert.equal((await agents.listAgents(signal()))[0].id, id);
+  assert.equal((await agents.listConversations(id, signal()))[0].id, conversationId);
+  assert.equal((await agents.createConversation(id, 'Fixture', signal())).id, conversationId);
+  assert.equal((await agents.send(id, conversationId, 'Hello', { clientMessageId: 'synthetic-message', signal: signal() })).text, 'Synthetic response');
   assert.ok(runtimeTargets.every(target => target.startsWith(`https://${id}.cloud.eliza.app/`)));
-  assert.equal((await client.messages(id, conversationId, signal())).messages[1].text, 'Earlier answer');
+  assert.equal((await agents.messages(id, conversationId, signal())).messages[1].text, 'Earlier answer');
   mode = 'shared';
-  assert.equal((await client.messages(id, conversationId, signal())).messages[0].role, 'user');
-  await client.send(id, conversationId, 'Hello', { clientMessageId: 'synthetic-message', signal: signal() });
+  assert.equal((await agents.messages(id, conversationId, signal())).messages[0].role, 'user');
+  await agents.send(id, conversationId, 'Hello', { clientMessageId: 'synthetic-message', signal: signal() });
   assert.equal(runtimeTargets.at(-1), `https://api.eliza.app/api/v1/eliza/agents/${id}/api/conversations/${conversationId}/messages`);
   mode = 'ok';
-  assert.equal((await make().agentDetail(id, signal())).id, id, 'new client restores injected credentials');
+  assert.equal((await makeAgents().agentDetail(id, signal())).id, id, 'new client restores injected credentials');
   assert.match(await client.initiateGmail(signal()), /^https:\/\/accounts.google.com\//);
   // Incremental grant (P-37): the modify step is one consent that keeps read and adds every change capability.
   mode = 'gmail-modify'; assert.match(await client.initiateGmail(signal(), 'modify'), /^https:\/\/accounts.google.com\//); mode = 'ok';
@@ -160,16 +170,16 @@ try {
   mode = 'ok'; await client.disconnectGmail(grant, signal());
   mode = 'bad-disconnect'; await assert.rejects(client.disconnectGmail(grant, signal()), error => error.code === 'invalid-response');
   mode = 'ok';
-  mode = 'foreign-runtime'; await assert.rejects(client.listAgents(signal()), error => error.code === 'invalid-response');
+  mode = 'foreign-runtime'; await assert.rejects(agents.listAgents(signal()), error => error.code === 'invalid-response');
   mode = 'cumulative';
   assert.match(await client.initiateGmail(signal(), 'drafts', ['google.gmail.triage', 'google.gmail.send', 'google.unknown.scope']), /^https:\/\/accounts.google.com\//);
   mode = 'ok';
   mode = 'foreign-oauth'; await assert.rejects(client.initiateGmail(signal()), error => error.code === 'invalid-response');
   const readsBeforeOutage = agentReads;
-  mode = 'outage'; await assert.rejects(client.listAgents(signal()), error => error.status === 503);
+  mode = 'outage'; await assert.rejects(agents.listAgents(signal()), error => error.status === 503);
   assert.equal(agentReads, readsBeforeOutage + 1); assert.ok(saved);
   await client.disconnect(); assert.equal(saved, null);
-  await assert.rejects(client.listAgents(signal()), error => error.code === 'credentials-missing');
+  await assert.rejects(agents.listAgents(signal()), error => error.code === 'credentials-missing');
   mode = 'consumed'; await assert.rejects(client.login(signal()), error => error.code === 'credential-consumed');
   assert.equal(saved, null);
   mode = 'expiry'; await assert.rejects(client.login(signal()), error => error.code === 'expired');

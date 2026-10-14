@@ -1,16 +1,18 @@
-import type {ChatChannel} from './alpha-client';
-import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
-import { CloudPersonalProtocol, PersonalProtocolError } from './cloud-personal-protocol.ts';
+import type {AutomationsMethod} from './automations-route-policy.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
 import { gmailCapabilitiesFor } from './gmail-grants.ts';
+import type { CloudMapsRoute } from '../maps/cloud-provider.ts';
 import { BILLING_LIMITS_PATH, ENTITLEMENT_KEYS_PATH, ENTITLEMENT_PATH, REDEEM_PATH, fallbackPlanFromLimits, normalizeSubscriptionCode, readServiceLimit, SubscriptionRedeemError, type EntitlementSource, type FallbackPlan, type RedeemResult } from './subscription-entitlement.ts';
-/** Narrow Alpha adapter for Eliza Cloud. Contracts inspected in v3's
- * cloud/api/auth/cli-session, cloud/api/v1/eliza/{agents,google}, and
- * ui/src/api/client-cloud.ts. Native composition owns HTTP and secure storage.
- * This module never stores credentials in renderer persistence or logs them. */
+/** Narrow Alpha adapter for Eliza Cloud managed services: sign-in, identity, subscription plan and
+ * the connected Google services. Contracts inspected in v3's cloud/api/auth/cli-session,
+ * cloud/api/v1/eliza/google and ui/src/api/client-cloud.ts. Native composition owns HTTP and secure
+ * storage. This module never stores credentials in renderer persistence or logs them.
+ * The agent always runs on the phone: this adapter has no hosted-agent discovery, runtime or
+ * pairing route. The development-only hosted-agent fixture extends it in
+ * development-cloud-agents.ts and is constructed only in ELIZA_DEV_ALLOW_TEST_MOCKS=1 builds. */
 export type CloudEnvironment = "production" | "staging";
-type CloudAuthority = { readonly api: string; readonly web: string; readonly agents: string };
+export type CloudAuthority = { readonly api: string; readonly web: string; readonly agents: string };
 // Staging is a test-mocks surface (ELIZA_DEV_ALLOW_TEST_MOCKS=1): QA builds reach
 // api-staging.eliza.app, its issuer and its web origins (docs/cloud-subscription-qa.md).
 // Vite replaces import.meta.env at build time, so flag-off bundles fold the staging
@@ -153,17 +155,17 @@ export class CloudProtocolError extends Error {
     this.name = "CloudProtocolError";
   }
 }
-type ObjectValue = Record<string, unknown>;
-function object(value: unknown): ObjectValue {
+export type ObjectValue = Record<string, unknown>;
+export function object(value: unknown): ObjectValue {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new CloudProtocolError("invalid-response");
   return value as ObjectValue;
 }
-function string(value: unknown): string {
+export function string(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) throw new CloudProtocolError("invalid-response");
   return value;
 }
-function optionalString(value: unknown): string | null { return value == null ? null : string(value); }
-function uuid(value: unknown): string {
+export function optionalString(value: unknown): string | null { return value == null ? null : string(value); }
+export function uuid(value: unknown): string {
   const id = string(value);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) throw new CloudProtocolError("invalid-response");
   return id;
@@ -182,40 +184,19 @@ function delay(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-export interface CloudPhoneTarget {
-  agentId: string; origin: string; userId: string; organizationId: string;
-  credentialId: string; headers: Record<string,string>;
-}
 const GMAIL_CAPABILITIES: readonly string[] = ["google.basic_identity", "google.gmail.triage", "google.gmail.send", "google.gmail.drafts", "google.gmail.mailbox"];
 export class CloudProtocol {
-  private phoneTarget: CloudPhoneTarget | null = null;
-  setPhoneTarget(target: CloudPhoneTarget | null) { this.phoneTarget = target; }
-  async phoneRequest(target: CloudPhoneTarget, path: string, signal: AbortSignal, body?: unknown, method: AutomationsMethod = body === undefined ? 'GET' : 'POST'): Promise<Record<string,unknown>> {
-    signal.throwIfAborted();
-    const automation = isAutomationsPath(path);
-    if (automation ? !automationsRouteAllowed(path, method) : !['GET','POST'].includes(method) || !(/^\/api\/(?:client-devices|workflow|conversations)(?:\/|\?|$)/.test(path)||/^\/api\/views\/interact-(claim|result)$/.test(path)) || path.includes('..') || /[\\#\s]/.test(path)) throw new Error('Invalid phone route');
-    if ((method === 'GET' || method === 'DELETE') && body !== undefined) throw new Error('Invalid phone request body');
-    const credential = await this.credentials.read(this.environment); signal.throwIfAborted();
-    if (!credential || credential.credentialId !== target.credentialId) throw new Error('Cloud account changed');
-    const identity = await this.identity(signal);
-    if (identity.userId !== target.userId || identity.organizationId !== target.organizationId) throw new Error('Cloud owner changed');
-    const agent = await this.agentDetail(target.agentId, signal);
-    if (agent.runtimeUrl !== target.origin || !['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier || '')) throw new Error('Verified dedicated runtime unavailable');
-    const result = await this.call(path, signal, {authenticated:true,runtimeBase:target.origin,body,method,timeoutMs:120000,headers:{...target.headers,'X-Eliza-Phone-Protocol':'1'},credentialId:target.credentialId});
-    if ((await this.credentials.read(this.environment))?.credentialId !== target.credentialId) throw new Error('Cloud account changed');
-    signal.throwIfAborted(); return result;
-  }
   private activeLogin: AbortController | null = null;
   constructor(readonly environment: CloudEnvironment, private readonly request: CloudNativeRequest,
-    private readonly credentials: CloudCredentialStore,
+    protected readonly credentials: CloudCredentialStore,
     private readonly openExternal: (url: string, signal: AbortSignal) => Promise<void>,
     private readonly options: CloudProtocolOptions = {}) {}
-  private get authority(): CloudAuthority {
+  protected get authority(): CloudAuthority {
     const authority = authorities[this.environment];
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  private async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
+  protected async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     let credentialReference: string | undefined;
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
@@ -240,7 +221,7 @@ export class CloudProtocol {
     options.onStatus?.(response.status);
     return response.data;
   }
-  private async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
+  protected async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
   /** Plan state from the read-only billing snapshot, used only while the entitlement route is
@@ -352,43 +333,6 @@ export class CloudProtocol {
     await this.openExternal(planManagementUrl(this.environment), signal);
     signal.throwIfAborted();
   }
-  /** Scoped personal onboarding, using the existing native credential transport. */
-  async personal(signal: AbortSignal): Promise<CloudPersonalProtocol> {
-    const credential = await this.credentials.read(this.environment);
-    if (!credential?.credentialId) throw new PersonalProtocolError('account-changed');
-    const identity = await this.identity(signal);
-    if (!identity.organizationId) throw new PersonalProtocolError('account-changed');
-    const owner = Object.freeze({ environment:this.environment, credentialId:credential.credentialId,
-      userId:identity.userId, organizationId:identity.organizationId });
-    const assertCurrent = async () => {
-      signal.throwIfAborted();
-      const current = await this.credentials.read(this.environment);
-      if (current?.credentialId !== owner.credentialId) throw new PersonalProtocolError('account-changed');
-    };
-    await assertCurrent();
-    return new CloudPersonalProtocol(owner, async (path, requestSignal, body) => {
-      await assertCurrent(); requestSignal.throwIfAborted();
-      const currentOwner=await this.identity(requestSignal);
-      await assertCurrent();
-      if(currentOwner.userId!==owner.userId||currentOwner.organizationId!==owner.organizationId)throw new PersonalProtocolError('account-changed');
-      let status=200;
-      try {
-        const data=await this.requestData(path,requestSignal,{authenticated:true,credentialId:owner.credentialId,body,onStatus:value=>{status=value;}});
-        await assertCurrent(); requestSignal.throwIfAborted(); return {status,data};
-      } catch(error) {
-        await assertCurrent(); requestSignal.throwIfAborted();
-        if(error instanceof CloudProtocolError && error.code==='http')return {status:error.status!,data:error.data};
-        throw error;
-      }
-    }, async (target, requestSignal, expectedApiBase) => {
-      await assertCurrent();
-      const agent=await this.agentDetail(target,requestSignal);
-      await assertCurrent();
-      if(!['dedicated-lazy','dedicated-always','custom'].includes(agent.executionTier??'') ||
-        (expectedApiBase!==undefined && (this.runtimeUrl(expectedApiBase,target,agent.executionTier)!==expectedApiBase || (agent.runtimeUrl!==null && agent.runtimeUrl!==expectedApiBase))) || (agent.status==='running'&&!agent.runtimeUrl)) throw new PersonalProtocolError('invalid-response');
-      return agent.status;
-    });
-  }
   cancelLogin(): void { this.activeLogin?.abort(new DOMException("Login cancelled", "AbortError")); }
   /** Only one poller may claim the server's single-consumption credential. A
    * cancelled/lost claim is not retried automatically; start a fresh login. */
@@ -493,92 +437,20 @@ export class CloudProtocol {
       if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
     }
   }
-  private runtimeUrl(value: unknown, id: string, tier: string | null): string | null {
-    if (value == null) return tier === "shared" ? `${this.authority.api}/api/v1/eliza/agents/${id}` : null;
-    let url: URL;
-    try { url = new URL(string(value)); } catch { throw new CloudProtocolError("invalid-response"); }
-    const sharedPath = `/api/v1/eliza/agents/${id}`;
-    const dedicated = url.hostname === `${id}.${this.authority.agents}` && (url.pathname === "/" || url.pathname === "");
-    const shared = url.origin === this.authority.api && url.pathname.replace(/\/$/, "") === sharedPath;
-    if (url.protocol !== "https:" || url.username || url.password || url.port || url.search || url.hash || (!dedicated && !shared)) throw new CloudProtocolError("invalid-response");
-    return url.href.replace(/\/$/, "");
-  }
-  private agent(value: unknown): CloudAgent {
-    const data = object(value), id = uuid(data.id ?? data.agentId);
-    const tier = optionalString(data.executionTier);
-    return { id, name: optionalString(data.agentName), status: string(data.status), executionTier: tier,
-      runtimeUrl: this.runtimeUrl(data.webUiUrl, id, tier) };
-  }
-  private success(response: ObjectValue): unknown {
+  protected success(response: ObjectValue): unknown {
     if (response.success !== true) throw new CloudProtocolError("invalid-response");
     return response.data;
-  }
-  async listAgents(signal: AbortSignal): Promise<CloudAgent[]> {
-    const data = this.success(await this.call("/api/v1/eliza/agents", signal, { authenticated: true }));
-    if (!Array.isArray(data)) throw new CloudProtocolError("invalid-response");
-    return data.map(value => this.agent(value));
-  }
-  async agentDetail(id: string, signal: AbortSignal): Promise<CloudAgent> {
-    const agent = this.agent(this.success(await this.call(`/api/v1/eliza/agents/${uuid(id)}`, signal, { authenticated: true })));
-    if (agent.id !== id) throw new CloudProtocolError("invalid-response");
-    return agent;
   }
   /** Authenticated identity is server-derived, never inferred from entered email. */
   async identity(signal: AbortSignal): Promise<{ userId: string; organizationId?: string;email?:string }> {
     const data = object(this.success(await this.call("/api/v1/user", signal, { authenticated: true })));
     return { userId: uuid(data.id), ...(typeof data.email==='string'&&data.email.trim()&&data.email.length<=320?{email:data.email.trim()}:{}), ...(data.organization_id == null ? {} : { organizationId: uuid(data.organization_id) }) };
   }
-  private async runtimeCall(agentId: string, path: string, signal: AbortSignal, body?: unknown) {
-    if (this.phoneTarget?.agentId === agentId) return this.phoneRequest(this.phoneTarget, path, signal, body);
-    const agent = await this.agentDetail(agentId, signal);
-    if (!agent.runtimeUrl) throw new CloudProtocolError("invalid-response");
-    // Hosted shared REST lives on the API host. Dedicated REST lives on its
-    // returned per-agent subdomain, whose proxy validates the same cloud token.
-    return this.call(path, signal, { authenticated: true, runtimeBase: agent.runtimeUrl, body, timeoutMs: 120_000 });
-  }
-  async listConversations(agentId: string, signal: AbortSignal): Promise<Array<{ id: string; title?: string }>> {
-    const response = await this.runtimeCall(agentId, "/api/conversations", signal);
-    if (!Array.isArray(response.conversations)) throw new CloudProtocolError("invalid-response");
-    return response.conversations.map(value => {
-      const conversation = object(value);
-      return { id: string(conversation.id), ...(typeof conversation.title === "string" ? { title: conversation.title } : {}) };
-    });
-  }
-  async messages(agentId: string, conversationId: string, signal: AbortSignal): Promise<{ messages: Record<string, unknown>[] }> {
-    const data = await this.runtimeCall(agentId, `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, signal);
-    if (!Array.isArray(data.messages)) throw new CloudProtocolError("invalid-response");
-    return { messages: data.messages.map(object) };
-  }
-  async createConversation(agentId: string, title: string, signal: AbortSignal): Promise<{ id: string; title?: string }> {
-    const response = await this.runtimeCall(agentId, "/api/conversations", signal, { title });
-    const conversation = object(response.conversation);
-    return { id: string(conversation.id), ...(typeof conversation.title === "string" ? { title: conversation.title } : {}) };
-  }
-  /** Never replay a send automatically. Shared Cloud currently ignores metadata;
-   * the dedicated host accepts it. Caller must not treat shared context as delivered. */
-  async send(agentId: string, conversationId: string, text: string,
-    options: { metadata?: Record<string, unknown>; clientMessageId?: string; channelType?:ChatChannel; signal: AbortSignal },
-  ): Promise<{ text: string; agentName: string; messageId?:string;userMessageId?:string;actionResults?:readonly unknown[];interrupted?: boolean; noResponseReason?: "ignored"; failureKind?: unknown; terminalFailure?: unknown }> {
-    if (!text.trim()) throw new TypeError("Message must not be empty");
-    const response = await this.runtimeCall(agentId,
-      `/api/conversations/${encodeURIComponent(string(conversationId))}/messages`, options.signal,
-      { text, channelType: options.channelType ?? "DM", ...(options.metadata ? { metadata: options.metadata } : {}),
-        ...(options.clientMessageId ? { clientMessageId: options.clientMessageId } : {}) });
-    if (typeof response.text !== "string" || typeof response.agentName !== "string") throw new CloudProtocolError("invalid-response");
-    if (response.terminalFailure || response.failureKind) throw new CloudProtocolError("invalid-response");
-    for(const key of ['messageId','userMessageId'])if(response[key]!==undefined&&typeof response[key]!=='string')throw new CloudProtocolError('invalid-response');
-    return { text: response.text, agentName: response.agentName,
-      ...(typeof response.messageId==='string'?{messageId:response.messageId}:{}),
-      ...(typeof response.userMessageId==='string'?{userMessageId:response.userMessageId}:{}),
-      ...(Array.isArray(response.actionResults)?{actionResults:response.actionResults}:{}),
-      ...(response.interrupted === true ? { interrupted: true } : {}),
-      ...(response.noResponseReason === "ignored" ? { noResponseReason: "ignored" as const } : {}) };
-  }
   /** Read access by default; Calendar writes require explicit additional consent. */
   async initiateGoogle(signal:AbortSignal, calendarPermission:'read'|'write'='read', gmailPermission:'read'|'modify'|'send'|'drafts'|'mailbox'='read'):Promise<string> {
     if(!['read','write'].includes(calendarPermission))throw new TypeError('Invalid Calendar permission');
     if(!['read','modify','send','drafts','mailbox'].includes(gmailPermission))throw new TypeError('Invalid Gmail permission');
-    const response=object(await this.googleRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
+    const response=object(await this.accountRequest('/api/v1/eliza/google/connect/initiate',signal,{side:'owner',capabilities:[
       ...gmailCapabilitiesFor(gmailPermission==='modify'?'modify':'read'),'google.calendar.read',...(calendarPermission==='write'?['google.calendar.write']:[]),
       ...(['read','modify'].includes(gmailPermission)?[]:[gmailPermission==='send'?'google.gmail.send':gmailPermission==='drafts'?'google.gmail.drafts':'google.gmail.mailbox']),
     ]}));
@@ -590,7 +462,7 @@ export class CloudProtocol {
     return url.href;
   }
   /** Reject responses from an account that changed while its request was in flight. */
-  private async googleRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
+  private async accountRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
     const credential=await this.credentials.read(this.environment);signal.throwIfAborted();
     if(!credential)throw new CloudProtocolError('credentials-missing');
     const binding=JSON.stringify([credential.credentialId,credential.credentialReference,credential.token,credential.userId,credential.organizationId]);
@@ -599,9 +471,15 @@ export class CloudProtocol {
     if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
     return data;
   }
+  /** Eliza Cloud Maps data (#412) on the exact reviewed routes. Queries and coordinates
+   * travel only in the JSON body; capabilities is a bare read. GPS and navigation stay on the phone. */
+  async mapsRequest(route:CloudMapsRoute,signal:AbortSignal,body?:Record<string,unknown>):Promise<Record<string,unknown>> {
+    if(!['capabilities','geocode','reverse','places/search','places/details','routes'].includes(route)||(route==='capabilities')!==(body===undefined))throw new CloudProtocolError('invalid-response');
+    return object(await this.accountRequest(`/api/v1/maps/${route}`,signal,body));
+  }
   async googleCalendars(grantId:string,signal:AbortSignal):Promise<GoogleCalendarSummary[]> {
     const params=new URLSearchParams({side:'owner',grantId:uuid(grantId)});
-    const data=await this.googleRequest(`/api/v1/eliza/google/calendar/calendars?${params}`,signal);
+    const data=await this.accountRequest(`/api/v1/eliza/google/calendar/calendars?${params}`,signal);
     if(!Array.isArray(data))throw new CloudProtocolError('invalid-response');
     const seen=new Set<string>();
     return data.map(value=>{
@@ -616,7 +494,7 @@ export class CloudProtocol {
     if(timestamp(range.timeMax)<=timestamp(range.timeMin))throw new TypeError('Calendar range must end after it starts');
     try{new Intl.DateTimeFormat('en-US',{timeZone:range.timeZone}).format();}catch{throw new TypeError('Invalid Calendar time zone');}
     const params=new URLSearchParams({side:'owner',grantId,calendarId,timeMin:range.timeMin,timeMax:range.timeMax,timeZone:range.timeZone});
-    const data=object(await this.googleRequest(`/api/v1/eliza/google/calendar/feed?${params}`,signal));
+    const data=object(await this.accountRequest(`/api/v1/eliza/google/calendar/feed?${params}`,signal));
     if(data.calendarId!==calendarId||!Array.isArray(data.events)||data.nextPageToken!=null||data.truncated===true)throw new CloudProtocolError('invalid-response');
     timestamp(data.syncedAt);
     const plain=(value:unknown)=>{if(typeof value!=='string')throw new CloudProtocolError('invalid-response');return value;};

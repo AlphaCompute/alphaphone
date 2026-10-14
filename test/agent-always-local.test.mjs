@@ -1,0 +1,150 @@
+// Decision P-43 (owner, 2026-10-13): "there should NEVER be no agent connected since the agent
+// should ALWAYS run locally on device, no exceptions." Eliza Cloud sign-in and plan state decide only
+// whether Cloud inference is bound into the running agent. Structural source contracts for the
+// renderer and the native start path. Evidence class: source/test only; not an APK, emulator, image
+// or device run. The browser specs in test/browser/native-cloud-subscription.spec.ts exercise the
+// composed flow with synthetic ports.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {DENYLIST, RETIRED_NO_AGENT_TEXT} from '../scripts/audit-production-bundle.mjs';
+
+const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
+const ui = read('apps/app/src/runtime/connection-ui.tsx');
+const plugin = read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java');
+const store = read('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaCredentialStore.java');
+const between = (text, start, end) => { const from = text.indexOf(start), to = text.indexOf(end, from + start.length); assert.ok(from >= 0 && to > from, `${start} … ${end} located`); return text.slice(from, to); };
+
+test('production bundles forbid the retired no-agent copy', () => {
+  for (const text of ['without AI', 'Continue offline', 'Connect an agent']) {
+    assert.ok(RETIRED_NO_AGENT_TEXT.includes(text), text);
+    assert.ok(DENYLIST.includes(text), text);
+  }
+});
+
+test('plan state never stops or withholds the on-device agent', () => {
+  const admission = between(ui, 'async function admitCloudResident(', 'async function connectResident(');
+  // Admission decides only the inference binding; nothing in it (or the refresh handlers) stops,
+  // retires or skips the agent.
+  for (const forbidden of ['stopLocalAgent(', "retire('Plan required')", "retire('Sign-in required')", 'return false', 'Promise<boolean>'])
+    assert.ok(!admission.includes(forbidden), `admission/refresh must not ${forbidden}`);
+  assert.match(admission, /Promise<ResidentAdmission>/);
+  for (const binding of ["binding:'unbound',notice:{open:true}", "binding:recent?'kept':'unbound'", "return {binding:'unbound',account};", "return {binding:'cloud',credentialId:account.identity.credentialId,account};"])
+    assert.ok(admission.includes(binding), `admission returns ${binding}`);
+  // A plan that ends, or a rejected refresh, rebinds the running agent; it is never stopped.
+  assert.match(between(ui, 'function residentPlanEnded(', 'function residentRefreshRefused('), /queueResidentRebind\(\);/);
+  assert.match(between(ui, 'function residentRefreshRefused(', 'async function applyResidentBinding('), /queueResidentRebind\(\);/);
+  // connectResident always reaches the start; only the test-mocks staging QA lane stops at admission.
+  const connect = between(ui, 'async function connectResident(', 'async function connectCloud(');
+  const start = connect.indexOf('await client.connect(signal)');
+  assert.ok(start > 0);
+  const beforeStart = connect.slice(0, start);
+  assert.equal((beforeStart.match(/return;/g) || []).length, 1, 'only the QA lane returns before the start');
+  assert.match(beforeStart, /if\(testMocksEnabled&&!residentBindable\(\)\)\{[^\n]*return;\}/);
+  // Startup always starts the agent, signed in or not, and stores no local-only choice.
+  assert.match(between(ui, 'async function startResidentGate(', 'function conversationKey('), /try\{save\(\{kind:'resident'\}\);\}catch\{[^}]*\}\n\s+await startResident\(\);/);
+  assert.match(ui, /if \(residentCloudFlow\(\)\) \{ await startResidentGate\(\); return; \}/);
+  // Product phones refuse disconnecting the resident or removing its provider; there is no Stop, only Restart.
+  for (const method of ['async removeProvider()', 'async disconnect()'])
+    assert.match(between(ui, method, '\n  },'), /if\(residentCloudFlow\(\)\)\{update\(\{error:ALWAYS_LOCAL,message:''\}\);return;\}/, method);
+  assert.doesNotMatch(ui, /async stopLocal\(\)/);
+  assert.match(ui, /async restartLocal\(\)/);
+  // Sign-in and sign-out keep the agent running and reconnect it afterwards (native attaches when
+  // the process already matches the binding, otherwise it restarts once).
+  const login = between(ui, 'async residentCloudLogin()', 'async residentManagePlan()');
+  assert.ok(!login.includes('stopLocalAgent('));
+  assert.ok(login.indexOf('cloud.login(') >= 0 && login.indexOf('connectResident(signal)') > login.indexOf('cloud.login('), 'reconnect only after the browser sign-in returned');
+  assert.match(login, /catch\(error\)\{if\(kept\)residentRebindQueued=true;throw error;\}/, 'a cancelled sign-in re-admits a kept sign-in');
+  const signOut = between(ui, 'async cloudSignOut()', 'async mock()');
+  assert.ok(!signOut.includes('stopLocalAgent(') && signOut.includes('else{retire();try{await connectResident(signal);}'));
+  // Cloud inference is unbound (native stops a process holding the key) before the key is revoked.
+  assert.ok(signOut.indexOf('await clearLocalProvider()') > 0 && signOut.indexOf('await clearLocalProvider()') < signOut.indexOf('client.revokeSession(signal)'));
+});
+
+test('the connection controller has no local-apps-only mode and migrates old selections to the resident', () => {
+  assert.doesNotMatch(ui, /localAppsSelected|localApps\?: ?true|Use local apps without AI/);
+  // A stored offline, local-apps or none selection reads as the resident where it is always present.
+  assert.match(ui, /value\?\.kind === 'offline' \|\| value\?\.kind === 'none'\) return residentAlwaysPresent \? \{ kind: 'resident' \}/);
+  // Saving a no-agent choice there stores the resident instead.
+  assert.match(ui, /residentAlwaysPresent && \(selection\.kind === 'none' \|\| selection\.kind === 'offline'\) \? \{ kind: 'resident' \}/);
+  assert.match(ui, /function residentCloudFlow\(\): boolean \{ return \(isAndroid && !testMocksEnabled\) \|\| residentQa\(\) !== null; \}/);
+  assert.doesNotMatch(ui, /if\(!await admitCloudResident\(signal\)\)return;/);
+});
+
+test('no startup path ends claiming "starting" with nothing starting', () => {
+  // Every startup outcome is settled: the resident starts, or the state is `recovering` with Retry.
+  assert.match(ui, /\}\)\(\)\.then\(settleResidentAfterStartup\)(\.finally\(\(\)=>update\(\{startupResolved:true\}\)\))?;/);
+  assert.match(ui, /async function settleResidentAfterStartup\(\) \{[\s\S]{0,600}await ensureResident\(\);[\s\S]{0,80}update\(\{ kind: 'recovering' \}\);/);
+  // A rebind that fails to reconnect leaves the agent recovering (Retry), never "no agent".
+  assert.match(between(ui, 'function queueResidentRebind(', 'function runQueuedResidentRebind('), /catch \(error\) \{ if \(residentAlwaysPresent && !active\) update\(\{ kind: 'recovering' \}\); throw error; \}/);
+});
+
+test('Cloud inference is bound only for an admitted plan and unbound otherwise', () => {
+  const bind = between(ui, 'async function applyResidentBinding(', 'async function connectResident(');
+  const cloud = bind.indexOf("if(admission.binding==='cloud'&&admission.credentialId&&admission.account){");
+  assert.ok(cloud > 0 && bind.indexOf('bindResidentCloudProvider(') > cloud, 'binding happens only in the admitted branch');
+  assert.equal(bind.split('bindResidentCloudProvider(').length, 2, 'one bind call');
+  // Every other outcome clears the stored provider before the agent starts.
+  assert.ok(bind.split('await clearLocalProvider()').length >= 3);
+  // The running state the UI and tests read is derived from the binding actually applied.
+  assert.match(between(ui, 'async function connectResident(', 'async function connectCloud('), /residentBinding=bound\.binding;\n\s+update\(\{residentInference:bound\.binding==='cloud'\?'cloud':bound\.binding==='unbound'\?'unavailable':'unknown'\}\);/);
+});
+
+test('a chat turn without Cloud inference gets an honest answer with the plan actions', () => {
+  const send = between(ui, '  async send(', 'export function ConnectionChooser');
+  const honest = send.indexOf('inferenceUnavailableReply(notice, signedIn)');
+  assert.ok(honest > 0 && honest < send.indexOf('responseFailure = replyFailure('), 'the plan answer precedes the generic failure');
+  assert.match(send, /state\.residentInference === 'unavailable' \|\| \('failureKind' in reply && reply\.failureKind === 'no_provider' && state\.residentInference !== 'cloud'\)/);
+  // A provider-less turn that ends as a stream failure frame gets the same answer, never "Set up AI".
+  const failure = between(ui, 'function replyFailure(', '\n}\n');
+  assert.match(failure, /if\(kind==='no_provider'&&selected\.kind==='resident'&&residentCloudFlow\(\)\)\{[\s\S]*inferenceUnavailableReply\(notice,signedIn\)[\s\S]*planAction:/);
+  const reply = between(ui, 'export function inferenceUnavailableReply(', '\n}\n');
+  for (const text of ['Redeem a subscription code or choose a plan', "can't reach Eliza Cloud", 'Sign in with Eliza Cloud', 'keep working'])
+    assert.ok(reply.includes(text), text);
+  assert.doesNotMatch(reply, /no agent|without AI|credit|top.?up|upgrade/i);
+  // Workflow text generation fails honestly instead of using the plan answer as generated text.
+  const client = read('apps/app/src/runtime/alpha-client.ts');
+  assert.match(between(client, 'async generateWorkflowText(', 'async send('), /if\(reply&&\(reply as AgentReply\)\.planAction\)throw new AlphaClientError\('unconfigured'/);
+  const adapter = read('apps/app/src/prototype/agent-adapter.ts');
+  assert.match(adapter, /if\(card\.planAction\)\{\n\s+if\(card\.planAction==='plan'\)connectionController\.openPlan\(\);/);
+  assert.doesNotMatch(adapter, /title:'Set up AI'|connectionSetup/);
+  assert.match(adapter, /const planCard=planActionCard\(\(e as \{planAction\?:unknown\}\)\.planAction\);/);
+});
+
+test('the plan surface is a notice beside the running agent, not a gate', () => {
+  const chooser = ui.slice(ui.indexOf('export function ConnectionChooser'));
+  assert.match(chooser, /if \(!snapshot\.open\) \{\n\s+\/\/ Never a gate: the agent is running\./);
+  assert.ok(chooser.includes('<aside className="alpha-plan-notice" role="region" aria-label="Eliza Cloud plan notice">'));
+  // Admission without a plan opens nothing; only a required sign-in opens (and locks) the dialog.
+  assert.ok(between(ui, 'async function admitCloudResident(', 'function residentPlanEnded(').includes("update({residentSubscription:view,residentPlanNotice:'needs-plan',planEndsAt:null});\n    return {binding:'unbound',account};"));
+  assert.ok(chooser.includes("const residentMustSignIn=residentCloudFlow()&&!snapshot.cloudAccount&&snapshot.residentPlanNotice!=='offline'&&!snapshot.residentStarting;"));
+  assert.ok(chooser.includes('{!residentMustSignIn&&<button aria-label="Close connection settings"'));
+  assert.match(ui, /close\(\) \{\n\s+if\(residentSignInRequired\(\)\)\{/);
+  // No agent-less product choice remains in the phone's flow.
+  const resident = between(chooser, 'if(residentCloudFlow())return', 'if(browserOnly)return');
+  assert.doesNotMatch(resident, /Use local apps without AI|without AI|No agent connected/);
+});
+
+test('native starts the agent without a provider and never offers it a Cloud key without an admitted plan', () => {
+  const start = between(plugin, '@PluginMethod public void start(', '@PluginMethod public void cancelStart(');
+  assert.doesNotMatch(start, /Configure your model provider/);
+  assert.doesNotMatch(plugin, /Configure your model provider before starting the local agent|Configure a model provider before starting/);
+  const configure = between(plugin, 'static void configureEnvironment(', '@PluginMethod public void start(');
+  assert.match(configure, /if\(provider==null\)applyUnboundEnvironment\(env\);/);
+  assert.match(configure, /launchedGeneration=LocalAgentProviderAdmission\.launchGeneration\(saved,cloudSaved\);/);
+  const unbound = between(plugin, 'static void applyUnboundEnvironment(', '\n }\n');
+  for (const key of ['ELIZAOS_CLOUD_API_KEY', 'CEREBRAS_API_KEY', 'OPENAI_API_KEY', 'ELIZA_PROVIDER', 'ELIZAOS_CLOUD_BASE_URL'])
+    assert.ok(unbound.includes(`"${key}"`), `unbound launch removes ${key}`);
+  assert.match(unbound, /env\.put\("ELIZAOS_CLOUD_USE_INFERENCE","false"\);/);
+  assert.ok(!unbound.includes('readCredentialSlot'), 'the unbound launch reads no credential');
+  // An empty provider slot is its own attachable generation (host-JVM tested in LocalAgentProviderAdmission).
+  assert.match(between(plugin, 'private static String storedProviderGeneration(', 'private void rejectPending('), /if\(saved==null\)return LocalAgentProviderAdmission\.NO_PROVIDER_GENERATION;/);
+  assert.match(read('android/app/src/main/java/ai/elizaresearch/alphaphone/LocalAgentProviderAdmission.java'), /NO_PROVIDER_GENERATION="no-provider"/);
+  // With no stored provider, no process holds a Cloud key: a sign-in change does not stop the agent.
+  assert.match(store, /if\(java\.util\.Objects\.equals\(before,value\)\)return false;\n\s+\/\/[^\n]*\n\s+\/\/[^\n]*\n\s+if\(provider==null\)return false;/);
+});
+
+test('browser speech has no Web Speech fallback', () => {
+  for (const file of ['apps/app/src/browser/voice.ts', 'apps/app/src/browser/browser-surface.ts'])
+    assert.doesNotMatch(read(file), /speechSynthesis|SpeechSynthesisUtterance/, file);
+});

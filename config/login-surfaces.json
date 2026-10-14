@@ -1,11 +1,14 @@
 {
   "$comment": "Inventory of every login and secret-entry surface in Alpha (issue #404, policy P-20). test/login-surfaces.test.mjs scans the renderer and native sources and fails when a password field or credential autocomplete token appears that is not registered here. An eligible Alpha-owned login form cannot be registered until it has a provider-owned fill route; see rules below. Status values describe source, never device acceptance.",
+  "reviewed": "2026-10-14: re-inventoried after #438/#430 against renderer sources, every Android module, Cloud/Google connection handoffs and the browser HTTP-auth prompt. No new login surface; the HTTP-auth prompt gained an engine-origin binding gate (BrowserHttpAuthOrigin.bind) that refuses with a stated reason on the standard WebView.",
   "rules": {
     "websiteBinding": "Website fills bind to the committed top-level HTTPS origin of the selected, visible, finished browser tab (scheme, host and port). Cleartext, error, overlay, paused, private-host and cross-origin-frame fields are never offered.",
     "appBinding": "Native app fills bind to the framework-reported package confirmed by PackageManager#hasSigningCertificate against the signer recorded at save time (rotation-aware).",
     "secrets": "No password, username value, vault record or provider structure crosses the agent bridge, the observation context, transcripts, notifications, the action journal or logs. The agent observation is sensitive (no view, no selection) while a password page or connection sheet is open.",
     "rendererWebView": "The privileged renderer WebView stays excluded from Android Autofill (IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS). An eligible Alpha-owned login form must be a native credential surface (kind alpha-owned-native) that reports an authoritative origin or app identity per field, with provider-owned unlock, save and fill.",
-    "externalBrowsers": "No third-party browser is trusted by the integrated vault for website fills. Handing a page to another browser is a user choice; that browser's own manager is then responsible."
+    "externalBrowsers": "No third-party browser is trusted by the integrated vault for website fills. Handing a page to another browser is a user choice; that browser's own manager is then responsible.",
+    "httpAuthBinding": "HTTP-auth prompt fields are offered to Android Autofill only for the origin the browser engine itself reports for the challenge: exact request URL after redirects (scheme, host, port), realm equal to WebView's, top-level document, engine-validated TLS, the tab's current navigation, and a selected, shown, resumed, error-free tab with no other prompt; the observed main-frame target may only refuse (a later redirect), never establish. Navigation history, page script and the top-level URL are never an origin source. The binding is revoked on cancel, dismissal, repeated challenge, navigation, tab change or close, after which fields drop out of every request and late fill values are dropped. Without an engine report the prompt states why fill is off and stays manual.",
+    "alphaOwnedAppIdentity": "Alpha's own package identity is never a credential binding for website passwords: the integrated vault refuses host UI, and Alpha-owned native credential fields report a website origin or are excluded. An Alpha account login, if one is ever added, must be a native surface with AUTOFILL_HINT_USERNAME/PASSWORD that providers bind to Alpha's package and release signing certificate (android/release-signer.json), qualified on a release-signed APK."
   },
   "surfaces": [
     {
@@ -30,8 +33,10 @@
       },
       "save": "A page-initiated main-frame navigation commits the framework session so the selected provider may offer Save; the provider asks the user.",
       "remainingGates": [
-        "redirect and cross-origin iframe structures on a device",
+        "redirect, wrong-origin and cross-origin iframe structures on a device",
         "provider unlock pause/resume",
+        "provider cancel and lock during fill",
+        "integrated vault: an engine-authenticated per-field origin adapter (blocked upstream)",
         "release-signed APK with both providers",
         "physical Pixel 10a"
       ]
@@ -61,8 +66,15 @@
       "id": "eliza-cloud-sign-in",
       "kind": "external-browser",
       "eligible": false,
-      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java",
-      "reason": "Eliza Cloud and Google account sign-in open the user's own browser (ACTION_VIEW, BROWSABLE). Credentials are entered and filled there, never in Alpha."
+      "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaConnectionPlugin.java (openExternal), apps/app/src/runtime/connection-ui.tsx",
+      "reason": "Eliza Cloud sign-in opens the user's own browser (AlphaConnectionPlugin.openExternal: ACTION_VIEW with CATEGORY_BROWSABLE, eliza.app hosts only). Alpha declares no general https VIEW handler, so the page never loads in Alpha; credentials are entered and filled by that browser's own manager."
+    },
+    {
+      "id": "google-account-authorization",
+      "kind": "external-browser",
+      "eligible": false,
+      "owner": "apps/app/src/runtime/google-connection-ui.tsx (openConnectionBrowser → AlphaConnectionPlugin.openExternal)",
+      "reason": "Google account authorization for Gmail and Calendar opens accounts.google.com in the user's own browser through the same handoff. Alpha never shows a Google password field; that browser's manager fills it."
     },
     {
       "id": "browser-http-auth-prompt",
@@ -70,29 +82,30 @@
       "eligible": false,
       "file": "android/app/src/main/java/ai/elizaresearch/alphaphone/BrowserHttpAuthAutofill.java",
       "pattern": "TYPE_TEXT_VARIATION_PASSWORD|setAutofillHints|AUTOFILL_HINT_(?:PASSWORD|USERNAME)",
-      "count": 4,
+      "count": 5,
       "owner": "android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaBrowserPlugin.java (httpAuth)",
-      "binding": "websiteBinding",
-      "fillRoute": "Disabled: no origin is reported, and native fields are IMPORTANT_FOR_AUTOFILL_NO. Manual entry remains available; every browser tab is excluded from Autofill while the prompt is open.",
+      "binding": "httpAuthBinding",
+      "fillRoute": "Engine-bound only (BrowserHttpAuthOrigin.bind). AlphaBrowserPlugin uses BrowserHttpAuthOrigin.STANDARD_WEBVIEW, which reports no challenge, so production refuses provider fill/save and the prompt states the reason; native fields are then IMPORTANT_FOR_AUTOFILL_NO with no hints. Manual entry remains available; every browser tab is excluded from Autofill while the prompt is open.",
       "providers": {
         "integrated": {
-          "status": "blocked-origin",
-          "detail": "Disabled until the browser engine supplies an authenticated challenge-origin binding."
+          "status": "blocked-engine-origin",
+          "detail": "Field shape and exact-origin acceptance by the pinned PasswordFormPolicy are JVM-tested; fill/save stays off until a browser engine reports authenticated challenges."
         },
         "proton": {
-          "status": "blocked-origin",
-          "detail": "Disabled until the browser engine supplies an authenticated challenge-origin binding."
+          "status": "blocked-engine-origin",
+          "detail": "Same gate; Proton would additionally show its unrecognized-browser warning, which Alpha preserves."
         }
       },
       "remainingGates": [
-        "reviewed engine-authenticated HTTP challenge request origin, including redirected resources and frame identity",
+        "a reviewed browser engine (upstream) that reports the HTTP challenge request URL after redirects, realm, top-level flag, TLS validation and navigation id; Android WebView does not",
         "integrated vault fill and save on a device against an HTTPS Basic-auth fixture",
         "Proton warning and fill on a device",
-        "port, redirect and same-host frame cases on a device",
+        "port, redirect, same-host frame, wrong-origin and stale-tab cases on a device",
+        "provider unlock pause/resume and cancel while the prompt is open, on a device",
         "Save offered only after the site accepts the credentials, on a device",
         "release-signed APK"
       ],
-      "reason": "WebView reports no authenticated request URL, port or frame for an HTTP-auth challenge. Observed navigation and resource history cannot safely bind provider fill/save."
+      "reason": "Android WebView reports only host and realm for an HTTP-auth challenge: no request URL, port, frame or navigation. Without an engine report the binding rule refuses; observed navigation and resource history cannot bind provider fill/save."
     },
     {
       "id": "password-entry-editor",

@@ -1,7 +1,7 @@
 // Actual CloudProtocol/native-transport boundary over loopback HTTP only.
 import assert from 'node:assert/strict';
 import http from 'node:http';
-import {CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
+import {DevelopmentCloudAgentProtocol} from '../apps/app/src/runtime/development-cloud-agents.ts';
 const target='72475cd0-e135-4c42-a9e2-fb5fe0820ada', personal='personal:72475cd0-e135-5c42-a9e2-fb5fe0820ada', job='d32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 let mode='new',posts=[],reads=[],ready=false,credential={credentialId:'generation1',token:'synthetic-only'},quoteId='a'.repeat(64),cutovers=0;
 const prices={hourlyRateUsd:.01,dailyRateUsd:.24,minimumActivationChargeUsd:.01,minimumBalanceUsd:1,minimumRunwayDays:3,balanceUsd:9,deficitUsd:0};
@@ -17,7 +17,7 @@ else if(path.endsWith('/upgrade-tier')){if(req.method==='GET')d=quote();else{ass
 else if(path===`/api/v1/jobs/${job}`)d={id:job,status:mode==='failed-job'?'failed':'completed'};else throw Error('Unexpected path');res.writeHead(status,{'content-type':'application/json'});res.end(JSON.stringify({success:true,data:d}));}catch(error){res.writeHead(500);res.end('{}');throw error;}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const base=`http://127.0.0.1:${server.address().port}`;
 const signal=new AbortController().signal;
-const make=()=>new CloudProtocol('production',async input=>{const u=new URL(input.url);assert.equal(u.origin,'https://api.eliza.app');const r=await fetch(base+u.pathname+u.search,{method:input.method,headers:input.headers,body:input.body===undefined?undefined:JSON.stringify(input.body),signal:input.signal,redirect:input.redirect});return {status:r.status,data:await r.json()};},{read:async()=>credential,write:async()=>{throw Error('No login writes');},clear:async()=>{}},async()=>{throw Error('No browser');});
+const make=()=>new DevelopmentCloudAgentProtocol('production',async input=>{const u=new URL(input.url);assert.equal(u.origin,'https://api.eliza.app');const r=await fetch(base+u.pathname+u.search,{method:input.method,headers:input.headers,body:input.body===undefined?undefined:JSON.stringify(input.body),signal:input.signal,redirect:input.redirect});return {status:r.status,data:await r.json()};},{read:async()=>credential,write:async()=>{throw Error('No login writes');},clear:async()=>{}},async()=>{throw Error('No browser');});
 let passed=0;const reset=m=>{mode=m;ready=false;posts=[];reads=[];quoteId='a'.repeat(64);cutovers=0;credential={credentialId:'generation1',token:'synthetic-only'};};
 try{
 reset('new');let c=await make().personal(signal),v=await c.inspect(signal);assert.equal(v.kind,'review');assert.equal(posts.length,0);const review=v.review;v=await c.accept(review,signal);assert.equal(v.phase,'provisioning');await assert.rejects(c.accept(review,signal),e=>e.code==='review-consumed');v=await c.poll(v.receipt,signal);assert.equal(v.phase,'cutover');v=await c.finalize(v.receipt,signal);assert.equal(v.kind,'ready');assert.equal(posts.length,2);passed++;
