@@ -1,0 +1,153 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join,resolve} from 'node:path';
+import {execFileSync} from 'node:child_process';
+
+// In-app Eliza Cloud sign-in (owner directive 2026-10-14). The pure policy runs on a plain JVM; the
+// Android wiring is checked from source. This builds no APK, runs nothing on Android, verifies no App
+// Link, and contacts neither Eliza Cloud nor Google.
+const root=resolve(import.meta.dirname,'..');
+const read=file=>readFileSync(join(root,file),'utf8');
+const between=(text,start,end)=>{const from=text.indexOf(start),to=text.indexOf(end,from+start.length);assert.ok(from>=0&&to>from,`${start} … ${end} located`);return text.slice(from,to);};
+const java=process.env.JAVA_HOME||(process.platform==='darwin'?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');const binary=name=>java?join(java,'bin',name):name;
+const native='android/app/src/main/java/ai/elizaresearch/alphaphone/';
+
+test('PKCE, state, authorize URL, strict App Link return, pending record, readiness and routes (plain JVM)',()=>{
+ const temporary=mkdtempSync(join(tmpdir(),'cloud-sign-in-'));
+ try{
+  execFileSync(binary('javac'),['--release','11','-d',temporary,join(root,native,'CloudSignInFlow.java'),join(root,native,'CloudSignInReadiness.java'),join(root,native,'ConnectionRoutes.java'),join(root,'test/fixtures/CloudSignInFlowTest.java'),join(root,'test/fixtures/CloudSignInContractTest.java')],{timeout:60000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,'ai.elizaresearch.alphaphone.CloudSignInFlowTest'],{encoding:'utf8',timeout:60000}),/^PASS cloud sign-in flow \(\d+ checks\)/);
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+
+// Shared callback contract: the same fixture JSON is committed in elizaOS/eliza, whose fallback page
+// and Steward redirect tests read it. Here every vector goes through the native parser.
+test('shared callback contract vectors (fixture shared with elizaOS/eliza) through the native parser',()=>{
+ const contract=JSON.parse(read('test/fixtures/alphaphone-auth-callback-contract.json'));
+ assert.equal(contract.contract,'alphaphone-auth-callback');assert.equal(contract.version,1);
+ assert.equal(contract.package,'ai.elizaresearch.alphaphone');assert.equal(contract.callbackPath,'/alphaphone/auth/callback');
+ assert.deepEqual(contract.hosts,{production:'eliza.app',staging:'staging.eliza.app'});
+ for(const kind of ['success','error','return','reject'])assert.ok(contract.cases.some(row=>row.expect===kind),`vectors cover ${kind}`);
+ // A code is a success only from the fragment; no other vector carries one as a result.
+ for(const row of contract.cases)if(row.expect==='success')assert.ok(new URL(row.url).hash.includes('code=')&&!new URL(row.url).search,row.name);
+ // The fallback page's hand-off arrives as the bare callback URL: no result, nothing forwarded.
+ for(const row of contract.fallbackHandoffs){
+  assert.ok(!row.intentUrl.split('#Intent')[0].includes('?')&&!/code=|state=/.test(row.intentUrl),row.name);
+  assert.equal(`https://${row.intentUrl.slice('intent://'.length).split('#Intent')[0]}`,row.deliveredUrl,row.name);
+ }
+ const native_=read(native+'CloudSignInFlow.java');
+ for(const error of contract.errorAllowlist)assert.ok(native_.includes(`"${error}"`),`native allowlists ${error}`);
+ assert.equal((native_.match(/"(?:app_link_unverified|mfa_required|oauth_[a-z_]+)"/g)||[]).filter((v,i,a)=>a.indexOf(v)===i).length,contract.errorAllowlist.length,'no error outside the shared allowlist');
+ const lines=[...contract.cases.map(row=>['case',row.environment,row.expect,row.url,row.code??'',row.state??'',row.error??'']),
+  ...contract.fallbackHandoffs.map(row=>['case',row.environment,row.expect,row.deliveredUrl,'','','']),
+  ...Object.entries(contract.authorizeRequired).map(([name,value])=>['authorize',name,value])];
+ for(const line of lines)assert.ok(line.every(field=>!/[\t\n]/.test(field)));
+ const temporary=mkdtempSync(join(tmpdir(),'cloud-sign-in-contract-'));
+ try{
+  writeFileSync(join(temporary,'vectors.tsv'),lines.map(line=>line.join('\t')).join('\n')+'\n');
+  execFileSync(binary('javac'),['--release','11','-d',temporary,join(root,native,'CloudSignInFlow.java'),join(root,'test/fixtures/CloudSignInContractTest.java')],{timeout:60000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,'ai.elizaresearch.alphaphone.CloudSignInContractTest',join(temporary,'vectors.tsv')],{encoding:'utf8',timeout:60000}),new RegExp(`^PASS callback contract \\(${lines.length} vectors\\)`));
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+
+test('the sign-in App Link is build-gated with the delegation return; staging lives in the test-mocks overlay',()=>{
+ const strip=text=>text.replace(/<!--[\s\S]*?-->/g,'');
+ const main=strip(read('android/app/src/main/AndroidManifest.xml')),mocks=strip(read('android/app/src/testMocks/AndroidManifest.xml')),gradle=read('android/app/build.gradle');
+ const filter=host=>`<intent-filter android:autoVerify="true"><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="https" android:host="${host}" android:path="/alphaphone/auth/callback"/></intent-filter>`;
+ assert.ok(!main.includes('autoVerify'),'a default build declares no https App Link');
+ assert.ok(gradle.includes(filter('\\${appLinkHost}')),'ELIZAOS_APP_LINK_HOST adds the sign-in return beside the delegation return');
+ assert.ok(!main.includes('staging.eliza.app'),'no staging host in a product manifest');
+ assert.ok(between(main,'<activity android:name=".MainActivity"','</activity>').includes('<data android:scheme="alphaphone" android:host="cloud-delegation"/>'),'the delegation return is unchanged');
+ assert.ok(main.includes('<intent><action android:name="android.support.customtabs.action.CustomTabsService"/></intent>'),'Custom Tabs providers are visible');
+ assert.ok(mocks.includes(filter('staging.eliza.app'))&&mocks.includes('<activity android:name=".MainActivity" tools:node="merge">'),'the staging return merges into MainActivity in test-mocks builds');
+ const assetlinks=JSON.parse(read('android/app/src/main/assetlinks.template.json'));
+ assert.equal(assetlinks[0].target.package_name,'ai.elizaresearch.alphaphone');
+ assert.deepEqual(assetlinks[0].relation,['delegate_permission/common.handle_all_urls']);
+});
+
+test('the native sign-in client owns every secret, compares state before burning and never logs',()=>{
+ const plugin=read(native+'AlphaCloudSignInPlugin.java');
+ assert.match(read(native+'MainActivity.java'),/registerPlugin\(AlphaCloudSignInPlugin\.class\);/);
+ assert.match(read(native+'RendererCredentialSlots.java'),/"cloud-signin"/,'pending and receipt slots are native-only');
+ assert.doesNotMatch(plugin,/android\.util\.Log|System\.out|printStackTrace|Log\.[dewiv]\(/,'nothing is logged');
+ // The renderer receives only these outcome fields.
+ for(const resolved of plugin.match(/\.resolve\([^;]*;/g)||[])assert.doesNotMatch(resolved,/token|secret|verifier|refresh|code"/i,resolved);
+ const finish=between(plugin,'JSObject outcome = new JSObject()','finish(current, outcome);');assert.doesNotMatch(finish,/\.put\("(?:secret|token)"/);
+ // The key is renderer-readable (the existing cloud:<environment> slot); the source says so plainly.
+ assert.match(plugin,/That slot is renderer-readable/);assert.doesNotMatch(plugin,/no \.\.\. unacknowledged key crosses|unacknowledged key crosses the bridge/);
+ // Fixed routes only, no redirects, origin and route checked before any connection.
+ const post=between(plugin,'private Response post(Attempt current, CloudSignInFlow.Environment environment,','/** The readiness probe');
+ assert.ok(post.indexOf('ConnectionRoutes.signInOrigin(')<post.indexOf('fetch(')&&post.indexOf('ConnectionRoutes.signInRoute(')<post.indexOf('fetch('));
+ assert.match(between(plugin,'private Fetched fetch(URI url, byte[] body, String bearer, Attempt current','private static final class Fetched'),/setInstanceFollowRedirects\(false\)/);
+ // Google: pending record encrypted before the browser opens.
+ const google=between(plugin,'@PluginMethod public void startGoogle(','/** Custom Tab in a browser');
+ assert.ok(google.indexOf('writeCredentialSlot(PENDING_SLOT')<google.indexOf('openBrowser(url)'));
+ const capture=between(plugin,'private boolean captureCallback(','private void burnUnclaimedPending()');
+ assert.ok(capture.indexOf('intent.setData(null)')>0&&capture.indexOf('intent.setData(null)')<capture.indexOf('run(() ->'),'the return is consumed once');
+ // Contract: a return without a result keeps the pending record; a state mismatch is ignored; the
+ // record is burned only after the state matched, and before any network request.
+ const noResult=between(capture,'ReturnKind.RETURN) {','// Not this phone');
+ assert.doesNotMatch(noResult,/removeCredentialSlot|burnUnclaimedPending/);assert.match(noResult,/"app-link-unverified", false/);
+ assert.ok(capture.indexOf('!pending.sameState(received)) return;')<capture.indexOf('store.removeCredentialSlot(PENDING_SLOT)'),'state compared before burning');
+ assert.ok(capture.indexOf('store.removeCredentialSlot(PENDING_SLOT)')<capture.indexOf('"/steward/auth/oauth/exchange"'),'single use before any network request');
+ assert.match(capture,/\.put\("codeVerifier", pending\.verifier\)/);
+ assert.match(between(plugin,'@Override protected void handleOnResume()','@Override protected void handleOnDestroy()'),/end\(current, "browser-closed", false\)/,'closing the browser keeps the pending record until expiry or a retry');
+ assert.match(between(plugin,'@PluginMethod public void cancel(','// ── Shared tail'),/burnUnclaimedPending\(\);/,'an explicit cancel burns it');
+ // Tail: receipt and key stored before ack; bounded ack; Steward session revoked and never stored.
+ const tail=between(plugin,'private void complete(Attempt current, JSONObject session)','/** The saved key for this environment');
+ const key=tail.indexOf('credentials.writeCredentialSlot("cloud:" + environment.name'),ack=tail.indexOf('acknowledge(current, proof');
+ assert.ok(tail.indexOf('receipts.writeCredentialSlot(receiptSlot(environment)')<key&&key<ack,'receipt, then key, then ack');
+ assert.ok(tail.indexOf('previousToken(')<key&&tail.indexOf('CloudKeyRevocation.revoke(')>ack,'a replaced key is read before the write and revoked after activation');
+ assert.match(tail,/AlphaLocalAgentPlugin\.reserveCredentialIntent\(\)/,'the key write follows the credential-intent rule');
+ assert.match(tail,/"\/steward\/auth\/logout"/);
+ assert.doesNotMatch(tail,/writeCredentialSlot\([^)]*(refresh|token\b)/,'the Steward session is never stored');
+ assert.match(plugin,/for \(int round = 0; round < CloudSignInFlow\.ACK_ATTEMPTS; round\+\+\)/);
+ assert.match(plugin,/@Override public void load\(\) \{[\s\S]*?run\(this::resumeAcknowledgements\);/,'an interrupted ack resumes on the next start');
+ // Email: the code adapter, a per-attempt verify cap and a global send cooldown.
+ const email=between(plugin,'@PluginMethod public void startEmail(','@PluginMethod public void verifyEmail(');
+ assert.match(email,/if \(now < lastEmailSendAt \+ CloudSignInFlow\.RESEND_COOLDOWN_MS\) \{ call\.reject\("Wait before requesting another code", "cooldown"\); return; \}/);
+ assert.match(email,/CloudEmailCode\.SEND_PATH, CloudEmailCode\.sendBody\(/);assert.doesNotMatch(plugin,/"\/steward\/auth\/email\/send"/,'no magic-link send');
+ const verify=between(plugin,'private void verify(PluginCall call, boolean mfa)','private void release(');
+ assert.match(verify,/CloudEmailCode\.VERIFY_PATH, CloudEmailCode\.verifyBody\(/);
+ assert.match(verify,/current\.failedVerifies >= CloudSignInFlow\.MAX_VERIFY_ATTEMPTS/);assert.match(verify,/"attempts-exhausted"/);
+ // One sign-in at a time.
+ assert.match(google,/if \(attempt != null\) \{ call\.reject\("Another sign-in is in progress", "login-active"\); return; \}/);
+});
+
+test('one email code adapter: native constants, the bridge config and the route allowlist agree',()=>{
+ const config=JSON.parse(read('config/cloud-email-code.json')),adapter=read(native+'CloudEmailCode.java'),routes=read(native+'ConnectionRoutes.java');
+ assert.match(adapter,new RegExp(`SEND_PATH = "${config.sendPath}"`));assert.match(adapter,new RegExp(`VERIFY_PATH = "${config.verifyPath}"`));
+ for(const path of [config.sendPath,config.verifyPath])assert.ok(routes.includes(`"${path}"`),path);
+ assert.equal(config.tenant,'elizacloud');assert.equal(config.client,'ai.elizaresearch.alphaphone');
+ for(const field of ['"email"','"tenant"','"client"','"pkce"','"codeChallenge"','"codeChallengeMethod"','"code"','"codeVerifier"'])assert.ok(adapter.includes(field),field);
+ const bridge=read('scripts/browser-cloud-dev-bridge.ts');
+ assert.match(bridge,/CLOUD_EMAIL_CODE\.sendPath,emailCodeSendBody\(/);assert.match(bridge,/CLOUD_EMAIL_CODE\.verifyPath,emailCodeVerifyBody\(/);
+ assert.doesNotMatch(bridge,/'\/steward\/auth\/email\/send'/);
+});
+
+test('the Cloud sign-in hand-off stays the fallback until the readiness probe passes',()=>{
+ const connection=read(native+'AlphaConnectionPlugin.java');
+ assert.match(connection,/if\("\/api\/auth\/cli-session"\.equals\(path\)\)operation=RequestOperation\.CLI_CREATE;/);
+ assert.match(connection,/boolean cliLogin=ConnectionRoutes\.externalCliLogin\(/);
+ const routes=read('apps/app/src/runtime/managed-service-routes.ts');
+ assert.match(routes,/cli-session/,'the product renderer allowlist keeps the hand-off');
+ const protocol=read('apps/app/src/runtime/cloud-protocol.ts');
+ assert.match(protocol,/async login\(signal: AbortSignal, onWaiting\?: \(attempt: CloudLoginAttempt\) => void\): Promise<CloudLoginResult>/);
+ const ui=read('apps/app/src/runtime/connection-ui.tsx');
+ const begin=between(ui,'async beginSignIn(','cancelSignIn() {');
+ assert.ok(begin.indexOf('await inAppSignInMethods(environment)')>=0&&begin.indexOf('if (!methods) { await connectionController.signInBrowser(environment); return; }')>begin.indexOf('await inAppSignInMethods(environment)'),'not ready: the hand-off');
+ const readiness=between(ui,'async function inAppSignInMethods(','/** A failed or cancelled step');
+ assert.match(readiness,/if \(!port\?\.status\) return null;/);assert.match(readiness,/catch \{ return null; \}/);assert.match(readiness,/SIGN_IN_READINESS_WAIT_MS/);
+ assert.match(read('apps/app/src/runtime/cloud-sign-in.ts'),/if \(row\.inApp !== true \|\| row\.email !== true\) return null;/,'only an explicit ready answer switches to in-app');
+ assert.match(ui,/extra=\{testMocksEnabled\?<button disabled=\{snapshot\.busy\} onClick=\{\(\)=>void connectionController\.signInBrowser\(\)\}>Browser sign-in \(diagnostic\)<\/button>:undefined\}/);
+ const audit=read('scripts/audit-production-bundle.mjs');
+ assert.ok(audit.includes("'Browser sign-in (diagnostic)'")&&audit.includes("'staging.eliza.app/alphaphone'"));
+ assert.ok(!audit.includes("'/api/auth/cli-session'")&&!audit.includes("'/auth/cli-login'"),'the hand-off ships until Cloud is ready');
+ // Readiness probe: cached, fail-safe, every part required.
+ const plugin=read(native+'AlphaCloudSignInPlugin.java');
+ const measure=between(plugin,'private CloudSignInReadiness.Result measure(','private boolean assetLinksGrant(');
+ for(const part of ['/api/v1/app-auth/mobile/config','/steward/auth/providers','CloudEmailCode.SEND_PATH','CloudSignInFlow.authorizeUrl(','assetLinksGrant(environment)','appLinkVerified(environment)'])assert.ok(measure.includes(part),part);
+ assert.match(between(plugin,'private void probe(','/** Cloud refusing'),/catch \(Exception failure\) \{ result = CloudSignInReadiness\.Result\.notReady/);
+});

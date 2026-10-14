@@ -1,0 +1,56 @@
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import type { SignInView } from './connection-ui';
+
+/**
+ * Alpha's own Eliza Cloud sign-in screens: Google (a Custom Tab that returns to Alpha), or an email
+ * code typed here, then a second verification when the account has one. No Eliza Cloud web page.
+ * Codes go straight to the controller and are never kept in component state after submission.
+ */
+export interface CloudSignInActions {
+  google(): void; email(address: string): void; verify(code: string): void; resend(): void; cancel(): void;
+}
+export function CloudSignInPanel({ view, busy, google, message, error, actions, extra }: {
+  view: SignInView; busy: boolean; google: boolean; message: string; error: string; actions: CloudSignInActions;
+  /** Test-mocks builds only (the retired browser hand-off, for one release); built by the caller so a
+   * flag-off bundle carries none of its text. */
+  extra?: ReactNode;
+}) {
+  const email = useRef<HTMLInputElement>(null), code = useRef<HTMLInputElement>(null);
+  const [now, setNow] = useState(() => Date.now());
+  // Resend becomes available when the host's cooldown ends; the countdown is the only timer.
+  useEffect(() => {
+    if (view.step !== 'code' || view.resendAt <= Date.now()) return;
+    const timer = setInterval(() => { setNow(Date.now()); if (Date.now() >= view.resendAt) clearInterval(timer); }, 1000);
+    return () => clearInterval(timer);
+  }, [view]);
+  useEffect(() => { (view.step === 'code' || view.step === 'mfa' ? code : view.step === 'choose' ? email : null)?.current?.focus(); }, [view.step]);
+  const wait = view.step === 'code' ? Math.max(0, Math.ceil((view.resendAt - now) / 1000)) : 0;
+  const submitCode = (event: FormEvent) => { event.preventDefault(); const input = code.current; const value = input?.value || ''; if (input) input.value = ''; actions.verify(value); };
+  return <>
+    <header><h1 id="cloud-sign-in-title" className="serif">Sign in to Eliza Cloud</h1></header>
+    {view.step === 'choose' && <>
+      <p>Alpha Phone needs an Eliza Cloud account with a plan. Sign in here; your agent keeps running on this phone.</p>
+      {google && <div className="alpha-connection-actions"><button disabled={busy} onClick={actions.google}>Continue with Google</button></div>}
+      <form className="alpha-cloud-sign-in-email" aria-label="Sign in with email" onSubmit={event => { event.preventDefault(); actions.email(email.current?.value || ''); }}>
+        <label>Email<input ref={email} type="email" name="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" maxLength={320} required disabled={busy} /></label>
+        <button disabled={busy}>Email me a code</button>
+      </form>
+    </>}
+    {view.step === 'google' && <p>Choose your Google account in the window that opened. When Google returns you to Alpha, sign-in finishes here.</p>}
+    {(view.step === 'code' || view.step === 'mfa') && <form className="alpha-cloud-sign-in-code" aria-label={view.step === 'code' ? 'Enter your email code' : 'Enter your verification code'} onSubmit={submitCode}>
+      {view.step === 'code' && <p>Enter the six-digit code sent to <strong>{view.email}</strong>.</p>}
+      {view.step === 'mfa' && <p>{view.method === 'totp' ? 'This account uses an authenticator app. Enter its six-digit code.' : view.method === 'sms' ? 'Enter the six-digit code sent to your phone.' : 'This account’s second verification is not available in Alpha yet.'}</p>}
+      {(view.step === 'code' || view.method !== 'passkey') && <>
+        <label>Six-digit code<input ref={code} name="one-time-code" autoComplete="one-time-code" inputMode="numeric" pattern="[0-9 -]{6,9}" maxLength={9} required disabled={busy} /></label>
+        <button disabled={busy}>Verify</button>
+      </>}
+      {view.step === 'code' && <button type="button" disabled={busy || wait > 0} onClick={actions.resend}>{wait > 0 ? `Resend code in ${wait}s` : 'Resend code'}</button>}
+    </form>}
+    {message && <p role="status">{message}</p>}
+    {error && <p role="alert" className="alpha-connection-error">{error}</p>}
+    <div className="alpha-connection-actions">
+      <button className="alpha-connection-cancel" onClick={actions.cancel}>{view.step === 'choose' && !busy ? 'Back' : 'Cancel sign-in'}</button>
+      {view.step === 'choose' && extra}
+    </div>
+  </>;
+}
