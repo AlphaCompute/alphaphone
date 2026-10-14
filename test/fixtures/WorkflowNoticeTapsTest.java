@@ -32,6 +32,24 @@ public final class WorkflowNoticeTapsTest {
   questionTaps.fresh("question");String canceled=questionTaps.token("question");questionTaps.capture(canceled,true);questionTaps.settleQuestion(canceled,true);check(questionTaps.pending().length()==0);
   rejects(()->questionTaps.settleQuestion(canceled,true));questionTaps.capture(canceled,true);questionTaps.settleQuestion(canceled,false);check(questionTaps.pending().getString("token").equals(canceled));check(!questionTaps.pending().has("question"));
   questionTaps.consume(canceled);check(questionTaps.pending().length()==0);
+  // Approval Ask retains only its existing owner route, never changes the approval receipt.
+  Store approvals=new Store();WorkflowNoticeTaps approvalTaps=new WorkflowNoticeTaps(approvals);
+  String approvalId="approval-"+"d".repeat(64),approvalToken=approvalTaps.prepare(approvalId,"b".repeat(64),route("approval-run"));
+  JSONObject approvedReceipt=new JSONObject().put("binding","b".repeat(64)).put("digest","c".repeat(64)).put("status","succeeded").put("expiresAt",System.currentTimeMillis()+600000);
+  approvals.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,new JSONObject().put(approvalId,approvedReceipt).toString());
+  String unchanged=approvals.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT);
+  approvalTaps.capture(approvalToken,true);check(new WorkflowNoticeTaps(approvals).pending().getBoolean("question"));check(approvalTaps.pending().getBoolean("retained"));
+  check(unchanged.equals(approvals.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)));
+  approvalTaps.owner(new JSONObject().put("origin","https://agent.invalid").put("ownerId","other").put("agentId","agent"));
+  check(approvalTaps.pending().length()==0);rejects(()->approvalTaps.capture(approvalToken,true));rejects(()->approvalTaps.consume(approvalToken));
+  approvalTaps.owner(new JSONObject().put("origin","https://agent.invalid").put("ownerId","owner").put("agentId","agent"));
+  approvedReceipt.put("expiresAt",System.currentTimeMillis()-1);approvals.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,new JSONObject().put(approvalId,approvedReceipt).toString());
+  check(!approvalTaps.pending().getBoolean("retained"));rejects(()->approvalTaps.capture(approvalToken,true));rejects(()->approvalTaps.consume(approvalToken));
+  approvedReceipt.put("expiresAt",System.currentTimeMillis()+600000).put("status","withdrawn");approvals.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,new JSONObject().put(approvalId,approvedReceipt).toString());
+  check(!approvalTaps.pending().getBoolean("retained"));rejects(()->approvalTaps.capture(approvalToken,true));
+  approvedReceipt.put("status","succeeded");approvals.values.put(WorkflowNoticeDelivery.APPROVAL_SLOT,new JSONObject().put(approvalId,approvedReceipt).toString());
+  approvalTaps.settleQuestion(approvalToken,true);check(approvalTaps.pending().length()==0);approvalTaps.capture(approvalToken,true);approvalTaps.consume(approvalToken);approvalTaps.capture(approvalToken,true);check(approvalTaps.pending().length()==0);
+  check(new JSONObject().put(approvalId,approvedReceipt).toString().equals(approvals.values.get(WorkflowNoticeDelivery.APPROVAL_SLOT)));
   // Seed prior durable rows once; exercise both sides of the capacity boundary
   // through production prepare without quadratically revalidating setup rows.
   JSONObject full=new JSONObject(s.values.get(WorkflowNoticeTaps.SLOT));

@@ -51,13 +51,14 @@ final class WorkflowNoticeTaps {
   JSONArray out=new JSONArray();JSONObject rows=ledger();String raw=storage.read(WorkflowNoticeDelivery.APPROVAL_SLOT);JSONObject receipts=raw==null?new JSONObject():new JSONObject(raw);
   for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id),receipt=receipts.optJSONObject(id);if(!WorkflowNoticeDelivery.approvalId(id)||!NoticeOwner.matches(owner,row.getJSONObject("route"))||receipt==null||!"suspended".equals(receipt.optString("status"))||receipt.getLong("expiresAt")<=now)continue;out.put(new JSONObject().put("id",id).put("bindingHash",row.getString("binding")).put("expiresAt",receipt.getLong("expiresAt")).put("route",row.getJSONObject("route")));}return out;
  }}
- private boolean confirmed(String id,JSONObject row)throws Exception{
+ private boolean confirmed(String id,JSONObject row)throws Exception{return confirmed(id,row,row.optBoolean("question"));}
+ private boolean confirmed(String id,JSONObject row,boolean question)throws Exception{
   if(!ownerMatches(row.getJSONObject("route")))return false;
   if(WorkflowNoticeDelivery.approvalId(id)){
    // An approval notice opens its run only while its receipt is posted; a decision or expiry withdraws it.
    String raw=storage.read(WorkflowNoticeDelivery.APPROVAL_SLOT);if(raw==null)return false;
    JSONObject receipt=new JSONObject(raw).optJSONObject(id);
-   return receipt!=null&&receipt.length()==4&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"));
+   return receipt!=null&&receipt.length()==4&&row.getString("binding").equals(receipt.getString("binding"))&&receipt.getString("digest").matches("[a-f0-9]{64}")&&"succeeded".equals(receipt.getString("status"))&&(!question||receipt.getLong("expiresAt")>System.currentTimeMillis());
   }
   String raw=storage.read(WorkflowNoticeDelivery.SLOT);if(raw==null)return false;
   JSONObject receipt=new JSONObject(raw).optJSONObject(id);
@@ -67,8 +68,8 @@ final class WorkflowNoticeTaps {
  void capture(String token,boolean question)throws Exception{synchronized(LOCK){
   if(token==null||!token.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException();
   JSONObject rows=ledger();for(String id:keys(rows)){JSONObject row=rows.getJSONObject(id);if(!token.equals(row.getString("token")))continue;
-   if(!confirmed(id,row))throw new IllegalStateException("Notification receipt unconfirmed");
-   if(!row.getString("state").equals("consumed")){long order=0;for(String key:keys(rows))order=Math.max(order,rows.getJSONObject(key).getLong("order"));row.put("state","pending").put("order",Math.addExact(order,1));if(question){if(WorkflowNoticeDelivery.approvalId(id))throw new IllegalArgumentException("Approval notices cannot become questions");row.put("question",true);}else row.remove("question");storage.write(SLOT,rows.toString());}
+   if(!confirmed(id,row,question))throw new IllegalStateException("Notification receipt unconfirmed");
+   if(!row.getString("state").equals("consumed")){long order=0;for(String key:keys(rows))order=Math.max(order,rows.getJSONObject(key).getLong("order"));row.put("state","pending").put("order",Math.addExact(order,1));if(question){row.put("question",true);}else row.remove("question");storage.write(SLOT,rows.toString());}
    return;
   }throw new UnknownTap();
  }}

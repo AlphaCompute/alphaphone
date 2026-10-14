@@ -76,7 +76,7 @@ public class AlphaNotificationsPlugin extends Plugin {
  private void addQuestionNotice(org.json.JSONObject pending)throws Exception{
   requireNoticeForeground();String tag="alpha-workflow-"+pending.getString("operationId");
   for(StatusBarNotification row:manager().getActiveNotifications())if(row.getId()==0&&tag.equals(row.getTag())){
-   Notification n=row.getNotification();if(!WorkflowNoticePoster.CHANNEL.equals(n.getChannelId())||n.visibility==Notification.VISIBILITY_SECRET)return;
+   Notification n=row.getNotification();String expectedChannel=WorkflowNoticeDelivery.approvalId(pending.getString("operationId"))?WorkflowNoticePoster.APPROVAL_CHANNEL:WorkflowNoticePoster.CHANNEL;if(!expectedChannel.equals(n.getChannelId())||n.visibility==Notification.VISIBILITY_SECRET)return;
    String identity=id(identity(row));pending.put("notice",new org.json.JSONObject().put("id",identity).put("revision",identity).put("source","own").put("appLabel","Alpha Phone").put("title",bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200)).put("text",bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000)));return;
   }
  }
