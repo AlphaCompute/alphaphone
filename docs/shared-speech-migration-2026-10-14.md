@@ -16,8 +16,12 @@ and no new runtime/model qualification record exists. Historical Sherpa/Piper
 qualification cannot qualify these bytes. Strict release admission must remain
 closed until the new inputs and qualification are present.
 
-Issue #423 remains open for implementation as well as acceptance: a separate
-editable Transcribe composer entry, incremental ASR revisions/finalization,
+The separate Transcribe entry now records locally, transcribes after Stop, and
+lets the user edit and append text to the existing draft. It never sends a turn.
+The Talk entry remains the voice assistant conversation mode.
+
+Issue #423 remains open for implementation as well as acceptance: incremental
+ASR revisions/finalization,
 Clef model/tokenizer admission and calibrated semantic turn decisions, streaming
 TTS output, played-prefix acknowledgements, and continuation/barge-in behavior
 remain. `ElizaVoiceNative.nativeEotScore` is a generic next-token probability;
@@ -31,4 +35,3 @@ Renderer tests use synthetic native ports. They establish routing, request
 ownership, cancellation and no network fallback; they do not establish native
 model execution, audible playback, latency, echo rejection or physical-device
 acceptance.
-

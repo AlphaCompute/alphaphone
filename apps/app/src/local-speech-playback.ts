@@ -25,7 +25,7 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
    await Promise.race([pending,interrupted]);signal.throwIfAborted();
   }
   for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{
-   const pending=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})})).then(async(result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)await media(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
+   const pending:Promise<{playbackId:string;execution?:string}>=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})})).then(async(result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)await media(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
    // Native cancel is a request, not a synthesis-drained acknowledgement. A strict
    // consumer must also await the original operation and any late handle cleanup.
    preparation=pending.then(()=>{},error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});void preparation.catch(()=>{});
