@@ -50,14 +50,6 @@ jobs:
           python3 -m pip install cmake==4.0.3
           test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: npm ci
-      # Pinned in-browser speech model (size/hash verified on every use; Android prunes it).
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .eliza/browser-speech
-          key: browser-speech-${{ hashFiles('config/browser-speech.json') }}
-      - name: Acquire verified browser speech model
-        timeout-minutes: 10
-        run: npm run browser-speech:prepare
       - name: Verify standalone manual qualification
         if: github.event_name == 'workflow_dispatch'
         run: npm run verify
@@ -69,11 +61,13 @@ jobs:
           path: .eliza/local-speech/downloads
           key: speech-downloads-${{ runner.os }}-${{ hashFiles('vendor/eliza/packages/app/scripts/local-speech/download-manifest.json') }}
       - name: Acquire verified speech source, models and license references
+        if: hashFiles('vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') != ''
         timeout-minutes: 15
         run: |
           python3 scripts/local-speech/acquire-downloads.py
           python3 scripts/local-speech/make-lexicon.py
       - name: Build and qualify both no-eSpeak runtime ABIs
+        if: hashFiles('vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') != ''
         timeout-minutes: 65
         run: |
           jobs="$(nproc)"
@@ -84,12 +78,15 @@ jobs:
           done
           python3 scripts/local-speech/verify-source.py
       - name: Assemble and verify speech APK inputs
+        if: hashFiles('vendor/eliza/packages/app/platforms/android/local-speech/consumer.gradle') != ''
         run: |
           python3 scripts/local-speech/prepare-assets.py
           python3 scripts/local-speech/assemble-runtime.py
           # A Linux build cannot reproduce the qualified macOS natives; install it as an
           # explicitly unqualified runtime (these APKs are build evidence only).
           python3 scripts/local-speech/install-generated.py --repository "$GITHUB_WORKSPACE" --allow-unqualified-runtime
+      # New Paradee pins compile the real Java API without native/model outputs in
+      # this explicitly unpackaged lane. Old Sherpa evidence never qualifies it.
       - name: Prepare pinned native lifecycle sources
         run: node scripts/prepare-local-agent.mjs --source-only
       # Distribution build: flag-off whatever the runner exports. This job stages no

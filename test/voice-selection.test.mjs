@@ -22,21 +22,21 @@ function load(store, f = {account: true, dev: false}) {
   return {...box.api, events, f};
 }
 
-test('production preserves the Cloud route regardless of account, legacy preferences or requested fallback', () => {
+test('production keeps speech local regardless of account, legacy preferences or requested fallback', () => {
   for (const account of [true, false]) for (const dev of [true, false]) {
     const v=load(storage(), {account,dev});
-    for(const requested of ['default','device','manual','agent']) assert.equal(v.selectVoiceRoute(requested),'cloud');
+    for(const requested of ['default','device','manual','agent']) assert.equal(v.selectVoiceRoute(requested),'device');
     assert.equal(v.chooseVoiceRoute('cloud'),false);
-    assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),true);
-    assert.equal(v.chooseVoiceRoute('device'),true);
-    assert.equal(v.selectVoiceRoute(),'cloud','legacy preference cannot silently override current production policy');
+    assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),false);
+    assert.equal(v.chooseVoiceRoute('device'),true);assert.equal(v.cloudVoiceAvailable(),false);assert.equal(v.voiceRoutePreference(),'device');
+    assert.equal(v.selectVoiceRoute(),'device','legacy preference cannot silently override current production policy');
     assert.match(v.cloudSpeechDisclosure(),/counts toward your plan allowance/);
   }
 });
 
 test('legacy preference persistence detects dropped or unavailable storage', () => {
   for(const store of [{getItem:()=>null,setItem(){}},{getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}}]) {
-    const v=load(store);assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),false);assert.equal(v.selectVoiceRoute(),'cloud');
+    const v=load(store);assert.equal(v.chooseVoiceRoute('cloud',{disclosed:'cloud-speech-uses-plan'}),false);assert.equal(v.selectVoiceRoute(),'device');
   }
 });
 

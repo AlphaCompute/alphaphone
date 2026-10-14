@@ -1,3 +1,4 @@
+import {testMocksEnabled} from '../build-flags';
 import {registerPlugin} from '../platform-plugins';
 import {playOwnedSpeech} from '../local-speech-playback';
 import {createOnDeviceVoice} from './local-voice';
@@ -20,6 +21,7 @@ export function createNativeReadingVoice(){
    finally{unsubscribe();signal.removeEventListener('abort',cancel);document.removeEventListener('visibilitychange',hidden);}
   }};
  }
+ if(!testMocksEnabled)return null;
  const binding=connectionController.getPairedVoiceBinding(),voice=createPairedVoice();if(!binding||!voice)return null;
  return {binding,isCurrent:()=>JSON.stringify(connectionController.getPairedVoiceBinding())===JSON.stringify(binding),ready:voice.ready,speak:(token:string,signal:AbortSignal)=>voice.speak('',signal,token)};
 }

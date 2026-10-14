@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import './retired-host-speech-proof.mjs';
 /** Real fresh-process Kokoro qualification, with installed assets and no user text. */
 import assert from 'node:assert/strict';
 import {readFileSync,mkdirSync,writeFileSync} from 'node:fs';

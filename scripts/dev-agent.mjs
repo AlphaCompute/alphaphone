@@ -6,7 +6,7 @@ import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { mkdir, writeFile, chmod, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { localAsrAvailable, MAX_AUDIO_BYTES, transcribeLocal } from "./local-asr.mjs";
+import { localAsrAvailable, stopLocalAsr, MAX_AUDIO_BYTES, transcribeLocal } from "./local-asr.mjs";
 import { AGENT_MODEL } from "./agent-model.mjs";
 
 const key = process.env.CEREBRAS_API_KEY;
@@ -371,6 +371,7 @@ server.listen(47831, "127.0.0.1", () =>
   ),
 );
 const stop = () => {
+  stopLocalAsr();
   for (const controller of active.values()) controller.abort();
   server.close();
   void Promise.allSettled([unlink(tokenPath),runtimeBackend?.close()]).finally(() => process.exit(0));

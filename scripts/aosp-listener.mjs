@@ -114,6 +114,8 @@ export function checkListenerOverlay(configXml, alphaPackages = []) {
  */
 export function checkListenerSpeechBundle(entries, qualifiedAbis) {
   const names = new Set(entries);
+  if (names.has("assets/paradee-voice/v1/manifest.json"))
+    throw new Error("Paradee listener runtime needs a new reviewed ASR and native qualification record; legacy Sherpa qualification cannot certify it");
   if (!names.has("assets/local-speech/v1/manifest.json"))
     throw new Error("The listener APK has no assets/local-speech/v1/manifest.json: build it after the speech model bundle is prepared, or it can never listen");
   const abis = (qualifiedAbis ?? []).map(row => row.abi);

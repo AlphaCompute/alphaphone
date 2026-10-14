@@ -10,7 +10,7 @@ import {preparePrivateRuntimeProfile,runtimeEnvironment,startPrivateRuntimeProce
 import {AGENT_MODEL,agentModelEnvironment} from './agent-model.mjs';
 import {agentTtsEnvironment} from './agent-tts.mjs';
 import {developmentCartesiaEnvironment} from './dev-cartesia.mjs';
-import {agentAsrEnvironment,warmAgentAsr} from './agent-asr.mjs';
+import {agentAsrEnvironment} from './agent-asr.mjs';
 import {nativeViewDeclarationsJson} from './native-view-policy.mjs';
 const source = process.env.ALPHA_ELIZA_SOURCE ? path.resolve(process.env.ALPHA_ELIZA_SOURCE) : sourceDirectory(path.resolve(import.meta.dirname,'..'));
 // Upstream's own swap switches. Only both together are qualified, and only on verified pinned source.
@@ -45,19 +45,9 @@ if(!/^[a-f0-9]{64}$/.test(privateProfile.token))throw Error('Invalid owner token
 const asrEnvironment = agentAsrEnvironment();
 const ttsEnvironment = agentTtsEnvironment();
 const cartesiaEnvironment = developmentCartesiaEnvironment();
-if (asrEnvironment.ELIZA_WHISPER_BACKEND === 'auto' && redaction !== 'all') {
+if ((asrEnvironment.ELIZA_ASR_ENABLED === '1' || ttsEnvironment.ELIZA_PARADEE_ENABLED === '1') && redaction !== 'all') {
   const lock=JSON.parse(fs.readFileSync(new URL('../upstream.lock.json',import.meta.url),'utf8'));
   verifySource(source,lock.commit);
-}
-const warmupController = new AbortController();
-const cancelWarmup = () => warmupController.abort();
-process.once('SIGINT', cancelWarmup); process.once('SIGTERM', cancelWarmup);
-let asrWarmup;
-try {
-  if (asrEnvironment.ELIZA_WHISPER_BACKEND === 'auto') console.log('Preparing local speech backend before agent startup.');
-  asrWarmup = await warmAgentAsr(asrEnvironment, {signal: warmupController.signal});
-} finally {
-  process.off('SIGINT', cancelWarmup); process.off('SIGTERM', cancelWarmup);
 }
 const env=runtimeEnvironment({
  inherited:process.env,allow:['PATH','TMPDIR','LANG','SHELL','USER','LOGNAME','HOME'],
@@ -72,7 +62,7 @@ try {
  const running=await startPrivateRuntimeProcess({command:process.env.ALPHA_BUN||'bun',args:['--no-install','--conditions=eliza-source',entry],cwd:profile,env,stdio:['ignore',log,log],
   async recordLaunch({pid,launchedAt}){
    const sourceManifest=path.join(source,'.alpha-runtime-source.json');
-   const metadata={cartesiaConfigured:cartesiaEnvironment.ELIZA_SELF_HOSTED_VOICE_ENABLED==='1',localTtsConfigured:ttsEnvironment.ELIZA_KOKORO_ENABLED==='1',localAsrConfigured:asrEnvironment.ELIZA_WHISPER_ENABLED==='1',localAsrBackend:asrEnvironment.ELIZA_WHISPER_BACKEND,asrWarmup,egressRedactionRequested:redaction,sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid,port,profile,source,revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(),startedAt:new Date(launchedAt).toISOString()};
+   const metadata={cartesiaConfigured:cartesiaEnvironment.ELIZA_SELF_HOSTED_VOICE_ENABLED==='1',localTtsConfigured:ttsEnvironment.ELIZA_PARADEE_ENABLED==='1',localAsrConfigured:asrEnvironment.ELIZA_ASR_ENABLED==='1',speechReadiness:'worker-initialization-required',egressRedactionRequested:redaction,sourceManifestSha256:fs.existsSync(sourceManifest)?crypto.createHash('sha256').update(fs.readFileSync(sourceManifest)).digest('hex'):null,pid,port,profile,source,revision:execFileSync('git',['rev-parse','HEAD'],{cwd:source,encoding:'utf8'}).trim(),startedAt:new Date(launchedAt).toISOString()};
    await writePrivateRuntimeJson(path.join(profile,'process.json'),metadata);
    console.log(JSON.stringify({...metadata,log:path.join(profile,'server.log')}));
   },
