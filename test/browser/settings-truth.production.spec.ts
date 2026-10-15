@@ -222,10 +222,18 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
-  // A switch must be backed by something this app owns. Only the calendar and theme controls qualify.
+  // A switch must be backed by something this app owns. Calendar, display and the saved email-image preference qualify.
   const switches=await current(page).locator('[role="switch"],[aria-pressed],[aria-checked],input[type="checkbox"],input[type="range"]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||e.tagName));
-  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:[];
+  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:label==='Connections'?['Automatically load email images']:[];
   expect(switches.filter(name=>!owned.includes(name)),`${label} has a switch that nothing backs`).toEqual([]);
+  if(label==='Connections'){
+   const images=()=>current(page).getByRole('button',{name:'Automatically load email images',exact:true});
+   await expect(images()).toHaveAttribute('aria-pressed','true');
+   await images().click();await expect(images()).toHaveAttribute('aria-pressed','false');
+   await openSettings(page);await current(page).getByRole('button',{name:'Connections',exact:true}).click();
+   await expect(images()).toHaveAttribute('aria-pressed','false');
+   await images().click();await expect(images()).toHaveAttribute('aria-pressed','true');
+  }
   for(const [row,target] of handoffs[label]||[]){
    const before=(await opened(page)).length;
    await current(page).getByRole('button',{name:row,exact:true}).click();
