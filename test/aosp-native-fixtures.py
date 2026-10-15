@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
+import re
 import struct
 import tempfile
 import unittest
@@ -59,6 +61,7 @@ class Packaging(unittest.TestCase):
         self.overlay()
         cases = [([('lib/arm64-v8a/libcamera.so', ELF)], zipfile.ZIP_DEFLATED),
                  ([('lib/arm64-v8a/libcamera.so', b'not elf')], zipfile.ZIP_STORED),
+                 ([('lib/arm64-v8a/libcamera.so', ELF[:20])], zipfile.ZIP_STORED),
                  ([('lib/arm64-v8a/../libcamera.so', ELF)], zipfile.ZIP_STORED),
                  ([('lib/arm64-v8a/libeliza_bun.so', ELF)], zipfile.ZIP_STORED),
                  ([('lib/x86_64/libcamera.so', ELF)], zipfile.ZIP_STORED)]
@@ -95,7 +98,8 @@ class Packaging(unittest.TestCase):
         trust = self.root / 'trust'
         pin_files = {
             'upstream.lock.json': json.dumps({'commit': '1' * 40}).encode(),
-            'scripts/prepare-local-agent.mjs': b'preparer fixture',
+            'scripts/prepare-local-agent.mjs': (ROOT / 'scripts/prepare-local-agent.mjs').read_bytes(),
+            'scripts/copy-file-clone.mjs': (ROOT / 'scripts/copy-file-clone.mjs').read_bytes(),
             'scripts/local-agent-source.mjs': b'guard fixture',
             'vendor/eliza/bun.lock': b'dependency lock fixture',
             'config/native-view-declarations.json': b'{}',
@@ -108,10 +112,11 @@ class Packaging(unittest.TestCase):
             target = trust / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
-        stamp = {'lockSha256': digest(pin_files['upstream.lock.json']),
-                 'preparerSha256': digest(pin_files['scripts/prepare-local-agent.mjs']),
-                 'guardSha256': digest(pin_files['scripts/local-agent-source.mjs']),
-                 'base': '1' * 40, 'patches': []}
+        # Evaluate the actual preparer's stamp expression against synthetic pins.
+        # A new/removed field in production must exercise the native verifier too.
+        expression = re.search(r'const stamp=(.+);', pin_files['scripts/prepare-local-agent.mjs'].decode()).group(1)
+        script = "const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');const root=process.argv[1];const lock=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json')));const digest=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');console.log(JSON.stringify(" + expression + "))"
+        stamp = json.loads(subprocess.check_output(['node', '-e', script, str(trust)]))
         stamp_bytes = json.dumps(stamp).encode()
         entries = {'lib/arm64-v8a/' + name: ELF for name in native.RUNTIME_MODES}
         entries.update({'assets/agent/' + name: b'fixture asset' for name in native.REQUIRED_AGENT_ASSETS})
@@ -166,6 +171,15 @@ class Packaging(unittest.TestCase):
                     native.stage(self.apk, self.output, 'AlphaPhone')
                 self.assertEqual((self.output / 'Android.bp').read_text(), BP)
                 self.assertEqual(len(list(self.output.iterdir())), 1)
+
+    def test_changed_copy_helper_rejects_current_preparer_stamp(self):
+        trust, entries = self.resident_fixture()
+        self.archive(list(entries.items()))
+        self.overlay()
+        (trust / 'scripts/copy-file-clone.mjs').write_text('changed copier')
+        with patch.object(native, 'ROOT', trust), self.assertRaisesRegex(ValueError, 'source stamp'):
+            native.stage(self.apk, self.output, 'AlphaPhone')
+        self.assertEqual(len(list(self.output.iterdir())), 1)
 
     def test_self_consistent_bun_substitution_still_refuses_pinned_binary_mismatch(self):
         trust, entries = self.resident_fixture()

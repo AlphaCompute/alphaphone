@@ -101,10 +101,13 @@ def verify_runtime(archive, runtime_names):
         'lockSha256': sha(lock_bytes),
         'preparerSha256': sha((ROOT / 'scripts/prepare-local-agent.mjs').read_bytes()),
         'guardSha256': sha((ROOT / 'scripts/local-agent-source.mjs').read_bytes()),
+        'copySha256': sha((ROOT / 'scripts/copy-file-clone.mjs').read_bytes()),
         'base': json.loads(lock_bytes)['commit'], 'patches': [],
     }
     if stamp != expected_stamp:
         raise ValueError('Runtime source stamp differs from admitted Alpha source')
+    if archive.getinfo('assets/agent/native-view-declarations.json').file_size > 1024 * 1024:
+        raise ValueError('Oversized native view declarations')
     declarations = archive.read('assets/agent/native-view-declarations.json')
     if declarations != (ROOT / 'config/native-view-declarations.json').read_bytes():
         raise ValueError('Native view declarations differ from product policy')
@@ -166,7 +169,7 @@ def stage(apk, output, module, target='stallion'):
             if entry.compress_type != zipfile.ZIP_STORED or entry.file_size > 1024 ** 3:
                 raise ValueError('Native library is compressed or oversized: ' + name)
             data = archive.read(entry)
-            if data[:6] != b'\x7fELF\x02\x01' or data[18:20] != b'\xb7\x00':
+            if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or data[18:20] != b'\xb7\x00':
                 raise ValueError('Expected little-endian ELF64 AArch64: ' + name)
             payloads.append((name, data))
         if not payloads:
