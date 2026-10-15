@@ -1,3 +1,5 @@
+import { verifyPixel10aSource, defaultLockPath } from './pixel10a-source-contract.mjs';
+import { pixel10aOptions, writePixel10aProduct } from './aosp-pixel10a.mjs';
 import fs from "node:fs";
 import { writeAospCapabilityOverlay } from "./aosp-capability-overlay.mjs";
 import path from "node:path";
@@ -131,7 +133,7 @@ function admitApk({ apk, hash, development, manifestFile }) {
       throw new Error(`Refusing ${apk}: --development stages debug builds only. This is a release build that ${manifestFile} does not record as distributable.`);
   }
 }
-function main(args) {
+async function main(args) {
 const get = (key) => {
   const i = args.indexOf(key);
   return i < 0 ? null : args[i + 1];
@@ -139,12 +141,12 @@ const get = (key) => {
 for (let i = 0; i < args.length; i++) {
   if (args[i] === "--development" || args[i] === "--production") continue;
   if (
-    !["--apk", "--output", "--descriptor", "--apk-manifest", "--aosp-source", "--listener-apk", "--listener-descriptor"].includes(args[i]) ||
+    !["--apk", "--output", "--descriptor", "--apk-manifest", "--aosp-source", "--listener-apk", "--listener-descriptor", "--target", "--factory-image"].includes(args[i]) ||
     !args[i + 1] ||
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--listener-apk FILE [--listener-descriptor FILE]]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--target pixel10a --factory-image FILE --development] [--listener-apk FILE [--listener-descriptor FILE]]",
     );
   i++;
 }
@@ -153,6 +155,8 @@ const development = args.includes("--development");
 // offer). It needs a reviewed descriptor and a distributable release, so it is
 // refused until a signed, PACKAGED, qualified release APK exists.
 const production = args.includes("--production");
+const physical = pixel10aOptions({target:get('--target'), development, production, source:get('--aosp-source'), factory:get('--factory-image')});
+const physicalSource = physical ? await verifyPixel10aSource({source:get('--aosp-source'), factory:get('--factory-image')}) : null;
 if (production && development) throw new Error("--production and --development are exclusive");
 // The always-on listener is part of the AOSP MVP (issue #424): production images must include it.
 const listenerApk = get("--listener-apk");
@@ -189,8 +193,14 @@ if (production && !listenerApk)
   throw new Error("Production staging requires --listener-apk (the always-on listener built by ./gradlew :sense:assembleRelease).");
 if (production && !listenerDescriptor)
   throw new Error("Production staging requires --listener-descriptor: an independently reviewed record of the listener's packageName, apkSha256 and certificateSha256.");
+let cameraOverrides = [];
+if (physicalSource) {
+  const lockBytes = fs.readFileSync(defaultLockPath);
+  if (createHash('sha256').update(lockBytes).digest('hex') !== physicalSource.sourceLockSha256) throw Error('Pixel source lock changed during staging');
+  cameraOverrides = JSON.parse(lockBytes).overrides;
+}
 const cameraSource = get("--aosp-source") || !development
-  ? verifySecureCameraSource(get("--aosp-source"))
+  ? verifySecureCameraSource(get("--aosp-source"), undefined, cameraOverrides)
   : { sourceVerified: false, imageVerified: false, lockedCaptureVerified: false, deviceAcceptanceVerified: false, reason: "Development staging without reviewed AOSP source" };
 const env = androidEnv();
 const tree = execFileSync(tool("aapt"), ["dump", "xmltree", apk, "AndroidManifest.xml"], { encoding: "utf8", env, maxBuffer: 64 << 20 });
@@ -233,8 +243,12 @@ if (
   reviewed.moduleName !== identity.moduleName
 )
   throw new Error("Descriptor does not belong to this product");
-const output =
-  get("--output") || `artifacts/aosp/${identity.slug}-${hash.slice(0, 12)}`;
+const destination = path.resolve(get("--output") || `artifacts/aosp/${identity.slug}-${hash.slice(0, 12)}`);
+if (physical && fs.existsSync(destination)) throw Error('Output already exists: ' + destination);
+if (physical) fs.mkdirSync(path.dirname(destination), {recursive:true});
+const temporary = physical ? fs.mkdtempSync(path.join(path.dirname(destination), '.pixel10a-stage-')) : null;
+const output = physical ? path.join(temporary, 'overlay') : destination;
+try {
 execFileSync(
   "node",
   [
@@ -297,9 +311,15 @@ if (listenerApk) {
   stageListener({ root: process.cwd(), output, apk: listenerApk, dump, signer: listenerSigner, launcherSigner: String(reviewed.certificateSha256 ?? "").toLowerCase(), appId: identity.appId });
   console.log(`Always-on listener staged: ${identity.appId}.sense (privileged, no network). Grants, indicator and invocation are image-boot evidence, not staging evidence.`);
 }
+if (physical) {
+  writePixel10aProduct({root:process.cwd(), output, apk, identity, sourceEvidence:physicalSource});
+  if (fs.existsSync(destination)) throw Error('Output appeared during staging: ' + destination);
+  fs.renameSync(output, destination);
+}
 console.log(
   `Add under vendor/${identity.slug.replaceAll("-", "_")} and inherit product.mk from the selected AOSP product. This is staging evidence, not an image boot.`,
 );
+} finally { if (temporary) fs.rmSync(temporary, {recursive:true, force:true}); }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main(process.argv.slice(2));
