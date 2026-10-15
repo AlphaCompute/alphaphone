@@ -55,8 +55,11 @@ final class ListenerNotifications {
  }
 
  private static Notification.Action button(Context context,String label,String action,int code,boolean needsUnlock){
-  return new Notification.Action.Builder(Icon.createWithResource(context,R.drawable.ic_listening),label,action(context,action,code))
-   .setAuthenticationRequired(needsUnlock).build();
+  Notification.Action.Builder button=new Notification.Action.Builder(Icon.createWithResource(context,R.drawable.ic_listening),label,action(context,action,code))
+   .setAuthenticationRequired(needsUnlock);
+  String marker=ListenerActionContract.marker(action);
+  if(marker!=null){android.os.Bundle extras=new android.os.Bundle();extras.putString(ListenerActionContract.KEY,marker);button.addExtras(extras);}
+  return button.build();
  }
 
  static Notification active(Context context,ListenerPolicy.State state){

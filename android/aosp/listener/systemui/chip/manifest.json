@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "project": "frameworks/base",
+  "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
+  "baselineLockSha256": "2829fe087a13e946e27ecf7782948c454e991614d977b2a91a8a78d1791f40ce",
+  "patch": "listening-chip.patch",
+  "patchSha256": "affc24aa2fa448a8a97bd7195be73a5c9740253c8405bda86149838ba1e9fb77",
+  "files": [
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java",
+      "beforeSha256": null,
+      "afterSha256": "05c956b97eaf15d859bcd32cc3d3ad42f7bd2c228a872e3f07bea00f6065bf41"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java",
+      "beforeSha256": null,
+      "afterSha256": "a70d10a737d4eaf1bfcf228a3b8df7eea4b8caa7ee98cae6f516bd511f85417e"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java",
+      "beforeSha256": null,
+      "afterSha256": "837255f845b120661250d71878a987ea9ee454147233bbf3106f485f7eaf2582"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipBinder.kt",
+      "beforeSha256": null,
+      "afterSha256": "f3834c8da7a8db2ca2859e989ca9cc67a5c54a8a614f83e856c54920480bb49a"
+    },
+    {
+      "path": "packages/SystemUI/res/values/alpha_listening.xml",
+      "beforeSha256": null,
+      "afterSha256": "a987736ce3d0ffed353dd5f28b3fad5a9f1edac63941d24ccdcbb928a958960e"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/PrivacyModule.java",
+      "beforeSha256": "e6ca87236a1b4a566125a32b8b3b9d356aebceed19be864567f9b6fa25288449",
+      "afterSha256": "0c9cffd5218bb7b30395f665a91d834788312380b39ff522354bddb0de233403"
+    },
+    {
+      "path": "packages/SystemUI/res/layout/status_bar.xml",
+      "beforeSha256": "2c0140c3ee20f35a393b7d238542ab0f5ce7682ea1487ffa1275383bfb965942",
+      "afterSha256": "739996dc97f091407b5c0e0abdedf556357e3148105687cd9ea66aa5659b6ecb"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/keyguard/ui/view/layout/sections/DefaultIndicationAreaSection.kt",
+      "beforeSha256": "579405f851dbdd608d5cd012c960274fa9731301d9e95bfce974ab58d2fd4e82",
+      "afterSha256": "a2125b380d59a499e830256c41d06e8a98d6b5705bd3b2c6f1d69296b4f34303"
+    }
+  ],
+  "fullTreeVerified": false,
+  "imageBuilt": false,
+  "lockAodIndicatorQualified": false,
+  "indicatorHealthLeaseImplemented": false
+}
