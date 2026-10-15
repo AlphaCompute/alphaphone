@@ -21,6 +21,8 @@ the operator's index of build, provisioning, release and support material is the
 
 ## Product boundaries
 
+The historical October 14 development rebuild used upstream `193d9264fc`; current source pins have advanced since that build. Acceptance evidence below remains scoped to its recorded builds.
+
 - The primary agent runs on Android. Browser development uses a private local
   host. The resident agent is always present (P-43, owner, 2026-10-13): on Android it
   starts automatically at app start, signed in or not. Every Alpha Phone signs in to Eliza

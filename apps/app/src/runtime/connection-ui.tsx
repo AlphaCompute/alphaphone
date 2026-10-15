@@ -63,6 +63,8 @@ export interface RestoredMessage { id: string; from: 'user' | 'agent'; text: str
 export interface ConnectionSnapshot {
   /** Automatic session restoration has completed; null is now a resolved no-session state. */
   startupResolved?: boolean;
+  /** Saved startup restoration is quiet; explicit settings and real failures remain visible. */
+  automaticRestore?: boolean;
   /** Subscription plan state from a verified Cloud entitlement; never a credit balance. */
   residentSubscription?: SubscriptionView | null;
   residentSavedCredential?: boolean;
@@ -1572,7 +1574,7 @@ export const connectionController = {
     return true;
   },
   // A recovering resident keeps its start failure visible beside Retry.
-  open() { update({ open: true, purpose:'agent', error: state.kind === 'recovering' ? state.error : '' }); },
+  open() { update({ open: true, automaticRestore:false, purpose:'agent', error: state.kind === 'recovering' ? state.error : '' }); },
   /** Window online/offline events. Offline retracts readiness and refuses sends to the resident;
    * local apps are untouched. Coming back online clears only the notice. */
   networkChanged(online: boolean) {
@@ -1581,13 +1583,13 @@ export const connectionController = {
     if (!online) retractReadiness();
   },
   openCloudAccount(){
-    update({open:true,purpose:'cloud-account',message:'',error:''});
+    update({open:true,automaticRestore:false,purpose:'cloud-account',message:'',error:''});
     // Production Android: whether a Cloud sign-in is kept on this phone decides if the panel offers
     // "Retry saved connection". A local keystore read; no Cloud request and nothing is restored.
     if(residentCloudFlow()&&!state.cloudAccount)void cloudCredentialStore.read(residentEnvironment()).then(credential=>{if(state.open&&state.purpose==='cloud-account'&&!state.cloudAccount)update({residentSavedCredential:!!credential?.credentialId});}).catch(()=>{/* Sign-in stays available. */});
   },
   /** Settings › Eliza Cloud account & plan: the plan panel with Redeem code, Manage plan and Sign out. */
-  openPlan(){ update({open:true,purpose:'plan',message:'',error:'',redeemError:'',redeemNotice:''}); },
+  openPlan(){ update({open:true,automaticRestore:false,purpose:'plan',message:'',error:'',redeemError:'',redeemNotice:''}); },
   /** Test-mocks builds only: enter or leave subscription gate QA, then reload into it. */
   setResidentQa(environment:CloudEnvironment|null){
     if(!testMocksEnabled||operation)return;
@@ -1619,6 +1621,7 @@ export const connectionController = {
   cancel() { operation?.abort(new DOMException('Cancelled', 'AbortError')); cloud.cancelLogin(); },
   async initialize() {
     if (startup) return startup;
+    update({automaticRestore:!state.open});
     startup = (async () => {
       // A development profile whose account changed is not restored; where the resident is always
       // present, startup continues to it (P-43) instead of leaving no agent.
@@ -1683,7 +1686,7 @@ export const connectionController = {
         // Development infrastructure only: product selection() never returns a hosted kind.
         if (hosted && (saved.kind === 'cloud' || saved.kind === 'remote' || saved.kind === 'local')) await hosted.restore(saved, signal);
       });
-    })().then(settleResidentAfterStartup).finally(()=>update({startupResolved:true}));
+    })().then(settleResidentAfterStartup).finally(()=>update({startupResolved:true,automaticRestore:false}));
     return startup;
   },
   /** Test mocks and the flag-off web preview only: leave mock mode or a fixture connection where no resident runs. Where the
@@ -2199,19 +2202,23 @@ export const connectionController = {
 // A Google sign-in that native finished after Alpha restarted arrives as a retained event.
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInCompleted', outcome => { void connectionController.signInReturned(outcome); })).catch(() => { /* No retained return. */ });
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInIncomplete', value => { connectionController.signInIncomplete(value); })).catch(() => { /* No retained return. */ });
+export function connectionChooserVisible(snapshot: Pick<ConnectionSnapshot,'open'|'automaticRestore'|'busy'|'error'>): boolean {
+  return snapshot.open && !(snapshot.automaticRestore && snapshot.busy && !snapshot.error);
+}
 export function ConnectionChooser() {
   const snapshot = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
+  const visible=connectionChooserVisible(snapshot);
   const [developmentAction,setDevelopmentAction]=useState('{"type":"create_note","title":"Development note","body":"Reviewed local action"}');
   const [developmentProfile,setDevelopmentProfile]=useState<DevelopmentProfile>('local'),[reply,setReply]=useState(''),[developmentError,setDevelopmentError]=useState('');
   const [replyReady,setReplyReady]=useState(false),[developmentAccountRevision,setDevelopmentAccountRevision]=useState(0);
   const agentRecovery=useRef<AbortController|null>(null);
   useEffect(()=>()=>{agentRecovery.current?.abort();},[developmentProfile]);
   useEffect(()=>{const retire=()=>agentRecovery.current?.abort(),hidden=()=>{if(document.hidden)retire();};const events=['pagehide','launcher-home','alpha:device-state','alpha:dev-incoming-call'];for(const event of events)window.addEventListener(event,retire);document.addEventListener('visibilitychange',hidden);return()=>{retire();for(const event of events)window.removeEventListener(event,retire);document.removeEventListener('visibilitychange',hidden);};},[]);
-  useEffect(()=>{if(!browserDevProfile||!snapshot.open||snapshot.purpose==='cloud-account')return;const controller=new AbortController();setReplyReady(false);setReply('');setDevelopmentError('');void developmentReply(developmentProfile,controller.signal).then(value=>{if(!controller.signal.aborted){setReply(value);setReplyReady(true);}},()=>{if(!controller.signal.aborted)setDevelopmentError('Development data could not be read. Open agent history recovery to download or reset it.');});return()=>controller.abort();},[developmentProfile,snapshot.open,snapshot.purpose,developmentAccountRevision]);
+  useEffect(()=>{if(!browserDevProfile||!visible||snapshot.purpose==='cloud-account')return;const controller=new AbortController();setReplyReady(false);setReply('');setDevelopmentError('');void developmentReply(developmentProfile,controller.signal).then(value=>{if(!controller.signal.aborted){setReply(value);setReplyReady(true);}},()=>{if(!controller.signal.aborted)setDevelopmentError('Development data could not be read. Open agent history recovery to download or reset it.');});return()=>controller.abort();},[developmentProfile,visible,snapshot.purpose,developmentAccountRevision]);
   const recoverConversationChoice=async()=>{if(state.busy)return;sending?.abort(new DOMException('Conversation recovery requested.','AbortError'));agentRecovery.current?.abort();const controller=agentRecovery.current=new AbortController();try{const domain=await conversationSelectionDocument();controller.signal.throwIfAborted();connectionController.close();openDomainRecovery(domain,'conversation selections','Conversation selection recovery','Download saved conversation selections before resetting. This clears only browser restart choices; conversations remain on their agents. It does not delete conversations, messages or provider data. Reset never sends a message. Close older Alpha tabs before continuing.',controller.signal);}catch{if(!controller.signal.aborted)update({error:'Conversation selections could not be read.'});}};
   const recoverDevelopment=(kind:'agent'|'execution'|'digest')=>{try{const identity=developmentIdentity(developmentProfile),domain=developmentOwnerRecovery(kind==='agent'?developmentAgentDocument(identity):kind==='execution'?developmentExecutionDocument(identity):developmentDigestDocument(identity),identity);agentRecovery.current?.abort();const controller=agentRecovery.current=new AbortController();connectionController.close();if(kind==='agent')openDomainRecovery(domain,'agent history','Development agent history recovery','Download this profile’s conversations, scripted reply and message receipts before resetting. Reset clears only this development agent history and restores the default reply. Pending device actions, workflows and real local-agent data are separate. Close older Alpha tabs before continuing.',controller.signal);else if(kind==='execution')openDomainRecovery(domain,'execution history','Development execution recovery','Download this profile’s workflows, runs, action proposals and receipts before resetting. Reset clears them together so waiting workflows cannot recreate cleared proposals. Pending actions may already have happened: reconcile them before resetting. Reset does not undo effects. Older bytes are preserved inside a JSON archive. Real local-agent data is separate. Close older Alpha tabs before continuing.',controller.signal);else openDomainRecovery(domain,'digest schedules','Development digest schedule recovery','Download this profile’s read grants, sources, schedules, execution results and delivery acknowledgements before resetting. Reset removes these local schedules and grants. Already saved inbox results remain in the separate inbox. Real provider grants and real local-agent data are separate. Close older Alpha tabs before continuing.',controller.signal);}catch{setDevelopmentError('Development recovery could not be opened.');}};
   const [localPackaging,setLocalPackaging]=useState<'checking'|'available'|'unavailable'>('checking');
-  useEffect(()=>{if(!snapshot.open||snapshot.purpose==='cloud-account')return;let current=true;setLocalPackaging('checking');void localAgentPackaged().then(available=>{if(current)setLocalPackaging(available?'available':'unavailable');});return()=>{current=false;};},[snapshot.open,snapshot.purpose]);
+  useEffect(()=>{if(!visible||snapshot.purpose==='cloud-account')return;let current=true;setLocalPackaging('checking');void localAgentPackaged().then(available=>{if(current)setLocalPackaging(available?'available':'unavailable');});return()=>{current=false;};},[visible,snapshot.purpose]);
   const providerKey=useRef<HTMLInputElement>(null);
   const redeemCode=useRef<HTMLInputElement>(null);
   const qaEnvironment=useRef<HTMLSelectElement>(null);
@@ -2268,7 +2275,7 @@ export function ConnectionChooser() {
     };
   },[]);
   useEffect(() => {
-    if (!snapshot.open) return;
+    if (!visible) return;
     const previous = document.activeElement as HTMLElement | null;
     const phone = document.querySelector<HTMLElement>('.os');
     const releaseInert = holdPhoneInert(phone);
@@ -2294,7 +2301,7 @@ export function ConnectionChooser() {
     };
     document.addEventListener('keydown', key);
     return () => { document.removeEventListener('keydown', key); window.removeEventListener('alpha-back', back, true); releaseInert(); previous?.focus(); };
-  }, [snapshot.open, snapshot.busy,snapshot.purpose]);
+  }, [visible, snapshot.busy,snapshot.purpose]);
   const env = (): CloudEnvironment => testMocksEnabled && environment.current?.value === 'staging' ? 'staging' : 'production';
   const browserOnly = !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
   const cloudAccountControls=<>
@@ -2303,7 +2310,7 @@ export function ConnectionChooser() {
     {testMocksEnabled&&snapshot.purpose!=='cloud-account'&&<label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue="production" onChange={()=>connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>}
     {!browserOnly&&(!snapshot.cloudAccount||snapshot.purpose!=='cloud-account')&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button></div>}
   </>;
-  if (!snapshot.open) {
+  if (!visible) {
     // Never a gate: the agent is running. A non-blocking notice offers the plan actions.
     const notice=residentCloudFlow()&&snapshot.session?(snapshot.residentPlanNotice==='offline'?'offline':snapshot.residentPlanNotice==='needs-plan'&&snapshot.cloudAccount?'needs-plan':null):null;
     if(!notice||dismissedNotice===notice)return null;

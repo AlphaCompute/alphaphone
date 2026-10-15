@@ -2898,7 +2898,10 @@ function notesNowLabel(d) { return formatTime(d); }
 function notesFind(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i]; return null; }
 function notesUpd(api, id, patch) {
   var s = api.get("notes");
-  return api.set({ list: s.list.map(function (n) { return n.id === id ? Object.assign({}, n, typeof patch === "function" ? patch(n) : patch) : n; }) });
+  var list = s.list.map(function (n) { return n.id === id ? Object.assign({}, n, typeof patch === "function" ? patch(n) : patch) : n; });
+  var change = { list: list };
+  if (s.blankCreationId === id && !notesEmpty(notesFind(list, id))) change.blankCreationId = null;
+  return api.set(change);
 }
 function notesEmpty(n) {
   if (!n) return false;
@@ -2914,8 +2917,8 @@ function notesClose(api) {
  * empty new note is dropped. On a split canvas (#411) another note opens beside the list directly. */
 function notesLeave(api, next) {
   var s = api.get("notes"); notesStopTimers();
-  var n = s.open !== next ? notesFind(s.list, s.open) : null;
-  var patch = { open: next, sheet: null, playing: false, dict: false, newItem: "" };
+  var n = s.open !== next && s.open === s.blankCreationId ? notesFind(s.list, s.open) : null;
+  var patch = { open: next, sheet: null, playing: false, dict: false, newItem: "", blankCreationId: next === s.open ? s.blankCreationId : null };
   if (n && notesEmpty(n)) patch.list = s.list.filter(function (x) { return x.id !== n.id; });
   return patch;
 }
@@ -2936,7 +2939,7 @@ function notesNew(api, kind) {
   var id = "n" + Date.now();
   var n = kind === "list" ? { id: id, kind: "list", title: "", items: [], pinned: false, when: "Now" } : { id: id, kind: "text", title: "", body: "", pinned: false, when: "Now" };
   var leave = notesLeave(api, id);
-  api.set(Object.assign(leave, { list: [n].concat(leave.list || api.get("notes").list), compose: false, q: null }));
+  api.set(Object.assign(leave, { list: [n].concat(leave.list || api.get("notes").list), blankCreationId: id, compose: false, q: null }));
 }
 function notesStartRec(api) {
   notesStopTimers();
@@ -2993,7 +2996,7 @@ function notesShare(api, n, via) {
 registerView("notes", {
   title: "Notes", icon: "notes", aliases: ["note", "recorder", "memos"],
   chat: "hidden",
-  state: { list: NOTES_SEED, open: null, q: null, rec: null, record: false, compose: false, proc: null, sheet: null, pos: 0, playing: false, dict: false, newItem: "" },
+  state: { list: NOTES_SEED, open: null, blankCreationId: null, q: null, rec: null, record: false, compose: false, proc: null, sheet: null, pos: 0, playing: false, dict: false, newItem: "" },
   persist: ["list"],
   jumps: [[null, "Notes"], ["editor", "Note editor"], ["rec", "Recording"], ["voice", "Voice note"]],
   preset: function (sub) {
@@ -3010,7 +3013,7 @@ registerView("notes", {
     if (st.q !== null && st.q !== undefined) { api.set({ q: null }); return true; }
     return false;
   },
-  onLeave: function () { notesStopTimers(); },
+  onLeave: function (api) { var s = api.get("notes"); if (s.blankCreationId) api.set(notesLeave(api, null)); else notesStopTimers(); },
   ongoing: function (st) { return st.rec ? { label: notesFmt(st.rec.tick / 4), icon: "notesRecDot", color: NOTES_RED } : null; },
   suggestions: function (st, api) {
     var n = st.open ? notesFind(st.list, st.open) : null;
@@ -5626,7 +5629,7 @@ class Component extends DCLogic {
       chatHomePointer: function (event) { if (event.isPrimary !== false && event.button === 0) self.swallow = 0; },
       backToApps: function (event) { if (event && event.detail > 0 && event.currentTarget && event.currentTarget.hasAttribute("data-alpha-chat-home") && self.swallowed()) return; self.goHome(); },
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
-      showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock"),
+      showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock") && !(isOn && !S.view && !S.drawer && !S.shade && S.chat !== "sheet" && S.chat !== "full"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },
       hasOngoing: !!ongoing && isOn, ongoing: ongoing || {}, sbWifi: S.q.wifi, sbPlane: S.q.plane, apps: assistantOnly ? [] : apps, toastBottom: imm.toastBottom || ((isOn && (S.chat === "input" || (S.chat === "hidden" && !imm.noPill))) ? 104 : 40),
       goCalendar: function () { self.openView("calendar", copy("shell").homeCalendar || null); },

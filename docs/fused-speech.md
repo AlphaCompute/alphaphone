@@ -258,3 +258,27 @@ still required.
   come from the pinned, byte-reproducible conversions.
 - Closed at this pin by elizaOS/eliza#36239 and elizaOS/llama.cpp#79: AOSP stages eSpeak NG data,
   the Paradee GGUF is named `v1_0` everywhere, and the eSpeak NG data path limit is 1024 bytes.
+
+## October 14 Linux rebuild at Eliza 193d9264fc
+
+The dependency rebuild uses Eliza `193d9264fc8236c4a62a0d775532148162256dfb`
+and its llama.cpp gitlink `56e70ff2a0ca060fa2dc3fead2f38003cd7dd64f`.
+Both Android ABIs were rebuilt with NDK 28.2.13676358 and CMake 4.0.3.
+The engine records name those new bytes; the voice host remains unqualified.
+The ARM64 JNI host executed the real BGE384 model on the Pixel 10a, including
+normalization, repeatability, Unicode/NUL tokenization and context reopening.
+That evidence does not qualify speech or a full AOSP image.
+
+Model pins were retained. On this x86 Linux host, ordinary PyTorch 2.14.0/2.14.1
+weight normalization did not reproduce the Paradee hash. Reproducing the ARM
+NEON four-lane accumulation and reduction order, including sequential reduction
+for rows shorter than four elements, produced the exact recorded `35747765…`
+model through the unchanged converter. Phonon-2's x86 conversion passed the
+converter's tensor checks but produced a different whole-file hash. Running the
+unchanged converter with aarch64 Python 3.12.14 and NumPy 2.5.4 under QEMU 7.2
+produced the exact recorded `dc552eb7…` model. A successful tensor check alone
+therefore must not substitute for the output hash check on either platform.
+
+The attached rebuild workspace retains receipts, conversion scripts, logs and
+model hashes under `test-results/rebuild-oct14` and `.eliza/native-oct14`.
+These are development build inputs, not a production qualification declaration.
