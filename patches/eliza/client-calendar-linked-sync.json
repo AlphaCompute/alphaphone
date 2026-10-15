@@ -1,7 +1,7 @@
 {
   "baseCommit": "968348d792d3d36df129bc53bd85cebed47d0830",
   "path": "packages/contracts/src/calendar-linked-sync.ts",
-  "sourceCommit": "c0041fe1e8f29cc670e24ee164dd3df8cc6b42af",
-  "sha256": "62de54b783cd3244ff3c6d629713a8242c6cce9b1128ab6147a3b4c525f7afdf",
+  "sourceCommit": "22ef13fc97c509e4da68363ed888243daa43104a",
+  "sha256": "aa81d1de6ab4ff2e755f4aa89705fe22e3fbe1baef5a2c6904c2f5ab079d86d9",
   "sourcePullRequest": "https://github.com/elizaOS/eliza/pull/36345"
 }

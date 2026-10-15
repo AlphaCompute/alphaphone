@@ -8,6 +8,7 @@ export type CalendarSyncBinding = {
 	userId: string;
 	organizationId: string;
 	connectionId: string;
+	providerAccountId: string;
 	calendarId: string;
 	agentId: string;
 	localSourceId: string;
@@ -66,6 +67,17 @@ const refuse = () =>
 	Error(
 		"Calendar sync checkpoints changed or need recovery. Existing data is retained.",
 	);
+async function hash(value: unknown) {
+	return Array.from(
+		new Uint8Array(
+			await crypto.subtle.digest(
+				"SHA-256",
+				new TextEncoder().encode(JSON.stringify(value)),
+			),
+		),
+		(byte) => byte.toString(16).padStart(2, "0"),
+	).join("");
+}
 
 /** Durable owner/source-bound checkpoints. Provider effects stay in the shared reconciler. */
 export class CalendarLinkedStore
@@ -73,6 +85,7 @@ export class CalendarLinkedStore
 {
 	private constructor(
 		readonly scope: string,
+		private readonly sourceScope: string,
 		private binding: CalendarSyncBinding,
 		private current: () => boolean,
 		private storage: CalendarLinkStorage,
@@ -91,6 +104,7 @@ export class CalendarLinkedStore
 					"userId",
 					"organizationId",
 					"connectionId",
+					"providerAccountId",
 					"calendarId",
 					"agentId",
 					"localSourceId",
@@ -106,22 +120,23 @@ export class CalendarLinkedStore
 			"userId",
 			"organizationId",
 			"connectionId",
+			"providerAccountId",
 			"calendarId",
 			"agentId",
 			"localSourceId",
 			"localSourceRevision",
 		].map((key) => binding[key as keyof CalendarSyncBinding]);
-		const scope = Array.from(
-			new Uint8Array(
-				await crypto.subtle.digest(
-					"SHA-256",
-					new TextEncoder().encode(JSON.stringify(identity)),
-				),
-			),
-			(byte) => byte.toString(16).padStart(2, "0"),
-		).join("");
+		const [scope, sourceScope] = await Promise.all([
+			hash(identity),
+			hash([
+				binding.environment,
+				binding.localSourceId,
+				binding.localSourceRevision,
+			]),
+		]);
 		const store = new CalendarLinkedStore(
 			scope,
+			sourceScope,
 			{ ...binding },
 			current,
 			storage,
@@ -157,7 +172,12 @@ export class CalendarLinkedStore
 			!["create", "update", "delete", null].includes(link.pendingOperation) ||
 			(link.lastCommonSemanticHash !== null &&
 				!/^[a-f0-9]{64}$/.test(link.lastCommonSemanticHash)) ||
-			link.idempotencyKey !== `alpha-calendar-sync:${this.scope}:${link.id}` ||
+			// Existing checkpoint keys are never rewritten; new links remain stable
+			// across a Google reconnect while checkpoints stay account-isolated.
+			![
+				`alpha-calendar-sync:${this.sourceScope}:${link.localEventId}`,
+				`alpha-calendar-sync:${this.scope}:${link.id}`,
+			].includes(link.idempotencyKey) ||
 			!timestamp(link.createdAt) ||
 			!timestamp(link.updatedAt)
 		)
@@ -215,7 +235,7 @@ export class CalendarLinkedStore
 			lastCommonSemanticHash: null,
 			state: "dirty",
 			pendingOperation: "create",
-			idempotencyKey: `alpha-calendar-sync:${this.scope}:${id}`,
+			idempotencyKey: `alpha-calendar-sync:${this.sourceScope}:${localEventId}`,
 			lastErrorCode: null,
 			lastErrorMessage: null,
 			createdAt: now,

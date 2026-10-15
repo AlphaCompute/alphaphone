@@ -4,6 +4,7 @@ const binding = {
 	userId: "fixture-owner",
 	organizationId: "fixture-org",
 	connectionId: "fixture-google",
+	providerAccountId: "fixture-google-subject",
 	calendarId: "primary",
 	agentId: "fixture-agent",
 	localSourceId: "local",

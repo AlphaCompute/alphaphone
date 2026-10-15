@@ -110,7 +110,7 @@ export function browserCalendarSyncPort(
 				end <= begin ||
 				event.deleted ||
 				event.attendees.length ||
-				("recurrence" in event && event.recurrence)
+				event.recurrence?.length
 			)
 				throw Error(
 					"This Google event cannot be represented locally without losing fields. Nothing changed.",

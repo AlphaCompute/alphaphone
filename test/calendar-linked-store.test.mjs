@@ -24,6 +24,7 @@ const binding = {
 	userId: "owner",
 	organizationId: "org",
 	connectionId: "google-grant",
+	providerAccountId: "fixture-google-subject",
 	calendarId: "primary",
 	agentId: "alpha-agent",
 	localSourceId: "local",
@@ -110,6 +111,7 @@ test("different owner, grant, calendar, agent and local-source generation get is
 		{ userId: "other" },
 		{ organizationId: "other" },
 		{ connectionId: "other" },
+		{ providerAccountId: "other-google-subject" },
 		{ calendarId: "other" },
 		{ agentId: "other" },
 		{ localSourceRevision: "other" },
@@ -217,4 +219,25 @@ test("the shared reconciler recovers an accepted create after reopening without 
 	assert.equal(recovered.localRevision, "opaque-r1");
 	assert.equal(await engine.reconcile(recovered), "clean");
 	assert.equal(writes, 1);
+});
+
+test("new operation keys survive a grant reconnect without sharing old checkpoint data", async () => {
+	const f = fixture(),
+		first = await f.open(),
+		a = await first.link("event", "r1"),
+		reconnected = await f.open({ connectionId: "new-grant" });
+	assert.deepEqual(await reconnected.list(), []);
+	const b = await reconnected.link("event", "r1");
+	assert.notEqual(a.id, b.id);
+	assert.equal(a.idempotencyKey, b.idempotencyKey);
+	const changedAgent = await f.open({ agentId: "new-agent" });
+	assert.equal(
+		(await changedAgent.link("event", "r1")).idempotencyKey,
+		a.idempotencyKey,
+	);
+	const reset = await f.open({ localSourceRevision: "new-source" });
+	assert.notEqual(
+		(await reset.link("event", "r1")).idempotencyKey,
+		a.idempotencyKey,
+	);
 });
