@@ -147,9 +147,19 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
     project(mapPath,projected.toString());
   }finally{fs.rmSync(mapStage,{recursive:true,force:true});}
 
+  // Carry the shared browser-safe reconciliation engine until the upstream pin
+  // includes it. Keep one implementation and authenticate its exact source bytes.
+  const calendarProjection=JSON.parse(fs.readFileSync(path.join(mapPatchRoot,'client-calendar-linked-sync.json'),'utf8'));
+  const calendarPath='packages/contracts/src/calendar-linked-sync.ts';
+  const calendarBytes=fs.readFileSync(path.join(mapPatchRoot,'client-calendar-linked-sync.ts'));
+  if(calendarProjection.baseCommit!==upstream.pin||calendarProjection.path!==calendarPath||
+     sourceFiles[calendarPath]!==undefined||hash(calendarBytes)!==calendarProjection.sha256)
+    throw Error('Review changed Calendar reconciliation projection input');
+  project(calendarPath,calendarBytes.toString());
+
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?2:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?3:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');
