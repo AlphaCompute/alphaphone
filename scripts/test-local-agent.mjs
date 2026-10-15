@@ -9,7 +9,7 @@ import {LocalAgentProtocol} from '../apps/app/src/runtime/local-agent.ts';
 const directory=mkdtempSync(join(tmpdir(),'alpha-local-contract-'));
 const root='a'.repeat(64),token='synthetic-machine-secret';
 const tokenFile=join(directory,'token');writeFileSync(tokenFile,root,{mode:0o600});
-let pairs=0,sends=0,truncates=0,mode='ok';
+let pairs=0,sends=0,truncates=0,approvalReads=0,mode='ok';
 const host=http.createServer(async(req,res)=>{
  let raw='';for await(const chunk of req)raw+=chunk;
  const auth=req.headers.authorization;
@@ -23,6 +23,7 @@ const host=http.createServer(async(req,res)=>{
  } else {
   assert.equal(auth,`Bearer ${token}`);
   if(url==='/api/auth/me')value={identity:{id:'owner',kind:'owner'},access:{role:'OWNER',mode:'session'},session:{id:token,expiresAt:Date.now()+60000}};
+  else if(url==='/api/approvals?state=all&limit=500'){approvalReads++;assert.equal(req.method,'GET');value={approvals:[]};}
   else if(url==='/api/agents')value={agents:[{id:'agent',name:'Fixture',status:'running'}]};
   else if(url==='/api/conversations'&&req.method==='POST')value={conversation:{id:'thread',title:'Contract'}};
   else if(url==='/api/conversations')value={conversations:[{id:'thread',title:'Contract'}]};
@@ -56,6 +57,11 @@ try{
  const who=await bridge.request({path:'/api/auth/me',method:'GET'});assert.ok(!who.body.includes(token));
  assert.equal((await client.createConversation('Contract')).id,'thread');
  assert.equal((await client.listConversations()).length,1);
+ const approvalPath='/api/approvals?state=all&limit=500';assert.equal(localAgentPathAllowed(approvalPath),true);
+ assert.deepEqual(await client.request(approvalPath,undefined,signal),{approvals:[]});assert.equal(approvalReads,1);
+ for(const input of [{path:approvalPath,method:'POST',ownerId:'owner',body:'{}'},{path:approvalPath,method:'GET'},{path:approvalPath,method:'GET',ownerId:'owner',body:'{}'},{path:'/api/approvals/execute',method:'POST',ownerId:'owner',body:'{}'},{path:'/api/approvals?state=all&limit=501',method:'GET',ownerId:'owner'}])assert.equal((await invoke(input)).status,400);
+ assert.equal((await invoke({path:approvalPath,method:'GET',ownerId:'another-owner'})).status,409);assert.equal(approvalReads,1,'refused approval reads never reach the agent');
+
  client.deviceHeaders={'X-Eliza-Device-Id':'device'};
  assert.equal((await client.send('thread','Hello')).text,'Fixture reply');
  assert.equal((await client.messages('thread')).messages.length,1);

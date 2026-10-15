@@ -1,3 +1,4 @@
+import {CALENDAR_APPROVAL_READ_PATH} from '../apps/app/src/runtime/calendar-approval.ts';
 import {createGmailAgentDevBroker} from './gmail-agent-dev-broker.ts';
 import {homedir} from 'node:os';
 import {automationsRouteAllowed, isAutomationsPath} from '../apps/app/src/runtime/automations-route-policy.ts';
@@ -48,6 +49,7 @@ function voiceControlResponse(kind:string,input:any,status:number,raw:string,ori
 export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
   if(isAutomationsPath(path))return ['GET','POST','PUT','DELETE'].some(method=>automationsRouteAllowed(path,method));
+  if(path===CALENDAR_APPROVAL_READ_PATH)return true;
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
@@ -100,6 +102,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(size>LIMIT&&!((cloudAsr||input.path===ASR_PATH)&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
       if((!voice&&!cloudSpeech&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
+         (input.path===CALENDAR_APPROVAL_READ_PATH&&(input.method!=='GET'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          ((input.path.startsWith('/api/views/')||input.path.endsWith('/messages/truncate'))&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
          (['GET','DELETE'].includes(input.method)&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}

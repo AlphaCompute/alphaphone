@@ -1,3 +1,4 @@
+import {CALENDAR_APPROVAL_READ_PATH,calendarApprovalFromList,calendarApprovalId} from './calendar-approval';
 import {resolveCloudEnvironment} from './cloud-environment-selection';
 import {aospImage} from './aosp-image';
 import {SMS_SEND_CAPABILITY} from './sms-agent-contract';
@@ -1405,6 +1406,13 @@ export const connectionController = {
     })();
     actionReceipts.set(proposal.id, { sessionId, result });
     return result;
+  },
+  async readCalendarApproval(id:string,signal:AbortSignal){
+    const selected=active,session=state.session,generation=epoch,history=state.history,account=service;
+    if(!calendarApprovalId(id)||selected?.kind!=='resident'||!session||state.open||state.busy||document.hidden)throw Error('Calendar review is unavailable on this connection.');
+    const current=()=>{signal.throwIfAborted();if(generation!==epoch||active!==selected||state.session!==session||state.history!==history||service!==account||state.open||state.busy||document.hidden)throw Error('The agent or conversation changed.');};
+    current();const result=await selected.remote.request(CALENDAR_APPROVAL_READ_PATH,undefined,signal);current();
+    return calendarApprovalFromList(result,id,session.ownerId);
   },
   async pendingActions(context:ContextEnvelope,signal:AbortSignal):Promise<ActionProposal[]> {
     const selected=active,session=state.session,generation=epoch,history=state.history;

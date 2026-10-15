@@ -4062,7 +4062,8 @@
         </sc-if>
         <sc-if value="{{m.isAgent}}">
           <div style="display: flex; flex-direction: column; gap: 12px">
-            <div data-alpha-message-text role="{{m.messageActionsRole}}" tabIndex="{{m.messageActionsTabIndex}}" aria-label="{{m.messageActionsLabel}}" aria-haspopup="{{m.messageActionsPopup}}" aria-expanded="{{m.messageActionsOpen}}" onClick="{{m.openMessageActions}}" onKeyDown="{{m.messageActionsKey}}" onContextMenu="{{m.messageActionsContext}}" onPointerDown="{{m.messageActionsDown}}" onPointerMove="{{m.messageActionsMove}}" onPointerUp="{{m.messageActionsCancel}}" onPointerCancel="{{m.messageActionsCancel}}" style="font-size: 16px; line-height: 1.5">{{m.text}}</div>
+            <sc-if value="{{m.hasCalendarText}}"><div data-alpha-message-text role="{{m.messageActionsRole}}" tabIndex="{{m.messageActionsTabIndex}}" aria-label="{{m.messageActionsLabel}}" aria-haspopup="{{m.messageActionsPopup}}" aria-expanded="{{m.messageActionsOpen}}" onClick="{{m.openMessageActions}}" onKeyDown="{{m.messageActionsKey}}" onContextMenu="{{m.messageActionsContext}}" onPointerDown="{{m.messageActionsDown}}" onPointerMove="{{m.messageActionsMove}}" onPointerUp="{{m.messageActionsCancel}}" onPointerCancel="{{m.messageActionsCancel}}" style="font-size: 16px; line-height: 1.5">{{m.displayText}}</div></sc-if>
+            <sc-for list="{{m.calendarReviews}}" as="review"><section class="calendar-request-review" data-calendar-request-id="{{review.id}}"><strong>Calendar request</strong><p role="status">{{review.status}}</p><button class="tap" aria-label="Review Calendar request {{review.id}}" onClick="{{review.open}}">Review request</button></section></sc-for>
 
 
             <sc-if value="{{m.cAgenda}}">

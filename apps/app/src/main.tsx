@@ -1,3 +1,4 @@
+import {installCalendarApprovalAdapter} from './prototype/calendar-approval-adapter';
 import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
@@ -115,6 +116,7 @@ if (!fixture) {
   if(systemShade==='simulated')installNotificationsAdapter(Component);
   installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
+  installCalendarApprovalAdapter(Component);
   installNotesDocumentAdapter(Component, VIEWS);
   installNotesTrashAdapter(Component, VIEWS);
   installNoteSourceAdapter(VIEWS);
