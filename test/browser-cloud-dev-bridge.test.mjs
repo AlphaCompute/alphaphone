@@ -27,11 +27,11 @@ async function fixture(){
   if(path==='/api/v1/subscription/redeem'){const body=JSON.parse(input.body);return Response.json({success:true,replayed:false,grant:{id:'synthetic-grant',endsAt:'2027-04-14T00:00:00.000Z',paidPlanTakesPrecedence:false,echo:body.code===undefined}});}
   return response(url,input);
  };
- let server,origin;
- const start=async()=>{server=createServer(createBrowserCloudDevHandler({profile,request}));await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
+ let server,origin,host;
+ const start=async()=>{host=createBrowserCloudDevHandler({profile,request});server=createServer(host);await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
  const send=(data,options={})=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1',...(options.headers||{})},body:JSON.stringify(data),signal:options.signal});
  const rpc=async data=>{const r=await send(data);return {status:r.status,data:await r.json()};};
- return {profile,file,calls,send,rpc,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
+ return {profile,file,calls,send,rpc,host:()=>host,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
 }
 test('existing Mac credential becomes a real canonical identity/credit reference, never a browser bearer',async()=>{
  const f=await fixture();try{
@@ -267,4 +267,23 @@ test('cancelling an in-flight email verification keeps the existing account and 
   assert.equal(saved.credentialId,credentialId);
   assert.equal((await f.rpc({operation:'signInStatus'})).data.active,false);
  }finally{release?.();await f.close();}
+});
+
+test('private agent Gmail port shares the current credential without allowing mail writes or other services',async()=>{
+ const f=await fixture();try{
+  const host=f.host(),credential=await host.agentCredential();assert.equal(credential.token,undefined);assert.equal(credential.credentialReference,reference);
+  const read={url:'https://api.eliza.app/api/v1/user',method:'GET',credentialReference:reference,signal:new AbortController().signal};
+  assert.equal((await host.agentRead(read)).data.data.id,owner);const count=f.calls.length;
+  for(const change of [{method:'POST',body:{}},{url:'https://api.eliza.app/api/v1/eliza/google/disconnect'},{url:'https://api.eliza.app/api/v1/eliza/google/calendar/calendars?side=owner&grantId='+credentialId},{url:'https://api.eliza.app/api/v1/billing/limits'},{url:'https://elsewhere.invalid/api/v1/user'},{credentialReference:'browser-cloud-reference:'+randomUUID()}])await assert.rejects(host.agentRead({...read,...change}));
+  assert.equal(f.calls.length,count,'no refused read or mutation reached Cloud');
+ }finally{await f.close();}
+});
+test('a Cloud account change while the agent Gmail read is in flight drops the old result',async()=>{
+ const f=await fixture();try{
+  let enter,release;const entered=new Promise(r=>{enter=r}),held=new Promise(r=>{release=r});
+  f.setResponse(async()=>{enter();await held;return Response.json({messages:[{subject:'Old owner content'}]});});
+  const pending=f.host().agentRead({url:'https://api.eliza.app/api/v1/eliza/google/gmail/search?side=owner&grantId='+credentialId+'&query=in%3Ainbox&maxResults=10',method:'GET',credentialReference:reference,signal:new AbortController().signal});
+  await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
+  await assert.rejects(pending,error=>error.code==='account-changed');
+ }finally{await f.close();}
 });
