@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-const {createLauncher, filterLauncherApps, describeLauncherApps, appKey, localFavorites, FAVORITES_KEY, MAX_FAVORITES, installHomeLauncher} = await import('../apps/app/src/prototype/home-launcher.ts');
+const {createLauncher, filterLauncherApps, describeLauncherApps, appKey, localFavorites, FAVORITES_KEY, MAX_FAVORITES} = await import('../apps/app/src/prototype/home-launcher.ts');
 
 const icon = 'data:image/png;base64,iVBORw0KGgo=';
 const apps = [
@@ -221,13 +221,13 @@ test('the favorites limit is enforced and uninstalled favorites make room first'
   assert.equal(favorites.keys.includes('gone.one'), false);
   launcher.toggleFavorite(many[MAX_FAVORITES]);
   assert.equal(favorites.keys.length, MAX_FAVORITES);
-  assert.equal(launcher.snapshot().launchError, `You can keep ${MAX_FAVORITES} favorites. Remove one to add App ${MAX_FAVORITES}.`);
+  assert.match(launcher.snapshot().launchError, /^You can keep 24 favorites\. Remove one to add App 24\.$/);
 });
 test('localStorage favorites round-trip and unreadable or malformed data reads as none', () => {
   const data = new Map();
   const storage = {getItem: key => data.has(key) ? data.get(key) : null, setItem: (key, value) => { data.set(key, String(value)); }};
   const store = localFavorites(() => storage);
-  assert.equal(store.read(), null);
+  assert.deepEqual(store.read(), []);
   store.write(['a.b/a.b.Main', 'c.d']);
   assert.deepEqual(JSON.parse(data.get(FAVORITES_KEY)), {version: 1, keys: ['a.b/a.b.Main', 'c.d']});
   assert.deepEqual(store.read(), ['a.b/a.b.Main', 'c.d']);
@@ -378,66 +378,4 @@ test('a Phone shortcut whose handler is gone reports why and leaves after the de
   assert.equal(calls.filter(call => call[0] === 'list').length, 2, 'one read on open, one after the refusal');
   await launcher.openDial();
   assert.equal(launcher.snapshot().launchError, 'Phone could not be opened. No app on this phone handles this', 'nothing further is attempted without a handler');
-});
-
-
-test('fresh favorites include every product and installed app, and Home order survives changes and restart', async () => {
-  let saved = null;
-  const favorites = {read: () => saved, write: keys => { saved = [...keys]; }};
-  const builtin = {packageName: 'alpha:notes', label: 'Notes'};
-  const bridge = {list: async () => ({apps}), launch: async () => {}};
-  const launcher = createLauncher(bridge, () => {}, {favorites});
-  launcher.setBuiltins([builtin]);
-  await launcher.load();
-  assert.deepEqual(launcher.favoriteApps().map(appKey), [appKey(builtin), ...apps.map(appKey)]);
-  launcher.toggleFavorite(builtin);
-  assert.equal(launcher.snapshot().apps.some(a => appKey(a) === appKey(builtin)), true, 'All apps retains the unfavorited product app');
-  assert.equal(launcher.favoriteApps().some(a => appKey(a) === appKey(builtin)), false);
-  launcher.toggleFavorite(builtin);
-  launcher.moveFavorite(builtin, -1);
-  const expected = saved;
-  const restarted = createLauncher(bridge, () => {}, {favorites});
-  restarted.setBuiltins([builtin]);
-  await restarted.load();
-  assert.deepEqual(restarted.favoriteApps().map(appKey), expected);
-});
-test('explicit empty favorites stay empty across reload and capability-filtered product apps remain hidden', async () => {
-  const favorites = memoryFavorites([]);
-  const launcher = createLauncher({list: async () => ({apps}), launch: async () => {}}, () => {}, {favorites});
-  launcher.setBuiltins([{packageName: 'alpha:notes', label: 'Notes'}]);
-  await launcher.load();
-  assert.deepEqual(launcher.favoriteApps(), []);
-  launcher.toggleFavorite({packageName: 'alpha:notes', label: 'Notes'});
-  launcher.setBuiltins([]);
-  assert.deepEqual(launcher.favoriteApps(), []);
-  assert.deepEqual(favorites.keys, ['alpha:notes'], 'Capability changes do not erase saved choices');
-});
-
-test('shell Home and All apps use the same favorite order; product taps never call native launch', async () => {
-  let saved = null, opened = 0;
-  const nativeCalls = [];
-  class Shell {
-    S() { return {drawer: true}; }
-    setState() {}
-    renderVals() { return {isOn: true, isView: false, ic: {grid: 'grid'}, apps: [{key: 'notes', label: 'Notes', d: 'note', open: () => { opened++; }}]}; }
-  }
-  const launcher = installHomeLauncher(Shell, {list: async () => ({apps}), launch: async target => { nativeCalls.push(target); }},
-    {favorites: {read: () => saved, write: keys => { saved = [...keys]; }}});
-  const shell = new Shell();
-  shell.renderVals();
-  await launcher.load();
-  let rendered = shell.renderVals();
-  assert.deepEqual(rendered.apps.map(a => a.label), ['Notes', ...apps.map(a => a.label)]);
-  assert.equal(rendered.launcher.rows.length, apps.length + 1);
-  const notes = rendered.launcher.favorites.find(a => a.key === 'alpha:notes');
-  await notes.open();
-  assert.equal(opened, 1);
-  assert.deepEqual(nativeCalls, []);
-  notes.later();
-  rendered = shell.renderVals();
-  assert.equal(rendered.apps[1].label, 'Notes', 'Moving later changes row-major Home order');
-  rendered.launcher.rows.find(a => a.key === 'alpha:notes').toggleFavorite();
-  rendered = shell.renderVals();
-  assert.equal(rendered.apps.some(a => a.label === 'Notes'), false);
-  assert.equal(rendered.launcher.rows.some(a => a.label === 'Notes'), true);
 });

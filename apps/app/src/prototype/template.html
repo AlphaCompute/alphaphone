@@ -66,8 +66,7 @@
     <sc-for list="{{apps}}" as="a">
       <button onClick="{{a.open}}" aria-label="{{a.label}}" style="display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0">
         <span class="tap" style="position: relative; width: 64px; height: 64px; border-radius: 22px; background: var(--s2); display: flex; align-items: center; justify-content: center">
-          <sc-if value="{{a.hasIcon}}"><img alt="" src="{{a.icon}}" style="width: 44px; height: 44px; border-radius: 14px"></sc-if>
-          <sc-if value="{{a.noIcon}}"><svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{a.d}}"></path></svg></sc-if>
+          <svg class="i" viewBox="0 0 24 24" style="width: 30px; height: 30px"><path d="{{a.d}}"></path></svg>
           <sc-if value="{{a.badge}}"><span class="app-badge" style="position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 4px; background: var(--acc)"></span></sc-if>
         </span>
         <span style="font-size: 12px; color: var(--mut); max-width: 100%; text-align: center; overflow-wrap: anywhere">{{a.label}}</span>
@@ -114,7 +113,7 @@
       <div data-launcher-favorite="{{app.key}}" style="display: flex; align-items: center; gap: 2px">
         <button onClick="{{app.open}}" disabled="{{app.disabled}}" aria-label="{{app.aria}}" aria-busy="{{app.busy}}" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 6px 12px; border-radius: 18px; text-align: left">
           <sc-if value="{{app.hasIcon}}"><img alt="" src="{{app.icon}}" style="width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0"></sc-if>
-          <sc-if value="{{app.noIcon}}"><span style="width: 44px; height: 44px; border-radius: 14px; background: var(--s2); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{app.d}}"></path></svg></span></sc-if>
+          <sc-if value="{{app.noIcon}}"><span style="width: 44px; height: 44px; border-radius: 14px; background: var(--s2); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.grid}}"></path></svg></span></sc-if>
           <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{app.label}}</span><sc-if value="{{app.hasSub}}"><span style="font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{app.sub}}</span></sc-if></span>
         </button>
         <button class="ib" onClick="{{app.earlier}}" disabled="{{app.first}}" aria-label="{{app.earlierAria}}" style="flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.up}}"></path></svg></button>
@@ -129,7 +128,7 @@
       <div data-launcher-app="{{app.key}}" style="display: flex; align-items: center; gap: 2px">
         <button onClick="{{app.open}}" disabled="{{app.disabled}}" aria-label="{{app.aria}}" aria-busy="{{app.busy}}" style="flex-grow: 1; min-width: 0; display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 6px 12px; border-radius: 18px; text-align: left">
           <sc-if value="{{app.hasIcon}}"><img alt="" src="{{app.icon}}" style="width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0"></sc-if>
-          <sc-if value="{{app.noIcon}}"><span style="width: 44px; height: 44px; border-radius: 14px; background: var(--s2); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{app.d}}"></path></svg></span></sc-if>
+          <sc-if value="{{app.noIcon}}"><span style="width: 44px; height: 44px; border-radius: 14px; background: var(--s2); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.grid}}"></path></svg></span></sc-if>
           <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{app.label}}</span><sc-if value="{{app.hasSub}}"><span style="font-size: 12px; color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{app.sub}}</span></sc-if></span>
         </button>
         <button class="ib" onClick="{{app.toggleFavorite}}" aria-label="{{app.favoriteAria}}" aria-pressed="{{app.favorite}}" style="flex-shrink: 0"><svg class="i" viewBox="0 0 24 24" style="fill: {{app.favoriteFill}}; color: {{app.favoriteColor}}"><path d="{{ic.star}}"></path></svg></button>
