@@ -323,3 +323,28 @@ test('Maps capability discovery is a bare authenticated read, not a location or 
   assert.equal(f.calls.length,dispatched);
  }finally{await f.close();}
 });
+
+test('Calendar sync bridge forwards only exact owner-bound versioned operations',async()=>{
+ const f=await fixture(),grant=randomUUID(),root='/api/v1/eliza/google/calendar/sync-v1/';try{
+  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
+  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+root+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
+  const selection={grantId:grant,calendarId:'primary',accountId:'google-user'},event={title:'Synthetic event'};
+  for(const [route,method,body] of [
+   ['capabilities?'+new URLSearchParams({grantId:grant,calendarId:'primary'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,idempotencyKey:'stable'}),'GET'],
+   ['event','POST',{...selection,idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'"1"'}),'DELETE'],
+  ])assert.equal((await call(route,method,body)).data.status,200,method+' '+route);
+  const before=f.calls.length;
+  for(const [route,method,body] of [
+   ['event','POST',{grantId:grant,calendarId:'primary',idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'*',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',idempotencyKey:'stable'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'*'}),'DELETE'],
+   ['event','PUT',{...selection,event}],
+   ['event/','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+  ])assert.ok([400,403].includes((await call(route,method,body)).status));
+  assert.equal(f.calls.length,before,'rejected routes never reach Cloud');
+ }finally{await f.close();}
+});

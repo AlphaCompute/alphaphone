@@ -94,6 +94,19 @@ public final class ConnectionRoutesTest {
    check(!ConnectionRoutes.managedService(path,null,"GET",true,false),"Google Calendar GET body refused");
    check(!ConnectionRoutes.managedService(path+"/",null,"GET",false,false),"Google Calendar trailing slash refused");
   }
+  String sync="/api/v1/eliza/google/calendar/sync-v1/event";
+  for(String method:new String[]{"POST","PATCH"}){
+   check(ConnectionRoutes.managedService(sync,null,method,true,false),"versioned sync write allowed");
+   check(!ConnectionRoutes.managedService(sync,"grantId=owned",method,true,false),"sync writes forbid query");
+   check(!ConnectionRoutes.managedService(sync,null,method,false,false),"sync writes need body");
+  }
+  for(String method:new String[]{"GET","DELETE"}){
+   check(ConnectionRoutes.managedService(sync,"grantId=owned",method,false,false),"versioned sync query allowed");
+   check(!ConnectionRoutes.managedService(sync,null,method,false,false),"sync needs query");
+   check(!ConnectionRoutes.managedService(sync,"grantId=owned",method,true,false),"sync query forbids body");
+  }
+  check(!ConnectionRoutes.managedService(sync+"/",null,"PATCH",true,false),"sync slash refused");
+  check(!ConnectionRoutes.managedService(sync,null,"PUT",true,false),"sync PUT refused");
   check(!ConnectionRoutes.managedService("/api/v1/eliza/google/calendar/events",null,"GET",false,false),"unreviewed Google Calendar route refused");
   // Subscription plan gate (#410): code redemption is one POST with a body; the billing snapshot is read-only; credits are retired.
   check(ConnectionRoutes.managedService("/api/v1/subscription/redeem",null,"POST",true,false),"subscription code redemption allowed");

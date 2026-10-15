@@ -1,3 +1,4 @@
+import {calendarSyncHttp,type CalendarSyncRequest} from './calendar-linked-provider.ts';
 import type {AutomationsMethod} from './automations-route-policy.ts';
 import { reviewMailAttachment, type MailAttachment } from './inbox-attachment.ts';
 import { reviewOpaqueAttachment, type OpaqueMailAttachment } from './inbox-operation.ts';
@@ -57,7 +58,7 @@ export interface CloudCredentialStore {
 /** The native adapter must enforce the timeout and AbortSignal, reject redirects,
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
 export interface CloudNativeRequest {
-  (input: { url: string; method: AutomationsMethod; headers: Record<string, string>;
+  (input: { url: string; method: AutomationsMethod | 'PATCH'; headers: Record<string, string>;
     body?: unknown; credentialReference?: string; signal: AbortSignal; timeoutMs: number; redirect: "error"; expiresAt?: number;
   }): Promise<{ status: number; data: unknown; /** Raw Retry-After header of an error response, when present. */ retryAfter?: string }>;
 }
@@ -205,7 +206,7 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  protected async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
+  protected async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod | 'PATCH'; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     let credentialReference: string | undefined;
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
@@ -230,7 +231,7 @@ export class CloudProtocol {
     options.onStatus?.(response.status);
     return response.data;
   }
-  protected async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
+  protected async call(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod | 'PATCH'; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number } = {}) {
     return object(await this.requestData(path, signal, options));
   }
   /** Plan state from the read-only billing snapshot, used only while the entitlement route is
@@ -542,20 +543,25 @@ export class CloudProtocol {
     return url.href;
   }
   /** Reject responses from an account that changed while its request was in flight. */
-  private async accountRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
+  private async accountRequest(path:string,signal:AbortSignal,body?:unknown,method?:AutomationsMethod|'PATCH'):Promise<unknown> {
     const credential=await this.credentials.read(this.environment);signal.throwIfAborted();
     if(!credential)throw new CloudProtocolError('credentials-missing');
     const binding=JSON.stringify([credential.credentialId,credential.credentialReference,credential.token,credential.userId,credential.organizationId]);
-    const data=await this.requestData(path,signal,{authenticated:true,credentialId:credential.credentialId,body});
-    const current=await this.credentials.read(this.environment);signal.throwIfAborted();
-    if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
-    return data;
+    try { return await this.requestData(path,signal,{authenticated:true,credentialId:credential.credentialId,body,method}); }
+    finally {
+      const current=await this.credentials.read(this.environment);signal.throwIfAborted();
+      if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
+    }
   }
   /** Eliza Cloud Maps data (#412) on the exact reviewed routes. Queries and coordinates
    * travel only in the JSON body; capabilities is a bare read. GPS and navigation stay on the phone. */
   async mapsRequest(route:CloudMapsRoute,signal:AbortSignal,body?:Record<string,unknown>):Promise<Record<string,unknown>> {
     if(!['capabilities','geocode','reverse','places/search','places/details','routes'].includes(route)||(route==='capabilities')!==(body===undefined))throw new CloudProtocolError('invalid-response');
     return object(await this.accountRequest(`/api/v1/maps/${route}`,signal,body));
+  }
+  async googleCalendarSync(input:CalendarSyncRequest,signal:AbortSignal):Promise<unknown> {
+    const request=calendarSyncHttp(input);
+    return this.accountRequest(request.path,signal,'body' in request?request.body:undefined,request.method);
   }
   async googleCalendars(grantId:string,signal:AbortSignal):Promise<GoogleCalendarSummary[]> {
     const params=new URLSearchParams({side:'owner',grantId:uuid(grantId)});

@@ -23,6 +23,20 @@ function managedGoogleRequest(url:URL,method:string,body:unknown):boolean {
  if(!managedServiceRequest('https://api.eliza.app'+url.pathname+url.search,method,body!==undefined))return false;
  const prefix='/api/v1/eliza/google/',route=url.pathname.slice(prefix.length);
  if(!url.pathname.startsWith(prefix))return false;
+ if(route==='calendar/sync-v1/capabilities'||route==='calendar/sync-v1/event'){
+  const clean=(value:unknown,max=2048)=>typeof value==='string'&&value.length>0&&value.length<=max&&!/[\u0000-\u001f\u007f]/.test(value);
+  let value:Record<string,any>;
+  if(method==='POST'||method==='PATCH'){if(url.search||typeof body!=='string'||Buffer.byteLength(body)>256*1024)return false;try{value=object(JSON.parse(body));}catch{return false;}}
+  else{if(body!==undefined||new Set(url.searchParams.keys()).size!==[...url.searchParams.keys()].length)return false;value=Object.fromEntries(url.searchParams);}
+  if(!GOOGLE_UUID.test(value.grantId)||!clean(value.calendarId,1024))return false;
+  const keys=Object.keys(value).sort().join();
+  if(route.endsWith('/capabilities'))return method==='GET'&&keys==='calendarId,grantId';
+  if(!clean(value.accountId))return false;
+  if(method==='GET')return (keys==='accountId,calendarId,eventId,grantId'&&clean(value.eventId,1024))||(keys==='accountId,calendarId,grantId,idempotencyKey'&&clean(value.idempotencyKey));
+  if(method==='DELETE')return keys==='accountId,calendarId,eventId,expectedEtag,grantId'&&clean(value.eventId,1024)&&clean(value.expectedEtag,1024)&&value.expectedEtag!=='*';
+  if(!value.event||typeof value.event!=='object'||Array.isArray(value.event))return false;
+  return method==='POST'?keys==='accountId,calendarId,event,grantId,idempotencyKey'&&clean(value.idempotencyKey):method==='PATCH'&&keys==='accountId,calendarId,event,eventId,expectedEtag,grantId'&&clean(value.eventId,1024)&&clean(value.expectedEtag,1024)&&value.expectedEtag!=='*';
+ }
  if(method==='POST'){
   if(url.search||typeof body!=='string'||Buffer.byteLength(body)>8*1024*1024)return false;
   let value:Record<string,any>;try{value=object(JSON.parse(body));}catch{return false;}
