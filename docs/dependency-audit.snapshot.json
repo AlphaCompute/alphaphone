@@ -103,16 +103,16 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "193d9264fc8236c4a62a0d775532148162256dfb",
+    "upstreamCommit": "968348d792d3d36df129bc53bd85cebed47d0830",
     "input": "vendor/eliza/bun.lock",
-    "auditedOn": "2026-10-14",
-    "inputSha256": "551554d063ea147421849b6069611d26ac240de1c96e450386027b02465d7b45",
-    "packages": 3697,
+    "auditedOn": "2026-10-15",
+    "inputSha256": "bcadc30aafbef10e1413c673bae3e8669536ac0525296053c159f8b212f684bd",
+    "packages": 3675,
     "counts": {
       "info": 0,
       "low": 14,
       "moderate": 42,
-      "high": 42,
+      "high": 41,
       "critical": 1
     },
     "findings": [
@@ -745,20 +745,6 @@
           "vulnerableRange": "<=1.4.0",
           "title": "node-forge RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements",
           "url": "https://github.com/advisories/GHSA-86w9-cpqp-85rv"
-        }
-      },
-      {
-        "package": "pacote",
-        "versions": [
-          "21.0.1"
-        ],
-        "severity": "high",
-        "advisory": {
-          "id": "GHSA-w4pp-8pjf-rmxw",
-          "severity": "high",
-          "vulnerableRange": ">=11.2.7 <21.5.1",
-          "title": "pacote is vulnerable to Denial of Service (DoS) via the addGitSha function",
-          "url": "https://github.com/advisories/GHSA-w4pp-8pjf-rmxw"
         }
       },
       {

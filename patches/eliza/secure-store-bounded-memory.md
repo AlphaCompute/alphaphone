@@ -39,3 +39,16 @@ The Alpha wrapper separately serializes renderer storage operations through
 parallel worker pool. Queued operations are rejected when the wrapper retires.
 This is not a claim that full-value Capacitor CAS transport has been qualified;
 the installed capacity/recovery campaign must verify the complete route.
+
+The lowered Notes Trash cap (30 MiB, retained 32 MiB) then failed on the emulator:
+`NotesStorageDurabilityInstrumentedTest.loweredTrashCapKeepsOlderOversizeTrashReadableAndShrinkable`
+ran out of the 192 MiB heap in `write`, whose above-the-current-limit shrink check decrypted the
+whole stored value (`read`), built a String and re-encoded it only to compare lengths, while the
+caller's stored and proposed values were live. The check now takes the stored value's UTF-8
+length from the committed v1 file (ciphertext length minus the 16-byte GCM tag), counted in 8 KiB
+chunks; no plaintext is produced. It decides admission only, still bounded by the retained limit,
+and the value written replaces the whole file; reads, CAS and every other limit are unchanged.
+`MemoryTest` now drives the same 30/32 MiB sequence under `-Xmx192m` (older oversize readable,
+growth refused without changing bytes, shrink above the cap accepted, then the cap enforced
+again); before this change it failed with the same `write`/`read` OutOfMemoryError. Host JVM
+only; the Android rerun of that method is still required.

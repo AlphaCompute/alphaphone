@@ -5,7 +5,7 @@ import {openNotificationRecovery} from '../browser/notification-recovery';
 import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
 import {notificationDocument} from '../browser/notification-store';
 import {alertSoundDocument,deviceRolesDocument} from '../browser/preference-documents';
-import {readDevicePreferences} from '../browser/device-preferences';
+import {cachedDevicePreferences,initializeDevicePreferences,editDevicePreferences,readDevicePreferences} from '../browser/device-preferences';
 import { registerPlugin } from '../platform-plugins';
 import { broaderPageNotice, switchValue } from './native-adapter';
 import { Capacitor } from '@capacitor/core';
@@ -22,6 +22,7 @@ import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { exportVoiceTiming } from '../runtime/voice-timing';
+import { listenerStatus, openListenerSettings, pauseListener, turnOffListener, type ListenerStatus } from '../runtime/always-on-listener';
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
@@ -150,7 +151,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
-  let passwordOpening=false;
+  let passwordOpening=false,mailImagesSaving=false;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
@@ -158,6 +159,21 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
   let gmail = 'Not checked', digests = 'Not checked';
   let inferenceProvider = 'Not reported by agent';
+  // The AOSP image's always-on listener (#424): status, Pause and Turn off only. Turning listening on
+  // or resuming happens in the listener's own consent screen, never here.
+  let listener: ListenerStatus = { available: false }, listenerBusy = false, listenerSequence = 0;
+  async function listenerAction(api: Bag, action: 'pause' | 'turnOff') {
+    if (listenerBusy) return;
+    listenerBusy = true; changed();
+    const instance = owner, sequence = ++listenerSequence;
+    try {
+      const next = await (action === 'pause' ? pauseListener() : turnOffListener());
+      if (owner !== instance || sequence !== listenerSequence) return;
+      listener = next;
+      if (!next.available) api.toast('The listener did not respond. Use its notification or Quick Settings tile to stop listening.');
+      else if (next.listening) api.toast('Listening has not stopped. Use the listener notification to stop it.');
+    } finally { listenerBusy = false; if (owner === instance) changed(); }
+  }
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
   async function refreshCapabilities() {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
@@ -169,6 +185,11 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
     try {
       await Promise.allSettled([
+        (async () => {
+          // A status read older than a Pause or Turn off never replaces that action's result.
+          const sequence = ++listenerSequence, status = await listenerStatus();
+          if (owner === instance && capabilityAbort === abort && sequence === listenerSequence) listener = status;
+        })(),
         (async () => {
           if (!browserLocalAgentEnabled) return;
           const agent = connectionController.getBrowserSpeechAgent();
@@ -297,7 +318,10 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     refreshPasswordManager();
   }
   p.componentDidMount = function () {
-    mount.call(this); owner = this; void refresh(); void refreshCapabilities();
+    mount.call(this); owner = this;
+    this.mailImagePreferenceChanged=changed;
+    window.addEventListener('alpha:device-settings',this.mailImagePreferenceChanged);
+    initializeDevicePreferences(); void refresh(); void refreshCapabilities();
     this.passwordLifecycle = passwordManagerLifecycle(changed);
     if(!new URLSearchParams(location.search).has('theme')){
       // A read from storage or the system scheme carries a marker, so componentDidUpdate never writes it back.
@@ -339,6 +363,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.componentWillUnmount = function () {
     if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
+    window.removeEventListener('alpha:device-settings',this.mailImagePreferenceChanged);
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.appearanceScheme?.removeEventListener?.('change',this.appearanceSchemeListener);
@@ -366,7 +391,19 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const info = (label: string, val: string): Bag => ({ kInfo: true, label, val, hasVal: true, noAB: true });
     const nav = (label: string, page: string): Bag => ({ kNav: true, label, lbl: label, chev: true, noAB: true, go: manage(page) });
     const group = (rows: Bag[]) => ({ css: 'background:var(--s2);padding:4px 0', rows });
-    const speechRows = (): Bag[] => [info('Speech', developmentCartesiaVoiceEnabled?'Cartesia · development':'Eliza Cloud (counts toward your plan)')];
+    // Production speech is on this phone (libelizainference); Cloud speech exists only in test-mocks builds.
+    const speechRows = (): Bag[] => [info('Speech', developmentCartesiaVoiceEnabled?'Cartesia · development':testMocksEnabled?'Eliza Cloud (counts toward your plan)':'On this device')];
+    const action = (label: string, go: () => void): Bag => ({ kNav:true, label, lbl:label, chev:true, noAB:true, go });
+    const listenerRows = (): Bag[] => {
+      if (!listener.available) return [info('Wake word', 'Not available')];
+      const status = listener;
+      return [
+        info('Always-on listening', listenerBusy ? 'Updating…' : status.label),
+        ...(status.listening || status.microphoneOpen ? [action('Pause listening', () => void listenerAction(api, 'pause'))] : []),
+        ...(status.consented && status.state !== 'OFF' ? [action('Turn off listening', () => void listenerAction(api, 'turnOff'))] : []),
+        action('Listening settings', () => void openListenerSettings().then(opened => { if (!opened) api.toast('The listener settings are unavailable.'); })),
+      ];
+    };
     const problemCount = crashLog ? crashLog.entries.length : null;
     const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
@@ -495,7 +532,20 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
           { kNav:true, label:'Check Gmail connection', lbl:'Check Gmail connection', chev:true, noAB:true, go:()=>{ gmailNotice = ''; void refreshCapabilities(); } },
-          info('Other connectors', 'Not available in this version')])];
+          info('Other connectors', 'Not available in this version')]),group([{
+            kTog:true,label:'Automatically load email images',aria:'Automatically load email images',
+            hasSub:true,sub:mailImagesSaving?'Saving…':cachedDevicePreferences()?'Load remote images when you open an email.':'Image preference unavailable. Reopen Settings to try again.',
+            on:cachedDevicePreferences()?.autoLoadMailImages===true,
+            track:cachedDevicePreferences()?.autoLoadMailImages?'background:var(--acc)':'background:var(--line)',
+            kx:cachedDevicePreferences()?.autoLoadMailImages?20:0,
+            toggle:async()=>{
+              const saved=cachedDevicePreferences();if(!saved||mailImagesSaving)return;
+              mailImagesSaving=true;changed();
+              try{await editDevicePreferences(state=>{state.autoLoadMailImages=!saved.autoLoadMailImages;});}
+              catch{api.toast('Email image preference could not be saved. Try again.');}
+              finally{mailImagesSaving=false;changed();}
+            }
+          }])];
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
         page.groups = browserDevProfile?[group([
@@ -504,7 +554,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           {kNav:true,label:'Open conversation',lbl:'Open conversation',chev:true,noAB:true,go:()=>api.composeContentQuestion('')},
           {kNav:true,label:'Agent connection',lbl:'Agent connection',chev:true,noAB:true,go:()=>connectionController.open()},
           {kNav:true,label:'Scheduled digests',lbl:'Scheduled digests',chev:true,noAB:true,go:()=>window.dispatchEvent(new Event('alpha:hosted-digests'))},
-        ])]:[group([...speechRows(), info('Wake word', 'Not available'), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
+        ])]:[group([...speechRows(), ...listenerRows(), { kNav:true, label:'Scheduled digests', lbl:'Scheduled digests', val:digests, hasVal:true, chev:true, noAB:true, go:()=>window.dispatchEvent(new Event('alpha:hosted-digests')) }, info('Personality settings', 'Managed by your agent')])];
       } else if (page.title === 'Battery') {
         page.hero = { ...page.hero, big: percent, sub: typeof facts.charging === 'boolean' ? facts.charging ? 'Charging' : 'On battery' : 'Battery reading unavailable', hasMeter: typeof facts.batteryPercent === 'number', meter: facts.batteryPercent ?? 0 };
         page.groups = [group([info('Battery saver', typeof facts.powerSave === 'boolean' ? facts.powerSave ? 'On' : 'Off' : 'Unavailable'), nav('Manage battery in Android', 'battery')])];

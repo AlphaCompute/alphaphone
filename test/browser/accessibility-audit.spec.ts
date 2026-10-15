@@ -189,8 +189,9 @@ const rows = (count: number) => Array.from({ length: count }, (_, index) => `<bu
 
 test('a control or label under the floating dock is reported; one that ends above it or scrolls clear is not', async ({ page }) => {
   await page.setViewportSize({ width: 400, height: 600 });
-  // Home may not put anything under the composer at all, scrollable or not.
+  // Home may flow under the composer, but its final content must scroll clear.
   await load(page, phone(`<div data-alpha-layer="home" style="position:absolute;inset:0;overflow-y:auto;z-index:10">${rows(12)}<p>Last line of Home</p></div>${composer}`));
+  await page.locator('[data-alpha-layer="home"]').evaluate(el=>{el.scrollTop=el.scrollHeight;});
   const home = format(await auditPage(page, { dock: true }));
   expect(rules(home)).toEqual(['obscured-by-dock']);
   expect(home.join('\n')).toContain('under composer');
@@ -254,4 +255,13 @@ test('a toast under a top-layer dialog is reported; one shown inside the dialog,
   // A toast with something drawn over it is not on screen for a sighted user either.
   await load(page, phone(toast + `<div style="position:absolute;inset:0;z-index:99;background:#fff"><p>Cover</p></div>`));
   expect(rules(format(await auditPage(page, { dock: true })))).toEqual(['toast-covered']);
+});
+
+
+test('drawer scrolls under the dock and rejects unreachable final controls',async({page})=>{
+ await page.setViewportSize({width:400,height:600});
+ const drawer=(padding:number)=>phone(`<div data-alpha-layer="drawer" style="position:absolute;inset:0;z-index:30;display:flex;flex-direction:column"><div data-alpha-app-scroll="drawer" style="flex:1;min-height:0;overflow-y:auto;padding-bottom:${padding}px">${rows(10)}<button style="display:block;width:100%;height:44px">Last app</button></div></div>${composer}`);
+ await load(page,drawer(110));expect(format(await auditPage(page,{dock:true}))).toEqual([]);
+ await load(page,drawer(0));await page.locator('[data-alpha-app-scroll="drawer"]').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+ expect(rules(format(await auditPage(page,{dock:true})))).toEqual(['obscured-by-dock']);
 });

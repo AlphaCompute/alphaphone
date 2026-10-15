@@ -2,8 +2,6 @@ package ai.elizaresearch.alphaphone;
 
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
 import android.os.SystemClock;
 import android.view.InputDevice;
 import android.view.KeyCharacterMap;
@@ -90,9 +88,18 @@ public class ChatContinuityInstrumentedTest {
  static void assertNotPosted(String text) throws Exception {
   assertEquals("The draft was never posted", "false", eval("[...document.querySelectorAll('[data-screen] *')].some(e=>!e.childElementCount&&e.tagName!=='TEXTAREA'&&e.closest('[data-alpha-layer=\"conversation\"]')&&(e.textContent||'').includes(" + JSONObject.quote(text) + "))"));
  }
- private static boolean alphaIsHome(Context context) {
-  ResolveInfo home = context.getPackageManager().resolveActivity(new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY);
-  return BuildConfig.IS_LAUNCHER && home != null && home.activityInfo != null && context.getPackageName().equals(home.activityInfo.packageName);
+ /**
+  * Whether Alpha holds the HOME role, as Android's RoleManager answers for this package. Resolving the
+  * HOME intent is not that answer: package visibility hides the stock launcher from Alpha (system_server
+  * logs the AppsFilter interaction alphaphone -> nexuslauncher as BLOCKED on the API 36 emulator), so
+  * the resolver named Alpha while the stock launcher held the role. In the emulator campaign of
+  * 2026-10-14 the launcher run then took the HOME branch, HOME opened the stock launcher, and
+  * recreate() ran with Alpha in the background (the recreated activity stopped, never resumed).
+  */
+ static boolean alphaIsHome(Context context) {
+  if (!BuildConfig.IS_LAUNCHER) return false;
+  android.app.role.RoleManager roles = context.getSystemService(android.app.role.RoleManager.class);
+  return roles != null && roles.isRoleAvailable(android.app.role.RoleManager.ROLE_HOME) && roles.isRoleHeld(android.app.role.RoleManager.ROLE_HOME);
  }
 
  @Test public void draftSurvivesKeyboardSheetFullBackHomeAndRecreation() throws Exception {
@@ -134,9 +141,16 @@ public class ChatContinuityInstrumentedTest {
    assertComposer(DRAFT, "when the conversation is reopened from rest");
 
    // HOME: delivered to Alpha while it is HOME, otherwise the app is backgrounded and resumed.
+   boolean home = alphaIsHome(context);
+   // The page already shows Home under the sheet, so "Home is selected" alone would pass before the
+   // key is handled: count the HOME starts the page hears (MainActivity.onNewIntent -> launcher-home).
+   if (home) eval("window.__alphaHomeStarts=0;window.addEventListener('launcher-home',()=>{window.__alphaHomeStarts++;})");
    pressKey(KeyEvent.KEYCODE_HOME);
-   if (alphaIsHome(context)) {
+   if (home) {
+    until("window.__alphaHomeStarts>0", "HOME reaches Alpha's page");
     until(AppNavigation.selected("Home"), "HOME lands on Alpha Home");
+    for (int i = 0; i < 100 && scenario.getState() != androidx.lifecycle.Lifecycle.State.RESUMED; i++) SystemClock.sleep(100);
+    assertEquals("Alpha is resumed as HOME", androidx.lifecycle.Lifecycle.State.RESUMED, scenario.getState());
    } else {
     for (int i = 0; i < 50 && scenario.getState() == androidx.lifecycle.Lifecycle.State.RESUMED; i++) SystemClock.sleep(100);
     assertNotEquals("HOME backgrounded Alpha", androidx.lifecycle.Lifecycle.State.RESUMED, scenario.getState());

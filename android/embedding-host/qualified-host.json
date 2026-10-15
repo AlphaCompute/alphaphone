@@ -1,6 +1,6 @@
 {
-  "pin": "193d9264fc8236c4a62a0d775532148162256dfb",
-  "forkPin": "56e70ff2a0ca060fa2dc3fead2f38003cd7dd64f",
+  "pin": "5592c586507544523102dad003a192d6e8395c0f",
+  "forkPin": "ea8b3f2dfc2641dea3e6238bc6dd99595584b076",
   "identity": "ai.elizaresearch.alphaphone",
   "abi": "arm64-v8a",
   "model": {
@@ -11,30 +11,30 @@
   "libraries": [
     {
       "name": "libelizainference.so",
-      "sha256": "88404ed5017269d8e1b1d1fd294b961760368b2e5fff70cd69b0c359272e03c3",
-      "bytes": 8005072,
+      "sha256": "29793dd385ac8742e90562ebe45d00b6c8e157127ccce8e03201f3ce30cf95c5",
+      "bytes": 6199248,
       "alignment16KiB": true
     },
     {
       "name": "libelizavoicejni.so",
-      "sha256": "1f689b1d4299f39a1b9c468d4dabc8b10ef26cd317a94ab4b4ce354d2a7d7f1c",
-      "bytes": 1181576,
+      "sha256": "6ec9c94b10febe6c1c2946f8c8212f9da393c20ac3c46413749e912a4f48753d",
+      "bytes": 1016376,
       "alignment16KiB": true
     },
     {
       "name": "libc++_shared.so",
-      "sha256": "cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c",
-      "bytes": 1253544,
+      "sha256": "35e56d209d7f28a79bf1e263cbf1e4bafc5038448dea0a954cba0423a28f0f6b",
+      "bytes": 1304848,
       "alignment16KiB": true
     }
   ],
-  "qualificationReceiptSha256": "cc9ce38718dece92bab7c5cf0bb964db19336557bd11452bee8fa6d176256860",
+  "qualificationReceiptSha256": "3caf49bc48b53cc394fc0df4d21f29b99df2dd7c061d6983ef144905da1a56ef",
   "jniIdentityRelocated": true,
   "inputs": [
     {
       "path": "packages/app/scripts/stage-elizavoice-lib.ts",
-      "sourceSha256": "d2d509ba25a85726b715dcd724b4a92a4a8884edeeb723a4edf186df55983185",
-      "generatedSha256": "d2d509ba25a85726b715dcd724b4a92a4a8884edeeb723a4edf186df55983185"
+      "sourceSha256": "d8716ad5e3f535839606b2bf9bfd42a8bb26630d71873204542d37762b7d120c",
+      "generatedSha256": "d8716ad5e3f535839606b2bf9bfd42a8bb26630d71873204542d37762b7d120c"
     },
     {
       "path": "packages/app/scripts/build-helpers/arm64-simd.ts",
@@ -43,28 +43,61 @@
     },
     {
       "path": "packages/app/scripts/build-helpers/verify-fused-symbols.ts",
-      "sourceSha256": "2e9fea5ef339971f2282a833ad9def6afb21ac64ed2e506d036690bebe8916e4",
-      "generatedSha256": "2e9fea5ef339971f2282a833ad9def6afb21ac64ed2e506d036690bebe8916e4"
+      "sourceSha256": "342dd98f6366fdc9f65c1fef499aa39230894d045f2fefd3eb107a709cd84c5f",
+      "generatedSha256": "342dd98f6366fdc9f65c1fef499aa39230894d045f2fefd3eb107a709cd84c5f"
     },
     {
       "path": "packages/app/platforms/android/app/src/main/elizavoice-jni/CMakeLists.txt",
-      "sourceSha256": "a956ce2fb2ccc5610d9108eb168c2418b50083b4981288c917f2a9ed1686e281",
-      "generatedSha256": "a956ce2fb2ccc5610d9108eb168c2418b50083b4981288c917f2a9ed1686e281"
+      "sourceSha256": "34c067672b34f46e1e5b61bd07a0ffe4937baacc1db075b0374de7422f2efc92",
+      "generatedSha256": "34c067672b34f46e1e5b61bd07a0ffe4937baacc1db075b0374de7422f2efc92"
     },
     {
       "path": "packages/app/platforms/android/app/src/main/elizavoice-jni/elizavoice-jni.cpp",
-      "sourceSha256": "640decf28fd663b89f94ad6e8df8523c4ca87a22687ad533ae01238b0d8652c5",
-      "generatedSha256": "640decf28fd663b89f94ad6e8df8523c4ca87a22687ad533ae01238b0d8652c5"
-    },
-    {
-      "path": "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaVoiceNative.java",
-      "sourceSha256": "bbec04cb085ae23b6916ef5a795cfaafd1621fff729245d8a85f834abea5c7fb",
-      "generatedSha256": "9c8c67f2c6a54596c18dabee896f0879243991a57a7dff8df69ab82230f116f5"
+      "sourceSha256": "5d86016176bf34709fa9a33812b02ed88e36121c7fe6162b754813208aa10cb2",
+      "generatedSha256": "8cd7ae576165991d8b3bb86e8a7723adde169ac057e05c0b80dc2a7549ee7304"
     }
   ],
-  "jniBinding": {
-    "mode": "registered",
-    "className": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
-    "subset": "full"
+  "requalification": {
+    "required": true,
+    "atPin": "968348d792d3d36df129bc53bd85cebed47d0830",
+    "forkPin": "3e5f73922ee804806a2e955b50843a5042e6e401",
+    "reason": "Current pin 968348d792d3 moves the native gitlink to 3e5f73922ee8, including the Kokoro rope classification and native build repairs in llama.cpp#80. The historical reviewed receipt is still inadmissible; new engine/JNI build inspection does not replace ARM64 execution and receipt review. The pin moved to bc71e21f3b50, 644d56c93df9, c7a9a0d7e7ea and then fb6232523074. The engine gitlink changed (ea8b3f2dfc26 to 7efee0037524 for CVE-2026-107183, 3f131ab9a496 for Paradee-8M, native misaki G2P and voice ABI 18, then 5df17a66e0b3 for Phonon-2 parakeet-tdt ASR with streaming decode and the eSpeak NG data-path fix, then 56e70ff2a0ca for the upstream llama.cpp runtime integration) and so did the native build inputs: elizavoice-jni registers its natives with RegisterNatives (JNI_OnLoad only, -DELIZA_VOICE_JNI_CLASS), its Java class is an input and now declares the seven nativeAsrStream* natives, and stage-elizavoice-lib.ts builds with LLAMA_BUILD_PARAKEET=ON and N_PATH_HOME=1024, and since fb6232523074 with MTMD_VIDEO=OFF. The reviewed libraries below were built from the earlier source, so distribution builds refuse them until a person reviews a new receipt and stages it (node scripts/prepare-embedding-host.mjs --build, then node scripts/stage-embedding-host.mjs --receipt). The app's engine must also equal the voice host engine (android/voice-host/qualified-voice-host.json; Gradle :app:verifyParadeeAppLinkage).",
+    "candidateBuild": {
+      "evidence": "Historical B evidence: built on a development machine on 2026-10-14 by node scripts/prepare-embedding-host.mjs --build --remap-build-path at eliza fb62325230 (llama.cpp gitlink 56e70ff2, NDK 28.2) for both ABIs; receipts written to the scratchpad as PREPARATION.json (built: true, packaged: false). The receipt checks passed: AArch64/x86-64 ELF, the embedding and ABI symbols, only JNI_OnLoad exported by libelizavoicejni, 16 KiB LOAD alignment, engine checkout unchanged. These fb623252 engine bytes are historical and differ from the current voice-host record. Not reviewed, not staged into android/app/src/main/jniLibs, qualificationReceiptSha256 not changed, not run on an emulator or a device.",
+      "libraries": [
+        {
+          "name": "libelizainference.so",
+          "sha256": "e1fa3884ede7caf5234840a4318f7f0d7f95d59dc9e394ae651e952479e33e4f",
+          "bytes": 8005256
+        },
+        {
+          "name": "libelizavoicejni.so",
+          "sha256": "3e9e2d069ab308c267fa61d2357d1d4df8dfce34f9764c217b09020a7311bbba",
+          "bytes": 1182048
+        },
+        {
+          "name": "libc++_shared.so",
+          "sha256": "cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c",
+          "bytes": 1253544
+        }
+      ],
+      "x86_64": [
+        {
+          "name": "libelizainference.so",
+          "sha256": "702190252c6676e7130abd44ef13b5cf038276a0b773eecf07d902a9ed233566",
+          "bytes": 8623576
+        },
+        {
+          "name": "libelizavoicejni.so",
+          "sha256": "d84b68ed1f26b69472903690b457f2480f0784e235f7c9c05b970ef1a74e7352",
+          "bytes": 1066824
+        },
+        {
+          "name": "libc++_shared.so",
+          "sha256": "2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256",
+          "bytes": 1229808
+        }
+      ]
+    }
   }
 }

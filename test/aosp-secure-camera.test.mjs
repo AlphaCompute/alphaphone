@@ -18,6 +18,11 @@ test("source admission rejects missing path, unreviewed revisions, dirty sources
  for(const flag of ["assume-unchanged","skip-worktree"]){git("update-index",`--${flag}`,"Android.bp");assert.throws(()=>verifySecureCameraSource(root,contract),/index hides changes/);git("update-index",`--no-${flag}`,"Android.bp");}
  fs.appendFileSync(path.join(dir,".git/info/exclude"),"\nIgnored.java\n");fs.writeFileSync(path.join(dir,"Ignored.java"),"ignored input");assert.throws(()=>verifySecureCameraSource(root,contract),/Ignored source inputs/);fs.unlinkSync(path.join(dir,"Ignored.java"));
  fs.writeFileSync(path.join(dir,"Injected.java"),"untracked");assert.throws(()=>verifySecureCameraSource(root,contract),/not clean/);fs.unlinkSync(path.join(dir,"Injected.java"));
+ fs.writeFileSync(path.join(dir,"tool.txt"),"reviewed tooling");
+ const override={path:"Camera2/tool.txt",sizeBytes:Buffer.byteLength("reviewed tooling"),sha256:createHash("sha256").update("reviewed tooling").digest("hex")};
+ assert.equal(verifySecureCameraSource(root,contract,[override]).sourceVerified,true);
+ fs.appendFileSync(path.join(dir,"tool.txt"),"changed");assert.throws(()=>verifySecureCameraSource(root,contract,[override]),/override differs/);
+ fs.unlinkSync(path.join(dir,"tool.txt"));assert.throws(()=>verifySecureCameraSource(root,contract,[override]),/not clean/);
  fs.appendFileSync(path.join(dir,"Android.bp"),"dirty");assert.throws(()=>verifySecureCameraSource(root,contract),/not clean/);
 });
 function device(overrides={}){

@@ -193,6 +193,13 @@ test('managed Google bridge refuses scope escalation, mutations, malformed query
   assert.equal((await pending).status,409,'logout prevents publishing an in-flight calendar result');
  }finally{await f.close();}
 });
+test('a Cloud refusal whose wait is only in Retry-After reaches the redeem retry time (#410)',async()=>{
+ const {SubscriptionRedeemError}=await import('../apps/app/src/runtime/subscription-entitlement.ts');
+ const store={read:async()=>({token:secret,credentialId,userId:owner,organizationId:org}),write:async()=>{},clear:async()=>{}};
+ // Synthetic Anthropic-style 429: no wait in the body, Retry-After from the transport.
+ const client=new CloudProtocol('production',async()=>({status:429,data:{type:'error',error:{type:'rate_limit_error',message:'Synthetic'}},retryAfter:'45'}),store,async()=>{});
+ await assert.rejects(client.redeemSubscriptionCode('SYNTHETIC0000CODE',randomUUID(),new AbortController().signal),error=>error instanceof SubscriptionRedeemError&&error.code==='rate-limited'&&error.retryAfterMs===45000);
+});
 
 // In-app sign-in through the development host (email code): the Steward session, PKCE material and
 // the minted key stay in the host; the page receives only the outcome and a reference. Synthetic.
@@ -233,4 +240,31 @@ test('development host email sign-in mints a mobile key server-side and commits 
    await assert.rejects(client.verifyEmailSignIn(started.attemptId,'123456',new AbortController().signal),error=>error.code==='expired','an attempt is single use');
   }finally{globalThis.fetch=original;}
  }finally{await f.close();}
+});
+
+test('cancelling an in-flight email verification keeps the existing account and never mints a key',async()=>{
+ const f=await fixture();let release;
+ try{
+  let entered;const waiting=new Promise(resolve=>{entered=resolve;});
+  f.setSignIn(async path=>{
+   if(path==='/steward/auth/email/code/send')return Response.json({ok:true,data:{expiresAt:new Date(Date.now()+600000).toISOString()}});
+   if(path==='/steward/auth/email/code/verify'){
+    entered();await new Promise(resolve=>{release=resolve;});
+    // Deliberately ignores the aborted transport, like a response already in flight.
+    return Response.json({ok:true,token:'synthetic-steward-session-token-0001'});
+   }
+   return null;
+  });
+  const started=await f.rpc({operation:'signInStartEmail',environment:'production',email:'owner@example.invalid'});
+  assert.equal(started.status,200);
+  const pending=f.rpc({operation:'signInVerifyEmail',attemptId:started.data.attemptId,code:'123456'});
+  await waiting;
+  assert.equal((await f.rpc({operation:'signInCancel'})).status,200);
+  release();
+  assert.notEqual((await pending).status,200);
+  assert.equal(f.calls.some(call=>new URL(call.url).pathname.startsWith('/api/v1/app-auth/')),false);
+  const saved=JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value);
+  assert.equal(saved.credentialId,credentialId);
+  assert.equal((await f.rpc({operation:'signInStatus'})).data.active,false);
+ }finally{release?.();await f.close();}
 });

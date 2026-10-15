@@ -2,7 +2,9 @@ import {transcodeVideo} from './video-transcode';
 import {videoRecorders} from './video-codecs';
 export type VideoEdit={start:number;end:number;rotation:number;crop:boolean};
 export function validateVideoEdit(edit:VideoEdit,duration:number){
- if(!Number.isFinite(duration)||duration<=0||duration>300||!Number.isFinite(edit.start)||!Number.isFinite(edit.end)||edit.start<0||edit.end>duration+.05||edit.end-edit.start<.1||![0,90,180,270].includes(edit.rotation)||typeof edit.crop!=='boolean')throw Error('Choose a valid video range of at least 0.1 seconds.');
+ // Slider endpoints use subtraction; accept only its floating-point roundoff at the 0.1s boundary.
+ const rangeTolerance=Number.EPSILON*Math.max(1,duration);
+ if(!Number.isFinite(duration)||duration<=0||duration>300||!Number.isFinite(edit.start)||!Number.isFinite(edit.end)||edit.start<0||edit.end>duration+.05||edit.end-edit.start<.1-rangeTolerance||![0,90,180,270].includes(edit.rotation)||typeof edit.crop!=='boolean')throw Error('Choose a valid video range of at least 0.1 seconds.');
 }
 /** Local timestamp-based encoding with a real-time fallback; audio comes from the file. */
 export async function renderVideoEdit(source:{path:string;duration:number},edit:VideoEdit,signal:AbortSignal){

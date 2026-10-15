@@ -21,7 +21,7 @@ the operator's index of build, provisioning, release and support material is the
 
 ## Product boundaries
 
-The October 14 dependency rebuild uses upstream `193d9264fc`; earlier acceptance evidence below remains scoped to its recorded builds.
+The historical October 14 development rebuild used upstream `193d9264fc`; current source pins have advanced since that build. Acceptance evidence below remains scoped to its recorded builds.
 
 - The primary agent runs on Android. Browser development uses a private local
   host. The resident agent is always present (P-43, owner, 2026-10-13): on Android it
@@ -30,23 +30,17 @@ The October 14 dependency rebuild uses upstream `193d9264fc`; earlier acceptance
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `c7a9a0d7e7` (moved on 2026-10-14, branch
-  `claude/mvp-final`), the elizaOS `develop` head that contains Phonon-2 as the default mobile
-  ASR (elizaOS/eliza#36212, `d06a1aa9c9`), streaming ASR (#36213, `d68909cb`), live voice with the
-  `POST /api/asr/local-inference/live` route and ephemeral `voice-transcript` events (#36214,
-  `70dc0bbf`) and the voice gap fixes (#36239: AOSP eSpeak NG data, the Paradee GGUF named `v1_0`,
-  a 1024-byte eSpeak NG data path), with the llama.cpp gitlink `5df17a66` (llama.cpp `main`: the
-  `533d0d89` merge with Parakeet-TDT and its AVX2 tier, the Paradee GGUF pin #78 and the eSpeak
-  data-path fix #79; Paradee-8M, native misaki G2P, voice ABI 18).
-  `scripts/ci/upstream-reachability.json` records it as identical to `develop` on 2026-10-14. The
-  previous pin was `644d56c93d` (2026-10-14, the shared voice stack of alphaphone#493), before it
-  `bc71e21f3b` (2026-10-13; see
-  [agent integration](agent-integration.md#upstream-changes-in-the-13c9857598-to-bc71e21f3b-move)).
-  At this pin there are only source and browser test results, Gradle compilation and Android
-  library builds ([verification](verification.md#pin-move-to-c7a9a0d7e7-2026-10-14-phonon-2-and-live-voice));
-  voice is recorded in `android/voice-host/qualified-voice-host.json` (Phonon-2 ASR slot) and is not
-  qualified.
-  every other result in this document is at an earlier pin. The engine gitlink changed, so the
+- The upstream pin in `upstream.lock.json` is `968348d792` (moved on 2026-10-14,
+  PR #531), with llama.cpp gitlink `3e5f73922ee8`. It preserves Phonon-2 batch/streaming
+  ASR, Paradee-8M TTS, misaki G2P and voice ABI 18 from the previous `c7a9a0d7e7` pin,
+  adds the upstream-preserving native integration, native build/Kokoro classification repairs
+  and disables the optional Android video helper. A consumer wrapper records both clean source revisions around the shared voice build; staging checks
+  these and exact engine bytes. The public reachability record records its relation to `develop` at review time.
+  Current native build evidence and its limits are recorded in [fused speech](fused-speech.md)
+  and `android/voice-host/qualified-voice-host.json`; qualification remains false.
+  Earlier voice, source and browser evidence at `c7a9a0d7e7` remains historical
+  ([verification](verification.md#pin-move-to-c7a9a0d7e7-2026-10-14-phonon-2-and-live-voice));
+  Every other result in this document is at an earlier pin. The engine gitlink changed, so the
   reviewed ARM64 embedding host must be requalified before a distribution build
   (`android/embedding-host/qualified-host.json`). The previous pin, `13c9857598`, was the merge
   commit of upstream pull request 34888, reachable from elizaOS `develop` when the

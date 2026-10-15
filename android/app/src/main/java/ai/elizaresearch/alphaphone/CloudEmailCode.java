@@ -21,12 +21,12 @@ final class CloudEmailCode {
  static final String SEND_PATH = "/steward/auth/email/code/send";
  static final String VERIFY_PATH = "/steward/auth/email/code/verify";
 
- static JSONObject sendBody(String email, String verifier) throws Exception {
-  return new JSONObject().put("email", email).put("tenantId", CloudSignInFlow.TENANT).put("client", CloudSignInFlow.CLIENT_ID)
+ static JSONObject sendBody(CloudSignInFlow.Environment environment, String email, String verifier) throws Exception {
+  return new JSONObject().put("email", email).put("tenantId", environment.tenant).put("client", CloudSignInFlow.CLIENT_ID)
    .put("pkce", new JSONObject().put("codeChallenge", CloudSignInFlow.s256(verifier)).put("codeChallengeMethod", "S256"));
  }
- static JSONObject verifyBody(String email, String code, String verifier) throws Exception {
-  return new JSONObject().put("email", email).put("code", code).put("tenantId", CloudSignInFlow.TENANT).put("client", CloudSignInFlow.CLIENT_ID)
+ static JSONObject verifyBody(CloudSignInFlow.Environment environment, String email, String code, String verifier) throws Exception {
+  return new JSONObject().put("email", email).put("code", code).put("tenantId", environment.tenant).put("client", CloudSignInFlow.CLIENT_ID)
    .put("pkce", new JSONObject().put("codeVerifier", verifier));
  }
  /** When the code stops working: the server's expiresAt when present, never later than 15 minutes, 10 minutes when absent. */

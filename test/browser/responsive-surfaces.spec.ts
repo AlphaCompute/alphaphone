@@ -167,6 +167,8 @@ test('Files previews beside its list on a tablet-width canvas and full screen on
 });
 
 test('Calendar day columns open the occurrence of the column that was tapped and keep the days on screen', async ({ page }) => {
+  // Seed on Monday so the later columns contain weekday Standup occurrences even when CI runs Thursday.
+  await page.clock.setFixedTime(new Date('2026-10-12T12:00:00Z'));
   await openMock(page, 'Calendar');
   await resize(page, { width: 1280, height: 800 });
   const columns = page.locator('[data-alpha-calendar-day]');

@@ -86,7 +86,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  // In-app sign-in for the browser development host (email code only: Google needs the phone's App
  // Link). The same Steward and mobile App Auth contracts as AlphaCloudSignInPlugin; the Steward
  // session, PKCE material and the minted key stay in this process and the private profile file.
- type SignInAttempt={id:string;environment:Environment;email:string;verifier:string;expiresAt:number;resendAt:number;busy:boolean;failed:number;mfa?:{type:string;challengeId:string}};
+ type SignInAttempt={controller:AbortController;id:string;environment:Environment;email:string;verifier:string;expiresAt:number;resendAt:number;busy:boolean;failed:number;mfa?:{type:string;challengeId:string}};
  let signIn:SignInAttempt|null=null;
  // One code send a minute, whatever the address; five wrong codes end an attempt (as AlphaCloudSignInPlugin).
  let lastEmailSendAt=0;const MAX_VERIFY_ATTEMPTS=5;
@@ -97,7 +97,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   let response:Response;
   try{response=await fetchCloud(authorities[env]+route,{method:'POST',headers:{Accept:'application/json','Content-Type':'application/json','User-Agent':'AlphaPhone-Browser-Cloud/1',...(bearer?{Authorization:'Bearer '+bearer}:{})},body:JSON.stringify(body),redirect:'error',signal});}
   catch(error:any){if(signal.aborted)throw signInFailure('cancelled');throw signInFailure('offline');}
-  const text=await response.text();if(text.length>256*1024)throw signInFailure('unavailable');
+  const text=await response.text();signal.throwIfAborted();if(text.length>256*1024)throw signInFailure('unavailable');
   let data:Record<string,any>={};try{if(text)data=object(JSON.parse(text));}catch{if(response.ok)throw signInFailure('unavailable');}
   return {status:response.status,data};
  }
@@ -125,21 +125,21 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    if(!acknowledged)throw signInFailure('activation-pending');
    const identityResponse=await canonical(env,'/api/v1/user',signal,{},{token:secret}as Credential),identity=object(await identityResponse.json()),who=object(identity.data??identity);
    if(!identityResponse.ok||!UUID.test(who.id)||!UUID.test(who.organization_id))throw signInFailure('unavailable');
-   await serial(async()=>{const stored=await load();stored[env]={token:secret,credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,expiresAt};retire(env);await save(stored);});
+   await serial(async()=>{const stored=await load();signal.throwIfAborted();if(signIn!==attempt)throw signInFailure('cancelled');stored[env]={token:secret,credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:who.id,organizationId:who.organization_id,expiresAt};retire(env);await save(stored);});
    return {status:'authenticated',environment:env,expiresAt,accountCreated:typeof connected.data.accountCreated==='boolean'?connected.data.accountCreated:null};
   }finally{void signInCall(env,'/steward/auth/logout',typeof refresh==='string'?{refreshToken:refresh}:{},AbortSignal.timeout(10000),token).catch(()=>{});}
  }
  async function signInOperation(data:Record<string,any>,signal:AbortSignal){
-  if(data.operation==='signInCancel'){signIn=null;return {};}
+  if(data.operation==='signInCancel'){signIn?.controller.abort();signIn=null;await serial(async()=>{});return {};}
   if(data.operation==='signInStatus')return {active:!!signIn,inApp:true,google:false,email:true};
   if(data.operation==='signInStartEmail'){
    const env=environment(data.environment),email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
    if(email.length>320||!/^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(email))throw signInFailure('invalid-email');
    if(signIn?.busy)throw signInFailure('login-active');
    if(Date.now()<lastEmailSendAt+60000)throw signInFailure('cooldown');
-   const attempt:SignInAttempt={id:randomUUID(),environment:env,email,verifier:randomBytes(48).toString('base64url'),expiresAt:0,resendAt:0,busy:true,failed:0};signIn=attempt;lastEmailSendAt=Date.now();
+   const attempt:SignInAttempt={controller:new AbortController(),id:randomUUID(),environment:env,email,verifier:randomBytes(48).toString('base64url'),expiresAt:0,resendAt:0,busy:true,failed:0};signIn=attempt;lastEmailSendAt=Date.now();signal=AbortSignal.any([signal,attempt.controller.signal]);
    try{
-    const sent=await signInCall(env,CLOUD_EMAIL_CODE.sendPath,emailCodeSendBody(email,attempt.verifier),signal);
+    const sent=await signInCall(env,CLOUD_EMAIL_CODE.sendPath,emailCodeSendBody(env,email,attempt.verifier),signal);
     if(sent.status!==200&&sent.status!==202)throw signInFailure(signInStatus('send',sent.status));
     const reply=sent.data.data&&typeof sent.data.data==='object'?sent.data.data:sent.data,expiresAt=emailCodeExpiresAt(reply.expiresAt);
     attempt.expiresAt=expiresAt;attempt.resendAt=lastEmailSendAt+60000;return {attemptId:attempt.id,expiresAt,resendAt:attempt.resendAt};
@@ -153,10 +153,10 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    if(typeof data.code!=='string'||!/^\d{6}$/.test(data.code))throw signInFailure('invalid-code');
    if(mfa!==!!attempt.mfa)throw signInFailure('expired');
    if(mfa&&!['totp','sms'].includes(attempt.mfa!.type))throw signInFailure('mfa-unsupported');
-   attempt.busy=true;
+   attempt.busy=true;signal=AbortSignal.any([signal,attempt.controller.signal]);
    try{
     const verified=mfa?await signInCall(attempt.environment,`/steward/auth/mfa/${attempt.mfa!.type}/complete`,{challengeId:attempt.mfa!.challengeId,code:data.code},signal)
-     :await signInCall(attempt.environment,CLOUD_EMAIL_CODE.verifyPath,emailCodeVerifyBody(attempt.email,data.code,attempt.verifier),signal);
+     :await signInCall(attempt.environment,CLOUD_EMAIL_CODE.verifyPath,emailCodeVerifyBody(attempt.environment,attempt.email,data.code,attempt.verifier),signal);
     if(verified.status!==200){let code=signInStatus(mfa?'mfa':'verify',verified.status);if(code==='invalid-code'&&++attempt.failed>=MAX_VERIFY_ATTEMPTS)code='attempts-exhausted';if(code!=='invalid-code'&&signIn===attempt)signIn=null;throw signInFailure(code);}
     if(!mfa&&verified.data.mfaRequired===true){
      const challenge=verified.data.mfa;if(!challenge||!['totp','sms','passkey'].includes(challenge.type)||typeof challenge.challengeId!=='string')throw signInFailure('unavailable');

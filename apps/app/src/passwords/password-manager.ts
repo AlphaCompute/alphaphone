@@ -31,6 +31,8 @@ let query = '', busy = '', notice = '', draft: Draft | null = null, generation =
 // can never be decrypted, and the only action is a confirmed, freshly unlocked reset.
 let damaged = false, confirmReset = false;
 let expiry: ReturnType<typeof setTimeout> | undefined;
+// Whether Alpha's browser can attest which site owns a login field (WebView capability only).
+let browserFill: { available: boolean } | null = null;
 let notify: () => void = () => {};
 
 /** Native vault on Android; the flag-only development vault in the browser dev profile; else none. */
@@ -59,7 +61,17 @@ function locked(message = '') {
   if (expiry) clearTimeout(expiry); expiry = undefined; notice = message;
 }
 
+/** Native browser capability; no tab, page or credential data crosses this call. */
+async function refreshBrowserFill() {
+  if (!Capacitor.isNativePlatform()) return;
+  try {
+    const result = await registerPlugin<{ loginFillStatus(): Promise<{ available?: unknown }> }>('AlphaBrowser').loginFillStatus();
+    browserFill = { available: result?.available === true };
+  } catch { browserFill = null; }
+}
+
 async function refresh() {
+  void refreshBrowserFill().then(() => notify());
   const token = ++generation, vault = await resolveClient();
   if (!vault || token !== generation) { notify(); return; }
   try {
@@ -209,7 +221,7 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
   if (status) {
     const selection = { 'this-app': 'Alpha Phone passwords', other: 'Another provider', none: 'None selected', unknown: 'Not checked' }[status.autofill.selected];
     groups.push(captioned(helpers, 'Autofill', [
-      helpers.info('Browser autofill', 'Unavailable in this browser. Use Show or Copy for website passwords.'),
+      helpers.info('Browser autofill', browserFillText()),
       helpers.info('Autofill service', status.autofill.supported === false ? 'Unavailable for this device or user' : selection),
       ...(status.autofill.supported === false ? [] : [nav(busy === 'autofill' ? 'Opening…' : 'Set as autofill service', () => void run('autofill', async v => {
         const result = await v.openAutofillSettings();
@@ -219,6 +231,13 @@ export function passwordManagerGroups(helpers: Helpers): Bag[] {
     ]));
   }
   return groups;
+}
+
+function browserFillText() {
+  if (!browserFill) return 'Unavailable in this browser. Use Show or Copy for website passwords.';
+  return browserFill.available
+    ? 'Supported by this WebView for the site shown in Alpha\'s browser, never for another site embedded in the page. Filling depends on your autofill service.'
+    : 'Off: this Android System WebView cannot report which site owns a sign-in field. Update Android System WebView, or use Show or Copy.';
 }
 
 /** The add/edit page, or null when no entry is open. */

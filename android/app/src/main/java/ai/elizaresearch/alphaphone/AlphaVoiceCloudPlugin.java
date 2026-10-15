@@ -28,6 +28,9 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private volatile File playbackFile;
  private String playbackId;
  private String playbackRequestId;
+ // Issue #395: the prepared clip is a local spoken reply, and where its first audible sample is.
+ private boolean playbackLocalReply;
+ private int playbackLeadIn=-1,playbackFrames,playbackRate;
  private MediaPlayer player;
  private PluginCall preparingPlayback;
  private volatile boolean destroyed;
@@ -194,10 +197,15 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void synthesizeLocalNow(PluginCall call){synthesizeLocalNow(call,null);}
  private void synthesizeLocalNow(PluginCall call,String reviewed){submitLocal(call,request->{
   String text=reviewed==null?required(call.getString("text"),500):reviewed;byte[] audio;
-  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);AlphaLocalSpeechEngine.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
+  // A reply to a live turn: stage marks and a cold engine load belong to the open latency trial.
+  boolean reply=reviewed==null;int[] clip={-1,0,0};
+  int loadsBefore=localEngine.loads();
+  if(reply)AlphaVoiceLatencyProbe.TRIALS.mark("tts-start",System.nanoTime());
+  audio=localEngine.use(engine->{if(request.cancelled||destroyed)throw new IOException();if(reviewed!=null)return engine.synthesizePassage(text,()->request.cancelled||destroyed);AlphaLocalSpeechEngine.Audio generated=engine.synthesize(text,()->request.cancelled||destroyed);try{clip[0]=AlphaVoiceLatencyProbe.leadInFrames(generated.samples);clip[1]=generated.samples.length;clip[2]=generated.sampleRate;return generated.wav();}finally{Arrays.fill(generated.samples,0);}});
+  if(reply){AlphaVoiceLatencyProbe.TRIALS.mark("tts-ready",System.nanoTime());if(localEngine.loads()!=loadsBefore)AlphaVoiceLatencyProbe.TRIALS.engineLoaded("tts-load");}
   if(request.cancelled||destroyed){Arrays.fill(audio,(byte)0);throw new IOException();}
   File file=File.createTempFile("alpha-cloud-tts-",".wav",getContext().getCacheDir());CountDownLatch completed=new CountDownLatch(1);
-  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
+  try{try(OutputStream out=new FileOutputStream(file)){out.write(audio);}main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();playbackLocalReply=reply;playbackLeadIn=clip[0];playbackFrames=clip[1];playbackRate=clip[2];JSObject out=new JSObject();out.put("playbackId",playbackId);out.put("execution","device");request.result=out;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});if(!completed.await(10,TimeUnit.SECONDS)){request.cancel();file.delete();throw new IOException("Playback preparation timed out");}}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
  @PluginMethod public void synthesize(PluginCall call){if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&(playbackFile!=null||!pending.isEmpty())){call.reject("Speaker is in use","playback-busy");return;}synthesizeAudio(call,false);}
  private void synthesizeAudio(PluginCall call,boolean paired){synthesizeAudio(call,paired,null);}
@@ -207,47 +215,88 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   CountDownLatch completed=new CountDownLatch(1);
   File file=File.createTempFile("alpha-cloud-tts-",".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}
  });}
- @PluginMethod public void play(PluginCall call){main.post(()->{try{if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,w,e)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{p.start();preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
+ @PluginMethod public void play(PluginCall call){main.post(()->{try{if(playbackFile==null||!Objects.equals(playbackId,call.getString("playbackId"))){call.reject("Playback unavailable");return;}if(player!=null){player.release();player=null;}if(preparingPlayback!=null)preparingPlayback.reject("Playback replaced");preparingPlayback=call;MediaPlayer next=new MediaPlayer();player=next;next.setDataSource(playbackFile.getAbsolutePath());final String activePlaybackId=playbackId;next.setOnCompletionListener(p->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackEnded",event);}});next.setOnErrorListener((p,w,e)->{if(player==p){clearPlayback(false);JSObject event=new JSObject();event.put("playbackId",activePlaybackId);notifyListeners("playbackFailed",event);}return true;});next.setOnPreparedListener(p->{if(player==p&&!destroyed){try{p.start();if(playbackLocalReply)AlphaVoiceLatencyProbe.playbackStarted(getContext(),p,main,playbackLeadIn,playbackFrames,playbackRate,()->player==p&&!destroyed);preparingPlayback=null;call.resolve();}catch(RuntimeException error){clearPlayback();}}else call.reject("Playback cancelled");});next.prepareAsync();}catch(Exception error){clearPlayback();call.reject("Playback unavailable");}});}
  private void clearPlayback(){clearPlayback(true);}
- private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
+ private void clearPlayback(boolean stopped){String previous=playbackId;if(preparingPlayback!=null){preparingPlayback.reject("Playback cancelled");preparingPlayback=null;}if(player!=null){player.release();player=null;}if(playbackFile!=null)playbackFile.delete();playbackFile=null;playbackId=null;playbackRequestId=null;playbackLocalReply=false;playbackLeadIn=-1;if(stopped&&previous!=null){JSObject event=new JSObject();event.put("playbackId",previous);notifyListeners("playbackStopped",event);}}
  @PluginMethod public void stopPlayback(PluginCall call){String requestId=call.getString("requestId");main.post(()->{if(requestId==null||Objects.equals(playbackRequestId,requestId))clearPlayback();call.resolve();});}
+ /**
+  * Issue #395: the finished native latency trials (alpha-native-voice-timing-v2, numbers, fixed
+  * labels and build/model identity only) for the diagnostics export.
+  */
+ @PluginMethod public void nativeVoiceTiming(PluginCall call){
+  // Off the live capture worker: the first export may still be hashing the engine.
+  android.content.Context app=getContext().getApplicationContext();
+  Thread export=new Thread(()->{try{call.resolve(JSObject.fromJSONObject(AlphaVoiceLatencyProbe.export(app)));}catch(Exception error){call.reject("Voice timing unavailable");}},"alpha-voice-timing-export");
+  export.setDaemon(true);export.start();
+ }
+ @PluginMethod public void clearNativeVoiceTiming(PluginCall call){AlphaVoiceLatencyProbe.TRIALS.clear();call.resolve();}
  @PluginMethod public void cancel(PluginCall call){Pending request=pending.get(call.getString("requestId",""));if(request!=null)request.cancel();call.resolve();}
  @Override protected void handleOnResume(){speechForeground=true;scheduleLocalRelease(120000);super.handleOnResume();}
  // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
  private final ExecutorService liveWorker=Executors.newSingleThreadExecutor();
  private AlphaLiveVoiceCapture live; // Guarded by liveWorker (all access runs on it).
- private final Map<String,Long> livePermissionEpochs=new ConcurrentHashMap<>();
+ private final ExecutorService nativeVoiceWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
+ private final Map<String,NativeLiveVoicePipe> livePipes=new ConcurrentHashMap<>();
+ private final LiveCaptureAdmission liveAdmission=new LiveCaptureAdmission();
+ private final ExecutorService liveStopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
+ private final Map<String,LiveCaptureAdmission.Ticket> livePermissionEpochs=new ConcurrentHashMap<>();
  @PluginMethod public void liveCaptureStatus(PluginCall call){
   boolean permitted=getPermissionState("microphone")==PermissionState.GRANTED;
-  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
+  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("nativeTransport",true);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
  }
  @PluginMethod public void startLiveCapture(PluginCall call){
   String id=call.getString("captureId","");
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(isDraining()||destroyed||!speechForeground){call.reject("Recording cancelled");return;}
-  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),epoch.get());if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
-  startLive(call,id,epoch.get());
+  LiveCaptureAdmission.Ticket ticket=liveAdmission.begin(id,epoch.get());
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),ticket);if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
+  startLive(call,ticket);
  }
- @PermissionCallback private void liveMicrophonePermission(PluginCall call){Long e=livePermissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,call.getString("captureId",""),e);}
- private void startLive(PluginCall call,String id,long e){
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!liveAdmission.current(ticket)||ticket.epoch!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
+ private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
+  String id=ticket.id;long e=ticket.epoch;
   PluginWorkers.submit(liveWorker,()->{
-   if(destroyed||!speechForeground||e!=epoch.get()){call.reject("Recording cancelled");return;}
-   if(live!=null){live.stop();live=null;}
+   if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){call.reject("Recording cancelled");return;}
+   if(live!=null){String old=live.captureId();live.stop();live=null;closeNativePipe(old,true,System.currentTimeMillis());}
+   final NativeLiveVoicePipe pipe;
+   try{
+    pipe=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?new NativeLiveVoicePipe(
+     AlphaLocalAgentPlugin.openNativeVoiceTransport(call.getString("ownerId","")),new NativeLiveVoicePipe.Sink(){
+      public void result(JSONObject value){if(!destroyed&&speechForeground&&e==epoch.get()&&liveAdmission.events(ticket))notifyListeners("liveCaptureTranscript",new JSObject().put("captureId",id).put("final",value));}
+      public void failed(String code){if(!liveAdmission.events(ticket))return;if(!"ASR_FAILED".equals(code))liveAdmission.stop(id);notifyListeners("liveCaptureTranscript",new JSObject().put("captureId",id).put("error",code));}
+     },id,call.getString("roomId",null)):null;
+    if(pipe!=null){livePipes.put(id,pipe);if(!pipe.start(nativeVoiceWorker)){livePipes.remove(id,pipe);call.reject("Native voice transport busy");return;}if(!pipe.ready().get(10000,TimeUnit.MILLISECONDS))throw new IllegalStateException("Native voice startup unavailable");}
+   }catch(Exception unavailable){closeNativePipe(id,true,System.currentTimeMillis());call.reject("Native voice enrollment unavailable");return;}
    AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
-    public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
-    public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
-   });
-   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE));}
-   catch(Exception|Error error){call.reject("Live capture could not start","capture");}
+    private boolean admitted(){return !destroyed&&speechForeground&&e==epoch.get()&&liveAdmission.events(ticket);}
+    public void frames(String captureId,JSArray frames,JSArray vad,float peak){if(!admitted())return;notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",pipe==null?frames:new JSArray()).put("vad",vad).put("peak",peak));if(pipe!=null)pipe.offer(frames,vad);}
+    public void ended(String captureId,String error){if(!admitted())return;JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);if(error!=null&&pipe!=null)pipe.close(true,System.currentTimeMillis());}
+   },Boolean.TRUE.equals(call.getBoolean("echoCancel",false)));
+   // Publish cancellation before native startup. The callback only marks and schedules: no UI join/AudioRecord.stop.
+   if(!liveAdmission.attach(ticket,()->{next.cancelPending();if(pipe!=null&&!liveAdmission.events(ticket))pipe.close(true,System.currentTimeMillis());PluginWorkers.submit(liveStopWorker,next::requestStop,()->{/* liveWorker cleanup still stops this source. */});})){closeNativePipe(id,true,System.currentTimeMillis());call.reject("Recording cancelled");return;}
+   try{
+    next.start();
+    if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){next.stop();closeNativePipe(id,true,System.currentTimeMillis());call.reject("Recording cancelled");return;}
+    live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()).put("nativeAsr",pipe!=null));
+   }catch(Exception|Error error){next.stop();closeNativePipe(id,true,System.currentTimeMillis());call.reject("Live capture could not start","capture");}
   },()->call.reject("Voice unavailable"));
  }
- @PluginMethod public void stopLiveCapture(PluginCall call){
-  String id=call.getString("captureId","");
-  PluginWorkers.submit(liveWorker,()->{if(live==null||!live.captureId().equals(id)){call.resolve(new JSObject().put("captureId",id).put("durationMs",0));return;}long duration=live.stop();live=null;call.resolve(new JSObject().put("captureId",id).put("durationMs",duration));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0)));
+ /** Waits only on liveWorker, never the bridge/UI thread. False explicitly means server close unconfirmed. */
+ private boolean closeNativePipe(String id,boolean discard,double at){
+  NativeLiveVoicePipe pipe=livePipes.get(id);if(pipe==null)return true;
+  try{return pipe.close(discard,at).get(12000,TimeUnit.MILLISECONDS);}catch(Exception uncertain){pipe.close(true,at);return false;}
+  finally{livePipes.remove(id,pipe);}
  }
- private void stopLiveCapture(){PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
+ @PluginMethod public void stopLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");boolean discard=Boolean.TRUE.equals(call.getBoolean("discard",false));
+  double at=call.getData().optDouble("cutoffMs",System.currentTimeMillis());if(!Double.isFinite(at))at=System.currentTimeMillis();final double cutoff=at;
+  NativeLiveVoicePipe pipe=livePipes.get(id);if(pipe!=null){pipe.cutoff(cutoff);if(discard||!pipe.ready().isDone())pipe.close(true,cutoff);}
+  liveAdmission.stop(id);
+  PluginWorkers.submit(liveWorker,()->{long duration=0;if(live!=null&&live.captureId().equals(id)){duration=live.stop();live=null;}boolean acknowledged=closeNativePipe(id,discard,cutoff);call.resolve(new JSObject().put("captureId",id).put("durationMs",duration).put("serverClosed",acknowledged));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0).put("serverClosed",false)));
+ }
+ private void stopLiveCapture(){liveAdmission.cancelAll();for(NativeLiveVoicePipe pipe:livePipes.values())pipe.close(true,System.currentTimeMillis());PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}for(String id:livePipes.keySet())closeNativePipe(id,true,System.currentTimeMillis());},()->{/* Already shut down: its last task stopped the capture. */});}
  @Override protected void handleOnPause(){speechForeground=false;stopLiveCapture();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();liveStopWorker.shutdown();nativeVoiceWorker.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */

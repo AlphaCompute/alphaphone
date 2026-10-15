@@ -55,6 +55,35 @@ test('a Cloud-signed entitlement verifies and binds plan, allowance, services an
   assert.equal(early.refreshAt, NOW + 30000);
 });
 
+test('format v2 plan_allowance is read in micro-dollars; v1 tokens and unknown units stay valid', async () => {
+  const {jwk, sign} = await keyPair();
+  const period = {unit: 'usd_micros', granted: 25_000_000, remaining: 12_345_678, periodStart: NOW / 1000 - 86400, resetsAt: NOW / 1000 + 86400};
+  const v2 = await verifyEntitlement(await sign(claims({ver: 2, allowance: undefined, plan_allowance: period})), [jwk], expected, NOW);
+  assert.equal(v2.formatVersion, 2);
+  assert.deepEqual(v2.allowance, {unit: 'usd_micros', granted: 25_000_000, remaining: 12_345_678, periodStart: NOW - 86400000, resetsAt: NOW + 86400000});
+  // The Cloud v2 issuer sends no v1 allowance; the plan state alone still verifies.
+  const plain = await verifyEntitlement(await sign(claims({ver: 2, allowance: undefined})), [jwk], expected, NOW);
+  assert.equal(plain.allowance, null);
+  // v1 (no ver) keeps the v1 allowance and ignores a plan_allowance it does not define.
+  const v1 = await verifyEntitlement(await sign(claims({plan_allowance: period})), [jwk], expected, NOW);
+  assert.equal(v1.formatVersion, 1);
+  assert.equal(v1.allowance.unit, 'requests');
+  // A later additive version is read the same way.
+  assert.equal((await verifyEntitlement(await sign(claims({ver: 3, plan_allowance: period})), [jwk], expected, NOW)).allowance.unit, 'usd_micros');
+  // An unknown unit or an inconsistent row hides the allowance and keeps the plan.
+  for (const bad of [{...period, unit: 'eur_micros'}, {...period, remaining: 26_000_000}, {...period, granted: 0, remaining: 0}, {...period, resetsAt: period.periodStart}, {...period, granted: 1.5}, 'x']) {
+    const entitlement = await verifyEntitlement(await sign(claims({ver: 2, allowance: undefined, plan_allowance: bad})), [jwk], expected, NOW);
+    assert.equal(entitlement.allowance, null);
+    assert.equal(entitlement.plan.status, 'active');
+  }
+  // An unreadable ver is v1: it never blocks the plan state.
+  for (const ver of [0, -1, 1.5, '2']) {
+    const entitlement = await verifyEntitlement(await sign(claims({ver, plan_allowance: period})), [jwk], expected, NOW);
+    assert.equal(entitlement.formatVersion, 1);
+    assert.equal(entitlement.allowance.unit, 'requests');
+  }
+});
+
 test('signature, key, algorithm and encoding failures are never trusted', async () => {
   const {jwk, sign} = await keyPair();
   const other = await keyPair();
@@ -93,10 +122,16 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
   assert.match(allowanceText({unit: 'requests', period: 'month', limit: 40, used: 3, resetsAt: null}), /^3 of 40 requests used this month\.$/);
   assert.match(allowanceText({unit: 'tokens', period: 'day', limit: null, used: null, resetsAt: null}), /^Plan allowance details are in Eliza Cloud\.$/);
   assert.doesNotMatch(allowanceText({unit: 'tokens', period: 'day', limit: null, used: 7, resetsAt: null}), /of/);
+  const period = {unit: 'usd_micros', granted: 25_000_000, remaining: 12_345_678, periodStart: NOW - 86400000, resetsAt: NOW + 86400000};
+  assert.match(allowanceText(period, NOW), /^49% of this billing period's plan allowance is left\. Resets .+\.$/);
+  assert.match(allowanceText({...period, remaining: 100}, NOW), /^Less than 1% of this billing period's plan allowance is left\./);
+  assert.match(allowanceText({...period, remaining: 0}, NOW), /^This billing period's plan allowance is used up\. Resets /);
+  assert.equal(allowanceText({...period, resetsAt: NOW - 1}, NOW), "49% of this billing period's plan allowance is left.");
   const views = [
     {kind: 'checking'},
     {kind: 'active', planName: 'Synthetic plan', status: 'active', allowance: null, expiresAt: NOW, refreshFailed: false},
     {kind: 'active', planName: 'Synthetic plan', status: 'past_due', allowance: null, expiresAt: NOW, refreshFailed: true},
+    {kind: 'active', planName: 'Synthetic plan', status: 'active', allowance: {unit: 'usd_micros', granted: 25_000_000, remaining: 5_000_000, periodStart: NOW - 1, resetsAt: NOW + 86400000}, expiresAt: NOW, refreshFailed: false},
     {kind: 'inactive', planName: null, status: 'none', source: 'billing-limits'},
     {kind: 'inactive', planName: 'Synthetic plan', status: 'canceled', source: 'entitlement'},
     {kind: 'unavailable', reason: 'outage'}, {kind: 'unavailable', reason: 'not-published'}, {kind: 'unavailable', reason: 'invalid'},
@@ -106,14 +141,15 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
     const text = JSON.stringify(describeSubscription(view));
     assert.doesNotMatch(text, /credit|top.?up|\$|price|upgrade now/i, view.kind);
   }
-  assert.equal(describeSubscription(views[3]).manage, true);
-  assert.equal(describeSubscription(views[3]).headline, 'No active plan');
-  assert.equal(describeSubscription(views[3]).manageLabel, 'Choose a plan');
-  assert.match(describeSubscription(views[3]).detail, /Redeem a subscription code or choose a plan/);
+  assert.equal(describeSubscription(views[4]).manage, true);
+  assert.equal(describeSubscription(views[4]).headline, 'No active plan');
   assert.equal(describeSubscription(views[4]).manageLabel, 'Choose a plan');
-  assert.equal(describeSubscription(views[4]).headline, 'Synthetic plan has ended');
+  assert.match(describeSubscription(views[4]).detail, /Redeem a subscription code or choose a plan/);
+  assert.equal(describeSubscription(views[5]).manageLabel, 'Choose a plan');
+  assert.equal(describeSubscription(views[5]).headline, 'Synthetic plan has ended');
   assert.equal(describeSubscription(views[2]).manage, true);
-  assert.match(describeSubscription(views[5]).detail, /Local apps and on-device speech keep working/);
+  assert.match(describeSubscription(views[3]).detail, /^20% of this billing period's plan allowance is left\./);
+  assert.match(describeSubscription(views[6]).detail, /Local apps and on-device speech keep working/);
   // Only an explicit no-plan answer stops Cloud-backed AI from starting.
 });
 
@@ -269,6 +305,21 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
   assert.equal(legacyChecks, 1);
 });
 
+test('live resident terminal rate limits retain the provider wait while replays do not invent one', () => {
+  // ChatTerminalFailure at pinned Eliza 968348d792d3; both JSON and SSE use this payload.
+  const terminalFailure = {kind: 'rate_limited', message: 'Provider wait', transient: true,
+    rateLimit: {kind: 'rate_limited', retryAfterMs: 2400, planId: 'pro', scope: 'burst'}};
+  for (const source of [{failureKind: 'rate_limited', terminalFailure}, {error: {terminalFailure}}]) {
+    const limit = readServiceLimit(source, NOW);
+    assert.deepEqual(limit, {kind: 'rate-limited', retryAfterMs: 2400, resetsAt: null});
+    assert.match(serviceLimitMessage(limit, NOW), /Try again in about 3 seconds/);
+    assert.match(serviceLimitMessage(limit, NOW), /did not retry your message/);
+  }
+  const {rateLimit, ...replay} = terminalFailure;
+  assert.equal(readServiceLimit({terminalFailure: replay}, NOW).retryAfterMs, null);
+  assert.equal(readServiceLimit({terminalFailure: {...terminalFailure, rateLimit: {...rateLimit, retryAfterMs: 90000000}}}, NOW).retryAfterMs, null);
+});
+
 test('Cloud limit refusals carry retry information and never imply a purchase or an automatic retry', () => {
   const rate = readServiceLimit({code: 'http', status: 429, data: {error: 'rate_limited', retryAfterSeconds: 42}}, NOW);
   assert.deepEqual(rate, {kind: 'rate-limited', retryAfterMs: 42000, resetsAt: null});
@@ -291,8 +342,7 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   const bare = readServiceLimit({status: 402, data: {}}, NOW);
   assert.equal(bare.kind, 'billing-refused');
   assert.doesNotMatch(serviceLimitMessage(bare, NOW), /plan/i);
-  // The pinned upstream reply shape (contracts chat.ts ChatTerminalFailure; chat-routes
-  // terminalFailureContentValue keeps only kind, message, transient and code).
+  // Legacy replies and history without a live provider wait remain supported.
   const upstreamCredits = readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'Synthetic upstream message', transient: false}}, NOW);
   assert.deepEqual(upstreamCredits, {kind: 'billing-refused', retryAfterMs: null, resetsAt: null});
   assert.match(serviceLimitMessage(upstreamCredits, NOW), /^Eliza Cloud declined this AI request for your account's billing\. .*did not retry your message, and nothing is purchased automatically\./);
@@ -307,6 +357,17 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   assert.equal(readServiceLimit('rate_limited', NOW), null);
   // A retry hint beyond a day is not shown as a countdown.
   assert.equal(readServiceLimit({status: 429, data: {retryAfterSeconds: 999999}}, NOW).retryAfterMs, null);
+  // Synthetic Anthropic-style refusal (the shape of Cloud's /api/v1/messages, which the phone does not
+  // call): the wait is only in Retry-After, which the transports return as `retryAfter`. A wait in
+  // the body still wins.
+  const anthropic = {code: 'http', status: 429, data: {type: 'error', error: {type: 'rate_limit_error', message: 'Organization rate limit exceeded.'}}};
+  assert.deepEqual(readServiceLimit({...anthropic, retryAfter: '30'}, NOW), {kind: 'rate-limited', retryAfterMs: 30000, resetsAt: null});
+  assert.deepEqual(readServiceLimit({...anthropic, retryAfter: new Date(NOW + 90000).toUTCString()}, NOW), {kind: 'rate-limited', retryAfterMs: 90000, resetsAt: null});
+  assert.deepEqual(readServiceLimit(anthropic, NOW), {kind: 'rate-limited', retryAfterMs: null, resetsAt: null});
+  // Only IMF-fixdate dates are read; other text is not turned into a wait.
+  for (const junk of ['-5', 'abc 2', 'Sun Nov  6 08:49:37 1994', '30, 30']) assert.equal(readServiceLimit({...anthropic, retryAfter: junk}, NOW).retryAfterMs, null, junk);
+  assert.equal(readServiceLimit({status: 429, data: {error: 'rate_limited', retryAfterSeconds: 5}, retryAfter: '60'}, NOW).retryAfterMs, 5000);
+  assert.match(serviceLimitMessage(readServiceLimit({...anthropic, retryAfter: '30'}, NOW), NOW), /Try again in about 30 seconds\./);
   for (const limit of [rate, allowance, subscription, bare, upstreamCredits]) assert.doesNotMatch(serviceLimitMessage(limit, NOW), /credit|top.?up|upgrade|buy/i);
 });
 

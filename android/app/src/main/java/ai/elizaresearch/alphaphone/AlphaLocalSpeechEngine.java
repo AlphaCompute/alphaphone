@@ -24,12 +24,15 @@ final class AlphaLocalSpeechEngine implements AutoCloseable {
  private final Factory factory;
  private volatile Backend backend;
  private boolean closed;
+ private volatile int loads;
  AlphaLocalSpeechEngine(Factory factory){this.factory=factory;}
  synchronized <T>T use(Operation<T> operation)throws Exception{
   if(closed)throw new IllegalStateException("Speech engine closed");
-  if(backend==null)backend=factory.create();
+  if(backend==null){backend=factory.create();loads++;}
   return operation.run(backend);
  }
+ /** How many times the models were opened; a change across a use means it loaded them (a cold trial, issue #395). */
+ int loads(){return loads;}
  void cancel(){Backend active=backend;if(active!=null)active.cancel();}
  synchronized void release(){Backend previous=backend;backend=null;if(previous!=null)previous.close();}
  @Override public synchronized void close(){if(closed)return;closed=true;release();}

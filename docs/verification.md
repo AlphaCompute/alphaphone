@@ -252,6 +252,35 @@ Physical-device qualification must cover radios, camera/audio, suspend/resume,
 accessibility, recovery and signed updates/rollback. Production signing, distribution,
 device-owner provisioning and target-user task acceptance remain independent gates.
 
+## Pin move to fb62325230 (2026-10-14): agent-event IPC
+
+Branch `claude/pin-eliza-develop-fb62325`. The pin moved from `c7a9a0d7e7` to `fb62325230`, the
+elizaOS `develop` head (289 files) that contains the live agent-event feed over the private agent
+IPC (#36261, `f7f3765d0a`) and the Alpha Phone sign-in callback contract (#36271, `d4de8c1cd7`),
+with the llama.cpp gitlink `56e70ff2` (llama.cpp `main` after elizaOS/llama.cpp#72, the upstream
+runtime integration; voice ABI 18 unchanged) and `MTMD_VIDEO=OFF` in `stage-elizavoice-lib.ts`
+(#36279). The seven `patches/eliza` targets are unchanged and every patch applies at the new pin.
+Alpha Phone does not consume the new event feed yet. No emulator, device, AOSP image or hosted
+run; nothing installed.
+
+- `npm run upstream:verify`: source verified at `fb62325230`; reachability re-recorded
+  (`identical` to `develop`, 2026-10-14) with #36271 and #36261 added to the record.
+- `npm run upstream:prepare-client`: the voice projection inputs are unchanged at the new pin.
+- Engine (class B): `scripts/prepare-embedding-host.mjs --build --remap-build-path` (NDK 28.2)
+  rebuilt the engine and the registered `ElizaVoiceNative` JNI for both ABIs at the pin with a
+  clean llama.cpp checkout at `56e70ff2` (receipt checks passed: ELF ABI, embedding symbols, only
+  `JNI_OnLoad` exported, 16 KiB alignment; 85 `eliza_inference_*` exports including the six
+  `asr_stream_*`, Parakeet-TDT enabled). Those engine bytes are now the voice host record's, and
+  they are the embedding host record's candidate build. Both records stay unqualified; the
+  embedding host requalification note now names this pin. The bundle assets were not rebuilt (their
+  converters are unchanged), the voice-subset `libparadeevoicejni.so` was not rebuilt, and nothing
+  was staged, packaged into an APK or executed.
+- Resident dependency audit re-recorded at the pin: GHSA-w4pp-8pjf-rmxw (pacote) is no longer
+  resolved, so its exception was removed; no new advisory. Third-party notices regenerated for the
+  new engine identity (licence flags unchanged in kind).
+- `npm run --ignore-scripts typecheck` passed; `node --test test/*.test.mjs`: 1252 of 1252 passed;
+  `npm run verify` passed (production web bundle audit clean).
+
 ## Pin move to c7a9a0d7e7 (2026-10-14): Phonon-2 and live voice
 
 Branch `claude/mvp-final` (not pushed). The pin moved from `644d56c93d` to `c7a9a0d7e7`, the
@@ -1387,3 +1416,24 @@ made by another surface during an attach does not make this surface stop the res
 Both runners bind the bytes upstream pins to the admitted hashes in `preflightVariant`, before
 any install, so a build that overwrites the archive after admission fails the run instead of
 being recorded under the admitted hashes. These are source checks only, as above.
+
+## Latest upstream pin integration (2026-10-15)
+
+The candidate source pin is `968348d792d3d36df129bc53bd85cebed47d0830`.
+It contains merged Eliza #36157 and #36292. Its llama.cpp gitlink is
+`3e5f73922ee804806a2e955b50843a5042e6e401`, fork main after upstream integration
+#72 and the native build repairs in #80. All existing native patch target
+hashes match this Eliza revision unchanged. The bounded secure-storage memory
+and reset-revocation tests also pass at this candidate pin (two tests).
+
+At this llama.cpp revision the local Release CPU speech library and architecture
+test target built. The ABI, Parakeet kernel and Kokoro layer-option tests passed.
+The full native build in the server-disabled configuration failed at test-chat
+because its server header requires mtmd.h. This is separate from the passing
+speech targets. Eliza #36292 passed all hosted checks and local `bun run verify`.
+
+New Android engine and full/voice-subset JNI libraries built for both ABIs.
+Their measured hashes are recorded in the unqualified voice-host manifest; ELF
+architecture, required exports and 16 KiB alignment checks passed. The separate
+resident-host qualification receipt remains historical and unchanged. A source pin or development library build does not establish
+emulator, AOSP boot, physical-device or distribution qualification.

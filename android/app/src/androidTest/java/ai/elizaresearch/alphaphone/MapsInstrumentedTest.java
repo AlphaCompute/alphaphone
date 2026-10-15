@@ -28,12 +28,15 @@ public class MapsInstrumentedTest {
  private void until(String js)throws Exception{long end=SystemClock.elapsedRealtime()+25000;while(SystemClock.elapsedRealtime()<end){if("true".equals(eval("Boolean("+js+")")))return;SystemClock.sleep(100);}fail("Maps condition: "+js+" screen="+eval("document.body.innerText.slice(-900)"));}
  private void click(String label)throws Exception{String node="document.querySelector('[aria-label='+"+JSONObject.quote(JSONObject.quote(label))+"+']')";until(node);eval("("+node+").click()");}
  private void input(String label,String text)throws Exception{String node="document.querySelector('input[aria-label='+"+JSONObject.quote(JSONObject.quote(label))+"+']')";until(node);eval("(()=>{const e="+node+";Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(e,"+JSONObject.quote(text)+");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()");}
+ /** No Maps provider: the honest Eliza Cloud not-connected state (signed out or no subscription, or Cloud
+  * Maps not deployed), never a map, search result or route (maps-adapter.ts mapStatus). */
+ private static final String NOT_CONNECTED="(s=>s?.dataset.mapState==='unconfigured'&&['Sign in to Eliza Cloud with an active subscription to search places and plan routes.','Eliza Cloud Maps is not available yet. Enter coordinates or use saved places.'].some(t=>s.textContent.includes(t)))(document.querySelector('[data-alpha-maps-status]'))";
  private void maps()throws Exception{AppNavigation.liveMode();eval(AppNavigation.request("Maps"));until(AppNavigation.selected("Maps"));}
  @Test public void coordinatesSaveRenamePersistAndRemoveWithoutInventedProviderData()throws Exception{
   String label="Alpha maps fixture "+UUID.randomUUID(),renamed=label+" renamed";
   double lat=10+Math.random(),lon=20+Math.random();String point=String.format(java.util.Locale.ROOT,"%.6f, %.6f",lat,lon);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
-   maps();until("document.querySelector('[data-alpha-maps-status]')?.textContent.includes('provider not connected')");
+   maps();until(NOT_CONNECTED);
    assertEquals("No simulated geography","false",eval("[...document.querySelectorAll('[data-alpha-maps-root] svg[width=\"1200\"] path')].some(p=>!!p.getAttribute('d'))"));
    input("Search places",point);eval("document.querySelector('input[aria-label=\"Search places\"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))");
    until("document.querySelector('[aria-label=\"Rename place\"]')");assertEquals("Name editor is opt-in", "false", eval("!!document.querySelector('input[aria-label=\"Place name\"]')"));click("Rename place");input("Place name",label);click("Apply place name");click("Save");

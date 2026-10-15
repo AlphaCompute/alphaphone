@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "193d9264fc8236c4a62a0d775532148162256dfb",
-  "head": "193d9264fc8236c4a62a0d775532148162256dfb",
-  "recordedAt": "2026-10-14",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...193d9264fc8236c4a62a0d775532148162256dfb",
-  "status": "identical",
+  "baseCommit": "172e072c623c7b08b66f120020997e5f90f4de7a",
+  "head": "968348d792d3d36df129bc53bd85cebed47d0830",
+  "recordedAt": "2026-10-15",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...968348d792d3d36df129bc53bd85cebed47d0830",
+  "status": "behind",
   "aheadBy": 0,
-  "behindBy": 0,
-  "mergeBase": "193d9264fc8236c4a62a0d775532148162256dfb",
+  "behindBy": 15,
+  "mergeBase": "968348d792d3d36df129bc53bd85cebed47d0830",
   "pinOnlyCommits": [],
   "pullRequests": [
     {
@@ -298,6 +298,20 @@
       "mergedAt": "2026-10-14T17:48:29Z",
       "mergeCommit": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
       "head": "claude/alpha-voice-gaps"
+    },
+    {
+      "number": 36271,
+      "state": "merged",
+      "mergedAt": "2026-10-14T21:24:06Z",
+      "mergeCommit": "d4de8c1cd7b0f7fd02325b2f77843ecb24adc415",
+      "head": "claude/alphaphone-signin-callback-contract"
+    },
+    {
+      "number": 36261,
+      "state": "merged",
+      "mergedAt": "2026-10-14T21:44:16Z",
+      "mergeCommit": "f7f3765d0a9cb8414f6c3a472446cff77e6fb9c7",
+      "head": "claude/alpha-ipc-events"
     }
   ]
 }

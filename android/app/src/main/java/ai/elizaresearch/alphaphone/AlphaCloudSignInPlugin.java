@@ -211,7 +211,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
   boolean registered = CloudSignInReadiness.registered(config.status, config.data.opt("success"), config.data.optString("clientId", null),
    config.data.optString("environment", null), config.data.optString("redirectUri", null), config.data.optString("codeChallengeMethod", null), environment);
   if (!registered) return CloudSignInReadiness.Result.notReady(now);
-  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + CloudSignInFlow.TENANT);
+  Response providers = get(environment.api() + "/steward/auth/providers?tenantId=" + environment.tenant);
   JSONObject captcha = providers.data.optJSONObject("captcha");
   List<String> requiredFor = new ArrayList<>();
   JSONArray required = captcha == null ? null : captcha.optJSONArray("requiredFor");
@@ -379,7 +379,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
    }
    try {
     JSONObject body = new JSONObject().put("code", received.code).put("redirectUri", returned.callback())
-     .put("tenantId", CloudSignInFlow.TENANT).put("codeVerifier", pending.verifier);
+     .put("tenantId", returned.tenant).put("codeVerifier", pending.verifier);
     Response exchanged = post(owner, "/steward/auth/oauth/exchange", body, null);
     if (exchanged.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus("exchange", exchanged.status));
     complete(owner, exchanged.data);
@@ -414,7 +414,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
   }
   run(() -> {
    try {
-    Response sent = post(current, CloudEmailCode.SEND_PATH, CloudEmailCode.sendBody(email, current.emailVerifier), null);
+    Response sent = post(current, CloudEmailCode.SEND_PATH, CloudEmailCode.sendBody(current.environment, email, current.emailVerifier), null);
     if (sent.status != 200 && sent.status != 202) throw new SignInFailure(CloudSignInFlow.failureForStatus("send", sent.status));
     JSONObject data = sent.data.optJSONObject("data") != null ? sent.data.optJSONObject("data") : sent.data;
     long now = System.currentTimeMillis(), expiresAt = CloudEmailCode.expiresAt(data.opt("expiresAt"), now);
@@ -447,7 +447,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
    try {
     Response verified = mfa
      ? post(current, "/steward/auth/mfa/" + current.mfaType + "/complete", new JSONObject().put("challengeId", current.mfaChallenge).put("code", code), null)
-     : post(current, CloudEmailCode.VERIFY_PATH, CloudEmailCode.verifyBody(current.email, code, current.emailVerifier), null);
+     : post(current, CloudEmailCode.VERIFY_PATH, CloudEmailCode.verifyBody(current.environment, current.email, code, current.emailVerifier), null);
     if (verified.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus(mfa ? "mfa" : "verify", verified.status));
     JSONObject session = verified.data.optJSONObject("data") != null && !verified.data.has("token") ? verified.data.optJSONObject("data") : verified.data;
     if (Boolean.TRUE.equals(session.opt("mfaRequired")) && !mfa) {
@@ -515,7 +515,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
    // The key this sign-in replaces, if any, is revoked after the new one is active (as CloudProtocol.login does).
    String previous = previousToken(receipts, environment, secret);
    long intent = AlphaLocalAgentPlugin.reserveCredentialIntent();
-   AlphaCredentialStore credentials = new AlphaCredentialStore(getContext(), () -> { if (destroyed) throw new IllegalStateException("Sign-in closed"); AlphaLocalAgentPlugin.requireCredentialIntent(intent); });
+   AlphaCredentialStore credentials = new AlphaCredentialStore(getContext(), () -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); AlphaLocalAgentPlugin.requireCredentialIntent(intent); });
    JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
    credentials.writeCredentialSlot("cloud:" + environment.name, saved.toString());
    // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.

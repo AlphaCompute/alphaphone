@@ -21,14 +21,14 @@ const plugins={
  AlphaDevicePlugin:['diagnosticsWorker'],
  AlphaFilesPlugin:['worker'],
  AlphaHostedResultsPlugin:['io'],
- AlphaLocalAgentPlugin:['workers'],
+ AlphaLocalAgentPlugin:['workers','voiceWorkers'],
  AlphaMailAttachmentsPlugin:['worker'],
  AlphaMapsTransportPlugin:['workers','closers','deadlines'],
  AlphaNoteAudioPlugin:['migrationWorker'],
  AlphaNoteDocumentsPlugin:['worker'],
  AlphaNotificationsPlugin:['NOTICE_IO'],
  AlphaPhotosPlugin:['worker'],
- AlphaVoiceCloudPlugin:['workers','liveWorker'],
+ AlphaVoiceCloudPlugin:['workers','liveWorker','liveStopWorker','nativeVoiceWorker'],
 };
 const escape=value=>value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 

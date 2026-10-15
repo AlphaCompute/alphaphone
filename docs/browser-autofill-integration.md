@@ -20,20 +20,27 @@ Browser profiles implement the October 7 owner decision ([decisions](decisions.m
 
 ## Alpha password manager
 
-Website fills and saves from Alpha's own provider (`ElizaPasswordAutofillService` from the shared
-password plugin, see [password-provider-setup.md](password-provider-setup.md)) are refused in
-Alpha's browser. `CredentialWebView` adds the committed top-level origin
-(`PasswordFormPolicy.TOP_ORIGIN_EXTRA`) to its autofill node, but the pinned
-`PasswordFormPolicy` also requires a native per-field origin for every login field, and Android
-WebView does not supply one, so the request ends with "Field origin unavailable"
-(`android/app/src/main/res/values/eliza_passwords.xml` records this). Only native app fields are
-filled, after a fresh unlock, with the signer check described in password-provider-setup.md. Show
-and Copy remain available in Settings. The privileged renderer WebView is excluded, and no field
+The pinned `PasswordFormPolicy` of Alpha's own provider (`ElizaPasswordAutofillService`, see
+[password-provider-setup.md](password-provider-setup.md)) requires the committed top-level origin
+(`PasswordFormPolicy.TOP_ORIGIN_EXTRA`) and a native per-field origin for every login field.
+Android WebView's own structure has no field origins, so it is refused ("Field origin
+unavailable"). Where the WebView supports `WEB_MESSAGE_LISTENER` and
+`JS_INJECTION_IN_FRAME_AND_WORLD`, Alpha's browser reports login fields itself through
+`BrowserLoginFields`: the field origin is the engine's `sourceOrigin` for the field's frame,
+admitted only for the top-level site and same-origin frames, and the WebView's own structure is
+then excluded ([browser fill](password-provider-setup.md#browser-fill-engine-attested-field-origins)).
+A field focused before the tab is eligible (an `autofocus` login page that is still loading, or a
+site prompt that is open) is kept for that navigation only and judged again by the same rule when
+the tab becomes eligible, so the user does not have to leave and re-enter the field.
+Otherwise website fills from the integrated vault stay off. Native app fields are filled after a
+fresh unlock, with the signer check described in password-provider-setup.md. Show and Copy remain
+available in Settings. The privileged renderer WebView is excluded, and no field
 values or vault data are added to the agent bridge.
 
 Evidence: `PasswordBrowserFillInstrumentedTest` passed on both flavors at `2961bd9e` (class E,
-developer APKs); it shows that a cross-origin frame is never offered a fill, not an
-integrated-vault website fill. The vault's own Autofill path into an app has
+developer APKs) before the attested adapter; it showed that a cross-origin frame is never offered
+a fill. Its updated version (top-level offer with attested fields, cross-origin frame still
+refused) has not run, and no integrated-vault website fill has run on a device. The vault's own Autofill path into an app has
 `PasswordVaultSettingsInstrumentedTest` and `PasswordVaultFillInstrumentedTest`, which have not
 run. Device qualification of provider selection, unlock and resume, and save prompts remains
 open. Whether recognized third-party browsers are ever trusted is A-14.

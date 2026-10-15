@@ -19,7 +19,8 @@ import static org.junit.Assert.*;
  * .request) refuses every origin other than https://api.eliza.app, the retired pairing route, and
  * every DELETE except a body-less self-revocation, before any connection is opened. Each refusal is
  * the generic "Connection request failed"; a debuggable build records stage VALIDATE (never CONNECT)
- * in alpha-transport-diagnostics, and no credential slot file changes. Nothing is sent to any host.
+ * in alpha-transport-diagnostics, and no credential slot file changes (measured against the slot
+ * files once startup's own writes have settled). Nothing is sent to any host.
  *   npm run test:android:instrumentation -- --owned-emulator --avd NAME --classes ConnectionRoutes
  * A test-mocks build admits every origin by design, so the runner refuses this class with --test-mocks. */
 @RunWith(AndroidJUnit4.class)
@@ -53,13 +54,35 @@ public class ConnectionRoutesInstrumentedTest {
   return files;
  }
 
+ /**
+  * The credential slot files once app startup has stopped writing them. A first start after the
+  * runner clears app data writes its own slots after the renderer is ready (on the emulator:
+  * hosted-notices:owner:v1, hosted-notices:renewals:v1, workflow-notice-owner:v1 and
+  * notes-records:v1:device), none of them through the transport. The baseline is taken only after
+  * the set has been unchanged for three seconds, so every later change is attributable to the
+  * refused requests.
+  */
+ private static Map<String, String> settledCredentialFiles(Context context) throws Exception {
+  long deadline = SystemClock.elapsedRealtime() + 30000;
+  Map<String, String> last = credentialFiles(context);
+  long stableSince = SystemClock.elapsedRealtime();
+  while (SystemClock.elapsedRealtime() < deadline) {
+   SystemClock.sleep(250);
+   Map<String, String> now = credentialFiles(context);
+   if (!now.equals(last)) { last = now; stableSince = SystemClock.elapsedRealtime(); continue; }
+   if (SystemClock.elapsedRealtime() - stableSince >= 3000) return now;
+  }
+  fail("Startup credential slot writes did not settle within 30 s: " + last.keySet());
+  return last;
+ }
+
  @Test public void flagOffTransportRefusesEveryNonCloudRouteBeforeConnecting() throws Exception {
   Assume.assumeTrue("ConnectionRoutes admits every origin in a test-mocks build; this checks the flag-off policy", !BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   Context context = InstrumentationRegistry.getInstrumentation().getTargetContext();
   android.content.SharedPreferences diagnostics = context.getSharedPreferences("alpha-transport-diagnostics", Context.MODE_PRIVATE);
   try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    until("window.Capacitor?.Plugins?.AlphaConnection && document.documentElement.dataset.activeView", "AlphaConnection is available");
-   Map<String, String> before = credentialFiles(context);
+   Map<String, String> before = settledCredentialFiles(context);
    String agent = java.util.UUID.randomUUID().toString();
    JSONObject[] refused = {
     // A dedicated Cloud agent runtime origin (owner decision A-16 keeps it off production Android).
