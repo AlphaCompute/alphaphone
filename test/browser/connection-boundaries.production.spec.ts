@@ -399,6 +399,24 @@ test('the web build\'s forced sign-out does not create a secret store in a brows
 // revocation and history tests remain in scripts/test-remote-protocol.mjs and
 // scripts/test-connection-history.mjs as explicitly non-product development infrastructure.
 
+test('automatic agent startup stays quiet while local apps remain usable',async({page})=>{
+  await android(page,{cloudCredential:true,balance:5});
+  await page.addInitScript(()=>{
+    const w=window as any,bridge=w.Capacitor,original=bridge.nativePromise;
+    bridge.nativePromise=(plugin:string,method:string,input:any)=>{
+      if(plugin==='Agent'&&method==='start')return new Promise(resolve=>{w.agentStartHeld=true;w.releaseAgentStart=()=>resolve(original(plugin,method,input));});
+      return original(plugin,method,input);
+    };
+  });
+  await page.goto('/');
+  await expect.poll(()=>page.evaluate(()=>(window as any).agentStartHeld)).toBe(true);
+  await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+  await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Notes',exact:true}).click();
+  await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
+  await page.evaluate(()=>(window as any).releaseAgentStart());
+});
+
 test('transient startup storage failures recover without flashing global notices',async({page})=>{
   await android(page,{cloudCredential:true,balance:5});
   await page.addInitScript(()=>{
