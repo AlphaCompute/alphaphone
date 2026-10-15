@@ -319,4 +319,17 @@ function screen(maps, options = {}) {
  assert.equal(listeners.size, 0);
 }
 
+// A cancelled resident turn cannot use a late GPS fix to plan a route.
+{
+ const maps=provider(), fix=deferred(), phone=screen(maps,{locate:()=>fix.promise});
+ const navigation=new AlphaMapsDeviceNavigation(phone.surface,owner), turn=new AbortController();
+ const pending=navigation.start({destination:portRef,travelMode:'drive'},turn.signal);
+ await new Promise(resolve=>setTimeout(resolve,1));
+ turn.abort();fix.resolve({coordinate:CASINO,accuracyMeters:8,timestamp:Date.now(),precision:'precise'});
+ await failsWith(pending,'MAPS_DEVICE_UNAVAILABLE',/cancelled/);
+ assert.equal(maps.calls.filter(call=>call[0]==='route').length,0,'cancelled turn never plans from its late fix');
+ await failsWith(navigation.stop(turn.signal),'MAPS_DEVICE_UNAVAILABLE',/cancelled/);
+ navigation.retire();
+}
+
 console.log('maps device navigation: select, start, reroute, stop, cancellation, stale location, account change and unconfigured registration passed');
