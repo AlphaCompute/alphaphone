@@ -1,5 +1,5 @@
 {
-  "baseCommit": "c38e093bb5d637d0df61d17ec8e24683991cce13",
+  "baseCommit": "441aebda6f93312e6bf231a625c3b9ae4031df92",
   "path": "plugins/plugin-maps/src/client/map-plane.ts",
   "patchSha256": "e48ded36465c44e87d5f179bf54b4433c1ec4ac6ab4e78fa4a55c7111238eb34",
   "beforeSha256": "d36dc33a73a27313ae1e20aeaf448fa9122c57f26b3ebb92f52e6bedd6f3d632",
