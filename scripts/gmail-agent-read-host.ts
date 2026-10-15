@@ -1,3 +1,4 @@
+import {calendarAgentWrite} from "./calendar-agent-write-host.ts";
 /** Owner-only Google tools. Provider credentials remain in the private Cloud
  * store; Gmail sends use the canonical prepared-review/dispatch/receipt flow. */
 import {createHash} from 'node:crypto';
@@ -12,11 +13,11 @@ function sendProposal(input:AgentSendContent){
 export function createGmailAgentReadHost(profile:string){
  const host=createBrowserCloudDevHandler({profile});
  const refuseWrite=()=>{throw Error('Gmail agent reads cannot change credentials or mail.');};
- async function verified<T>(run:(client:CloudProtocol,grantId:string,scope:string,signal:AbortSignal)=>Promise<T>,parent?:AbortSignal,capability='google.gmail.triage',operation=false){
+ async function verified<T>(run:(client:CloudProtocol,grantId:string,scope:string,signal:AbortSignal)=>Promise<T>,parent?:AbortSignal,capability='google.gmail.triage',operation:false|true|'calendar'=false){
   const credential=await host.agentCredential();if(!credential)throw Error('Sign in to Eliza Cloud before reading Gmail.');
   const identity=JSON.stringify(credential),signal=parent?AbortSignal.any([parent,AbortSignal.timeout(30000)]):AbortSignal.timeout(30000);
   const current=async()=>{signal.throwIfAborted();if(JSON.stringify(await host.agentCredential())!==identity)throw Error('Cloud account changed while reading Gmail.');};
-  const client=new CloudProtocol('production',operation?host.agentGmailOperation:host.agentRead,{acceptsReferences:true,read:async()=>{await current();return credential;},write:async()=>refuseWrite(),clear:async()=>refuseWrite()},async()=>refuseWrite());
+  const client=new CloudProtocol('production',operation==='calendar'?host.agentCalendarOperation:operation?host.agentGmailOperation:host.agentRead,{acceptsReferences:true,read:async()=>{await current();return credential;},write:async()=>refuseWrite(),clear:async()=>refuseWrite()},async()=>refuseWrite());
   const owner=await client.identity(signal);await current();
   if(owner.userId!==credential.userId||owner.organizationId!==credential.organizationId)throw Error('Cloud owner could not be verified for Gmail.');
   const accounts=(await client.gmailAccounts(signal)).filter(a=>a.connected&&a.connectionId&&a.grantedCapabilities.includes(capability));
@@ -25,6 +26,7 @@ export function createGmailAgentReadHost(profile:string){
   const latest=await client.gmailAccounts(signal);if(!latest.some(a=>a.connectionId===grantId&&a.connected&&a.grantedCapabilities.includes(capability)))throw Error('Gmail permission changed.');await current();return value;
  }
  return {
+  async calendarWrite(input:Record<string,unknown>,parent?:AbortSignal){return verified((client,grantId,scope,signal)=>calendarAgentWrite(client,grantId,scope,input,signal),parent,'google.calendar.write','calendar');},
   async prepareSend(input:AgentSendContent&{requestId:string},parent?:AbortSignal){
    const proposal=sendProposal(input);if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId))throw Error('Invalid send request identity.');
    return verified(async(client,grantId,scope,signal)=>{

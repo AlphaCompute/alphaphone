@@ -348,3 +348,15 @@ test('Calendar sync bridge forwards only exact owner-bound versioned operations'
   assert.equal(f.calls.length,before,'rejected routes never reach Cloud');
  }finally{await f.close();}
 });
+
+test('agent Calendar transport admits only canonical scoped sync operations',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({version:1,calendarId:'owner@example.test',accountId:'account',read:true,write:true,idempotentCreate:true,conditionalWrites:true,providerExactlyOnce:false}));
+  const url='https://api.eliza.app/api/v1/eliza/google/calendar/sync-v1/capabilities?grantId=11111111-1111-4111-8111-111111111111&calendarId=owner%40example.test';
+  const result=await f.host().agentCalendarOperation({url,method:'GET',credentialReference:reference,signal:new AbortController().signal});
+  assert.equal(result.status,200);assert.equal(result.data.write,true);
+  const count=f.calls.length;
+  await assert.rejects(f.host().agentCalendarOperation({url:url.replace('api.eliza.app','attacker.invalid'),method:'GET',credentialReference:reference,signal:new AbortController().signal}),/agent-calendar-route-refused/);
+  assert.equal(f.calls.length,count);
+ }finally{await f.close();}
+});

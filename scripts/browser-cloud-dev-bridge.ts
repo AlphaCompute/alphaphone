@@ -270,6 +270,14 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  return Object.assign(handler,{
   async agentCredential(){const c=(await load()).production;return c?publicCredential(c):null;},
   agentRead,
+  async agentCalendarOperation(input:Parameters<typeof agentRead>[0]){
+   const url=new URL(input.url),body=input.body===undefined?undefined:JSON.stringify(input.body);
+   if(!url.pathname.startsWith('/api/v1/eliza/google/calendar/sync-v1/'))return agentRead(input);
+   if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||!managedGoogleRequest(url,input.method,body))throw refusal(403,'agent-calendar-route-refused');
+   const c=await admitted('production',input.credentialReference);
+   const response=await canonical('production',url.pathname+url.search,input.signal,{method:input.method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body})},c);
+   const data=await boundedServiceJson(response);await current('production',c,input.signal);return {status:response.status,data};
+  },
   async agentGmailOperation(input:Parameters<typeof agentRead>[0]){
    const url=new URL(input.url),route=url.pathname,body=input.body===undefined?undefined:JSON.stringify(input.body);
    const operation=/^\/api\/v1\/eliza\/google\/gmail\/inbox-v1\/operations(?:\/[A-Za-z0-9_-]{1,160}(?:\/dispatch)?)?$/.test(route);

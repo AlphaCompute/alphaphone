@@ -1,0 +1,68 @@
+/** Canonical Calendar transport for the owner-reviewed runtime mutation ledger. */
+import type {CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
+import type {CalendarSyncRequest} from '../apps/app/src/runtime/calendar-linked-provider.ts';
+const record=(v:unknown):Record<string,any>=>{if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Invalid Calendar operation');return v as Record<string,any>;};
+export async function calendarAgentWrite(client:CloudProtocol,grantId:string,scope:string,input:Record<string,any>,signal:AbortSignal){
+ const source=`alpha-google:${scope}`;
+ const allowed=input.operation==='write-capabilities'?['operation','grantId','calendarId']:input.operation==='write-target'?['operation','grantId','calendarId','eventId']:['operation','grantId','calendarId','accountId','payload','preflight'];
+ if(Object.keys(input).some(key=>!allowed.includes(key)))throw Error('Unsupported Calendar operation field');
+ if(input.grantId!==source||typeof input.calendarId!=='string'||!input.calendarId)throw Error('Calendar source changed');
+ const selection={grantId,calendarId:input.calendarId};
+ const caps=record(await client.googleCalendarSync({kind:'capabilities',selection},signal));
+ if(caps.calendarId!==input.calendarId||typeof caps.accountId!=='string'||caps.read!==true||caps.write!==true||caps.idempotentCreate!==true||caps.conditionalWrites!==true||caps.providerExactlyOnce!==false)throw Error('Calendar write access is unavailable');
+ if(input.operation==='write-capabilities')return {...caps,grantId:source};
+ const selected={...selection,accountId:caps.accountId};
+ const external=(id:unknown)=>{if(typeof id!=='string'||!id||id.length>1024||/[\s\p{Cc}]/u.test(id))throw Error('Calendar target changed');if(id.startsWith('alpha-google:')){if(!id.startsWith(source+':')||!id.slice(source.length+1))throw Error('Calendar source changed');return id.slice(source.length+1);}return id;};
+ const get=async(eventId:string)=>record(await client.googleCalendarSync({kind:'get',selection:selected,reference:{eventId}},signal));
+ async function materialize(snapshot:Record<string,any>){
+  const semantic=record(snapshot.event);if(typeof snapshot.eventId!=='string'||typeof snapshot.etag!=='string'||!snapshot.etag)throw Error('Calendar revision is missing');
+  const start=Date.parse(semantic.startAt),end=Date.parse(semantic.endAt);if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('Calendar times are invalid');
+  const feed=await client.googleCalendarFeed(grantId,input.calendarId,{timeMin:new Date(start-1000).toISOString(),timeMax:new Date(end+1000).toISOString(),timeZone:semantic.timeZone||'UTC'},signal);
+  const event=feed.events.find(row=>row.externalId===snapshot.eventId&&row.metadata.etag===snapshot.etag);
+  if(!event)throw Error('The exact Calendar revision could not be read back');
+  return {...event,id:`${source}:${event.externalId}`,agentId:'',provider:'google',side:'owner',grantId:source,connectorAccountId:source,syncedAt:feed.syncedAt,updatedAt:typeof event.metadata.updated==='string'?event.metadata.updated:feed.syncedAt};
+ }
+ if(input.operation==='write-target'){
+  const data=await get(external(input.eventId));if(data.event===null)throw Error('Calendar event is unavailable');return {event:await materialize(record(data.event))};
+ }
+ if(input.operation!=='write-execute'||input.accountId!==caps.accountId)throw Error('Calendar account changed');
+ const payload=record(input.payload),preflight=record(input.preflight);
+ if(payload.grantId!==source||payload.calendarId!==input.calendarId||payload.side!=='owner'||payload.notifyAttendees===true||payload.sourceNote||payload.travelBuffer)throw Error('Review this Calendar change in the Calendar editor');
+ if(payload.recurrenceScope&&payload.recurrenceScope!=='instance')throw Error('Review the entire recurring series in Calendar');
+ let prior:Record<string,any>|null=null;
+ if(payload.action!=='schedule_event'){
+  const id=external(payload.eventId);if(id!==preflight.providerEventId||typeof preflight.providerVersion!=='string'||preflight.providerVersion!==payload.expectedProviderVersion)throw Error('Calendar revision changed');
+  const data=await get(id);if(data.event===null)throw Error('Calendar target disappeared');prior=record(data.event);if(prior.etag!==preflight.providerVersion)throw Error('Calendar revision changed');
+ }
+ if(payload.action==='cancel_event'){
+  if(!prior||!['organizer_cancel','remove_private_copy'].includes(payload.cancellationMode))throw Error('This cancellation needs Calendar review');
+  const event=await materialize(prior);
+  const result=record(await client.googleCalendarSync({kind:'delete',selection:selected,eventId:prior.eventId,expectedEtag:prior.etag},signal));
+  if(result.deleted!==true)throw Error('Calendar deletion was not confirmed');
+  if((await get(prior.eventId)).event!==null)throw Error('Calendar event is still present');
+  return {event};
+ }
+ const old=prior?record(prior.event):null,patch=payload.action==='schedule_event'?payload:record(payload.patch);
+ const allDay=patch.allDay??null;
+ const changed=(key:string,fallback:unknown)=>patch[key]===null||patch[key]===undefined?fallback:patch[key];
+ const attendees=changed('attendees',old?.attendees??[]);
+ if(!Array.isArray(attendees))throw Error('Invalid attendees');
+ if(attendees.some(a=>typeof a!=='string'&&a.displayName))throw Error('Named attendees require Calendar editor review');
+ const event={title:changed('title',old?.title),description:changed('description',old?.description??''),location:changed('location',old?.location??''),
+  startAt:allDay?allDay.startDate:patch.startsAtMs!=null?new Date(patch.startsAtMs).toISOString():old?.startAt,
+  endAt:allDay?allDay.endDateExclusive:patch.endsAtMs!=null?new Date(patch.endsAtMs).toISOString():old?.endAt,
+  isAllDay:allDay?true:patch.startsAtMs!=null||patch.endsAtMs!=null?false:old?.isAllDay??false,timeZone:allDay?null:changed('timeZone',old?.timeZone??'UTC'),
+  attendees:attendees.map(a=>typeof a==='string'?{email:a,optional:false}:{email:a.email,optional:a.optional===true}),
+  recurrence:changed('recurrence',old?.recurrence??[])};
+ let command:CalendarSyncRequest;
+ if(payload.action==='schedule_event'){
+  if(typeof preflight.idempotencyKey!=='string'||!preflight.idempotencyKey)throw Error('Stable Calendar operation key required');
+  command={kind:'create',selection:selected,idempotencyKey:preflight.idempotencyKey,event};
+ }else if(payload.action==='modify_event'&&prior)command={kind:'update',selection:selected,eventId:prior.eventId,expectedEtag:prior.etag,event};
+ else throw Error('Unsupported Calendar change');
+ const result=record(await client.googleCalendarSync(command,signal)),snapshot=record(result.event),written=record(snapshot.event);
+ const list=(value:unknown)=>Array.isArray(value)?value:[];
+ const guests=(value:unknown)=>JSON.stringify(list(value).map(a=>({email:String(a.email).toLowerCase(),optional:a.optional===true})).sort((a,b)=>a.email.localeCompare(b.email)));
+ if(['title','description','location','isAllDay','timeZone'].some(key=>written[key]!==event[key as keyof typeof event])||Date.parse(written.startAt)!==Date.parse(event.startAt)||Date.parse(written.endAt)!==Date.parse(event.endAt)||guests(written.attendees)!==guests(event.attendees)||JSON.stringify(list(written.recurrence).sort())!==JSON.stringify(list(event.recurrence).sort()))throw Error('Calendar result does not match the approved change');
+ return {event:await materialize(snapshot)};
+}

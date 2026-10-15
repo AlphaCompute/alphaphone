@@ -3,14 +3,22 @@
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
   "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "39344df6eda68d846f8d1521d4b754da131f38e3",
+  "head": "c38e093bb5d637d0df61d17ec8e24683991cce13",
   "recordedAt": "2026-10-15",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...39344df6eda68d846f8d1521d4b754da131f38e3",
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...c38e093bb5d637d0df61d17ec8e24683991cce13",
   "status": "diverged",
-  "aheadBy": 26,
+  "aheadBy": 28,
   "behindBy": 398,
   "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
   "pinOnlyCommits": [
+    {
+      "sha": "c38e093bb5d637d0df61d17ec8e24683991cce13",
+      "subject": "feat(calendar): connect managed Google writes to owner approvals"
+    },
+    {
+      "sha": "ab5436727e7bd59909ab15739da6c870a757f18a",
+      "subject": "refactor(calendar): own approvals and durable mutation execution"
+    },
     {
       "sha": "39344df6eda68d846f8d1521d4b754da131f38e3",
       "subject": "fix: cancel disconnected Cloud speech proxy requests"

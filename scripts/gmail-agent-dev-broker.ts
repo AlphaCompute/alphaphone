@@ -29,7 +29,8 @@ export function createGmailAgentDevBroker(options:{profile:string;tokenFile:stri
    }else if(input.calendar!==undefined){
     if(Object.keys(input).length!==1||!input.calendar||typeof input.calendar!=='object'||Array.isArray(input.calendar))throw Error('Invalid Calendar read');
     const c=input.calendar;
-    if(c.operation==='sources'&&Object.keys(c).length===1)result={calendars:await reader.calendarSources(controller.signal)};
+    if(['write-capabilities','write-target','write-execute'].includes(c.operation))result=await reader.calendarWrite(c,controller.signal);
+    else if(c.operation==='sources'&&Object.keys(c).length===1)result={calendars:await reader.calendarSources(controller.signal)};
     else if(c.operation==='feed'&&Object.keys(c).sort().join()===['operation','grantId','calendarId','timeMin','timeMax','timeZone'].sort().join()&&['grantId','calendarId','timeMin','timeMax','timeZone'].every(key=>typeof c[key]==='string'&&c[key].length<=1024))result={feed:await reader.calendarFeed(c,controller.signal)};
     else throw Error('Unsupported Calendar operation');
    }else if(input.messageId!==undefined){if(typeof input.messageId!=='string'||Object.keys(input).length!==1)throw Error('Invalid exact-message read');result={message:await reader.message(input.messageId,controller.signal)};}else result={items:await reader.list(input,controller.signal)};
