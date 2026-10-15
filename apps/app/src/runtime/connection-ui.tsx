@@ -873,7 +873,7 @@ async function connectResident(signal: AbortSignal) {
   save({kind:'resident'});
   activate({kind:'resident',remote:client,origin:client.origin,actions,workflowProtocol,request:deviceRequest,...(userTextFormatVersion?{userTextFormatVersion}:{})},session,name);
   if(reason)update({phoneCapabilityReason:reason});
-  // Browser development keeps its explicit restore flow; Android restores the saved conversation.
+  // Restore only the saved choice for this verified agent and owner; opening history never replays actions.
   if(residentCloudFlow()&&admission&&bound){
     residentBinding=bound.binding;
     update({residentInference:bound.binding==='cloud'?'cloud':bound.binding==='unbound'?'unavailable':'unknown'});
@@ -884,7 +884,7 @@ async function connectResident(signal: AbortSignal) {
     if(notice?.open||error)update({open:true,purpose:'agent',message:notice?.message??'',error:error??''});
     else if(notice?.message)update({message:notice.message});
     await restoreSavedHistory(signal);await refreshActionReview(signal);
-  }
+  }else if(browserLocalAgentEnabled)await restoreSavedHistory(signal);
 }
 async function connectCloud(agentId: string, signal: AbortSignal, expectedOwner?: string, expectedOrigin?:string, expectedPersonalOwner?:Readonly<PersonalOwner>) {
   const client=developmentCloud();
