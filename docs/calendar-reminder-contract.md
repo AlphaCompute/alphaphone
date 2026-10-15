@@ -167,3 +167,18 @@ establish exactly-once delivery. APK builds, emulator flows, HOME-role boot,
 locked-boot/Doze/OEM behavior, live provider integration, a user seeing/hearing an
 alert, and physical-device acceptance require distinct evidence. Record current
 source and artifact identities; historical runs do not qualify newer APKs.
+
+## Native Google sync completion contract
+
+The browser controller does not qualify Android CalendarProvider sync. The native port must use a dedicated, owner-bound bridge capability; the existing manual `CalendarEventGuard.direct` restriction must remain intact. That writer deliberately refuses alarms, guests, all-day events and recurring/exception metadata.
+
+The native implementation must meet these boundaries before Settings enables it:
+
+- Review the exact Google account/calendar and Alpha-owned local calendar, then bind opt-in to the established native owner/agent, service-account generation, source identity and foreground lifetime. Keep inference availability distinct from owner authority. An unverifiable or changed context pauses sync.
+- Read an exact event ID from its verified owned source. A null provider cursor, revoked permission or changed source is an error. Absence from the existing 370-day/2,000-instance view is never evidence of deletion.
+- Return a complete event/source revision covering the fields and child rows that a write depends on. Keep source generation distinct from display changes so a rename cannot generate duplicate Google creates. Never reuse another source or agent's checkpoint.
+- Preserve raw recurrence/exclusion/exception metadata, all-day civil dates, timezone/duration, attendee identity/optional/response fields and reminders. Apply only semantics the native model can represent; preserve and report unsupported data instead of flattening it.
+- Apply Google changes with native source/event/child-row compare-and-swap assertions and provider readback. Preserve unedited fields and local alerts. Stage deletions through Alpha's existing authenticated-owner Undo coordinator; do not call an immediate-delete path.
+- Retain the shared reconciliation journal, stable create key, exact Google ETag, uncertain-outcome readback and explicit conflict handling. No automatic retry of a provider write and no approval inferred from a successful read.
+
+Qualify the real bridge through the normal native producer and an authorized disposable fixture first. Source/JVM tests, four APK builds, installed source identity, Google write/readback and physical-device acceptance are separate receipts. The retained Seeker publication/install hold is not waived by a browser test or USB connection. No audio, account reset, unlock or phone install is implied by this contract.
