@@ -55,6 +55,8 @@ final class CalendarSyncBridge {
   if(!LocalAgentProviderAdmission.sameCloudCredential(context.credential,credential))throw new SecurityException("Calendar Cloud account changed");
   LocalAgentProviderAdmission.cloudProviderToken(credential,context.credentialId,System.currentTimeMillis());
   if(mutation&&!enabled(context))throw new SecurityException("Calendar sync is paused");
+  // Idle expiry must not truncate a long foreground pass; every renewal rechecks native authority.
+  context.expires=android.os.SystemClock.elapsedRealtime()+120000;
  }
  private CalendarSyncSnapshot read(Context context,long id,boolean review)throws Exception{
   check(context,false);
@@ -70,6 +72,7 @@ final class CalendarSyncBridge {
   JSONArray result=new JSONArray();for(long id:ids){CalendarSyncSnapshot snapshot=read(context,id,true);if(snapshot.missing||snapshot.deleted)throw new IllegalStateException("Calendar changed during review");CalendarSyncMutation.plan(snapshot,snapshot.revision,snapshot.semantic());result.put(new JSONObject().put("id",Long.toString(id)).put("revision",snapshot.revision));}check(context,false);return result;
  }
  private Context prepare(JSONObject selection)throws Exception{
+  if(!"production".equals(selection.optString("environment")))throw new SecurityException("Calendar Cloud environment changed");
   if(!foreground()||!granted())throw new SecurityException("Calendar permission and unlocked foreground are required");
   observe();Context previous=lease;lease=null;
   long admittedEpoch=epoch;
