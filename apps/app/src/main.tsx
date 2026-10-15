@@ -1,3 +1,5 @@
+// Register browser implementations before any runtime module claims plugin identity.
+import './browser/register';
 import {installCalendarApprovalAdapter} from './prototype/calendar-approval-adapter';
 import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
@@ -7,8 +9,6 @@ import {installSubviewAccessibility,keepFocusOnScreen} from './prototype/subview
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
-// Register browser implementations before any runtime module claims plugin identity.
-import './browser/register';
 import { browserApps } from './browser/apps';
 import { installSmsAdapter } from './prototype/sms-adapter';
 import { installContactsAdapter } from './prototype/contacts-adapter';
