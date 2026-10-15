@@ -1,6 +1,7 @@
 import {alphaClient} from '../runtime/alpha-client';
 import {reviewOwnNoticeQuestion} from './own-notice-question';
 import {configureGmailBackground,withdrawGmailBackground,releaseGmailQuestion,pendingGmailNotice,consumeGmailNotice,onGmailNotice} from '../runtime/gmail-background';
+import {cachedDevicePreferences,initializeDevicePreferences} from '../browser/device-preferences';
 import {prepareMailHtml} from '../runtime/mail-html';
 import {readGmailAccountChoice,saveGmailAccountChoice} from '../runtime/gmail-account-selection';
 import {GmailReadAhead} from '../runtime/gmail-read-ahead';
@@ -149,7 +150,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   type MailBody={ message: GmailMessage; bodyText: string;bodyHtml?:string; loading?:boolean;failed?:boolean; links?: GmailLink[]; historyId?:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[] };
   let selected='',body:MailBody|null=null;
   let remoteImagesShown=false;
-  const htmlBodies=new WeakMap<MailBody,{hidden:ReturnType<typeof prepareMailHtml>;shown?:ReturnType<typeof prepareMailHtml>}>();
+  const htmlBodies=new WeakMap<MailBody,Partial<Record<'hidden'|'shown',ReturnType<typeof prepareMailHtml>>>>();
   const messageBodies=new Map<string,{at:number;body:MailBody}>();
   const pendingBodies=new Map<string,{controller:AbortController;result:Promise<{ok:true;body:MailBody}|{ok:false;error:unknown}>}>();
   function stopBodyReads(){for(const row of pendingBodies.values())row.controller.abort();pendingBodies.clear();}
@@ -717,13 +718,14 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       const rows = list.map(link => { const host = new URL(link.href).hostname; return { label: link.text === link.href ? host : `${link.text} (${host})`, href: link.href, host, mismatch: linkTextMismatch(link),
         open: () => openLink(link) }; });
       linkRowCache.set(source, rows); return rows; };
-    const activeLinks = activeBody ? linkRows(activeBody) : [];
+    const showRemoteImages=remoteImagesShown||cachedDevicePreferences()?.autoLoadMailImages===true;
     let formatted:ReturnType<typeof prepareMailHtml>|null=null;
     if(activeBody?.bodyHtml&&!activeBody.loading&&!activeBody.failed){
-      let cached=htmlBodies.get(activeBody);if(!cached){cached={hidden:prepareMailHtml(activeBody.bodyHtml)};htmlBodies.set(activeBody,cached);}
-      if(remoteImagesShown&&!cached.shown)cached.shown=prepareMailHtml(activeBody.bodyHtml,true);
-      formatted=remoteImagesShown?cached.shown!:cached.hidden;
+      let cached=htmlBodies.get(activeBody);if(!cached){cached={};htmlBodies.set(activeBody,cached);}
+      const mode=showRemoteImages?'shown':'hidden';
+      formatted=cached[mode]??=prepareMailHtml(activeBody.bodyHtml,showRemoteImages);
     }
+    const activeLinks=activeBody&&!formatted?linkRows(activeBody):[];
     const htmlLoaded=(event:Bag)=>{const frame=event.currentTarget as HTMLIFrameElement,doc=frame.contentDocument;if(!doc)return;
       const resize=()=>{if(frame.isConnected)frame.style.height=Math.min(32000,Math.max(120,doc.documentElement.scrollHeight,doc.body.scrollHeight))+'px';};resize();doc.addEventListener('load',resize,true);
       const follow=(event:Event)=>{const target=(event.target as Element)?.closest('a[data-alpha-link]');if(!target)return;event.preventDefault();if(body!==activeBody)return;openLink({href:target.getAttribute('data-alpha-link')!,text:target.textContent||''});};
@@ -739,7 +741,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       emptyAdd: !!binding && !selected && !operation, addAccountLabel: 'Connect Gmail', addAcct: () => googleConnectionController.open(), detail: !!activeBody, ...drafts.render(), ...provider.render(),
       d: activeBody ? { hasThread:!!thread,threadRows:thread?thread.messages.map(row=>chip(`${row.message.from}: ${row.message.subject}`,()=>{body=row;publish({open:row.message.id,nativeMailSelection:null});})):[], hasPreviousThread:!!thread&&thread.previousOffsets.length>0,previousThread:()=>void nextThreadPage(true),hasNextThread:thread?.nextOffset!=null, nextThread:()=>void nextThreadPage(), threadStatus:thread?`${thread.total} messages in this thread`:'', subj: activeBody.message.subject || '(no subject)', name: activeBody.message.from,
         ini: activeBody.message.from.slice(0, 1).toUpperCase(), meta: `To ${activeBody.message.to.join(', ')} · ${date(activeBody.message.receivedAt)}`,
-        hasHtml:!!formatted,noHtml:!formatted,htmlDocument:formatted?.document||'',htmlLoaded,hasRemoteImages:!!formatted?.remoteImages&&!remoteImagesShown,showImages:()=>{remoteImagesShown=true;publish();},failed:!!activeBody.failed,retry:()=>void open(activeBody.message),
+        hasHtml:!!formatted,noHtml:!formatted,htmlDocument:formatted?.document||'',htmlLoaded,hasRemoteImages:!!formatted?.remoteImages&&!showRemoteImages,showImages:()=>{remoteImagesShown=true;publish();},failed:!!activeBody.failed,retry:()=>void open(activeBody.message),
         body: activeBody.loading?'Loading message…':activeBody.bodyText || '(Empty message)', loading:!!activeBody.loading,canLoadThread:!thread&&!activeBody.loading&&!!provider.capabilities()?.threads,loadThread:()=>void loadThread(), noPerson: true, hasPerson: false, hasAtt:!!activeBody.attachments?.length,atts:(activeBody.attachments||[]).map(a=>({name:a.name,size:`${a.size} bytes · ${a.supported?'Review attachment':provider.capabilities()?.opaqueAttachments&&a.size<=5*1024*1024?'No preview · Save to Files':'Unsupported type or size'}`,open:()=>void openAttachment(activeBody,a)})),
         links:activeLinks,hasLinks:activeLinks.length>0,
         canTrash:!!provider.capabilities()?.mailboxMutations&&!!activeBody.historyId,
@@ -748,7 +750,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   };
   const mount = p.componentDidMount, unmount = p.componentWillUnmount;
   p.componentDidMount = function () {
-    mount.call(this); shell = this; sessionId = connectionController.getCloudClient()?.sessionId;
+    mount.call(this); shell = this;
+    this.inboxImagePreferenceChanged=()=>{remoteImagesShown=false;publish();};
+    window.addEventListener('alpha:device-settings',this.inboxImagePreferenceChanged);
+    initializeDevicePreferences(); sessionId = connectionController.getCloudClient()?.sessionId;
     openInboxHandler = () => this.openView?.('inbox', { open: null, q: null });
     this.inboxConnectionUnsubscribe = connectionController.subscribe(() => {
       const next = connectionController.getCloudClient()?.sessionId;
@@ -778,6 +783,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   };
   p.componentWillUnmount = function () {
     closeMailQuestion?.();closeMailQuestion=undefined;noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});
+    window.removeEventListener('alpha:device-settings',this.inboxImagePreferenceChanged);
     document.removeEventListener('visibilitychange',this.inboxVisibility);
     this.inboxConnectionUnsubscribe?.(); void this.inboxResume?.then((handle: Bag) => handle?.remove()); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
     shell = undefined; openInboxHandler = null; clear(); setAttention({ state: 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null }); unmount?.call(this);

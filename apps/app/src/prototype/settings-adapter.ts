@@ -5,7 +5,7 @@ import {openNotificationRecovery} from '../browser/notification-recovery';
 import {openAlertSoundRecovery,openDevicePreferencesRecovery,openDeviceRolesRecovery} from '../browser/preference-recovery';
 import {notificationDocument} from '../browser/notification-store';
 import {alertSoundDocument,deviceRolesDocument} from '../browser/preference-documents';
-import {readDevicePreferences} from '../browser/device-preferences';
+import {cachedDevicePreferences,initializeDevicePreferences,editDevicePreferences,readDevicePreferences} from '../browser/device-preferences';
 import { registerPlugin } from '../platform-plugins';
 import { broaderPageNotice, switchValue } from './native-adapter';
 import { Capacitor } from '@capacitor/core';
@@ -150,7 +150,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
-  let passwordOpening=false;
+  let passwordOpening=false,mailImagesSaving=false;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
@@ -297,7 +297,10 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     refreshPasswordManager();
   }
   p.componentDidMount = function () {
-    mount.call(this); owner = this; void refresh(); void refreshCapabilities();
+    mount.call(this); owner = this;
+    this.mailImagePreferenceChanged=changed;
+    window.addEventListener('alpha:device-settings',this.mailImagePreferenceChanged);
+    initializeDevicePreferences(); void refresh(); void refreshCapabilities();
     this.passwordLifecycle = passwordManagerLifecycle(changed);
     if(!new URLSearchParams(location.search).has('theme')){
       // A read from storage or the system scheme carries a marker, so componentDidUpdate never writes it back.
@@ -339,6 +342,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.componentWillUnmount = function () {
     if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
+    window.removeEventListener('alpha:device-settings',this.mailImagePreferenceChanged);
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
     this.appearanceScheme?.removeEventListener?.('change',this.appearanceSchemeListener);
@@ -495,7 +499,20 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
           { kNav:true, label:'Check Gmail connection', lbl:'Check Gmail connection', chev:true, noAB:true, go:()=>{ gmailNotice = ''; void refreshCapabilities(); } },
-          info('Other connectors', 'Not available in this version')])];
+          info('Other connectors', 'Not available in this version')]),group([{
+            kTog:true,label:'Automatically load email images',aria:'Automatically load email images',
+            hasSub:true,sub:mailImagesSaving?'Saving…':cachedDevicePreferences()?'Load remote images when you open an email.':'Image preference unavailable. Reopen Settings to try again.',
+            on:cachedDevicePreferences()?.autoLoadMailImages===true,
+            track:cachedDevicePreferences()?.autoLoadMailImages?'background:var(--acc)':'background:var(--line)',
+            kx:cachedDevicePreferences()?.autoLoadMailImages?20:0,
+            toggle:async()=>{
+              const saved=cachedDevicePreferences();if(!saved||mailImagesSaving)return;
+              mailImagesSaving=true;changed();
+              try{await editDevicePreferences(state=>{state.autoLoadMailImages=!saved.autoLoadMailImages;});}
+              catch{api.toast('Email image preference could not be saved. Try again.');}
+              finally{mailImagesSaving=false;changed();}
+            }
+          }])];
       } else if (state.page === 'character' && page.hero?.kChar === true) {
         // The reference character page deliberately has no visible title.
         page.groups = browserDevProfile?[group([

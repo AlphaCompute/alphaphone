@@ -13,8 +13,8 @@ purifier.addHook('uponSanitizeAttribute',(node,data)=>{
     try{const url=new URL(data.attrValue);if(url.protocol==='https:'&&!url.username&&!url.password)node.setAttribute('data-alpha-link',url.href);}catch{}
   }
 });
-/** Email markup is isolated from app CSS and scripts. Remote images require an
- * explicit user tap. No requests, scripts, forms or navigation during preparation. */
+/** Email markup is isolated from app CSS and scripts. The caller applies the saved
+ * image preference. No requests, scripts, forms or navigation during preparation. */
 export function prepareMailHtml(html:string,showRemoteImages=false):{document:string;remoteImages:number}{
   if(new TextEncoder().encode(html).length>512*1024)throw Error('Formatted email is too large');
   const content=purifier.sanitize(html,{USE_PROFILES:{html:true},RETURN_DOM_FRAGMENT:true,ALLOW_DATA_ATTR:false,ADD_ATTR:['data-alpha-image','data-alpha-link'],ADD_TAGS:['style'],FORBID_TAGS:['form','input','button','textarea','select','iframe','object','embed','video','audio','source','link','meta','base'],FORBID_ATTR:['src','srcset','href','action','formaction','background','ping','target','autofocus']});
