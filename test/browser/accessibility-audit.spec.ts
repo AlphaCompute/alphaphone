@@ -189,8 +189,9 @@ const rows = (count: number) => Array.from({ length: count }, (_, index) => `<bu
 
 test('a control or label under the floating dock is reported; one that ends above it or scrolls clear is not', async ({ page }) => {
   await page.setViewportSize({ width: 400, height: 600 });
-  // Home may not put anything under the composer at all, scrollable or not.
+  // Home may flow under the composer, but its final content must scroll clear.
   await load(page, phone(`<div data-alpha-layer="home" style="position:absolute;inset:0;overflow-y:auto;z-index:10">${rows(12)}<p>Last line of Home</p></div>${composer}`));
+  await page.locator('[data-alpha-layer="home"]').evaluate(el=>{el.scrollTop=el.scrollHeight;});
   const home = format(await auditPage(page, { dock: true }));
   expect(rules(home)).toEqual(['obscured-by-dock']);
   expect(home.join('\n')).toContain('under composer');

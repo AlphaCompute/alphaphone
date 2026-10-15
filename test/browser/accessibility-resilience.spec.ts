@@ -390,21 +390,18 @@ async function openHome(page: Page, url: string, scale: number) {
 }
 
 for (const shell of HOME_SHELLS) for (const scale of [1, 1.5, 2]) {
-  test(`${shell.name} Home at ${scale * 100}% text draws nothing under the composer and reads top to bottom`, async ({ page }) => {
+  test(`${shell.name} Home at ${scale * 100}% text fills the screen and scrolls every app above the composer`, async ({ page }) => {
     await openHome(page, shell.url, scale);
     const home = page.locator('[data-alpha-layer="home"]');
     const top = await homeUnderDock(page);
     expect(top.docks).toBe(1);
-    expect(top.under, top.under.join(', ')).toEqual([]);
-    // Home's scroll area ends just above the bar; it is not merely padded.
-    expect(top.gap).toBeGreaterThanOrEqual(4);
-    expect(await readingOrderProblems(page)).toEqual([]);
+    expect(await home.evaluate(el=>Math.abs(el.getBoundingClientRect().bottom-document.querySelector('[data-screen]')!.getBoundingClientRect().bottom))).toBeLessThanOrEqual(1);
     // Every scroll position, and the end of the list: the last tile is wholly visible above the bar.
     for (const position of [0.33, 0.66, 1]) {
       await home.evaluate((el, fraction) => { el.scrollTop = (el.scrollHeight - el.clientHeight) * fraction; }, position);
       const at = await homeUnderDock(page);
-      expect(at.under, `${position}: ${at.under.join(', ')}`).toEqual([]);
-      expect(await readingOrderProblems(page)).toEqual([]);
+      expect(format(await auditPage(page,{dock:true}))).toEqual([]);
+      if(position===1){expect(at.under,at.under.join(', ')).toEqual([]);expect(await readingOrderProblems(page)).toEqual([]);}
     }
     const last = home.getByRole('button', { name: 'All apps', exact: true });
     await expect(last).toBeInViewport({ ratio: 1 });
@@ -418,35 +415,24 @@ for (const shell of HOME_SHELLS) for (const scale of [1, 1.5, 2]) {
   });
 }
 
-test('Home follows the dock when Android raises it and when the draft grows', async ({ page }) => {
-  await openHome(page, '/', 2);
-  const home = page.locator('[data-alpha-layer="home"]');
-  // Android's navigation bar inset lifts the composer (phone.css, .native-phone). 108px of padding did not follow it.
-  await page.evaluate(() => { document.documentElement.classList.add('native-phone'); document.documentElement.style.setProperty('--native-bottom-inset', '72px'); });
-  await expect.poll(async () => (await homeUnderDock(page)).gap).toBeGreaterThanOrEqual(4);
-  expect((await homeUnderDock(page)).under).toEqual([]);
-  const raised = (await home.boundingBox())!.height;
-  // A draft of several lines makes the bar taller; Home's scroll area ends above it again.
-  await page.getByRole('textbox', { name: 'Ask Alpha', exact: true }).fill('one\ntwo\nthree\nfour\nfive');
-  await expect.poll(async () => (await home.boundingBox())!.height).toBeLessThan(raised - 20);
-  const grown = await homeUnderDock(page);
-  expect(grown.under, grown.under.join(', ')).toEqual([]);
-  expect(grown.gap).toBeGreaterThanOrEqual(4);
-  await home.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  await expect(home.getByRole('button', { name: 'All apps', exact: true })).toBeInViewport({ ratio: 1 });
+async function homeHasClearance(page:Page){return page.locator('[data-alpha-home-layout]').evaluate(el=>{const screen=document.querySelector('[data-screen]')!.getBoundingClientRect(),bar=document.querySelector('[data-alpha-layer="composer"]')!.getBoundingClientRect();return parseFloat(getComputedStyle(el).paddingBottom)>=screen.bottom-bar.top+4;});}
+test('Home keeps enough scroll clearance when Android raises the dock and when the draft grows',async({page})=>{
+ await openHome(page,'/',2);const home=page.locator('[data-alpha-layer="home"]'),height=(await home.boundingBox())!.height;
+ await page.evaluate(()=>{document.documentElement.classList.add('native-phone');document.documentElement.style.setProperty('--native-bottom-inset','72px');});
+ await expect.poll(()=>homeHasClearance(page)).toBe(true);
+ await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('one\ntwo\nthree\nfour\nfive');
+ await expect.poll(()=>homeHasClearance(page)).toBe(true);expect((await home.boundingBox())!.height).toBe(height);
+ await home.evaluate(el=>{el.scrollTop=el.scrollHeight;});expect((await homeUnderDock(page)).under).toEqual([]);await expect(home.getByRole('button',{name:'All apps',exact:true})).toBeInViewport({ratio:1});
 });
-
-test('a status line stacked on the composer shortens Home without moving its rows', async ({ page }) => {
-  await openHome(page, '/', 1);
-  const home = page.locator('[data-alpha-layer="home"]'), tile = home.getByRole('button', { name: 'Inbox', exact: true });
-  const before = { tile: (await tile.boundingBox())!.y, height: (await home.boundingBox())!.height };
-  // What the draft status does at startup: a block above the bar, inside the composer layer.
-  await page.evaluate(() => { const block = document.createElement('div'); block.dataset.testStack = ''; block.style.height = '40px'; document.querySelector('[data-alpha-layer="composer"]')!.prepend(block); });
-  await expect.poll(async () => Math.round(before.height - (await home.boundingBox())!.height)).toBe(40);
-  expect((await tile.boundingBox())!.y).toBeCloseTo(before.tile, 0);
-  expect((await homeUnderDock(page)).under).toEqual([]);
-  await page.evaluate(() => document.querySelector('[data-test-stack]')!.remove());
-  await expect.poll(async () => Math.round((await home.boundingBox())!.height)).toBe(Math.round(before.height));
+test('a status line on the composer adds Home scroll clearance without moving its rows',async({page})=>{
+ await openHome(page,'/',1);const home=page.locator('[data-alpha-layer="home"]'),tile=home.getByRole('button',{name:'Inbox',exact:true});
+ const before={tile:(await tile.boundingBox())!.y,height:(await home.boundingBox())!.height,padding:await page.locator('[data-alpha-home-layout]').evaluate(el=>parseFloat(getComputedStyle(el).paddingBottom))};
+ await page.evaluate(()=>{const block=document.createElement('div');block.dataset.testStack='';block.style.height='40px';document.querySelector('[data-alpha-layer="composer"]')!.prepend(block);});
+ await expect.poll(()=>page.locator('[data-alpha-home-layout]').evaluate(el=>parseFloat(getComputedStyle(el).paddingBottom))).toBe(before.padding+40);
+ expect((await tile.boundingBox())!.y).toBeCloseTo(before.tile,0);expect((await home.boundingBox())!.height).toBe(before.height);
+ await expect.poll(()=>homeHasClearance(page)).toBe(true);
+ await page.evaluate(()=>document.querySelector('[data-test-stack]')!.remove());
+ await expect.poll(()=>page.locator('[data-alpha-home-layout]').evaluate(el=>parseFloat(getComputedStyle(el).paddingBottom))).toBe(before.padding);
 });
 
 test.describe('landscape Home', () => {
