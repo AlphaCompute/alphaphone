@@ -281,7 +281,8 @@ export const browserCamera={
  },
  async switchCamera(options:{direction:'front'|'back'}){return browserCamera.startPreview({...options,resolution:{width:1280,height:720},mirror:options.direction==='front'});},
  async setZoom(input:{zoom:number}){if(!preview)throw Error('Start camera first.');if(!Number.isFinite(input.zoom)||input.zoom<1||input.zoom>8)throw Error('Digital zoom must be between 1× and 8×.');if(videoCapture.state().isRecording)throw Error('Stop recording before changing zoom.');cameraFocus.clear();zoom=input.zoom;preview.style.transform=`scale(${mirror?-zoom:zoom},${zoom})`;},
- lightingLabel(enabled:boolean){const torch=stream?.getVideoTracks()[0]?.getCapabilities() as (MediaTrackCapabilities&{torch?:boolean})|undefined;return `${browserDevProfile&&!torch?.torch?'Screen light':'Flash'} ${enabled?'on':'off'}`;},
+ flashAvailable(){return browserDevProfile||((stream?.getVideoTracks()[0]?.getCapabilities?.() as (MediaTrackCapabilities&{torch?:boolean})|undefined)?.torch===true);},
+ lightingLabel(enabled:boolean){const torch=stream?.getVideoTracks()[0]?.getCapabilities?.() as (MediaTrackCapabilities&{torch?:boolean})|undefined;return `${browserDevProfile&&!torch?.torch?'Screen light':'Flash'} ${enabled?'on':'off'}`;},
  async setSettings(input:{settings:{flash:string}}){
   if(!['on','off'].includes(input.settings.flash))throw Error('Choose flash on or off.');
   const track=stream?.getVideoTracks()[0],token=generation,enabled=input.settings.flash==='on';if(!track)throw Error('Start camera first.');

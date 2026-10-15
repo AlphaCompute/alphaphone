@@ -1613,7 +1613,7 @@
 
   <div data-alpha-app-header="main" data-alpha-app-header-overlay style="position: absolute; left: 0; right: 0; top: 44px; height: 52px; display: flex; align-items: center; justify-content: space-between; padding: 0 10px; z-index: 2">
     <sc-if value="{{showAppBack}}"><button class="app-header-back" aria-label="Back to apps" onClick="{{backToApps}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button></sc-if><span data-alpha-app-title class="app-header-context">Camera</span>
-    <button class="ib" aria-label="{{camera.flashLabel}}" onClick="{{camera.toggleFlash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{camera.flashIcon}}"></path></svg></button>
+    <sc-if value="{{camera.flashAvailable}}"><button class="ib" aria-label="{{camera.flashLabel}}" onClick="{{camera.toggleFlash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{camera.flashIcon}}"></path></svg></button></sc-if>
     <sc-if value="{{camera.importAvailable}}"><button data-alpha-header-icon-action aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Choose image</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.photo}}"></path></svg></button><button data-alpha-header-icon-action aria-label="Scan document" onClick="{{camera.scanDocument}}" style="min-height:44px;padding:0 12px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Scan document</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.camScan}}"></path></svg></button></sc-if>
     <sc-if value="{{camera.rec}}">
       <span role="timer" aria-label="Recording" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;background:rgba(0,0,0,.75);color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums"><span class="dot" aria-hidden="true" style="width:7px;height:7px;border-radius:4px;background:#ff453a"></span>{{camera.recTime}}</span>
@@ -1721,7 +1721,6 @@
     <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 8px; gap: 6px; flex-shrink: 0">
       <button class="ib" aria-label="Cancel selection" onClick="{{photos.selCancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
       <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em">{{photos.selN}}</h1>
-      </sc-if>
     </div>
   </sc-if>
 
@@ -1824,10 +1823,10 @@
   <sc-if value="{{photos.album}}">
     <div ref="{{photos.albumFocus}}" data-alpha-subview="photos-album" inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" class="enter" style="position: absolute; inset: 0; background: var(--bg); display: flex; flex-direction: column; z-index: 4">
       <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px; gap: 2px; flex-shrink: 0">
-        <button class="ib" aria-label="Back to albums" onClick="{{photos.alb.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
+        <button class="ib" aria-label="{{photos.albumBackLabel}}" disabled="{{photos.selectionBusy}}" onClick="{{photos.alb.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <h1 data-alpha-app-title class="serif" style="margin: 0 0 0 4px; font-size: 26px; letter-spacing: -.01em; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.alb.title}}</h1>
         <span style="font-size: 13px; color: var(--mut); padding: 0 8px">{{photos.alb.count}}</span>
-        <sc-if value="{{photos.alb.isTrash}}"><button class="tap" aria-label="Select deleted items" onClick="{{photos.alb.select}}" style="min-height:44px;padding:0 12px;font:inherit;color:var(--acct)">{{photos.alb.selectLabel}}</button><sc-if value="{{photos.alb.selecting}}"><button class="tap" onClick="{{photos.alb.selectAll}}" style="min-height:44px;padding:0 12px;color:var(--acct)">Select shown</button></sc-if></sc-if>
+        <sc-if value="{{photos.alb.isTrash}}"><sc-if value="{{photos.alb.notSelecting}}"><button class="tap" aria-label="Select deleted items" disabled="{{photos.selectionBusy}}" onClick="{{photos.alb.select}}" style="min-height:44px;padding:0 12px;font:inherit;color:var(--acct)">Select</button></sc-if><sc-if value="{{photos.alb.selecting}}"><button class="tap" aria-label="{{photos.alb.selectAllLabel}} deleted items" disabled="{{photos.selectionBusy}}" onClick="{{photos.alb.selectAll}}" style="min-height:44px;padding:0 12px;color:var(--acct);white-space:nowrap">{{photos.alb.selectAllLabel}}</button></sc-if></sc-if>
         <sc-if value="{{photos.alb.isCustom}}"><button class="ib" aria-label="Manage album" onClick="{{photos.alb.manage}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.more}}"></path></svg></button></sc-if>
         <sc-if value="{{photos.alb.canEmpty}}">
           <button class="ib" aria-label="Delete all forever" onClick="{{photos.alb.emptyTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -1887,7 +1886,7 @@
 
   <sc-if value="{{photos.selecting}}">
     <div inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" style="position: absolute; left: 0; right: 0; bottom: 96px; height: 64px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
-      <sc-if value="{{photos.trashSelecting}}"><button class="tap" aria-label="Recover selected" onClick="{{photos.selRecover}}" style="min-height:44px;padding:0 16px;color:var(--acct);font-weight:600">Recover</button><sc-if value="{{photos.trashCanDelete}}"><button class="tap" aria-label="Delete selected forever" onClick="{{photos.selDeleteForever}}" style="min-height:44px;padding:0 16px;color:var(--fg)">Delete</button></sc-if></sc-if><sc-if value="{{photos.normalSelecting}}">
+      <sc-if value="{{photos.trashSelecting}}"><button class="tap" aria-label="Recover selected" disabled="{{photos.selectionDisabled}}" onClick="{{photos.selRecover}}" style="min-height:44px;padding:0 16px;color:var(--acct);font-weight:600">Recover</button><sc-if value="{{photos.trashCanDelete}}"><button class="tap" aria-label="Delete selected forever" disabled="{{photos.selectionDisabled}}" onClick="{{photos.selDeleteForever}}" style="min-height:44px;padding:0 16px;color:var(--fg)">Delete</button></sc-if></sc-if><sc-if value="{{photos.normalSelecting}}">
       <button class="ib" aria-label="Share selected" onClick="{{photos.selShare}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
       <button class="ib" aria-label="Favorite selected" onClick="{{photos.selFav}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.heart}}"></path></svg></button>
       <button class="ib" aria-label="Delete selected" onClick="{{photos.selDel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -1939,8 +1938,8 @@
   <sc-if value="{{photos.albumManager}}">
     <div ref="{{photos.am.modalRef}}" style="position:absolute;inset:0;z-index:20">
     <button aria-hidden="true" tabindex="-1" aria-label="Close album management" onClick="{{photos.am.close}}" style="position:absolute;inset:0;z-index:20;background:var(--scrim)"></button>
-    <div class="enter" role="dialog" aria-modal="true" aria-label="Album management" style="color:var(--fg);position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
-      <div style="display:flex;align-items:center;gap:12px"><h2 class="serif" style="font-size:26px;flex:1;margin:0">{{photos.am.title}}</h2><button class="ib" aria-label="Close album management" onClick="{{photos.am.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
+    <div class="enter" data-alpha-album-manager role="dialog" aria-modal="true" aria-label="{{photos.am.title}}" style="color:var(--fg);position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--s1);border-radius:28px 28px 0 0;padding:24px 24px 44px;max-height:80%;overflow-y:auto;box-sizing:border-box">
+      <div style="display:flex;align-items:center;gap:12px"><h2 class="serif" style="font-size:26px;flex:1;margin:0">{{photos.am.title}}</h2><button class="ib" aria-label="Close dialog" onClick="{{photos.am.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></div>
       <div role="status" style="color:var(--mut);font-size:14px;margin-top:12px">{{photos.am.error}}</div>
       <sc-if value="{{photos.am.info}}"><p style="font-size:15px;color:var(--mut)">{{photos.am.description}}</p><button aria-label="Add to album" onClick="{{photos.am.choose}}" style="width:100%;padding:16px;border-radius:24px;background:var(--s2);color:var(--fg)">Add to album</button></sc-if>
       <sc-if value="{{photos.am.choosing}}">
