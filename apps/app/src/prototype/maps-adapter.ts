@@ -103,10 +103,11 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
     void shareMap(data,owner.abort.signal).then(result=>{if(sharing===owner&&current()&&result==='copied')api?.toast('Copied');}).catch(()=>{}).finally(()=>{if(sharing===owner)sharing=undefined;});
   }
   const identities = new WeakMap<Selection, object>();
-  const invalidate = () => {
+  // Basemap readiness changes presentation, not the selected location capability.
+  const invalidate = (selectionChanged = true) => {
     if(sharing&&!sharing.current()){sharing.abort.abort();sharing=undefined;}
     const token = ++revision;
-    if (selected) {
+    if (selectionChanged && selected) {
       let identity = identities.get(selected);
       if (!identity) { identity = {}; identities.set(selected, identity); }
       const route = (directions || navigating) && state?.route.phase === 'ready' ? state.route.value : null;
@@ -119,8 +120,8 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
       // routes expose no stale route read capability.
       publishMapsSelection(route ? 'map-route' : 'map-place', identity, token, read);
     }
-    else if (searching && query.trim()) publishMapsSelection('map-search', searchIdentity, token);
-    else clearMapsSelection();
+    else if (selectionChanged && searching && query.trim()) publishMapsSelection('map-search', searchIdentity, token);
+    else if (selectionChanged) clearMapsSelection();
     queueMicrotask(() => { if (!disposed && token === revision && api?.isActive()) api.set({ nativeMapsRevision: token }); });
   };
   function ensure() {
@@ -272,7 +273,7 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
     Object.assign(data, {
       rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...mapsDiagnostics(),agentNavigation:{offered:agentNavigation.registered(),relay:residentMapsNavigationPort.relay},lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
       notNative:false, hasNativeMap:true,globalBasemap:globalMap,regionalBasemap:!globalMap,mapLabel:globalMap?'World map':'Regional map',mapAttribution:globalMap?globalBasemap.attribution:mapsAttribution(),attributionBottom:directions?310:isPlace?410:130,
-      mapRef:(element:HTMLElement)=>{if(element&&basemap){if((element!==planeElement||planeBasemap!==basemap)&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;planeBasemap=basemap;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,basemap,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}pinTap=onPin;plane?.update(region&&outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
+      mapRef:(element:HTMLElement)=>{if(element&&basemap){if((element!==planeElement||planeBasemap!==basemap)&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;planeBasemap=basemap;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,basemap,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate(false);},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate(false);});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate(false);});}}pinTap=onPin;plane?.update(region&&outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
       native: true, nativeStatusVisible:!isPlace||!!(mapFailed||outsideCoverage||snapshot.route.error||error||message), nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
       nativeSavedEmpty: !saved.length, nativeLocationBusy: locating, nativeLocation: locate,
       nativeLocationState:locationState,nativeMapState:mapState,nativeMapStatus:status===mapStatus?'':mapStatus,
