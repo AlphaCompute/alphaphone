@@ -206,3 +206,13 @@ is the disposable real-CalendarProvider follow-up; adding it does not run it.
 Normal native producer/build qualification, installed identity, actual owner
 consent, Google write/readback, Undo/restart and physical acceptance remain
 separate gates. Do not mark those complete from browser tests or source compilation.
+
+The native journal uses encrypted-slot compare-and-exchange across Activity
+instances. Pause revokes the grant immediately, independently of a pending
+network read, and retains reserved storage capacity for revocation. Queued calls
+from a retired view are refused before new reads. Historical write receipts stay
+bound to stable owner/device/source identity; a credential generation still
+requires fresh write admission. After an interrupted update, an exact native
+read can confirm the intended semantic result and settle/acknowledge its receipt
+without applying the update again. Definite acknowledged response bodies are
+compacted; uncertain claims remain retained.

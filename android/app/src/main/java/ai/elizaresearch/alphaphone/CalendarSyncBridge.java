@@ -120,8 +120,9 @@ final class CalendarSyncBridge {
  private JSObject projection(Context context)throws Exception{return JSObject.fromJSONObject(new JSONObject().put("status","ready").put("lease",context.id).put("binding",context.binding).put("destination",context.destination).put("events",context.events).put("enabled",enabled(context)));}
  void call(PluginCall call){String kind=call.getString("kind","");
  if(kind.equals("pause")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();try{boolean saved=false;for(int attempt=0;attempt<8&&!saved;attempt++){JSONObject data=saved();data.put("enabled",false);try{save(data,true);saved=true;}catch(IllegalStateException conflict){if(attempt==7)throw conflict;}}call.resolve(status("paused"));}catch(Exception unavailable){call.resolve(status("unavailable"));}return;}
- if(kind.equals("cancel")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();call.resolve(status("cancelled"));return;}try{worker.execute(()->{
+ if(kind.equals("cancel")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();call.resolve(status("cancelled"));return;}final long requestedEpoch=epoch;try{worker.execute(()->{
   try{
+   if(requestedEpoch!=epoch||retired){call.resolve(status("cancelled"));return;}
    if(kind.equals("prepare")&&!granted()){call.resolve(status("permission-required"));return;}
    if(kind.equals("prepare")){Context context=prepare(call.getObject("selection",new JSObject()));call.resolve(projection(context));return;}
    Context context=lease;if(context==null||!context.id.equals(call.getString("lease")))throw new SecurityException("Review Calendar sync again");check(context,false);
