@@ -132,12 +132,12 @@ export async function openNativeLiveStream(input: {
   let echoCancelled = false;
   try {
     input.signal.throwIfAborted();
+    input.signal.addEventListener('abort', abort, { once: true });
     const result = await plugin.startLiveCapture({ captureId, echoCancel: input.echoCancel });
     if (result?.captureId !== captureId || result.sampleRate !== 16000) throw Error('Live capture identity changed.');
     echoCancelled = input.echoCancel && result.echoCancelled === true;
     input.signal.throwIfAborted();
-  } catch (error) { stream.cancel(); await stopNative(); throw error; }
-  input.signal.addEventListener('abort', abort, { once: true });
+  } catch (error) { input.signal.removeEventListener('abort', abort); stream.cancel(); await stopNative(); throw error; }
   const startedAt = Date.now();
   return {
     startedAt,
