@@ -21,9 +21,9 @@ test('calendar card names its source and read time for an event and for an empty
  const source=card.locator('[data-alpha-home-calendar-source]');
  const times=await nearNow(page);
  const origin=card.locator('[data-alpha-home-calendar-origin]');
- await expect(origin).toHaveText('This app');
- expect(times.map(time=>`Read ${time}`)).toContain(await source.textContent());
- expect(times.map(time=>`Read ${time} from the calendar saved in this browser`)).toContain(await card.getAttribute('aria-description'));
+ await expect(origin).toHaveText('');
+ await expect(source).toHaveCount(0);
+ expect(times.map(time=>`Read ${time} from the calendar saved in this app`)).toContain(await card.getAttribute('aria-description'));
  await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
  const expected=await page.evaluate(async()=>{
   const {BrowserCalendar}=await import('/src/browser/calendar.ts'),date=new Date(Date.now()+2*86400000);date.setHours(9,30,0,0);
@@ -34,11 +34,11 @@ test('calendar card names its source and read time for an event and for an empty
  await page.reload();
  await expect(card).toHaveAccessibleName(`Open calendar event: Synthetic overview event, ${expected.day}, ${expected.footer}`);
  await expect(card.locator('.home-calendar-footer')).toHaveText(expected.footer);
- await expect(source).toHaveText(/^Read \d{1,2}:\d{2}/);
+ await expect(source).toHaveCount(0);
  await expect(origin).toHaveText('In this app');
- await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
- // The time and the source share the last row without clipping either or the card.
- expect(await card.evaluate(element=>{const footer=element.querySelector<HTMLElement>('.home-calendar-footer')!,line=element.querySelector<HTMLElement>('[data-alpha-home-calendar-source]')!,origin=element.querySelector<HTMLElement>('[data-alpha-home-calendar-origin]')!,a=footer.getBoundingClientRect(),b=line.getBoundingClientRect(),box=element.getBoundingClientRect();return {footerClipped:footer.scrollWidth>footer.clientWidth,sourceClipped:line.scrollWidth>line.clientWidth,originClipped:origin.scrollWidth>origin.clientWidth,apart:b.left>=a.right,inside:b.right<=box.right&&b.bottom<=box.bottom,overflow:element.scrollWidth-element.clientWidth};})).toEqual({footerClipped:false,sourceClipped:false,originClipped:false,apart:true,inside:true,overflow:0});
+ await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this app$/);
+ // Successful read metadata stays accessible while the event time remains unclipped.
+ expect(await card.evaluate(element=>{const footer=element.querySelector<HTMLElement>('.home-calendar-footer')!,a=footer.getBoundingClientRect(),box=element.getBoundingClientRect();return {footerClipped:footer.scrollWidth>footer.clientWidth,inside:a.right<=box.right&&a.bottom<=box.bottom,overflow:element.scrollWidth-element.clientWidth};})).toEqual({footerClipped:false,inside:true,overflow:0});
  await page.screenshot({path:info.outputPath('home-calendar-source.png'),animations:'disabled'});
 });
 
@@ -59,7 +59,7 @@ test('events of an app calendar hidden in Calendar stay off Home until it is sho
  await expect(card).toHaveAccessibleName('Open your calendar');
  await expect(card).toHaveAttribute('data-alpha-home-calendar-event','false');
  // The calendar was still read; only its display is off.
- await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveText(/^Read \d{1,2}:\d{2}/);
+ await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
  await toggle();await page.reload();
  await expect(card).toContainText('Synthetic hidden event');
 });
@@ -67,7 +67,7 @@ test('events of an app calendar hidden in Calendar stay off Home until it is sho
 test('a failed calendar read shows the failure with no read time, and opening Calendar from the card reads it again',async({page})=>{
  await page.addInitScript(offline);await page.goto('/');
  const card=calendarCard(page),source=card.locator('[data-alpha-home-calendar-source]');
- await expect(source).toHaveText(/^Read \d/);
+ await expect(source).toHaveCount(0);
  await page.evaluate(async()=>{
   const {BrowserCalendar}=await import('/src/browser/calendar.ts'),proto=BrowserCalendar.prototype as any;
   (window as any).__calendarList=proto.list;proto.list=()=>Promise.reject(Error('Calendar storage unavailable'));
@@ -92,8 +92,8 @@ test('a failed calendar read shows the failure with no read time, and opening Ca
  await expect.poll(()=>page.evaluate(()=>(window as any).__calendarReads)).toBeGreaterThan(0);
  await returnToApps(page);
  await expect(card).toContainText('No upcoming events');
- await expect(source).toHaveText(/^Read \d{1,2}:\d{2}/);
- await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('This app');
+ await expect(source).toHaveCount(0);
+ await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
 });
 
 test('an overdue reminder stays on Home, marked overdue with its own source, and opens in Calendar',async({page,context},info)=>{
@@ -121,14 +121,13 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await expect(card.locator('.home-calendar-footer')).toHaveText(due);
  // Its source is the reminder store and that store's read time, not a calendar.
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
- const read=await card.locator('[data-alpha-home-calendar-source]').textContent();
- expect(read).toMatch(/^Read \d{1,2}:\d{2}/);
+ await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
  // The event in progress is not hidden: it is the next item, on its own line with its own source.
  const next=card.locator('[data-alpha-home-calendar-next-line]');
  await expect(next.locator('.home-calendar-next-text')).toHaveText('Next: Synthetic in-progress event Now');
  const nextRead=await next.locator('[data-alpha-home-calendar-next-source]').textContent();
- expect(nextRead).toMatch(/^In this app · Read \d{1,2}:\d{2}/);
- await expect(card).toHaveAttribute('aria-description',`Overdue reminder saved on this browser, read ${read!.slice('Read '.length)}. Next: Synthetic in-progress event, Now. In this app. ${nextRead!.slice('In this app · '.length)} from the calendar saved in this browser`);
+ expect(nextRead).toBe('In this app');
+ await expect(card).toHaveAttribute('aria-description',/^Overdue reminder saved on this browser, read .+\. Next: Synthetic in-progress event, Now\. In this app\. Read .+ from the calendar saved in this app$/);
  // The next line stays inside the card without clipping its text.
  expect(await card.evaluate(element=>{const line=element.querySelector<HTMLElement>('.home-calendar-next-text')!,a=line.getBoundingClientRect(),box=element.getBoundingClientRect();return {clipped:line.scrollWidth>line.clientWidth,inside:a.bottom<=box.bottom&&a.right<=box.right};})).toEqual({clipped:false,inside:true});
  // It is still there after another render and a reload: nothing dismissed it.
@@ -150,7 +149,7 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await expect(card).toContainText('Synthetic in-progress event');
  await expect(card.locator('[data-alpha-home-calendar-next-line]')).toHaveCount(0);
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('In this app');
- await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
+ await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this app$/);
 });
 
 test('an upcoming reminder is attributed to the reminder store, not to a calendar',async({page,context})=>{
@@ -165,9 +164,8 @@ test('an upcoming reminder is attributed to the reminder store, not to a calenda
  await expect(card).toContainText('Synthetic upcoming reminder');
  await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
  await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('Reminder');
- const read=await card.locator('[data-alpha-home-calendar-source]').textContent();
- expect(read).toMatch(/^Read \d{1,2}:\d{2}/);
- await expect(card).toHaveAttribute('aria-description',`Reminder saved on this browser, read ${read!.slice('Read '.length)}`);
+ await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
+ await expect(card).toHaveAttribute('aria-description',/^Reminder saved on this browser, read .+/);
  await expect(card).not.toContainText(/In this app|This app/);
 });
 

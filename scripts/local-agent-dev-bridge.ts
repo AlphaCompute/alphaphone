@@ -1,3 +1,5 @@
+import {createGmailAgentDevBroker} from './gmail-agent-dev-broker.ts';
+import {homedir} from 'node:os';
 import {automationsRouteAllowed, isAutomationsPath} from '../apps/app/src/runtime/automations-route-policy.ts';
 import {dirname,join} from 'node:path';
 import {once} from 'node:events';
@@ -208,5 +210,7 @@ export function localAgentDevBridge():Plugin {
     const upgrade=(req:IncomingMessage,socket:Duplex,head:Buffer)=>{if(req.url?.startsWith(LOCAL_VOICE_WS_PATH))void handler.upgrade(req,socket,head);};
     server.httpServer?.on('upgrade',upgrade);server.httpServer?.once('close',()=>{server.httpServer?.off('upgrade',upgrade);handler.closeVoice();});
     server.middlewares.use((req,res,next)=>{if(req.url!==LOCAL_AGENT_BRIDGE_PATH){next();return;}void handler(req,res);});
+    const gmail=createGmailAgentDevBroker({profile:process.env.ALPHA_BROWSER_CLOUD_PROFILE||join(homedir(),'.local/share/alphaphone/browser-cloud'),tokenFile});
+    server.middlewares.use('/__alpha-owner-gmail',(req,res)=>{void gmail(req,res);});
   }};
 }

@@ -166,7 +166,9 @@ test.describe('launcher', () => {
     await expect(shade(page)).toHaveAttribute('aria-hidden', 'false');
   });
 
-  test('a Home that fits hands vertical touch drags to the page', async ({ page }) => {
+  for (const height of [915, 1200]) test(`a Home that fits hands vertical touch drags to the page at 412x${height}`, async ({ page }) => {
+    // Include the original compact-height dock-padding regression and a tall phone.
+    await page.setViewportSize({width:412,height});
     await home(page);
     const layer = page.locator('[data-alpha-layer="home"]');
     await expect(layer).toHaveAttribute('data-alpha-home-fits', 'true');

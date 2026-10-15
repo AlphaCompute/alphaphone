@@ -23,7 +23,11 @@ if(existsSync(metadata)){
   const previous=JSON.parse(readFileSync(metadata,'utf8'));
   if(Number.isInteger(previous.pid))try{process.kill(previous.pid,0);throw Error('The selected local profile already has a live process. Use its existing session or a separate profile.');}catch(error){if(error.code!=='ESRCH')throw error;}
 }
-const env={...configuredEnvironment,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ALPHA_ELIZA_SOURCE:source};
+const viteArgs=process.argv.slice(2);
+const portAt=viteArgs.findIndex(arg=>arg==='--port'||arg.startsWith('--port='));
+const vitePort=portAt<0?5317:Number(viteArgs[portAt].includes('=')?viteArgs[portAt].split('=')[1]:viteArgs[portAt+1]);
+if(!Number.isInteger(vitePort)||vitePort<1024||vitePort>65535)throw Error('Invalid preview port');
+const env={...configuredEnvironment,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:String(port),ALPHA_ELIZA_SOURCE:source,ALPHA_BROWSER_GMAIL_READ_BROKER:`http://127.0.0.1:${vitePort}/__alpha-owner-gmail`};
 const children=new Set();let stopping=false;
 function stop(signal='SIGTERM'){if(stopping)return;stopping=true;for(const child of children)child.kill(signal);}
 function run(command,args,childEnv){const child=spawn(command,args,{stdio:'inherit',env:childEnv});children.add(child);child.on('error',error=>{console.error(error.message);process.exitCode=1;stop();});child.on('exit',code=>{children.delete(child);if(!stopping){process.exitCode=code||0;stop();}});return child;}
@@ -31,7 +35,6 @@ process.on('SIGINT',()=>stop('SIGINT'));process.on('SIGTERM',()=>stop());
 run(process.execPath,['scripts/start-local-remote.mjs'],env);
 // Development server: explicitly opts into test mocks and developer surfaces.
 // Extra arguments (for example `npm run dev -- --port 5400`) go to Vite; the default port is 5317.
-const viteArgs=process.argv.slice(2);
 const portArgs=viteArgs.some(arg=>arg==='--port'||arg.startsWith('--port='))?[]:['--port','5317'];
 console.log(`Starting the local agent on 127.0.0.1:${port} (profile ${profile}) and the development server.`);
 run(process.execPath,['node_modules/vite/bin/vite.js','--host','127.0.0.1',...portArgs,'--strictPort',...viteArgs],{

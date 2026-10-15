@@ -16,6 +16,8 @@ test('standalone preview hides simulated system controls and developer tools', a
 test('tools and launcher presentation require explicit development flags', async ({page}) => {
   await page.goto('/?tools=1&shell=launcher');
   await expect(page.getByRole('button',{name:'Device controls',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Home',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Notes',exact:true}).click();
   await expect(page.getByRole('button',{name:'Home',exact:true})).toBeVisible();
 });
 
@@ -92,12 +94,13 @@ test('standalone Home scrolls to the screen edge without a simulated status-bar 
   const composer=page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]');
   expect(bounds!.y+bounds!.height).toBeCloseTo(usable!.y+usable!.height,1);
   await home.evaluate(node=>{node.scrollTop=node.scrollHeight;});
-  const lastApp=home.getByRole('button').last();
+  const lastApp=home.getByRole('button',{name:'All apps',exact:true});
   await expect.poll(async()=>{const dock=await composer.boundingBox(),last=await lastApp.boundingBox();return dock!.y-(last!.y+last!.height);}).toBeGreaterThanOrEqual(6);
   await home.evaluate(node=>{node.scrollTop=0;});
   expect((await home.boundingBox())!.height).toBeGreaterThan(usable!.height-140);
   const tile=await home.getByRole('button').first().boundingBox();
   expect(tile!.y-bounds!.y).toBeLessThan(16);
+
   await home.evaluate(node=>{node.scrollTop=80;});
   expect((await home.boundingBox())!.y).toBeCloseTo(usable!.y,1);
   await page.screenshot({path:testInfo.outputPath('home-scrolled-fullscreen.png')});

@@ -123,22 +123,22 @@ test('brief card: shown only for a retained result, with agent, run time and fai
   assert.deepEqual(['finished', 'succeeded', 'completed', '', undefined].map(H.briefOutcome), ['ran', 'ran', 'ran', 'ran', 'ran']);
   assert.deepEqual(['failed', 'cancelled', 'error'].map(H.briefOutcome), ['failed', 'failed', 'failed']);
 });
-test('calendar source: names where and when the item was read; no time is claimed without a read', () => {
+test('calendar source: useful names stay visible while read provenance remains accessible', () => {
   const base = {overdue: false, readAt: at(15, 4), now, native: true};
-  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work'}), {origin: 'Work', read: 'Read 3:04 PM', description: 'Work. Read 3:04 PM from calendars on this device'});
-  assert.equal(H.presentHomeCalendarSource({...base, state: 'ready'}).origin, 'Device');
-  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', native: false, truncated: true}), {origin: 'This app', read: 'Read 3:04 PM', description: 'Read 3:04 PM from the calendar saved in this browser; only the first 2,000 events were read'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work'}), {origin: 'Work', read: '', description: 'Work. Read 3:04 PM from calendars on this device'});
+  assert.equal(H.presentHomeCalendarSource({...base, state: 'ready'}).origin, '');
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', native: false, truncated: true}), {origin: '', read: '', description: 'Read 3:04 PM from the calendar saved in this app; only the first 2,000 events were read'});
   const old = H.presentHomeCalendarSource({...base, state: 'ready', readAt: at(8, 15, 6)});
-  assert.deepEqual([old.read, old.description], ['Read Tue, Oct 6', 'Read Tue, Oct 6 8:15 AM from calendars on this device'], 'an old read shows its date');
+  assert.deepEqual([old.read, old.description], ['', 'Read Tue, Oct 6 8:15 AM from calendars on this device'], 'an old read retains its date in the accessible description');
   for (const state of ['loading', 'other']) assert.deepEqual(H.presentHomeCalendarSource({...base, state}), {origin: '', read: '', description: ''});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', readAt: null}), {origin: '', read: '', description: ''});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error'}), {origin: '', read: 'Open Calendar to retry', description: 'Calendar could not be read. Open Calendar to retry.'});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'error', overdue: true}), {origin: '', read: '', description: 'Overdue reminder saved on this device'}, 'an overdue reminder keeps its own source when the calendar read failed');
   // A reminder is attributed to the reminder store and that store's read time, never the calendar's.
-  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work', reminder: true, reminderReadAt: at(14, 50)}), {origin: 'Reminder', read: 'Read 2:50 PM', description: 'Reminder saved on this device, read 2:50 PM'});
-  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'loading', native: false, reminder: true, reminderReadAt: at(8, 15, 6)}), {origin: 'Reminder', read: 'Read Tue, Oct 6', description: 'Reminder saved on this browser, read Tue, Oct 6 8:15 AM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', calendar: 'Work', reminder: true, reminderReadAt: at(14, 50)}), {origin: 'Reminder', read: '', description: 'Reminder saved on this device, read 2:50 PM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'loading', native: false, reminder: true, reminderReadAt: at(8, 15, 6)}), {origin: 'Reminder', read: '', description: 'Reminder saved on this browser, read Tue, Oct 6 8:15 AM'});
   assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', reminder: true, reminderReadAt: null}), {origin: 'Reminder', read: '', description: 'Reminder saved on this device'}, 'no read time is claimed for a reminder without a recorded read');
-  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', overdue: true, reminderReadAt: at(14, 50)}), {origin: '', read: 'Read 2:50 PM', description: 'Overdue reminder saved on this device, read 2:50 PM'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, state: 'ready', overdue: true, reminderReadAt: at(14, 50)}), {origin: '', read: '', description: 'Overdue reminder saved on this device, read 2:50 PM'});
   assert.equal(H.presentHomeCalendarSource({...base, state: 'error', reminder: true, reminderReadAt: at(14, 50)}).read, 'Open Calendar to retry', 'a failed calendar read stays visible above an upcoming reminder');
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 0), 'Mon, Oct 5');
   assert.equal(H.homeAgendaHeader('Mon, Oct 5', 1), 'Overdue reminder');
@@ -149,14 +149,14 @@ test('calendar source: names where and when the item was read; no time is claime
 test('next item: an overdue reminder does not hide the next event, which keeps its own source', () => {
   const provenance = H.presentHomeCalendarSource({state: 'ready', overdue: false, readAt: at(15, 4), now, native: true, calendar: 'Work'});
   assert.deepEqual(H.presentHomeNext({title: 'Design review', begin: at(16), allDay: false, now, provenance}),
-    {text: 'Next: Design review 4:00 PM', source: 'Work · Read 3:04 PM', description: 'Next: Design review, 4:00 PM. Work. Read 3:04 PM from calendars on this device'});
+    {text: 'Next: Design review 4:00 PM', source: 'Work', description: 'Next: Design review, 4:00 PM. Work. Read 3:04 PM from calendars on this device'});
   assert.equal(H.presentHomeNext({title: 'Standup', begin: at(15), allDay: false, now, provenance}).text, 'Next: Standup Now', 'an event in progress is the next item');
   assert.equal(H.presentHomeNext({title: 'Offsite', begin: at(9, 0, 9), allDay: true, now, provenance}).text, 'Next: Offsite Fri, Oct 9');
   assert.equal(H.presentHomeNext({title: 'Dentist', begin: at(9, 30, 8), allDay: false, now, provenance}).text, 'Next: Dentist Thu, Oct 8 9:30 AM');
   // A reminder after the overdue one names the reminder store, not a calendar.
   const reminder = H.presentHomeCalendarSource({state: 'ready', overdue: false, reminder: true, reminderReadAt: at(14, 50), readAt: at(15, 4), now, native: false});
   assert.deepEqual(H.presentHomeNext({title: '  ', begin: at(17), allDay: false, now, provenance: reminder}),
-    {text: 'Next: Untitled event 5:00 PM', source: 'Reminder · Read 2:50 PM', description: 'Next: Untitled event, 5:00 PM. Reminder saved on this browser, read 2:50 PM'});
+    {text: 'Next: Untitled event 5:00 PM', source: 'Reminder', description: 'Next: Untitled event, 5:00 PM. Reminder saved on this browser, read 2:50 PM'});
   const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
   assert.match(template, /data-alpha-home-calendar-next-line>.*\{\{homeCalendarNext\}\}.*\{\{homeCalendarNextSource\}\}/);
 });
@@ -213,8 +213,8 @@ test('calendar name lookup: the event\'s own calendar in the same read, and no b
   assert.equal(H.homeCalendarName([{id: '7', name: 'Harbour crew'}], '7'), 'Harbour crew');
   // Two sources with one id (not expected from the provider): the first in provider order.
   assert.equal(H.homeCalendarName([{id: '7', name: 'First'}, {id: '7', name: 'Second'}], '7'), 'First');
-  // The card's source line follows the lookup: a name when known, otherwise only the device.
+  // The card shows a meaningful calendar name, with no generic device/app label.
   const base = {state: 'ready', overdue: false, readAt: at(15, 4), now, native: true};
   assert.equal(H.presentHomeCalendarSource({...base, calendar: H.homeCalendarName(sources, '7')}).description, 'Harbour team. Read 3:04 PM from calendars on this device');
-  assert.deepEqual(H.presentHomeCalendarSource({...base, calendar: H.homeCalendarName(sources, '99')}), {origin: 'Device', read: 'Read 3:04 PM', description: 'Read 3:04 PM from calendars on this device'});
+  assert.deepEqual(H.presentHomeCalendarSource({...base, calendar: H.homeCalendarName(sources, '99')}), {origin: '', read: '', description: 'Read 3:04 PM from calendars on this device'});
 });

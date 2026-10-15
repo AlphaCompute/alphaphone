@@ -178,6 +178,10 @@ export function installSystemShade(Component: any, options: { native: boolean })
   const p = Component.prototype, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
   // Home's height changes without a render too (text size, fonts loading, the dock): watch both
   // Home and its content, and follow Home when the shell replaces the element.
+  const scheduleFit = (self: any) => {
+    if (self.alphaHomeFitFrame != null) return;
+    self.alphaHomeFitFrame = requestAnimationFrame(() => { self.alphaHomeFitFrame = undefined; markHomeFits(); });
+  };
   const watch = (self: any) => {
     const home = document.querySelector('[data-alpha-layer="home"]'), layout = home?.querySelector('[data-alpha-home-layout]'), clearance = home?.querySelector('[data-alpha-home-clearance]');
     if (home !== self.alphaHomeWatched || layout !== self.alphaHomeLayoutWatched || clearance !== self.alphaHomeClearanceWatched) {
@@ -197,15 +201,16 @@ export function installSystemShade(Component: any, options: { native: boolean })
   };
   p.componentDidMount = function () {
     mount?.call(this);
-    this.alphaHomeFits = () => markHomeFits();
+    this.alphaHomeFits = () => scheduleFit(this);
+    document.fonts?.addEventListener('loadingdone', this.alphaHomeFits);
     window.addEventListener('resize', this.alphaHomeFits);
     watch(this);
     // Same rule as the pull itself (emptyHomeShadePull), checked before the drag is known.
     const self = this;
     this.alphaOverflowPull = installOverflowPull(() => emptyHomeShadePull(self.pullContext(), { home: true, editable: false, keyboard: false, scrolled: false }, STATUS_BAND, 0, Infinity));
   };
-  p.componentDidUpdate = function (...args: unknown[]) { update?.apply(this, args); watch(this); };
-  p.componentWillUnmount = function () { window.removeEventListener('resize', this.alphaHomeFits); this.alphaHomeObserver?.disconnect(); this.alphaOverflowPull?.(); unmount?.call(this); };
+  p.componentDidUpdate = function (...args: unknown[]) { update?.apply(this, args); watch(this); scheduleFit(this); };
+  p.componentWillUnmount = function () { window.removeEventListener('resize', this.alphaHomeFits); document.fonts?.removeEventListener('loadingdone', this.alphaHomeFits); if (this.alphaHomeFitFrame != null) cancelAnimationFrame(this.alphaHomeFitFrame); this.alphaHomeObserver?.disconnect(); this.alphaOverflowPull?.(); unmount?.call(this); };
   if (!options.native) return;
   p.expandAndroidShade = async function () {
     if (this.alphaShadeAsking) return;

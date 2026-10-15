@@ -78,7 +78,7 @@ test('the connection controller has no local-apps-only mode and migrates old sel
 
 test('no startup path ends claiming "starting" with nothing starting', () => {
   // Every startup outcome is settled: the resident starts, or the state is `recovering` with Retry.
-  assert.match(ui, /\}\)\(\)\.then\(settleResidentAfterStartup\)(\.finally\(\(\)=>update\(\{startupResolved:true\}\)\))?;/);
+  assert.match(ui, /\}\)\(\)\.then\(settleResidentAfterStartup\)(\.finally\(\(\)=>update\(\{startupResolved:true(?:,automaticRestore:false)?\}\)\))?;/);
   assert.match(ui, /async function settleResidentAfterStartup\(\) \{[\s\S]{0,600}await ensureResident\(\);[\s\S]{0,80}update\(\{ kind: 'recovering' \}\);/);
   // A rebind that fails to reconnect leaves the agent recovering (Retry), never "no agent".
   assert.match(between(ui, 'function queueResidentRebind(', 'function runQueuedResidentRebind('), /catch \(error\) \{ if \(residentAlwaysPresent && !active\) update\(\{ kind: 'recovering' \}\); throw error; \}/);
@@ -118,7 +118,7 @@ test('a chat turn without Cloud inference gets an honest answer with the plan ac
 
 test('the plan surface is a notice beside the running agent, not a gate', () => {
   const chooser = ui.slice(ui.indexOf('export function ConnectionChooser'));
-  assert.match(chooser, /if \(!snapshot\.open\) \{\n\s+\/\/ Never a gate: the agent is running\./);
+  assert.match(chooser, /if \(!visible\) \{\n\s+\/\/ Never a gate: the agent is running\./);
   assert.ok(chooser.includes('<aside className="alpha-plan-notice" role="region" aria-label="Eliza Cloud plan notice">'));
   // Admission without a plan opens nothing; only a required sign-in opens (and locks) the dialog.
   assert.ok(between(ui, 'async function admitCloudResident(', 'function residentPlanEnded(').includes("update({residentSubscription:view,residentPlanNotice:'needs-plan',planEndsAt:null});\n    return {binding:'unbound',account};"));

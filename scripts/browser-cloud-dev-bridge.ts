@@ -169,7 +169,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   throw Error('Unsupported development operation');
  }
  const send=(res:ServerResponse,status:number,data:unknown)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(data));};
- return async(req:IncomingMessage,res:ServerResponse)=>{
+ const handler=async(req:IncomingMessage,res:ServerResponse)=>{
   const host=req.headers.host,origin=req.headers.origin;
   if(req.url!=='/'&&req.url!==''&&req.url!==BROWSER_CLOUD_BRIDGE_PATH){send(res,404,{error:'Unknown development route'});return;}
   if(!host||! /^(127\.0\.0\.1|localhost):\d+$/.test(host)||origin!==`http://${host}`||req.method!=='POST'||req.headers['x-alpha-browser-cloud']!=='1'){send(res,403,{error:'Same-origin development request required'});return;}
@@ -212,7 +212,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
     // Subscription redemption: exactly {code,idempotencyKey}; the code is forwarded, never logged or stored.
     const redeem=method==='POST'&&route==='/api/v1/subscription/redeem';
     if(redeem){const body=object(JSON.parse(input.body??'null'));if(Object.keys(body).sort().join()!=='code,idempotencyKey'||typeof body.code!=='string'||body.code.length>128||typeof body.idempotencyKey!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(body.idempotencyKey))throw Error('Invalid subscription redemption');}
-    const accountRead=method==='GET'&&input.body===undefined&&['/api/v1/user','/api/v1/billing/limits','/api/v1/subscription/entitlement','/api/v1/subscription/entitlement-keys'].includes(route);
+    const accountRead=method==='GET'&&input.body===undefined&&['/api/v1/user','/api/v1/billing/limits','/api/v1/subscription/entitlement','/api/v1/subscription/entitlement-keys','/api/v1/maps/capabilities'].includes(route);
     if(!redeem&&!accountRead&&!managedGoogleRequest(url,method,input.body))throw Error('Unsupported Cloud route');
     const c=await admitted(env,input.credentialReference);active.get(ownedId)!.credentialId=c.credentialId;const response=await canonical(env,route,controller.signal,{method,...(input.body===undefined?{}:{headers:{'Content-Type':'application/json'},body:input.body})},c);let result=await boundedServiceJson(response);await current(env,c,controller.signal);if(response.ok&&route==='/api/v1/user'&&result.success===true){const who=object(result.data);result={success:true,data:{id:who.id,organization_id:who.organization_id,...(typeof who.email==='string'?{email:who.email}:{})}};}send(res,200,{status:response.status,data:result});return;
    }
@@ -232,6 +232,19 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   }catch(error:any){if(!res.writableEnded&&!res.destroyed)send(res,error.name==='AbortError'?409:error.status??400,{error:error.name==='AbortError'?'Cloud operation cancelled':'Cloud development request rejected',...(error.code?{code:error.code}:{})});}
   finally{if(ownedId)active.delete(ownedId);res.removeListener('close',closed);}
  };
+ // Host-only read port for the local development agent. It shares the exact
+ // credential store and fences with the browser bridge; no bearer leaves it.
+ return Object.assign(handler,{
+  async agentCredential(){const c=(await load()).production;return c?publicCredential(c):null;},
+  async agentRead(input:{url:string;method:string;body?:unknown;credentialReference?:string;signal:AbortSignal}){
+   const url=new URL(input.url);
+   if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||input.method!=='GET'||input.body!==undefined||!(url.pathname==='/api/v1/user'&&!url.search||['/api/v1/eliza/google/accounts','/api/v1/eliza/google/gmail/search','/api/v1/eliza/google/gmail/read'].includes(url.pathname)&&managedGoogleRequest(url,'GET',undefined)))throw refusal(403,'agent-read-route-refused');
+   const c=await admitted('production',input.credentialReference);
+   const response=await canonical('production',url.pathname+url.search,input.signal,{},c);
+   const data=await boundedServiceJson(response);await current('production',c,input.signal);
+   return {status:response.status,data};
+  }
+ });
 }
 export function browserCloudDevBridge():Plugin{
  return {name:'alpha-browser-cloud-dev-bridge',apply:'serve',configureServer(server){if(process.env.ELIZA_DEV_ALLOW_TEST_MOCKS!=='1')return;const profile=path.resolve(process.env.ALPHA_BROWSER_CLOUD_PROFILE??path.join(homedir(),'.local/share/alphaphone/browser-cloud'));const handler=createBrowserCloudDevHandler({profile});server.middlewares.use(BROWSER_CLOUD_BRIDGE_PATH,(req,res)=>{void handler(req,res);});}};
