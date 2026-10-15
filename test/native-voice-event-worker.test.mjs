@@ -29,3 +29,23 @@ public class VoiceWorkerTest {
   execFileSync('java',['-cp',dir,'ai.elizaresearch.alphaphone.VoiceWorkerTest'],{timeout:15000});
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+
+test('voice feed fences runtime replacement even when lifecycle epoch and owner remain unchanged', () => {
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'voice-admission-'));
+ try {
+  fs.copyFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/VoiceEventAdmission.java',path.join(dir,'VoiceEventAdmission.java'));
+  fs.writeFileSync(path.join(dir,'VoiceAdmissionTest.java'),`package ai.elizaresearch.alphaphone;
+public class VoiceAdmissionTest {
+ public static void main(String[] args) {
+  if(!VoiceEventAdmission.current("old","old","old","owner","owner",20,10))throw new AssertionError("valid feed rejected");
+  if(VoiceEventAdmission.current("old","old","new","owner","owner",20,10))throw new AssertionError("rotated runtime leaked before reenrollment");
+  if(VoiceEventAdmission.current("old","new","new","owner","owner",20,10))throw new AssertionError("reenrollment revived old feed");
+  if(VoiceEventAdmission.current("old","old","old","owner","other",20,10))throw new AssertionError("owner changed");
+  if(VoiceEventAdmission.current("old","old","old","owner","owner",10,10))throw new AssertionError("expired");
+  if(VoiceEventAdmission.current(null,null,null,"owner","owner",20,10))throw new AssertionError("unenrolled");
+ }
+}`);
+  execFileSync('javac',['-d',dir,path.join(dir,'VoiceEventAdmission.java'),path.join(dir,'VoiceAdmissionTest.java')]);
+  execFileSync('java',['-cp',dir,'ai.elizaresearch.alphaphone.VoiceAdmissionTest'],{timeout:15000});
+ } finally {fs.rmSync(dir,{recursive:true,force:true});}
+});

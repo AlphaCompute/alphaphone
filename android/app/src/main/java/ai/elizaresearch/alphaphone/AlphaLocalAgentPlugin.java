@@ -690,12 +690,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   catch(Exception unavailable){call.reject("Voice subscription unavailable.");return;}
   call.resolve(new JSObject().put("subscriptionId",id));
   PluginWorkers.submit(voiceWorkers,()->{try{
-   enroll(epoch);
-   synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(key)!=handle)throw new Superseded();}
+   enroll(epoch);final String admittedRoot;
+   synchronized(lifecycleLock){requireCurrent(epoch);admittedRoot=rootToken;if(!VoiceEventAdmission.current(admittedRoot,rootToken,ElizaAgentService.localAgentToken(),owner,ownerIdentity,expiresAt,System.currentTimeMillis())||streams.get(key)!=handle)throw new Superseded();}
    JSONObject input=new JSONObject().put("streams",new org.json.JSONArray().put("voice-transcript"));
    ElizaAgentService.subscribeLocalAgentEvents(input.toString(),event->{synchronized(lifecycleLock){try{
     requireCurrent(epoch);if(streams.get(key)!=handle)return;
-    if(!owner.equals(ownerIdentity)||expiresAt<=System.currentTimeMillis()){handle.cancel();return;}
+    if(!VoiceEventAdmission.current(admittedRoot,rootToken,ElizaAgentService.localAgentToken(),owner,ownerIdentity,expiresAt,System.currentTimeMillis())){handle.cancel();return;}
     JSONObject value=new JSONObject(event);
     if(!"event".equals(value.optString("type")))return;
     JSONObject envelope=value.optJSONObject("event");if(envelope==null||!"agent_event".equals(envelope.optString("type"))||!"voice-transcript".equals(envelope.optString("stream")))return;
