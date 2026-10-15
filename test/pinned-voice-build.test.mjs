@@ -8,7 +8,7 @@ import path from 'node:path';
 import {buildPinnedVoice} from '../scripts/build-pinned-voice.mjs';
 
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'voice-build-'));
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'voice-build-')));
   t.after(() => fs.rmSync(root, {recursive:true, force:true}));
   const output = path.join(root, 'out'), record = path.join(output, 'build-record.json');
   const pin = {sourceCommit:'a'.repeat(40), nativeCommit:'b'.repeat(40)};
