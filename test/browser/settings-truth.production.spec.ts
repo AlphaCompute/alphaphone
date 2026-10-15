@@ -222,9 +222,9 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
-  // A switch must be backed by something this app owns. Only the calendar and theme controls qualify.
+  // A switch must be backed by something this app owns; the email preference is exercised across reload below.
   const switches=await current(page).locator('[role="switch"],[aria-pressed],[aria-checked],input[type="checkbox"],input[type="range"]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||e.tagName));
-  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:[];
+  const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:label==='Connections'?['Automatically load email images']:[];
   expect(switches.filter(name=>!owned.includes(name)),`${label} has a switch that nothing backs`).toEqual([]);
   for(const [row,target] of handoffs[label]||[]){
    const before=(await opened(page)).length;
@@ -246,6 +246,31 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
  await current(page).getByRole('button',{name:'Battery',exact:true}).click();
  await current(page).getByRole('button',{name:'Manage battery in Android',exact:true}).click();
  await expect(page.getByText('This Android settings page is unavailable.',{exact:true})).toBeVisible();
+});
+
+test('the owned email image preference persists off and on across production reloads',async({page})=>{
+ await nativeStub(page);
+ const images=()=>current(page).getByRole('button',{name:'Automatically load email images',exact:true});
+ const connections=async()=>{await openSettings(page);await current(page).getByRole('button',{name:'Connections',exact:true}).click();};
+ await connections();await expect(images()).toHaveAttribute('aria-pressed','true');
+ await images().click();await expect(images()).toHaveAttribute('aria-pressed','false');
+ // openSettings navigates afresh: this checks the durable document, not the prior renderer cache.
+ await connections();await expect(images()).toHaveAttribute('aria-pressed','false');
+ await images().click();await expect(images()).toHaveAttribute('aria-pressed','true');
+ await connections();await expect(images()).toHaveAttribute('aria-pressed','true');
+ expect(await opened(page)).toEqual([]);
+ expect((await callNames(page)).filter(name=>/\.set(?!Flashlight)|\.perform$/i.test(name))).toEqual([]);
+});
+
+test('unreadable email image preferences fail closed without overwriting recovery data',async({page})=>{
+ await nativeStub(page);
+ await page.addInitScript(()=>localStorage.setItem('alpha.browser.device.v1','{damaged settings'));
+ await openSettings(page);await current(page).getByRole('button',{name:'Connections',exact:true}).click();
+ const images=current(page).getByRole('button',{name:'Automatically load email images',exact:true});
+ await expect(current(page)).toContainText('Image preference unavailable. Reopen Settings to try again.');
+ await expect(images).toHaveAttribute('aria-pressed','false');await images.click();
+ await expect(images).toHaveAttribute('aria-pressed','false');
+ expect(await page.evaluate(()=>localStorage.getItem('alpha.browser.device.v1'))).toBe('{damaged settings');
 });
 
 test('notification denial and re-enable are read back from Android, and local history stays available',async({page})=>{
