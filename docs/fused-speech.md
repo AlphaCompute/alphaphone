@@ -1,7 +1,7 @@
 # Fused speech: libelizainference on the device and on the local agent
 
 Alpha Phone has one local speech engine: **libelizainference**, the llama.cpp-based native
-library from the elizaOS llama.cpp fork (decision P-42). At the pin `87d9bd96477f` (llama.cpp
+library from the elizaOS llama.cpp fork (decision P-42). At the pin `fb6232523074` (llama.cpp
 gitlink `56e70ff2a0ca`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
 **Parakeet-TDT** decoder that runs **Phonon-2** ASR in batch and streaming mode (P-55), mtmd (the
 Qwen3-ASR alternative, not shipped), the **Paradee-8M** speech graph on the shared kokoro layers
@@ -107,7 +107,7 @@ recording a clip on the device:
    semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
    which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
    (local-speech research), not measurements or owner-set constants. **Clef is not in the pin**
-   (`87d9bd96477f`: no Clef model, loader or decision head; only the native EOT scorer for the
+   (`fb6232523074`: no Clef model, loader or decision head; only the native EOT scorer for the
    Eliza-1 text model), so no semantic port is wired and the documented VAD long-gap fallback
    decides alone. New speech before submission cancels both timers and continues the utterance.
 6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
@@ -137,12 +137,11 @@ with the full running text, `final`, `error`) on its WebSocket event stream. `li
 replaces the interim text on each newer partial of the current turn, drops other sessions and
 stale turns, delivers each final once and shows the interim text in the conversation view
 (`data-alpha-voice-interim`, "Heard so far, not sent"). It is never stored, logged, written to a
-draft or sent. **Upstream gap:** the Android agent is port-free and its IPC carries only
-`http_request`/`http_request_stream`, so no event stream reaches the phone and the phone shows the
-final transcript only; interim text appears where a transport carries the event stream (the
-browser spec's stub agent). An IPC event channel or partials in the live response would close it:
-`residentLiveTransport()` passes a `subscribe` method of the resident connection straight through,
-so the assistant's interim line lights up once the IPC carries events. Nothing synthesizes a
+draft or sent. **Consumer wiring gap:** pin `fb6232523074` includes private agent-event
+subscriptions (elizaOS/eliza#36261), but Alpha's resident transport does not consume them yet.
+The phone therefore still shows final transcripts only; interim text appears where a transport
+carries the event stream (the browser spec's stub agent). The generic native live transport can
+forward `subscribe` events when its resident adapter exposes them. Nothing synthesizes a
 partial in the meantime.
 
 Latency is recorded per turn as numbers only (`voice-timing.ts` `live`: ASR mode, partial count,
@@ -177,7 +176,11 @@ claim that the current development build reproduces those bytes.
 
 1. Build the shared outputs at the pin with the upstream builder, outside `vendor/eliza`
    (NDK 28.2; it converts the Paradee GGUF and misaki lexicon from pinned sources and checks them):
-   `node vendor/eliza/packages/app/scripts/paradee-voice/build-native.ts --workspace <dir> --out <dir>`.
+   `node scripts/build-pinned-voice.mjs --workspace <dir> --out <fresh-dir>`.
+   This consumer wrapper verifies clean pinned Eliza/FFI sources before and after the upstream
+   builder, then records both revisions on its fresh output. The builder at `fb6232523074`
+   does not itself emit these fields; unrecorded engine staging still requires them and checks
+   the original record against every selected engine hash. No vendor source is edited.
    The bundle assets recorded today were built this way at eliza `c7a9a0d7e7` (llama.cpp
    `5df17a66`) on 2026-10-14; the engine bytes recorded for both ABIs come from
    `node scripts/prepare-embedding-host.mjs --build --remap-build-path` at the same source, so the
@@ -248,7 +251,7 @@ still required.
 ## Upstream gaps
 
 - Interim live transcripts do not reach the Android app: the agent publishes `voice-transcript`
-  events only on its WebSocket, and the port-free agent IPC has no event channel (see Live voice).
+  events through its WebSocket and private IPC, but the Alpha resident adapter does not consume the IPC subscription yet (see Live voice).
 - The app-process recorded-clip path (`NativeAsr.transcribe`, used by Notes dictation and when the
   live route is not ready) is batch; Paradee returns a complete buffer.
 - The Paradee GGUF, the misaki lexicon and the Phonon-2 GGUF are not published for download; they

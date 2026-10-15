@@ -28,13 +28,12 @@ the operator's index of build, provisioning, release and support material is the
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `87d9bd9647` (moved on 2026-10-14,
+- The upstream pin in `upstream.lock.json` is `fb62325230` (moved on 2026-10-14,
   PR #524), with llama.cpp gitlink `56e70ff2a0ca`. It preserves Phonon-2 batch/streaming
   ASR, Paradee-8M TTS, misaki G2P and voice ABI 18 from the previous `c7a9a0d7e7` pin,
   adds the upstream-preserving native integration and disables the optional Android video
-  helper. The shared voice builder records both source revisions; consumer staging checks
-  these and exact engine bytes. The public reachability record names this commit as an
-  ancestor of `develop`, not its current head.
+  helper. A consumer wrapper records both clean source revisions around the shared voice build; staging checks
+  these and exact engine bytes. The public reachability record records its relation to `develop` at review time.
   Current native build evidence and its limits are recorded in [fused speech](fused-speech.md)
   and `android/voice-host/qualified-voice-host.json`; qualification remains false.
   Earlier voice, source and browser evidence at `c7a9a0d7e7` remains historical

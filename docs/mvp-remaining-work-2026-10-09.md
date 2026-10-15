@@ -1,6 +1,6 @@
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
-Current source pin: `87d9bd96477f` (2026-10-14, PR #524), llama.cpp `56e70ff2a0ca`.
+Current source pin: `fb6232523074` (2026-10-14, PR #524), llama.cpp `56e70ff2a0ca`.
 Native source/provenance changed; voice remains unqualified and the prior embedding-host
 receipt remains refused pending requalification. Historical evidence below is not promoted.
 
