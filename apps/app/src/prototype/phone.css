@@ -104,7 +104,7 @@ html:not(.standalone-app) [data-alpha-layer="home"][data-alpha-home-fits="true"]
 .note-source-dialog h2 { margin:0 0 12px; font-family:Denton,Fraunces,Georgia,serif; font-weight:300; font-size:1.875em; overflow-wrap:anywhere; }
 .note-source-content { min-height:0; overflow:auto; overflow-wrap:anywhere; }
 .note-source-dialog footer { display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0; }
-.note-source-dialog button { min-height:44px; padding:8px 12px; border:0; border-radius:24px; background:var(--s2,#f3f3f3); color:var(--source-fg,CanvasText); font:inherit; }
+.note-source-dialog button { min-height:44px; padding:8px 12px; border:0; border-radius:24px; background:color-mix(in srgb,var(--source-fg,CanvasText) 7%,var(--source-bg,Canvas)); color:var(--source-fg,CanvasText); font:inherit; }
 
 .note-source-dialog footer button { flex:1 1 180px; min-width:0; overflow-wrap:normal; }
 .note-source-content:focus-visible { outline:2px solid currentColor; outline-offset:-2px; }
