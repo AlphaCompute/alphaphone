@@ -124,7 +124,7 @@ test('provider-connected screens are swept, against a synthetic mailbox only', (
 test('the dock, title and toast fixes the sweep depends on stay in the source', () => {
   const css = read('apps/app/src/prototype/phone.css');
   const main = read('apps/app/src/main.tsx');
-  // Home and the app library reserve clearance inside their full-height scroll content.
+  // Home and the app library reserve measured clearance inside their full-height scroll content.
   assert.match(css, /--alpha-dock-reserve:max\(108px,calc\(var\(--alpha-dock-clearance,102px\) \+ 6px\)\)/);
   assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="home"\] \{ bottom:0!important; scroll-padding-bottom:var\(--alpha-dock-reserve\)!important;/);
   assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="drawer"\] \{ padding-bottom:0!important; \}/);
