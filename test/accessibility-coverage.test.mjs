@@ -124,10 +124,10 @@ test('provider-connected screens are swept, against a synthetic mailbox only', (
 test('the dock, title and toast fixes the sweep depends on stay in the source', () => {
   const css = read('apps/app/src/prototype/phone.css');
   const main = read('apps/app/src/main.tsx');
-  // Home and the app library end above the measured dock; 108px stays the minimum.
+  // Home ends above the dock; the full-height app library reserves clearance inside its list.
   assert.match(css, /--alpha-dock-reserve:max\(108px,calc\(var\(--alpha-dock-clearance,102px\) \+ 6px\)\)/);
   assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="home"\] \{ bottom:var\(--alpha-dock-reserve\)!important;/);
-  assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="drawer"\] \{ padding-bottom:var\(--alpha-dock-reserve\)!important; \}/);
+  assert.match(css, /html:not\(\.alpha-landscape\) \.alpha-phone \[data-alpha-layer="drawer"\] \{ padding-bottom:0!important; \}/);
   assert.match(css, /\[data-alpha-home-layout\] \{ padding-bottom:0!important; min-height:calc\(100% \+ var\(--alpha-dock-reserve\) - var\(--alpha-dock-rest-reserve\)\)!important; \}/);
   assert.match(css, /:is\(\[data-alpha-app-scroll\],\.calendar-timeline,\.calendar-draft-fields\) \{ scroll-padding-bottom:calc\(var\(--alpha-dock-clearance,102px\) \+ 16px\); \}/);
   assert.match(css, /\.inbox-compose-fields \{[^}]*padding-bottom:max\(64px,calc\(var\(--alpha-dock-clearance,102px\) \+ 8px\)\)!important/);

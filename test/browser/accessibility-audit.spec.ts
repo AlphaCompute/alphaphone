@@ -255,3 +255,12 @@ test('a toast under a top-layer dialog is reported; one shown inside the dialog,
   await load(page, phone(toast + `<div style="position:absolute;inset:0;z-index:99;background:#fff"><p>Cover</p></div>`));
   expect(rules(format(await auditPage(page, { dock: true })))).toEqual(['toast-covered']);
 });
+
+
+test('drawer scrolls under the dock and rejects unreachable final controls',async({page})=>{
+ await page.setViewportSize({width:400,height:600});
+ const drawer=(padding:number)=>phone(`<div data-alpha-layer="drawer" style="position:absolute;inset:0;z-index:30;display:flex;flex-direction:column"><div data-alpha-app-scroll="drawer" style="flex:1;min-height:0;overflow-y:auto;padding-bottom:${padding}px">${rows(10)}<button style="display:block;width:100%;height:44px">Last app</button></div></div>${composer}`);
+ await load(page,drawer(110));expect(format(await auditPage(page,{dock:true}))).toEqual([]);
+ await load(page,drawer(0));await page.locator('[data-alpha-app-scroll="drawer"]').evaluate(el=>{el.scrollTop=el.scrollHeight;});
+ expect(rules(format(await auditPage(page,{dock:true})))).toEqual(['obscured-by-dock']);
+});

@@ -8,7 +8,7 @@
  * the screen (round 8 emulator run). A fixed number cannot be right either way: Android moves the
  * dock up by the navigation bar inset, and the composer grows with a longer draft or a status
  * line. So the footprint is measured and published as `--alpha-dock-clearance` on the root
- * element; phone.css ends Home and the app library above it, and gives every app scroller that
+ * element; phone.css ends Home above it, and gives the app library and every app scroller that
  * much scroll padding so a focused control is brought wholly above the dock.
  *
  * Two lengths are published. `--alpha-dock-clearance` is everything the dock covers now, and is

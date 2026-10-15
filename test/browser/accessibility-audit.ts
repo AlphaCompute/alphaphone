@@ -420,7 +420,7 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
         .map(el => ({ el, box: el.getBoundingClientRect() })).filter(item => item.box.width > 1 && item.box.height > 1);
       // Only the page the dock floats over is judged; menus, sheets, the shade and toasts are drawn above it.
       const UNDER = '[data-alpha-layer="home"],[data-alpha-layer="drawer"],[data-alpha-layer="app"]';
-      const STRICT = '[data-alpha-layer="home"],[data-alpha-layer="drawer"]';
+      const STRICT = '[data-alpha-layer="home"]';
       const scale = (() => { const screen = document.querySelector<HTMLElement>('[data-screen]'); return screen && screen.offsetWidth ? screen.getBoundingClientRect().width / screen.offsetWidth : 1; })();
       const judge = (el: Element, rect: Box, what: string) => {
         const layer = el.closest(UNDER); if (!layer || !docks.length) return;
