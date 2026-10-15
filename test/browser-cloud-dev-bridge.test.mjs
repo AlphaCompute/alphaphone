@@ -165,7 +165,30 @@ test('managed Google bridge admits combined consent and encoded owner reads with
   assert.equal(new URL(f.calls.at(-1).url).origin,'https://api-staging.eliza.app');
  }finally{await f.close();}
 });
-test('managed Google bridge refuses scope escalation, mutations, malformed query and stale or secret responses',async()=>{
+test('managed Google bridge preserves prepared Gmail review, digest dispatch, and receipt routes',async()=>{
+ const f=await fixture(),grant=randomUUID(),requestId=randomUUID(),reviewDigest='a'.repeat(64),root='/api/v1/eliza/google/gmail/inbox-v1/operations';try{
+  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
+  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
+  const proposal={kind:'send',mode:'compose',to:['self@example.invalid'],cc:[],bcc:[],subject:'Synthetic review',bodyText:'A'.repeat(5000),attachments:[]};
+  assert.deepEqual((await call(root,'POST',{grantId:grant,requestId,proposal})).data.data.forwarded,{grantId:grant,requestId,proposal});
+  assert.equal((await call(root+'/'+requestId+'/dispatch','POST',{grantId:grant,reviewDigest,proposal})).data.status,200);
+  assert.equal((await call(root+'/'+requestId+'?grantId='+grant)).data.status,200);
+  const attached={...proposal,attachments:[{name:'fixture.pdf',mimeType:'application/pdf',dataBase64:'A'.repeat(3*1024*1024)}]};
+  assert.equal((await call(root,'POST',{grantId:grant,requestId:randomUUID(),proposal:attached})).data.status,200,'normal attachment payloads pass the bounded outer JSON envelope');
+  const before=f.calls.length;
+  for(const [route,method,body] of [
+   [root,'POST',{grantId:grant,requestId,proposal,url:'https://elsewhere.invalid'}],
+   [root,'POST',{grantId:'bad',requestId,proposal}],
+   [root,'POST',{grantId:grant,requestId,proposal:{kind:'delete-all'}}],
+   [root+'/'+requestId+'/dispatch','POST',{grantId:grant,proposal}],
+   [root+'/'+requestId+'/dispatch','POST',{grantId:grant,reviewDigest:'bad',proposal}],
+   [root+'/'+requestId+'?grantId='+grant+'&side=agent','GET'],
+   [root+'/'+requestId+'/send','POST',{grantId:grant,reviewDigest,proposal}],
+  ])assert.equal((await call(route,method,body)).status,400);
+  assert.equal(f.calls.length,before,'invalid dispatches do not reach Cloud');
+ }finally{await f.close();}
+});
+test('managed Google bridge refuses scope escalation, unreviewed mutations, malformed query and stale or secret responses',async()=>{
  const f=await fixture(),grant=randomUUID();try{
   const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
   const before=f.calls.length;

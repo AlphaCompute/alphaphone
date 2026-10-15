@@ -24,8 +24,18 @@ function managedGoogleRequest(url:URL,method:string,body:unknown):boolean {
  const prefix='/api/v1/eliza/google/',route=url.pathname.slice(prefix.length);
  if(!url.pathname.startsWith(prefix))return false;
  if(method==='POST'){
-  if(url.search||typeof body!=='string'||body.length>4096)return false;
+  if(url.search||typeof body!=='string'||Buffer.byteLength(body)>8*1024*1024)return false;
   let value:Record<string,any>;try{value=object(JSON.parse(body));}catch{return false;}
+  // Canonical Gmail operations prepare a review before a separate digest-bound
+  // dispatch. Preserve that contract; never add a direct provider-send endpoint.
+  const prepare=route==='gmail/inbox-v1/operations',dispatch=/^gmail\/inbox-v1\/operations\/[A-Za-z0-9_-]{1,160}\/dispatch$/.test(route);
+  if(prepare||dispatch){
+   if(!GOOGLE_UUID.test(value.grantId)||!value.proposal||typeof value.proposal!=='object'||Array.isArray(value.proposal))return false;
+   if(!['send','draft-create','draft-replace','draft-delete','archive','unarchive','trash','untrash','mark-read','mark-unread'].includes(value.proposal.kind))return false;
+   if(prepare)return Object.keys(value).sort().join()==='grantId,proposal,requestId'&&typeof value.requestId==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(value.requestId);
+   return Object.keys(value).sort().join()==='grantId,proposal,reviewDigest'&&typeof value.reviewDigest==='string'&&/^[a-f0-9]{64}$/.test(value.reviewDigest);
+  }
+  if(body.length>4096)return false;
   if(value.side!=='owner')return false;
   if(route==='disconnect')return Object.keys(value).every(key=>['side','connectionId'].includes(key))&&typeof value.connectionId==='string'&&GOOGLE_UUID.test(value.connectionId);
   if(route!=='connect/initiate'||Object.keys(value).some(key=>!['side','capabilities'].includes(key))||!Array.isArray(value.capabilities)||!value.capabilities.length||value.capabilities.length>7)return false;
@@ -39,6 +49,7 @@ function managedGoogleRequest(url:URL,method:string,body:unknown):boolean {
  const exact=(allowed:string[])=>keys.every(key=>allowed.includes(key));
  if(route==='accounts'||route==='status')return exact(['side'])&&params.get('side')==='owner';
  const grant=params.get('grantId');if(!grant||!GOOGLE_UUID.test(grant))return false;
+ if(/^gmail\/inbox-v1\/operations\/[A-Za-z0-9_-]{1,160}$/.test(route))return exact(['grantId']);
  if(route==='calendar/calendars')return exact(['side','grantId'])&&params.get('side')==='owner';
  if(route==='calendar/feed'){
   if(!exact(['side','grantId','calendarId','timeMin','timeMax','timeZone'])||params.get('side')!=='owner'||!clean('calendarId')||!clean('timeMin',64)||!clean('timeMax',64)||!clean('timeZone',128))return false;
@@ -178,7 +189,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    const chunks:Buffer[]=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>17_000_000)throw Error('Cloud request too large');chunks.push(Buffer.from(chunk));}
    const bytes=Buffer.concat(chunks),content=req.headers['content-type']||'';let data:Record<string,any>,audio:File|undefined;
    if(content.startsWith('multipart/form-data;')){const form=await new Request('http://127.0.0.1',{method:'POST',headers:{'Content-Type':content},body:bytes}).formData();if([...form.keys()].some(k=>!['operation','environment','credentialReference','credentialId','requestId','audio'].includes(k)))throw Error('Invalid speech form');data=Object.fromEntries([...form].filter(([k])=>k!=='audio'));const value=form.get('audio');if(!(value instanceof File)||value.size<1||value.size>16_000_000||!['audio/webm','audio/ogg','audio/mp4','audio/wav','audio/mpeg'].includes(value.type.split(';')[0]))throw Error('Invalid speech audio');audio=value;}
-   else{if(content!=='application/json'||size>2*1024*1024)throw Error('JSON development request required');data=object(JSON.parse(bytes.toString('utf8')));}
+   else{if(content!=='application/json'||size>9*1024*1024)throw Error('JSON development request required');data=object(JSON.parse(bytes.toString('utf8')));}
    if(typeof data.operation==='string'&&data.operation.startsWith('signIn')){send(res,200,await signInOperation(data,controller.signal));return;}
    if(data.operation==='cancel'){active.get(requestId(data.requestId))?.controller.abort();send(res,200,{});return;}
    const slot=data.slot,env=environment(data.environment??(typeof slot==='string'?slot.replace(/^cloud:/,''):undefined));
