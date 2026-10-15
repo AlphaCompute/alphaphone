@@ -245,15 +245,26 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
  };
  // Host-only read port for the local development agent. It shares the exact
  // credential store and fences with the browser bridge; no bearer leaves it.
- return Object.assign(handler,{
-  async agentCredential(){const c=(await load()).production;return c?publicCredential(c):null;},
-  async agentRead(input:{url:string;method:string;body?:unknown;credentialReference?:string;signal:AbortSignal}){
+ const agentRead=async(input:{url:string;method:string;body?:unknown;credentialReference?:string;signal:AbortSignal})=>{
    const url=new URL(input.url);
    if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||input.method!=='GET'||input.body!==undefined||!(url.pathname==='/api/v1/user'&&!url.search||['/api/v1/eliza/google/accounts','/api/v1/eliza/google/gmail/search','/api/v1/eliza/google/gmail/read','/api/v1/eliza/google/calendar/calendars','/api/v1/eliza/google/calendar/feed'].includes(url.pathname)&&managedGoogleRequest(url,'GET',undefined)))throw refusal(403,'agent-read-route-refused');
    const c=await admitted('production',input.credentialReference);
    const response=await canonical('production',url.pathname+url.search,input.signal,{},c);
    const data=await boundedServiceJson(response);await current('production',c,input.signal);
    return {status:response.status,data};
+  };
+ return Object.assign(handler,{
+  async agentCredential(){const c=(await load()).production;return c?publicCredential(c):null;},
+  agentRead,
+  async agentGmailOperation(input:Parameters<typeof agentRead>[0]){
+   const url=new URL(input.url),route=url.pathname,body=input.body===undefined?undefined:JSON.stringify(input.body);
+   const operation=/^\/api\/v1\/eliza\/google\/gmail\/inbox-v1\/operations(?:\/[A-Za-z0-9_-]{1,160}(?:\/dispatch)?)?$/.test(route);
+   if(!operation)return agentRead(input);
+   if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||!managedGoogleRequest(url,input.method,body))throw refusal(403,'agent-operation-route-refused');
+   if(input.method==='POST'&&JSON.parse(body!).proposal.kind!=='send')throw refusal(403,'agent-operation-kind-refused');
+   const c=await admitted('production',input.credentialReference);
+   const response=await canonical('production',route+url.search,input.signal,{method:input.method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body})},c);
+   const data=await boundedServiceJson(response);await current('production',c,input.signal);return {status:response.status,data};
   }
  });
 }
