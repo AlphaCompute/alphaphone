@@ -35,7 +35,11 @@ export function createGmailAgentDevBroker(options:{profile:string;tokenFile:stri
    }else if(input.messageId!==undefined){if(typeof input.messageId!=='string'||Object.keys(input).length!==1)throw Error('Invalid exact-message read');result={message:await reader.message(input.messageId,controller.signal)};}else result={items:await reader.list(input,controller.signal)};
    controller.signal.throwIfAborted();const body=JSON.stringify(result);if(Buffer.byteLength(body)>256*1024)throw Error('Gmail result too large');
    res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(body);
-  }catch{if(!res.writableEnded&&!res.destroyed)send(409,{error:'Google request could not be verified. Check the current account, permissions, and any saved operation receipt before retrying.'});}
+  }catch(error){
+   const failure=error as {code?:unknown;status?:unknown;data?:{error?:unknown}}|null;
+   const unavailable=failure?.code==='http'&&failure.status===404&&failure.data?.error==='Not found';
+   if(!res.writableEnded&&!res.destroyed)send(409,{error:'Google request could not be verified. Check the current account, permissions, and any saved operation receipt before retrying.',...(unavailable?{reason:'provider-route-unavailable'}:{})});
+  }
   finally{res.removeListener('close',closed);}
  };
 }
