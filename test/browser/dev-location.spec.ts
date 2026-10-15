@@ -81,3 +81,13 @@ test('another tab changing location cancels the first tab permission request',as
  await expect.poll(()=>page.evaluate(()=>(window as any).locationRace.result?.location)).toBe('denied');
  expect(await page.evaluate(async()=>{const state=(window as any).locationRace;state.callback();await state.pending;return {result:state.result,cleared:state.cleared};})).toEqual({result:{location:'denied',accuracy:'none'},cleared:[94]});
 });
+
+for(const code of [1,2,3])test(`browser location distinguishes permission denial from provider failure ${code}`,async({page})=>{
+ const result=await page.evaluate(async code=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');const cleared:number[]=[];
+  Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(_success:unknown,error:(value:{code:number})=>void)=>{queueMicrotask(()=>error({code}));return 97;},clearWatch:(id:number)=>cleared.push(id)}});
+  try{return {permission:await new BrowserLocation().requestPermissions(),cleared};}catch(error){return {error:{code:(error as any).code,message:(error as Error).message},cleared};}
+ },code);expect(result.cleared).toEqual([97]);
+ if(code===1)expect(result.permission).toEqual({location:'denied',accuracy:'none'});
+ else {expect(result.error?.code).toBe('unavailable');expect(result.error?.message).toContain(code===3?'timed out':'could not provide');}
+});

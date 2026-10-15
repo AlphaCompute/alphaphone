@@ -4,6 +4,7 @@ import {readLocationSimulation,locationSimulationKey} from './location-simulatio
 import { WebPlugin } from '@capacitor/core';
 import {browserSensorEnabled} from './sensor-policy';
 import {devSurfacesEnabled} from '../build-flags';
+import {MapsFailure} from '../maps/contracts';
 // The 'alpha.dev.location.v1' simulation is read only on the development server
 // with test mocks enabled; flag-off builds always use browser geolocation.
 const simulatedCoordinates=()=>devSurfacesEnabled&&readLocationSimulation().mode==='coordinates';
@@ -22,8 +23,8 @@ export class BrowserLocation extends WebPlugin {
    const settings=await readDevicePreferences();
    if(cancelled||!settings.locationEnabled||!foreground())return {location:'denied',accuracy:'none'};
    if(simulatedCoordinates())return {location:'granted',accuracy:'precise'};
-   return await new Promise(resolve=>{let id:number|undefined,settled=false;const finish=(granted:boolean)=>{if(settled)return;settled=true;if(id!==undefined)navigator.geolocation.clearWatch(id);resolve({location:granted?'granted':'denied',accuracy:granted?'precise':'none'});};finishPending=finish;
-    try{id=navigator.geolocation.watchPosition(()=>finish(!cancelled&&browserSensorEnabled('locationEnabled')),()=>finish(false),{timeout:10000});if(settled)navigator.geolocation.clearWatch(id);}catch{finish(false);}
+   return await new Promise((resolve,reject)=>{let id:number|undefined,settled=false;const finish=(granted:boolean,failure?:MapsFailure)=>{if(settled)return;settled=true;if(id!==undefined)navigator.geolocation.clearWatch(id);if(failure)reject(failure);else resolve({location:granted?'granted':'denied',accuracy:granted?'precise':'none'});};finishPending=finish;
+    try{id=navigator.geolocation.watchPosition(()=>finish(!cancelled&&browserSensorEnabled('locationEnabled')),error=>error.code===1?finish(false):finish(false,new MapsFailure('unavailable',error.code===3?'Finding your location timed out. Try again, or check that location services are enabled for your browser.':'Your browser could not provide a location. Check location services for your browser in system settings, or enter coordinates.')),{timeout:10000});if(settled)navigator.geolocation.clearWatch(id);}catch{finish(false,new MapsFailure('unavailable','Location services are unavailable in this browser. Try another browser, or enter coordinates.'));}
    });
   }finally{if(this.pending.get(requestId)===cancel)this.pending.delete(requestId);}
  }
