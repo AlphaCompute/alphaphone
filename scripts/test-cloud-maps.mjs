@@ -125,7 +125,7 @@ console.log('PASS Cloud Maps device provider: coverage, search, details, route, 
 }
 
 assert.equal(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).code,'unconfigured');
-assert.match(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).message,/operator/);
-assert.match(cloudMapsFailure(cloudError(503,'maps_admission_unknown')).message,/not be replayed/);
-assert.match(cloudMapsFailure(cloudError(409,'maps_request_already_admitted')).message,/not be replayed/);
-assert.match(cloudMapsFailure(cloudError(429,'allowance_exhausted')).message,/separate Maps/);
+assert.match(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).message,/not available yet/);
+assert.match(cloudMapsFailure(cloudError(503,'maps_admission_unknown')).message,/not retry automatically/);
+assert.match(cloudMapsFailure(cloudError(409,'maps_request_already_admitted')).message,/not retry automatically/);
+assert.match(cloudMapsFailure(cloudError(429,'allowance_exhausted')).message,/used your Maps allowance/);
