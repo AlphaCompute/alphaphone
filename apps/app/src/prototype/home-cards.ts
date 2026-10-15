@@ -85,17 +85,16 @@ export function presentHomeBriefCard(brief: HomeBriefSummary | null | undefined,
 }
 
 /** Source and freshness of the Home calendar card. `origin` (which calendar, or that the item is
- * a reminder) sits beside the date and `read` (when this app read it) beside the item's time;
+ * a reminder) sits beside the date. Successful read timestamps stay in the accessible description;
  * `description` is the full sentence exposed as the card's accessible description. Times are when
  * this app last read the source on this device, never a provider sync claim. A reminder comes from
  * the reminder store, so it carries that store's read time and never the calendar's. An overdue
  * reminder is already named in the card header. */
 export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | 'error' | 'other'; overdue: boolean; reminder?: boolean; reminderReadAt?: number | null; readAt: number | null; now: number; native: boolean; calendar?: string | null; truncated?: boolean}) {
   const {state, overdue, readAt, now, native} = input;
-  const short = (at: number) => { const date = new Date(at); return date.toDateString() === new Date(now).toDateString() ? formatTime(date) : formatShortDate(date); };
   const reminder = () => {
     const at = instant(input.reminderReadAt);
-    return {origin: overdue ? '' : 'Reminder', read: at ? `Read ${short(at)}` : '',
+    return {origin: overdue ? '' : 'Reminder', read: '',
       description: `${overdue ? 'Overdue reminder' : 'Reminder'} saved on this ${native ? 'device' : 'browser'}${at ? `, read ${whenLabel(at, now)}` : ''}`};
   };
   if (overdue) return reminder();
@@ -104,8 +103,8 @@ export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | '
   if (input.reminder) return reminder();
   if (state !== 'ready' || !readAt) return {origin: '', read: '', description: ''};
   const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
-  return {origin: name || (native ? 'Device' : 'This app'), read: `Read ${short(readAt)}`,
-    description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this browser'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
+  return {origin: name, read: '',
+    description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this app'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
 }
 /** The secondary line of the Home calendar card while an overdue reminder holds it: the first item
  * that is not overdue, so an overdue reminder never hides the next event. `source` names where and
@@ -120,8 +119,7 @@ export function presentHomeNext(input: {title: string; begin: number; allDay: bo
 /** Name of the calendar an event on the Home card was read from: the display source whose id is
  * the event's `calendarId` in the same completed read. Null when the event names no calendar, when
  * no source in that read has that id (a calendar removed or hidden from the provider since, or a
- * read that returned none), or when the matching source has no name; the card then says only
- * `Device` or `This app`. Ids are compared exactly as strings: the provider reports both as
+ * read that returned none), or when the matching source has no name; the card omits the label. Ids are compared exactly as strings: the provider reports both as
  * strings, and a name is never borrowed from another calendar. */
 export function homeCalendarName(sources: unknown, calendarId: unknown): string | null {
   if (typeof calendarId !== 'string' || !calendarId || !Array.isArray(sources)) return null;

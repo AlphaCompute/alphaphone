@@ -13,9 +13,9 @@ test('fresh Home shows sourced calendar state, no brief card, no fixture content
  await expect(page.locator('html')).toHaveAttribute('data-connection-mode','live');
  const home=page.getByRole('region',{name:'Home',exact:true}),calendar=page.locator('[data-alpha-home-calendar]');
  await expect(calendar).toContainText('No upcoming events');
- await expect(calendar.locator('[data-alpha-home-calendar-source]')).toHaveText(/^Read \d{1,2}:\d{2}/);
- await expect(calendar.locator('[data-alpha-home-calendar-origin]')).toHaveText('This app');
- await expect(calendar).toHaveAttribute('aria-description',/^Read \d{1,2}:\d{2}.* from the calendar saved in this browser$/);
+ await expect(calendar.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
+ await expect(calendar.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
+ await expect(calendar).toHaveAttribute('aria-description',/^Read \d{1,2}:\d{2}.* from the calendar saved in this app$/);
  await expect(calendar).toHaveAttribute('data-alpha-home-calendar-overdue','false');
  await expect(home.locator('[data-alpha-home-brief]')).toHaveCount(0);
  const inbox=home.locator('[data-alpha-home-inbox]');

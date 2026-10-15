@@ -167,6 +167,8 @@ test.describe('launcher', () => {
   });
 
   test('a Home that fits hands vertical touch drags to the page', async ({ page }) => {
+    // A tall phone fits the content plus the floating dock's inner clearance.
+    await page.setViewportSize({width:412,height:1200});
     await home(page);
     const layer = page.locator('[data-alpha-layer="home"]');
     await expect(layer).toHaveAttribute('data-alpha-home-fits', 'true');
