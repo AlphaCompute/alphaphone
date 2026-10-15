@@ -8,7 +8,7 @@ async function setup(page:Page){
  export const developmentCartesiaVoiceEnabled=true;
  export async function developmentCartesiaConversation(input){
   const f=window.voicePresentationFixture;let muted=false;
-  f.phase=phase=>input.onState(phase);f.partial=text=>input.onTranscript(text);f.fail=()=>input.onError(Error('Synthetic voice unavailable'));
+  f.navigate=event=>input.onNavigate(event);f.context=()=>input.getUiContext();f.phase=phase=>input.onState(phase);f.partial=text=>input.onTranscript(text);f.fail=()=>input.onError(Error('Synthetic voice unavailable'));
   return {start:async()=>{f.starts++;if(f.startHold){input.onState('connecting');await new Promise(resolve=>f.releaseStart=resolve);}input.onState('listening');},stop:async()=>{f.stops++;if(f.stopHold)await new Promise(resolve=>f.releaseStop=resolve);if(f.stopFailure)throw Error('Synthetic retirement unconfirmed');},recheck:()=>{},resume:()=>false,
    get microphoneMuted(){return muted;},setMicrophoneMuted:value=>{muted=value;f.muted=value;},needsPlaybackUnlock:false,unlockPlayback:async()=>{}};
  }`}));
@@ -24,8 +24,8 @@ async function setup(page:Page){
   const snapshot={...c.getSnapshot(),open:false,busy:false,session:{origin:'https://owned.invalid',ownerId:'owner',agentId:'agent',sessionId:'synthetic-agent'}};
   c.getSnapshot=()=>snapshot as any;c.getCloudEnvironment=()=>'production';c.getCloudClient=()=>({sessionId:'synthetic-cloud',credentialId:'synthetic-credential',client:{}} as any);
   Component.prototype.prepareVoiceConversation=async function(signal:any){signal.throwIfAborted();return {binding:{conversationId:'synthetic-room',session:{sessionId:'synthetic-agent'},connectionEpoch:1},context:{view:this.S().view||'home',revision:1,sensitive:false}};};
+  c.voiceConversationCurrent=()=>true;
   Component.prototype.voiceConversationCurrent=()=>true;
-  Component.prototype.voiceConversationContext=function(){return {view:this.S().view||'home',revision:1,sensitive:false};};
   Component.prototype.sendVoiceTurn=async()=>{f.sends++;throw Error('Synthetic presentation must not send');};
   const render=Component.prototype.renderVals;Component.prototype.renderVals=function(){f.shell=this;return render.call(this);};c.close();
  });
@@ -130,5 +130,20 @@ test('blue synth distinguishes thinking from speech and respects reduced motion'
  expect(speaking.color).not.toBe(thinking.color);expect(speaking.timings[0].duration).toBeLessThan(thinking.timings[0].duration);
  await page.emulateMedia({reducedMotion:'reduce'});await expect(wave).toHaveAttribute('data-paused','true');
  await expect.poll(()=>wave.evaluate(el=>[...el.children].flatMap(c=>c.getAnimations()).length)).toBe(0);
+ await page.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await noMediaOrSends(page);
+});
+
+
+test('realtime voice opens Notes in the real shell while retaining chat and the next transcript',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).voicePresentationFixture.shell.swallowed())).toBe(false);
+ await page.getByRole('button',{name:'Talk',exact:true}).click();
+ const detent=await page.evaluate(()=>(window as any).voicePresentationFixture.shell.S().chat);
+ await page.evaluate(async()=>{const f=(window as any).voicePresentationFixture;await f.navigate({viewId:'notes',viewPath:'/notes',traceId:'synthetic-notes-turn'});});
+ await expect.poll(()=>page.evaluate(()=>(window as any).voicePresentationFixture.shell.S().view)).toBe('notes');
+ expect(await page.evaluate(()=>(window as any).voicePresentationFixture.shell.S().chat)).toBe(detent);
+ await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();
+ await page.evaluate(()=>{const f=(window as any).voicePresentationFixture;f.phase('transcribing');f.partial('and make a note');});
+ await expect(page.locator('[data-alpha-voice-interim]')).toHaveText('and make a note');
  await page.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await noMediaOrSends(page);
 });
