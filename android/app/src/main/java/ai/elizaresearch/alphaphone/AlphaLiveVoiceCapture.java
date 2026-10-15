@@ -53,7 +53,7 @@ final class AlphaLiveVoiceCapture {
   * the issue #395 harness can substitute a paced feed when an emulator's virtual microphone delivers
   * no audio, and labels its trials with that source's clock.
   */
- interface Source {
+ interface Source extends LiveCaptureResource.Source {
   int read(short[] buffer,int offset,int length);
   /** CLOCK_MONOTONIC capture time of the 0-based frame, or VoiceLatencyTrials.UNSET. */
   long captureTimeNs(long frame);
@@ -61,6 +61,8 @@ final class AlphaLiveVoiceCapture {
   String clock();
   default boolean echoCancelled(){return false;}
   default long bufferMs(){return 0;}
+  /** Unblocks read without releasing resources; close remains owned by the worker. */
+  void requestStop();
   void close();
  }
  interface SourceFactory { Source open()throws Exception; }
@@ -90,6 +92,7 @@ final class AlphaLiveVoiceCapture {
   public String clock(){return "audiorecord-timestamp";}
   public boolean echoCancelled(){return echo!=null;}
   public long bufferMs(){return bufferDurationMs;}
+  public void requestStop(){try{recorder.stop();}catch(RuntimeException ignored){}}
   public void close(){try{recorder.stop();}catch(RuntimeException ignored){}finally{try{recorder.release();}finally{release(echo,noise);}}}
  }
 
@@ -102,7 +105,9 @@ final class AlphaLiveVoiceCapture {
  private volatile boolean echoCancelled;
  private volatile long bufferMs;
  private Thread thread;
- private long startedAt;
+ private boolean startAttempted;
+ private final LiveCaptureResource resource=new LiveCaptureResource();
+ private volatile long startedAt;
 
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink){this(context,captureId,sink,false);}
  AlphaLiveVoiceCapture(Context context,String captureId,Sink sink,boolean echoCancel){this(context,captureId,sink,echoCancel?"live-voice":"dictation",()->new MicrophoneSource(context,echoCancel));}
@@ -113,14 +118,30 @@ final class AlphaLiveVoiceCapture {
  /** The platform echo canceller is attached and enabled on this capture (full duplex is safe). */
  boolean echoCancelled(){return echoCancelled;}
 
- synchronized void start()throws Exception{
-  if(thread!=null)throw new IllegalStateException("Live capture already started");
-  long vad=openVad(context);
-  Source recorder;
-  try{recorder=sources.open();}catch(Exception|Error error){ElizaVoiceNative.nativeVadClose(vad);throw error;}
-  running=true;startedAt=System.currentTimeMillis();echoCancelled=recorder.echoCancelled();bufferMs=recorder.bufferMs();
-  thread=new Thread(()->loop(recorder,vad),"alpha-live-voice");
-  thread.start();
+ void start()throws Exception{
+  synchronized(this){
+   if(startAttempted)throw new IllegalStateException("Live capture already started");
+   startAttempted=true;running=true;
+  }
+  long vad=0;Source recorder=null;
+  try{
+   if(resource.stopped())throw new IllegalStateException("Live capture stopped");
+   vad=openVad(context);
+   if(resource.stopped())throw new IllegalStateException("Live capture stopped");
+   recorder=sources.open();
+   if(!resource.attach(recorder))throw new IllegalStateException("Live capture stopped");
+   synchronized(this){
+    if(!running)throw new IllegalStateException("Live capture stopped");
+    startedAt=System.currentTimeMillis();echoCancelled=recorder.echoCancelled();bufferMs=recorder.bufferMs();
+    final Source opened=recorder;final long openedVad=vad;
+    thread=new Thread(()->loop(opened,openedVad),"alpha-live-voice");
+    thread.start();
+   }
+  }catch(Exception|Error error){
+   running=false;
+   try{if(recorder!=null)resource.release(recorder);}finally{if(vad!=0)ElizaVoiceNative.nativeVadClose(vad);}
+   throw error;
+  }
  }
 
  private static void release(AcousticEchoCanceler echo,NoiseSuppressor noise){
@@ -128,11 +149,17 @@ final class AlphaLiveVoiceCapture {
   if(noise!=null)try{noise.release();}catch(RuntimeException ignored){}
  }
 
+ /** Marks cancellation without waiting for native startup, read, stop or release. */
+ void cancelPending(){running=false;resource.cancel();}
+ /** Unblocks an already-open source; call off the UI thread. */
+ void requestStop(){cancelPending();resource.requestStop();}
+
  /** Stops capture; returns the capture duration. The renderer closes an open segment itself. */
  long stop(){
   Thread active;synchronized(this){running=false;active=thread;}
+  resource.requestStop(); // AudioRecord.stop unblocks a read before waiting for its worker.
   if(active!=null&&active!=Thread.currentThread()){try{active.join(1500);}catch(InterruptedException interrupted){Thread.currentThread().interrupt();}}
-  return Math.max(0,System.currentTimeMillis()-startedAt);
+  long began=startedAt;return began==0?0:Math.max(0,System.currentTimeMillis()-began);
  }
 
  private void loop(Source recorder,long vad){
@@ -181,10 +208,9 @@ final class AlphaLiveVoiceCapture {
    }
    // Frames of an open segment read before the stop still belong to the utterance.
    if(frames.length()>0||edges.length()>0)sink.frames(captureId,frames,edges,Math.min(1f,peak));
-  }catch(Exception|Error failure){error="capture";}
+  }catch(Exception|Error failure){if(running)error="capture";}
   finally{
-   recorder.close();
-   ElizaVoiceNative.nativeVadClose(vad);
+   try{resource.release(recorder);}finally{ElizaVoiceNative.nativeVadClose(vad);}
    java.util.Arrays.fill(bytes,(byte)0);java.util.Arrays.fill(window,(short)0);java.util.Arrays.fill(pcm,0f);
    preroll.clear();
    sink.ended(captureId,error);
