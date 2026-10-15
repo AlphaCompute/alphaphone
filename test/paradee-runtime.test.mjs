@@ -25,7 +25,9 @@ function complete(root){
  const manifest={format:'eliza-paradee-voice-v1',model:pins[0].path,lexicon:pins[1].path,files:pins};
  const files=pins.map(row=>({...row,path:bundle+row.path}));files.push(write(native,bundle+'manifest.json',JSON.stringify(manifest)));
  for(const abi of ['arm64-v8a','x86_64'])files.push(write(native,`jniLibs/${abi}/libelizainference.so`,abi));
- const record={inputs,abis:['arm64-v8a','x86_64'],files};write(native,'build-record.json',JSON.stringify(record));return {native,record,save:()=>write(native,'build-record.json',JSON.stringify(record))};
+ const sourceCommit=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'))).commit;
+ const nativeCommit=execFileSync('git',['-C',path.join(root,'vendor/eliza/plugins/plugin-local-inference/native/llama.cpp'),'rev-parse','HEAD'],{encoding:'utf8'}).trim();
+ const record={sourceCommit,nativeCommit,inputs,abis:['arm64-v8a','x86_64'],files};write(native,'build-record.json',JSON.stringify(record));return {native,record,save:()=>write(native,'build-record.json',JSON.stringify(record))};
 }
 test('explicit unpackaged lane admits absence, never partial outputs or strict absence',t=>{const root=fixture(t);assert.deepEqual(verifyParadeeRuntime(root,{allowAbsent:true}),{packaged:false,qualified:false});assert.throws(()=>verifyParadeeRuntime(root),/missing/);fs.mkdirSync(path.join(root,PARADEE_NATIVE),{recursive:true});assert.throws(()=>verifyParadeeRuntime(root,{allowAbsent:true}),/missing/);});
 test('complete byte integrity never grants qualification; modified native and missing ASR pins fail',t=>{const root=fixture(t),{native}=complete(root);assert.deepEqual(verifyParadeeRuntime(root),{packaged:true,qualified:false});fs.unlinkSync(path.join(root,'android/paradee-voice/asr-inputs.json'));assert.throws(()=>verifyParadeeRuntime(root),/ASR/);write(root,'android/paradee-voice/asr-inputs.json','{"files":[]}');assert.throws(()=>verifyParadeeRuntime(root),/ASR/);write(native,'jniLibs/arm64-v8a/libelizainference.so','changed');assert.throws(()=>verifyParadeeRuntime(root),/input changed/);});
@@ -63,4 +65,11 @@ test('a parakeet slot admits exactly one Phonon-2 GGUF and refuses any other fil
  // Backend and file count must agree, and an unknown backend is refused.
  write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'parakeet',files:pair}));assert.throws(()=>verifyParadeeRuntime(root),/incomplete for the parakeet backend/);
  write(root,'android/paradee-voice/asr-inputs.json',JSON.stringify({backend:'whisper',files:[pair[0]]}));assert.throws(()=>verifyParadeeRuntime(root),/backend must be parakeet or qwen3/);
+});
+
+test('voice build records must identify the exact Eliza and native source pins',t=>{
+ const root=fixture(t),f=complete(root),source=f.record.sourceCommit,native=f.record.nativeCommit;
+ f.record.sourceCommit='0'.repeat(40);f.save();assert.throws(()=>verifyParadeeRuntime(root),/pinned source revisions/);
+ f.record.sourceCommit=source;f.record.nativeCommit='0'.repeat(40);f.save();assert.throws(()=>verifyParadeeRuntime(root),/pinned source revisions/);
+ f.record.nativeCommit=native;f.save();assert.deepEqual(verifyParadeeRuntime(root),{packaged:true,qualified:false});
 });
