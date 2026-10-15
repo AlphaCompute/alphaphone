@@ -48,6 +48,12 @@ function voiceControlResponse(kind:string,input:any,status:number,raw:string,ori
 }
 export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
+  if(/^\/api\/conversations\/[A-Za-z0-9_-]+\/messages\?/.test(path)){
+    const query=new URL(path,'http://localhost').searchParams,keys=[...query.keys()];
+    if(keys.length!==new Set(keys).size||keys.some(key=>!['before','beforeId','limit'].includes(key)))return false;
+    const before=query.get('before'),id=query.get('beforeId'),limit=query.get('limit');
+    return (limit===null||/^[1-9][0-9]{0,2}$/.test(limit)&&Number(limit)<=200)&&(before===null&&id===null||before!==null&&/^[0-9]{1,16}$/.test(before)&&Number.isSafeInteger(Number(before))&&id!==null&&VOICE_AGENT_ID.test(id));
+  }
   if(isAutomationsPath(path))return ['GET','POST','PUT','DELETE'].some(method=>automationsRouteAllowed(path,method));
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);

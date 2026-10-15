@@ -5,7 +5,7 @@ import {writeFile} from 'node:fs/promises';
 test('real direct voice opens Notes through the actual renderer channel',async({page},info)=>{
  test.skip(process.env.ALPHA_LIVE_VOICE_QA!=='1','Live-provider QA requires explicit opt-in');
  const receipt:any={startedAt:new Date().toISOString(),console:[],timings:[]};
- page.on('response',async response=>{if(response.status()>=400){let body='';try{body=(await response.text()).slice(0,800);}catch{}receipt.console.push({url:new URL(response.url()).pathname,status:response.status(),body});}});
+ page.on('response',async response=>{if(response.status()>=400){let body='';try{body=(await response.text()).slice(0,800);}catch{}let path;try{path=JSON.parse(response.request().postData()||'{}').path;}catch{}receipt.console.push({url:new URL(response.url()).pathname,path,status:response.status(),body});}});
  page.on('console',m=>{if(m.type()==='error')receipt.console.push(m.text());});
  await page.addInitScript(()=>{
   const w=window as any;w.voiceLiveProof={partial:[],spokenAudioBytes:0,playbackStarts:0};
@@ -27,6 +27,10 @@ test('real direct voice opens Notes through the actual renderer channel',async({
   await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.spokenAudioBytes),{timeout:30000}).toBeGreaterThan(0);
   receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
   await page.screenshot({path:info.outputPath('actual-notes-open.png')});
+  await expect(page.getByRole('heading',{name:'Notes',exact:true})).toHaveCount(0,{timeout:25000});receipt.timings.push({event:'home-after-spoken-request',ms:Date.now()-started});
+  await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();
+  const mute=page.getByRole('button',{name:'Mute microphone',exact:true});await expect(mute).toBeEnabled({timeout:10000});await mute.click();await expect(page.getByRole('button',{name:'Unmute microphone',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Unmute microphone',exact:true}).click();
+  await page.screenshot({path:info.outputPath('actual-home-return.png')});
  }finally{
   receipt.visible=await page.locator('body').innerText();receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
   const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();

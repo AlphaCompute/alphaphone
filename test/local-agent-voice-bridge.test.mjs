@@ -7,7 +7,7 @@ import {createServer,request as httpRequest} from 'node:http';
 import {createHash,randomUUID} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:60000});process.exit(child.status??1);}
-const {createLocalAgentDevHandler,LOCAL_VOICE_WS_PATH}=await import('../scripts/local-agent-dev-bridge.ts');
+const {createLocalAgentDevHandler,localAgentPathAllowed,LOCAL_VOICE_WS_PATH}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner=randomUUID(),agent=randomUUID(),conversation=randomUUID(),nonce='a'.repeat(43),voiceToken='b'.repeat(43),root='1'.repeat(64),paired='synthetic-owner-bearer';
 const BASE='/api/v1/voice/session';
 async function fixture(enabled=true){
@@ -75,4 +75,10 @@ test('renderer channel uses a single-use same-origin ticket and keeps the paired
  assert.deepEqual(f.rendererHeaders,[{url:'/ws?clientId='+clientId,authorization:'Bearer '+paired}]);
  assert.equal((await upgrade(wsUrl,f.origin)).status,403);connected.socket.destroy();
  }finally{await f.close();}
+});
+
+test('canonical message-history pagination is allowed with bounded cursor fields only',()=>{
+ const base='/api/conversations/'+randomUUID()+'/messages';
+ for(const suffix of ['?limit=200','?before=1792101404606&beforeId='+randomUUID()+'&limit=200','?before=1792101404606&beforeId=1cba3bf9-56fd-086e-b8bf-c2711d9bcffb&limit=200'])assert.equal(localAgentPathAllowed(base+suffix),true);
+ for(const suffix of ['?limit=201','?limit=1&limit=2','?token=secret','?before=123','?before=123&beforeId=not-a-uuid','?limit=-1','?limit=1%26token=secret'])assert.equal(localAgentPathAllowed(base+suffix),false);
 });
