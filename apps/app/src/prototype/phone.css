@@ -429,3 +429,8 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
  * grows with its rows instead of scrolling inside a squeezed box. */
 [data-alpha-subview="calendar-list"]:has(.calendar-agenda) { overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); scroll-padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); }
 [data-alpha-subview="calendar-list"] .calendar-agenda { flex:1 0 auto!important; overflow-y:visible!important; padding-bottom:12px!important; }
+
+.mail-folder-picker{position:relative;display:inline-flex;flex-shrink:0;width:92px;border-radius:22px;background:var(--s2);color:var(--fg)}
+.mail-folder-select{appearance:none;-webkit-appearance:none;height:44px;width:100%;min-width:0;padding:0 36px 0 14px;border:0;border-radius:22px;background:transparent;color:inherit;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
+.mail-folder-select:focus-visible{outline:2px solid var(--acct);outline-offset:2px}
+.mail-folder-chevron{position:absolute;right:12px;top:14px;width:16px;height:16px;pointer-events:none;background:currentColor;mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}

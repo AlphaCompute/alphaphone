@@ -115,8 +115,8 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   if(!ready||busy){toast(status||'Connect a Gmail account first.');return false;}
   const refuse=(text:string)=>{if(!prefill?.moved)toast(text);return false;};
   if(draft){if(prefill)return refuse('Finish, save or discard the open email draft first. The shared content was not added.');open=true;confirm=false;publish();return true;}
-  if(retained?.available)return refuse(prefill?'Resume the retained email edits first. The shared content was not added.':'Resume the retained email edits before creating another.');
-  if(saved)return refuse(prefill?'Restore or discard the saved local draft first. The shared content was not added.':'Restore or discard the saved local draft before creating another.');
+  if(retained?.available)return refuse(prefill?'Resume the retained email edits first. The shared content was not added.':'Open Drafts to continue or discard your unfinished email before creating another.');
+  if(saved)return refuse(prefill?'Restore or discard the saved local draft first. The shared content was not added.':'Open Drafts to continue or discard your saved draft before creating another.');
   if(prefill&&!reply){
    const clean=(list:unknown)=>Array.isArray(list)?[...new Set(list.filter((a):a is string=>typeof a==='string'&&address(a.trim())).map(a=>a.trim()))].slice(0,20):[];
    draft={version:1,id:crypto.randomUUID(),revision:crypto.randomUUID(),owner,mode:'compose',to:clean(prefill.to),cc:clean(prefill.cc),bcc:clean(prefill.bcc),subject:String(prefill.subject||'').replace(/[\r\n]+/g,' ').slice(0,998),body:String(prefill.body||'').slice(0,64000),...(prefill.attachments?.length?{attachments:structuredClone(prefill.attachments.slice(0,outgoingAttachmentLimits.maximumFiles))}:{})};
@@ -230,13 +230,13 @@ setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return rea
   /** That email with the identity of its local draft. A moved email is a new draft under the other
    * From account, so the identity also names the account. */
   email():{draftId:string;proposal:Bag}|null{const proposal=this.proposal();return draft&&proposal?{draftId:draft.id,proposal}:null;},
-  chips(chip:(label:string,action:()=>void)=>Bag){return ready?[
+  chips(chip:(label:string,action:()=>void)=>Bag):Bag[]{const local=draft||retained?.peek?.()?.draft||saved;return ready?[
    ...(draft?[chip('Continue draft',()=>{open=true;publish();})]:retained?.available?[chip('Resume unsaved email',()=>retained?.resume())]:saved?[chip(earlierVersion()?'Earlier version of a sent email':'Restore local draft',()=>{
     const reuse=earlierVersion();
     if(reuse&&!window.confirm('This saved draft is an earlier version of an email that was already sent.\n\nOpen it to edit or send? Sending it creates another message.'))return;
     draft=fromSaved();baseRevision=saved!.revision;staleBase=false;open=true;confirm=false;toQ='';if(reuse)status='Earlier version of a sent email. Sending it creates another message; nothing has been sent.';publish();})]:[]),
    ...(retained?.error?[chip('Recover email edits',()=>retained?.recover(draft))]:[]),
-  ]:[];},
+  ].map(row=>({...row,subject:local?.subject||'(No subject)',snippet:local?.body?.slice(0,160)||'Draft on this device',recovery:row.label==='Recover email edits'})):[];},
   /** Called for a provider-confirmed send that recorded its source draft; safe to repeat. */
   settleSent(draftId:string,proposal:Bag,grant:string,savedRevision?:string){if(!grant||grant!==account)return Promise.resolve();sent={draftId,proposal:structuredClone(proposal),account:grant,...(savedRevision?{savedRevision}:{})};return settleSent();},
   /** What the receipt may say about local copies of the sent draft. */

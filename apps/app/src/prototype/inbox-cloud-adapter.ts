@@ -360,7 +360,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const accountId = selected, pageToken = more && loadedQuery === 'in:drafts' ? nextPageToken : null;
     if (more && !pageToken) return;
     if (operation) return;
-    if (!provider.capabilities()?.draftsList) { messages = []; providerDrafts = []; nextPageToken = null; loadedQuery = 'in:drafts'; phase = 'ready'; status = 'This server cannot list Gmail drafts yet. Local drafts stay on this device.'; publish({ open: null, nativeMailSelection: null }); return; }
+    if (!provider.capabilities()?.draftsList) { messages = []; providerDrafts = []; nextPageToken = null; loadedQuery = 'in:drafts'; phase = 'ready'; status = 'Drafts on this device'; publish({ open: null, nativeMailSelection: null }); return; }
     if (pageToken) nextPageToken = null;
     loadingMore = more;
     const loadGeneration = generation + 1;
@@ -691,11 +691,12 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const extraFolders = binding&&selected?[
       {...chip('Starred',()=>setFolder('starred'),folder==='starred'),value:'starred'},
       {...chip('All mail',()=>setFolder('all'),folder==='all'),value:'all'},
-      ...(provider.capabilities()?.draftsList?[{...chip('Drafts',()=>setFolder('drafts'),folder==='drafts'),value:'drafts'}]:[]),
+      {...chip('Drafts',()=>setFolder('drafts'),folder==='drafts'),value:'drafts'},
       {...chip(spamTrashSearch?'Spam':'Spam — not available yet',()=>setFolder('spam'),folder==='spam'),value:'spam',disabled:!spamTrashSearch},
       {...chip(spamTrashSearch||provider.capabilities()?.searchTrash?'Trash':'Trash — not available yet',()=>setFolder('trash'),folder==='trash'),value:'trash',disabled:!spamTrashSearch&&!provider.capabilities()?.searchTrash},
     ]:[];
-    chips.push(...drafts.chips(chip), ...provider.chips(chip));
+    const localDrafts=drafts.chips(chip);
+    chips.push(...provider.chips(chip));
 
     // Today's mail shows its time; older mail its date.
     const date = (value: string | null) => { const d = new Date(value || ''); if (!value || Number.isNaN(d.valueOf())) return ''; const now = new Date();
@@ -713,6 +714,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     if (draftsView()) rows.splice(0, rows.length, ...providerDrafts.map(d => { const name = d.to.length ? `Draft to ${d.to.join(', ')}` : 'Draft (no recipients)';
       return { name, ini: 'D', subj: d.subject || '(no subject)', snip: d.snippet, time: date(d.updatedAt), nameW: '500', subjCss: 'color:var(--fg)', dot: 'transparent', clip: false, tx: 0, current: 'false',
         down: () => {}, up: () => {}, label: `Gmail draft, ${name}, ${d.subject || '(no subject)'}`, open: () => void openDraft(d) }; }));
+    if(draftsView())rows.unshift(...localDrafts.map(action=>({name:'On this device',ini:'D',subj:action.recovery?action.label:action.subject,snip:action.label==='Earlier version of a sent email'?action.label:action.snippet,time:'Draft',nameW:'500',subjCss:'color:var(--fg)',dot:'transparent',clip:false,tx:0,current:'false',down:()=>{},up:()=>{},label:`Local draft, ${action.recovery?action.label:action.subject}`,open:action.pick})));
     const linkRows = (source: NonNullable<typeof body>) => { const cached = linkRowCache.get(source); if (cached) return cached; const seen = new Set<string>(), list: GmailLink[] = [];
       for (const link of [...(source.links || []), ...linkifyMailText(source.bodyText)]) if (link.href.startsWith('https://') && !seen.has(link.href) && list.length < 50) { seen.add(link.href); list.push(link); }
       const rows = list.map(link => { const host = new URL(link.href).hostname; return { label: link.text === link.href ? host : `${link.text} (${host})`, href: link.href, host, mismatch: linkTextMismatch(link),
@@ -732,7 +734,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       doc.addEventListener('click',follow);doc.addEventListener('keydown',event=>{if(event.key==='Enter')follow(event);});
     };
 
-    return {folderTitle:folder==='inbox'?'Inbox':folder==='sent'?'Sent':folder==='archive'?'Archive':extraFolders.find(row=>row.value===folder)?.label||'Inbox',folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderValue:['inbox','sent','archive'].includes(folder)?'':folder,changeExtraFolder:(event:Bag)=>{const row=extraFolders.find(row=>row.value===event.target.value);if(row&&!('disabled' in row&&row.disabled))row.pick();}, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
+    return {folderTitle:folder==='inbox'?'Inbox':folder==='sent'?'Sent':folder==='archive'?'Archive':extraFolders.find(row=>row.value===folder)?.label||'Inbox',folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderCss:extraFolders.some(row=>row.on)?'width:112px;background:var(--fg);color:var(--bg)':'',extraFolderValue:['inbox','sent','archive'].includes(folder)?'':folder,changeExtraFolder:(event:Bag)=>{const row=extraFolders.find(row=>row.value===event.target.value);if(row&&!('disabled' in row&&row.disabled))row.pick();}, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
       openSearch: () => changeQuery(''), closeSearch: () => changeQuery(null), onQ: (e: Bag) => changeQuery(e.target.value),
       compose: () => drafts.begin(), empty: rows.length === 0, emptyIcon: 'M4 6h16v12H4zM4 6l8 6 8-6', emptyText: pendingCompose && !selected ? 'Shared content is ready for a new email. Connect Gmail to continue; nothing has been sent.' : status,
       hasMore: rows.length > 0 && (!!nextPageToken || (!!operation && loadingMore)), loadingMore: !!operation && loadingMore, loadMoreDisabled: !!operation, loadMoreLabel: operation && loadingMore ? 'Loading more…' : 'Load more', loadMore: () => void load(true),
