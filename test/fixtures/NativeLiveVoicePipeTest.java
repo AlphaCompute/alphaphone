@@ -36,8 +36,8 @@ public final class NativeLiveVoicePipeTest {
    for(int i=0;i<NativeLiveVoicePipe.MAX_BATCHES;i++)check(overflow.offer(frames(i),new JSONArray()),"bounded capacity");
    check(!overflow.offer(frames(9),new JSONArray())&&full.errors.equals(List.of("BACKPRESSURE")),"overflow fails closed");overflow.start(worker);check(overflow.close(true,10).get(3,TimeUnit.SECONDS),"overflow cleanup");
 
-   CountDownLatch staleFailure=new CountDownLatch(1);Transport changed=new Transport();Sink stale=new Sink(){public void failed(String code){super.failed(code);staleFailure.countDown();}};NativeLiveVoicePipe changedPipe=new NativeLiveVoicePipe(changed,stale,ID,null);changedPipe.start(worker);changed.current=false;await(staleFailure);
-   check(!changedPipe.close(false,1).get(3,TimeUnit.SECONDS)&&changed.bodies.isEmpty(),"re-enrollment forbids cleanup using new authority");
+   CountDownLatch staleFailure=new CountDownLatch(1);Transport changed=new Transport();Sink stale=new Sink(){public void failed(String code){super.failed(code);staleFailure.countDown();}};NativeLiveVoicePipe changedPipe=new NativeLiveVoicePipe(changed,stale,ID,null);changedPipe.start(worker);check(changedPipe.ready().get(3,TimeUnit.SECONDS),"original enrollment admitted");changed.current=false;await(staleFailure);
+   check(!changedPipe.close(false,1).get(3,TimeUnit.SECONDS)&&changed.bodies.size()==1,"re-enrollment forbids further dispatch and cleanup using new authority");
    NativeVoiceBinding binding=new NativeVoiceBinding(1,"root","token","owner");
    check(binding.current(1,"root","token","owner","root",200,100,true),"binding admitted");
    check(!binding.current(1,"root","new-token","owner","root",200,100,true),"same-owner re-enrollment rejected");
