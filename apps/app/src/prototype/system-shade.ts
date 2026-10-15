@@ -188,7 +188,8 @@ export function installSystemShade(Component: any, options: { native: boolean })
       if (home && typeof ResizeObserver !== 'undefined') {
         self.alphaHomeObserver = new ResizeObserver(() => markHomeFits());
         self.alphaHomeObserver.observe(home);
-        if (layout) self.alphaHomeObserver.observe(layout);
+        // Dock padding can change the outer height while the content box stays unchanged.
+        if (layout) self.alphaHomeObserver.observe(layout, { box: 'border-box' });
         // The half sheet changes scroll range without resizing Home or its stable icon layout.
         if (clearance) self.alphaHomeObserver.observe(clearance);
       } else markHomeFits();
