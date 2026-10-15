@@ -179,16 +179,18 @@ export function installSystemShade(Component: any, options: { native: boolean })
   // Home's height changes without a render too (text size, fonts loading, the dock): watch both
   // Home and its content, and follow Home when the shell replaces the element.
   const watch = (self: any) => {
-    const home = document.querySelector('[data-alpha-layer="home"]'), layout = home?.querySelector('[data-alpha-home-layout]');
-    if (home !== self.alphaHomeWatched || layout !== self.alphaHomeLayoutWatched) {
+    const home = document.querySelector('[data-alpha-layer="home"]'), layout = home?.querySelector('[data-alpha-home-layout]'), clearance = home?.querySelector('[data-alpha-home-clearance]');
+    if (home !== self.alphaHomeWatched || layout !== self.alphaHomeLayoutWatched || clearance !== self.alphaHomeClearanceWatched) {
       self.alphaHomeObserver?.disconnect();
-      self.alphaHomeWatched = home; self.alphaHomeLayoutWatched = layout;
+      self.alphaHomeWatched = home; self.alphaHomeLayoutWatched = layout; self.alphaHomeClearanceWatched = clearance;
       // An observer reports each element once when observed, and again whenever its size changes,
       // so renders do not force a layout read here.
       if (home && typeof ResizeObserver !== 'undefined') {
         self.alphaHomeObserver = new ResizeObserver(() => markHomeFits());
         self.alphaHomeObserver.observe(home);
         if (layout) self.alphaHomeObserver.observe(layout);
+        // The half sheet changes scroll range without resizing Home or its stable icon layout.
+        if (clearance) self.alphaHomeObserver.observe(clearance);
       } else markHomeFits();
     }
   };

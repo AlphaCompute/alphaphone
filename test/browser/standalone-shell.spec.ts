@@ -87,10 +87,14 @@ test('standalone Home scrolls to the screen edge without a simulated status-bar 
   await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
   const bounds=await home.boundingBox(),usable=await screen.boundingBox();
   expect(bounds!.y).toBeCloseTo(usable!.y,1);
-  // Home's scroll area starts at the screen edge and ends just above the floating composer (round 10:
-  // nothing on Home is drawn under it), not at a fixed distance from the top.
+  // Home fills the screen behind the floating composer; clearance inside the scroll content
+  // lets the final app row move fully above it without clipping the full-height surface.
   const composer=page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]');
-  await expect.poll(async()=>{const dock=await composer.boundingBox(),area=await home.boundingBox();return Math.round(dock!.y-(area!.y+area!.height));}).toBe(6);
+  expect(bounds!.y+bounds!.height).toBeCloseTo(usable!.y+usable!.height,1);
+  await home.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+  const lastApp=home.getByRole('button').last();
+  await expect.poll(async()=>{const dock=await composer.boundingBox(),last=await lastApp.boundingBox();return dock!.y-(last!.y+last!.height);}).toBeGreaterThanOrEqual(6);
+  await home.evaluate(node=>{node.scrollTop=0;});
   expect((await home.boundingBox())!.height).toBeGreaterThan(usable!.height-140);
   const tile=await home.getByRole('button').first().boundingBox();
   expect(tile!.y-bounds!.y).toBeLessThan(16);
