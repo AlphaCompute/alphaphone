@@ -4,13 +4,14 @@ import {writeFile} from 'node:fs/promises';
 // response, model, adapter or runtime; Chrome supplies a generated virtual mic.
 test('real direct voice opens Notes through the actual renderer channel',async({page},info)=>{
  test.skip(process.env.ALPHA_LIVE_VOICE_QA!=='1','Live-provider QA requires explicit opt-in');
+ const long=process.env.ALPHA_LONG_VOICE_QA==='1';if(long)test.setTimeout(180000);
  const receipt:any={startedAt:new Date().toISOString(),console:[],timings:[]};
  page.on('response',async response=>{if(response.status()>=400){let body='';try{body=(await response.text()).slice(0,800);}catch{}let path;try{path=JSON.parse(response.request().postData()||'{}').path;}catch{}receipt.console.push({url:new URL(response.url()).pathname,path,status:response.status(),body});}});
  page.on('console',m=>{if(m.type()==='error')receipt.console.push(m.text());});
  await page.addInitScript(()=>{
-  const w=window as any;w.voiceLiveProof={partial:[],spokenAudioBytes:0,playbackStarts:0};
+  const w=window as any;w.voiceLiveProof={partial:[],spokenAudioBytes:0,playbackStarts:0,ready:[],rendererConnections:0,captures:0,maxConcurrentCaptures:0};const getUserMedia=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);w.voiceProofStreams=[];navigator.mediaDevices.getUserMedia=async constraints=>{const stream=await getUserMedia(constraints);w.voiceProofStreams.push(stream);w.voiceLiveProof.captures++;w.voiceLiveProof.maxConcurrentCaptures=Math.max(w.voiceLiveProof.maxConcurrentCaptures,w.voiceProofStreams.flatMap((s:MediaStream)=>s.getAudioTracks()).filter((t:MediaStreamTrack)=>t.readyState==='live').length);return stream;};
   const Original=window.WebSocket;
-  w.WebSocket=new Proxy(Original,{construct(Target,args){const socket=new Target(...args as [string,string[]]);socket.addEventListener('message',event=>{if(typeof event.data==='string'){try{const frame=JSON.parse(event.data);if(frame.t==='stt_partial'||frame.t==='stt_final')w.voiceLiveProof.partial.push(frame);if(frame.t==='speaking_start')w.voiceLiveProof.playbackStarts++;}catch{}}else if(event.data instanceof ArrayBuffer)w.voiceLiveProof.spokenAudioBytes+=event.data.byteLength;else if(event.data instanceof Blob)w.voiceLiveProof.spokenAudioBytes+=event.data.size;});return socket;}});
+  w.WebSocket=new Proxy(Original,{construct(Target,args){const socket=new Target(...args as [string,string[]]);if(String(args[0]).includes('/__alpha-local-renderer/ws'))w.voiceLiveProof.rendererConnections++;socket.addEventListener('message',event=>{if(typeof event.data==='string'){try{const frame=JSON.parse(event.data);if(frame.t==='ready')w.voiceLiveProof.ready.push({at:Date.now(),sessionId:frame.sessionId});if(frame.t==='stt_partial'||frame.t==='stt_final')w.voiceLiveProof.partial.push(frame);if(frame.t==='speaking_start')w.voiceLiveProof.playbackStarts++;}catch{}}else if(event.data instanceof ArrayBuffer)w.voiceLiveProof.spokenAudioBytes+=event.data.byteLength;else if(event.data instanceof Blob)w.voiceLiveProof.spokenAudioBytes+=event.data.size;});return socket;}});
  });
  await page.goto('/');await expect(page.getByRole('button',{name:'Talk',exact:true})).toBeVisible({timeout:30000});
  await expect.poll(async()=>page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session&&!c.getSnapshot().busy&&!c.getSnapshot().open;}),{timeout:30000}).toBe(true);
@@ -31,6 +32,7 @@ test('real direct voice opens Notes through the actual renderer channel',async({
   await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();
   const mute=page.getByRole('button',{name:'Mute microphone',exact:true});await expect(mute).toBeEnabled({timeout:10000});await mute.click();await expect(page.getByRole('button',{name:'Unmute microphone',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Unmute microphone',exact:true}).click();
   await page.screenshot({path:info.outputPath('actual-home-return.png')});
+  if(long){await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.ready.length),{timeout:145000,intervals:[1000,5000]}).toBeGreaterThanOrEqual(2);await expect.poll(()=>Date.now()-started,{timeout:145000,intervals:[1000,5000]}).toBeGreaterThan(125000);await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();const proof=await page.evaluate(()=>(window as any).voiceLiveProof);expect(proof.rendererConnections).toBeGreaterThanOrEqual(2);expect(proof.maxConcurrentCaptures).toBe(1);receipt.rotationQualified=true;await page.screenshot({path:info.outputPath('after-125-seconds.png')});}
  }finally{
   receipt.visible=await page.locator('body').innerText();receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
   const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();
