@@ -1,12 +1,13 @@
 import {test,expect} from '@playwright/test';
-test('compact assistant controls keep dictation inside the expanded composer',async({page})=>{
+test('compact and expanded assistant controls expose one voice mic without a duplicate dictation launcher',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');
  await page.getByRole('button',{name:'Notes',exact:true}).click();
  const pill=page.locator('[data-alpha-layer="pill"]');await expect(pill).toBeVisible();
  await expect(pill.getByRole('button')).toHaveCount(3);await expect(pill.getByRole('button',{name:'Transcribe',exact:true})).toHaveCount(0);
  await pill.getByRole('button',{name:'Type',exact:true}).click();
- const dictate=page.getByRole('button',{name:'Transcribe',exact:true});await expect(dictate).toBeVisible();await expect(dictate).toHaveAttribute('title','Transcribe into draft');
- expect(await dictate.locator('span').getAttribute('style')).toContain('/icons/lucide/audio-lines.svg');
+ await expect(page.getByRole('button',{name:'Transcribe',exact:true})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:'Talk',exact:true})).toHaveCount(1);
+ await expect(page.locator('textarea[data-alpha-composer]')).toBeVisible();
 });
 test('More has a consistent chevron and Drafts is available without provider drafts',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');

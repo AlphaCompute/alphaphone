@@ -40,7 +40,7 @@ by a source pin; never modify the vendor checkout.
 | 1 / AP1 resident identity and service boundary | #396 #406 #415: local-only agent, Cloud service identity, remove hosted onboarding/restore | Real owner-bound sign-in, revoke/restart, no hosted-agent routes, preserved history |
 | 1 / AP7 platform and release | #399 #400: Pixel 10a Android 17 input lock, Cuttlefish, release signing/recovery | Four APKs inspected; image boot separately; physical functions, OTA and recovery separately |
 | 2 / AP3 native speech | #397 #413: research, native ABI/JNI, streaming STT/TTS, offline assets | Both ABI executions and physical audio; candidate hashes, quality, speed, no speech egress |
-| 2 / AP2 voice interaction | #423 #395: separate buttons, Clef turn detection feasibility, long-gap submission, cancellation and true audio latency | Dictation never submits; voice conversation auto-submits and correctly interrupts; measured end-to-end p95 |
+| 2 / AP2 voice interaction | #423 #395: one chat microphone, separate Notes dictation, Clef turn detection feasibility, long-gap submission, cancellation and true audio latency | Dictation never submits; voice conversation auto-submits and correctly interrupts; measured end-to-end p95 |
 | 2 / AP6 service billing and Maps | #410 #412: Cloud subscription/cached quotas and reusable Maps APIs/tools | No billing network hop per turn; real routes with coverage/freshness, local navigation control and rate-limit evidence |
 | 3 / AP5 AOSP daily tools | #420 #421: AOSP capability admission; Contacts, Phone, SMS/MMS; Gmail scopes | Standalone cannot invoke hidden AOSP tools; real provider/role readback and owned carrier endpoints |
 | 3 / AP6 Inbox and sharing | #405 #419: mailbox actions, attachment handling and reviewed cross-app drafts | Authorized real Gmail send/read/attachment, exact bytes, no automatic repeat after unknown outcome |
@@ -58,6 +58,12 @@ before integrating a consumer. Subscription pricing/quotas and final model/backe
 selection are explicit tasks, with performance evidence before admission.
 
 ## Voice state and runtime design
+
+October 15 presentation update: chat exposes one microphone button. Active voice
+uses the inline blue synth, Mute/Unmute and Stop, keeping conversation history
+visible; Stop preserves the current chat detent. Pill voice stays compact. Notes
+dictation remains separate. The retained chat-dictation API is covered as API
+behavior, not a second user-facing control or production UI acceptance.
 
 Use the [speech research/native plan](local-speech-research-2026-10-12.md).
 Keep capture, VAD, STT, semantic turn scoring and PCM playback native; expose text,

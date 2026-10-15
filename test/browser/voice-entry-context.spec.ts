@@ -17,12 +17,16 @@ test('unavailable chat voice preserves the selected note and returns to typing w
  await expect.poll(async()=>(await agentContext(page)).selectedObject?.kind,{timeout:15000}).toBe('note');
  const before=await agentContext(page);
  expect(before.view).toBe('notes');
- await page.getByRole('button',{name:'Talk',exact:true}).first().click();
+ await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js'),{connectionController:c}=await import('/src/runtime/connection-ui.tsx');const render=Component.prototype.renderVals;Component.prototype.renderVals=function(){(window as any).entryContextShell=this;return render.call(this);};c.close();});
+ await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).entryContextShell?.swallowed())).toBe(false);
+ await page.getByRole('button',{name:'Talk',exact:true}).press('Enter');
  const voice=page.getByRole('region',{name:'Voice conversation',exact:true});
  await expect(voice).toBeVisible();
  await expect(voice.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();
- await voice.getByRole('button',{name:'Switch to keyboard',exact:true}).click();
+ await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
  await expect(voice).toHaveCount(0);
+ await page.getByRole('button',{name:'Type',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('');
  // The same note is still open beside the keyboard composer, and the envelope still names it at the same revision.
  await expect(page.locator('textarea[aria-label="Note"]')).toHaveValue('Original body stays put.');

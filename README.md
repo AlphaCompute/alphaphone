@@ -50,7 +50,9 @@ The [implementation plan](docs/implementation-plan.md) and
 [32 implementation TODOs](docs/owner-approved-mvp-plan-2026-10-12.md) supersede older
 scope wording above. Agent execution is local only; Eliza Cloud provides inference,
 subscription billing, Gmail and shared Maps. All STT/TTS must move to the native
-on-device route. Dictation and interruptible voice assistant are separate controls.
+on-device route. Chat has one microphone control for the interruptible voice assistant. Active chat
+shows the inline blue synth, Mute/Unmute and Stop. Notes dictation remains separate;
+the retained chat-dictation API is not a second user-facing chat control.
 Always-on listening is required in the Pixel 10a / Android 17 AOSP MVP. Phone,
 Contacts and SMS are AOSP-only; Wallet is removed. Full permitted Photos access and
 reset-only data management are planned. These are requirements, not claims that the

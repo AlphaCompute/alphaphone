@@ -20,7 +20,7 @@ async function setup(page:Page,options:{playback:'starts'|'fails';policy?:'auto-
   const timing=await import('/src/runtime/voice-timing.ts');timing.clearVoiceTiming();
   if(policy)(await import('/src/runtime/voice-selection.ts')).setVoiceSendPolicyForTests(policy);
   const f=(window as any).timingFixture;f.playback=playback;
-  const snapshot={...c.getSnapshot(),session:{origin:'https://owned.invalid',ownerId:'owner',agentId:'agent',sessionId:'synthetic-agent'}};c.getSnapshot=()=>snapshot as any;
+  const snapshot={...c.getSnapshot(),open:false,busy:false,session:{origin:'https://owned.invalid',ownerId:'owner',agentId:'agent',sessionId:'synthetic-agent'}};c.getSnapshot=()=>snapshot as any;
   c.getCloudEnvironment=()=>'production';c.getCloudClient=()=>({sessionId:'synthetic-cloud',credentialId:'synthetic-credential',client:{}} as any);
   BrowserVoice.prototype.startRecording=async()=>{f.active='synthetic-clip-'+(++f.starts);return {recordingId:f.active,maxDurationMs:59000};};
   BrowserVoice.prototype.getRecordingMetrics=async(input:any)=>({recordingId:input.recordingId,peak:f.peak});
@@ -44,8 +44,9 @@ async function setup(page:Page,options:{playback:'starts'|'fails';policy?:'auto-
    await put(msgs=>[...msgs.filter(m=>m.id!=='stream-'+n),{id:'assistant-'+n,from:'agent',text:'Synthetic matching reply.',streaming:false}]);
    return {requestId:input.turnId,conversationId:'synthetic-room',userMessageId:'user-'+n,assistantMessageId:'assistant-'+n,text:'Synthetic matching reply.',complete:true};
   };
-  c.close();
+  c.close();const render=Component.prototype.renderVals;Component.prototype.renderVals=function(){f.shell=this;return render.call(this);};
  },options);
+ await expect.poll(()=>page.evaluate(()=>!!(window as any).timingFixture.shell)).toBe(true);
 }
 async function utterance(page:Page){await page.evaluate(()=>(window as any).timingFixture.peak=.25);await page.waitForTimeout(950);await page.evaluate(()=>(window as any).timingFixture.peak=0);}
 const records=(page:Page)=>page.evaluate(async()=>JSON.parse((await import('/src/runtime/voice-timing.ts')).exportVoiceTiming()).records);
@@ -78,7 +79,7 @@ test('playback that starts adds first audio after the final reply, and the next 
 test('closing voice while the transcript is pending records the turn as abandoned and sends nothing',async({page})=>{
  await setup(page,{playback:'starts'});await page.evaluate(()=>(window as any).timingFixture.holdTranscript=true);await talk(page);await utterance(page);
  await expect(voice(page)).toHaveAttribute('data-voice-state','transcribing');
- await voice(page).getByRole('button',{name:'Close voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);
+ await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);
  await page.evaluate(()=>(window as any).timingFixture.releaseTranscript());
  const rows=await records(page);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({entry:'conversation',outcome:'abandoned',marks:{'recording-end':0}});expect(Object.keys(rows[0].marks)).toEqual(['recording-end']);
  expect(await page.evaluate(()=>(window as any).timingFixture.sends)).toBe(0);
