@@ -1,3 +1,4 @@
+import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import React from 'react';
 import {VoiceActivity} from './voice-activity';
 import {testMocksEnabled} from '../build-flags';
@@ -202,7 +203,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     stopLocalSpeechPlayback(); cleanup(true,!chat); chatDestination=chat;reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
     if(previousChat&&!chat)previousChat.shell.setState({chat:previousChat.chat});
     cloudMode = selected === 'cloud';
-    cloudConnectRequired = cloudMode && !(chat&&developmentCartesiaVoiceEnabled) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
+    cloudConnectRequired = cloudMode && !developmentCloudVoiceEnabled && !(chat&&developmentCartesiaVoiceEnabled) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
     deviceOnly = !cloudMode && (browserDevProfile || localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode && !cloudConnectRequired ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     if (cloudConnectRequired) error = 'Sign in to Eliza Cloud to use voice.';
@@ -483,13 +484,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   async function beginConversation(){
     const chat=chatDestination;if(!chat||!chatCurrent())return;
     const token=generation;
-    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
+    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
     const controller=new AbortController();readiness=controller;conversationReviewRequired=false;conversationState={phase:'starting'};error='';refresh();
     const current=()=>{controller.signal.throwIfAborted();if(token!==generation||chatDestination!==chat||!chatCurrent())throw new DOMException('Voice conversation changed','AbortError');};
     try{
       current();const prepared=await chat.shell.prepareVoiceConversation(controller.signal);current();conversationPrepared=prepared;current();
       const previous=conversationVoice;conversationVoice=undefined;await stopping;await previous?.stop();current();
-      if(developmentCartesiaVoiceEnabled){
+      if(developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){
         const direct=await developmentCartesiaConversation({binding:prepared.binding,assertCurrent:current,onState:phase=>{if(token!==generation)return;conversationState={phase:phase==='connecting'?'starting':['listening','thinking','speaking'].includes(phase)?phase as 'listening'|'thinking'|'speaking':'idle'};refresh();},onPlaybackUnlockChange:()=>{if(token===generation)refresh();},onTranscript:text=>{if(token===generation){conversationLastTranscript=text;conversationInterim=text;refresh();}},onError:failure=>{if(token===generation){error=failure.message;conversationState={phase:'error',error:failure};refresh();}}});
         current();conversationVoice=direct;await direct.start();current();return;
       }

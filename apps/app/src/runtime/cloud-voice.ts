@@ -1,3 +1,4 @@
+import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {markTtsPlaybackStarted,markTtsPlaybackEnded} from '../../../../.eliza/client-features/packages/ui/src/voice/tts-playback-activity.ts';
 import { playOwnedSpeech } from '../local-speech-playback';
 import { registerPlugin } from '../platform-plugins';
@@ -7,6 +8,7 @@ import { connectionController } from './connection-ui';
 /** Native status codes retain recovery meaning without exposing a provider response body. */
 export function cloudVoiceFailure(error: unknown): string | null {
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+  if(developmentCloudVoiceEnabled&&(code==='voice-http-401'||code==='voice-http-403'))return 'The developer agent’s Cloud speech authorization was refused. Check its server-side Cloud configuration, then retry.';
   if (code === 'voice-http-401' || code === 'voice-http-403') return 'Sign in to Eliza Cloud again in Settings, then retry voice.';
   if (code === 'voice-http-402') return 'Eliza Cloud declined cloud voice for your account\'s billing. Check your account in Settings, then retry.';
   return null;
@@ -14,6 +16,8 @@ export function cloudVoiceFailure(error: unknown): string | null {
 
 export type VoiceClip = { recordingId: string; durationMs: number };
 const native = registerPlugin<{
+  transcribeDevelopmentCloudRecording(input:{recordingId:string;requestId:string}):Promise<{text:string;local:false}>;
+  synthesizeDevelopmentCloud(input:{text:string;requestId:string;replace?:boolean}):Promise<{playbackId:string}>;
   startRecording(): Promise<{ recordingId: string; maxDurationMs: number }>;
   stopRecording(): Promise<VoiceClip>;
   getRecordingMetrics(input:{recordingId:string}):Promise<{recordingId:string;peak:number;rms?:number}>;
@@ -33,8 +37,11 @@ export function createCloudVoice() {
   const environment = connectionController.getCloudEnvironment();
   const binding = connectionController.getCloudClient();
   const sessionId = binding?.sessionId, credentialId = binding?.credentialId;
-  if (!environment || !sessionId || !credentialId) throw new Error('Sign in to Eliza Cloud to use Cloud voice.');
+  const agent=developmentCloudVoiceEnabled?connectionController.getBrowserSpeechAgent():null,agentSession=agent?.session;
+  if(developmentCloudVoiceEnabled&&!agentSession)throw Error('Connect the developer agent first.');
+  if (!developmentCloudVoiceEnabled&&(!environment || !sessionId || !credentialId)) throw new Error('Sign in to Eliza Cloud to use Cloud voice.');
   const check = () => {
+    if(developmentCloudVoiceEnabled){if(agent!==connectionController.getBrowserSpeechAgent()||agent?.session!==agentSession)throw new DOMException('Voice agent changed','AbortError');return;}
     if (environment !== connectionController.getCloudEnvironment() || sessionId !== connectionController.getCloudClient()?.sessionId || credentialId !== connectionController.getCloudClient()?.credentialId) throw new DOMException('Voice account changed', 'AbortError');
   };
   return {
@@ -43,7 +50,7 @@ export function createCloudVoice() {
     async getRecordingMetrics(recordingId:string){check();const value=await native.getRecordingMetrics({recordingId});check();if(value.recordingId!==recordingId||!Number.isFinite(value.peak)||value.peak<0||value.peak>1||(value.rms!==undefined&&(!Number.isFinite(value.rms)||value.rms<0||value.rms>1)))throw Error('Recording metrics were not verified.');return value;},
     async stopRecording() { check(); const result = await native.stopRecording(); check(); return result; },
     async transcribeRecording(input: { recordingId: string; requestId: string }) {
-      check(); const result = await native.transcribeRecording({ ...input, environment, credentialId }); check();
+      check(); const result = await (developmentCloudVoiceEnabled?native.transcribeDevelopmentCloudRecording(input):native.transcribeRecording({ ...input, environment:environment!, credentialId:credentialId! })); check();
       if (typeof result.text !== 'string' || result.local !== false) throw new Error('Eliza Cloud returned no usable transcript.');
       // An empty transcript is silence, not a microphone, account or connection failure.
       if (!result.text.trim()) throw Object.assign(new Error('Eliza Cloud heard no speech in this recording.'), { code: 'no-speech' });
@@ -59,7 +66,7 @@ export function createCloudVoice() {
       const changed=()=>{try{current();}catch(error){owned.abort(error);}};
       const unsubscribe=connectionController.subscribe(changed);document.addEventListener('visibilitychange',changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
       let marked=false;
-      try{await playOwnedSpeech(native,owned.signal,requestId=>native.synthesize({text,requestId,environment,credentialId,...(queue?{replace:false}:{})}),current,()=>{current();if(onStarted)onStarted();else{marked=true;markTtsPlaybackStarted();}},true,queue);}
+      try{await playOwnedSpeech(native,owned.signal,requestId=>developmentCloudVoiceEnabled?native.synthesizeDevelopmentCloud({text,requestId,...(queue?{replace:false}:{})}):native.synthesize({text,requestId,environment:environment!,credentialId:credentialId!,...(queue?{replace:false}:{})}),current,()=>{current();if(onStarted)onStarted();else{marked=true;markTtsPlaybackStarted();}},true,queue);}
       finally{if(marked)markTtsPlaybackEnded();unsubscribe();document.removeEventListener('visibilitychange',changed);signal.removeEventListener('abort',cancel);}
     },
   };
@@ -69,6 +76,8 @@ export function createCloudVoice() {
 // the preceding owned cleanup, including a failure to confirm that cleanup.
 let appSpeechRetirement:Promise<void>=Promise.resolve();
 export async function speakCloudText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,assertCurrent?:()=>void){
+  if(developmentCloudVoiceEnabled){const previous=appSpeechRetirement;const pending=(async()=>{await previous;signal.throwIfAborted();assertCurrent?.();await createCloudVoice().speak(text,signal,onStarted,queue,assertCurrent);})();appSpeechRetirement=pending.catch(error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});void appSpeechRetirement.catch(()=>{});await pending;return;}
+
   const environment=connectionController.getCloudEnvironment(),binding=connectionController.getCloudClient(),sessionId=binding?.sessionId,credentialId=binding?.credentialId;
   const owned=new AbortController(),cancel=()=>owned.abort(signal.reason),retire=()=>owned.abort(new DOMException('Voice review changed','AbortError'));
   if(signal.aborted)cancel();

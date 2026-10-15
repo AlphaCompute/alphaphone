@@ -51,7 +51,7 @@ export function localAgentPathAllowed(path:unknown):path is string {
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
-export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch;cartesiaEnabled?:boolean}) {
+export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch;cartesiaEnabled?:boolean;cloudVoiceEnabled?:boolean}) {
   const origin=new URL(options.origin);
   if(origin.protocol!=='http:'||origin.hostname!=='127.0.0.1'||origin.pathname!=='/'||origin.search||origin.hash||origin.username||origin.password)
     throw new Error('The development agent must use an explicit 127.0.0.1 HTTP origin.');
@@ -93,11 +93,13 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const voicePath=typeof input.path==='string'&&input.path.startsWith(VOICE_PATH),voice=voicePath&&options.cartesiaEnabled===true?voiceControl(input):null;
       if(voicePath&&!voice){fail(400,'Unsupported development voice request');return;}
-      const asr=input.path===ASR_PATH||input.path===ASR_PATH+'/status',tts=input.path===TTS_PATH||input.path===TTS_PATH+'/status';
-      const speech=asr||tts,ttsAudio=input.path===TTS_PATH&&input.method==='POST';
-      if(size>LIMIT&&!(input.path===ASR_PATH&&input.method==='POST')){fail(413,'Request too large');return;}
+      const cloudAsr=input.path==='/api/asr/cloud',cloudTts=input.path==='/api/tts/cloud',cloudSpeech=cloudAsr||cloudTts;
+      if(cloudSpeech&&options.cloudVoiceEnabled!==true){fail(400,'Developer Cloud speech is disabled');return;}
+      const asr=cloudAsr||input.path===ASR_PATH||input.path===ASR_PATH+'/status',tts=cloudTts||input.path===TTS_PATH||input.path===TTS_PATH+'/status';
+      const speech=asr||tts,ttsAudio=(cloudTts||input.path===TTS_PATH)&&input.method==='POST';
+      if(size>LIMIT&&!((cloudAsr||input.path===ASR_PATH)&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
-      if((!voice&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
+      if((!voice&&!cloudSpeech&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
          ((input.path.startsWith('/api/views/')||input.path.endsWith('/messages/truncate'))&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
          (['GET','DELETE'].includes(input.method)&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
@@ -120,9 +122,9 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
         if(input.path===TTS_PATH+'/status'){
           if(input.method!=='GET'||input.body!==undefined||input.requestId!==undefined){fail(400,'Invalid speech status request');return;}
         }else{
-          if(!ttsAudio||typeof input.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId)||typeof input.body!=='string'||input.body.length>8192){fail(400,'Invalid speech text request');return;}
+          if(!ttsAudio||typeof input.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId)||typeof input.body!=='string'||input.body.length>(cloudTts?70000:8192)){fail(400,'Invalid speech text request');return;}
           let value;try{value=JSON.parse(input.body);}catch{fail(400,'Invalid speech text');return;}
-          if(!value||typeof value.text!=='string'||!value.text.trim()||value.text.length>500||Object.keys(value).some(key=>key!=='text')){fail(400,'Invalid speech text');return;}
+          if(!value||typeof value.text!=='string'||!value.text.trim()||value.text.length>(cloudTts?16000:500)||Object.keys(value).some(key=>key!=='text'&&!(cloudTts&&key==='modelId'))||(cloudTts&&value.modelId!=='sonic-3')){fail(400,'Invalid speech text');return;}
         }
       }else if(input.audioBase64!==undefined||input.requestId!==undefined){fail(400,'Speech payload requires a speech route');return;}
       const streamPath=/^\/api\/conversations\/[A-Za-z0-9_-]+\/messages\/stream$/.test(input.path);
@@ -139,10 +141,12 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
         const value=input.headers?.[key];if(value!==undefined){if(typeof value!=='string'||value.length>2048||/[\r\n]/.test(value))throw new Error('Invalid device header');headers[key]=value;}
       }
       if(audio){headers['Content-Type']='audio/wav';headers['X-Request-Id']=input.requestId;}
-      if(ttsAudio){headers['X-Request-Id']=input.requestId;headers.Accept='audio/wav';}
+      if(ttsAudio){headers['X-Request-Id']=input.requestId;headers.Accept=cloudTts?'audio/mpeg':'audio/wav';}
       const result=await request(origin.origin+input.path,{method:input.method,headers,body:audio??input.body,redirect:'error',
         signal:AbortSignal.any([abort.signal,AbortSignal.timeout(voice?10000:120000)])});
-      if(ttsAudio&&result.ok&&(result.headers.get('content-type')!=='audio/wav'||result.headers.get('x-request-id')!==input.requestId||result.headers.get('x-eliza-speech-provider')!=='libelizainference-paradee')){await result.body?.cancel();fail(502,'Invalid local speech response');return;}
+      if(cloudSpeech&&!result.ok){await result.body?.cancel();res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({status:result.status,body:JSON.stringify({code:'cloud_voice_unavailable'})}));return;}
+      if(cloudSpeech&&(result.headers.get('x-eliza-speech-provider')!=='cartesia'||result.headers.get('x-eliza-speech-route')!=='cloud'||(cloudTts&&result.headers.get('content-type')?.split(';')[0]!=='audio/mpeg'))){await result.body?.cancel();fail(502,'Cloud speech provider was not verified');return;}
+      if(ttsAudio&&!cloudTts&&result.ok&&(result.headers.get('content-type')!=='audio/wav'||result.headers.get('x-request-id')!==input.requestId||result.headers.get('x-eliza-speech-provider')!=='libelizainference-paradee')){await result.body?.cancel();fail(502,'Invalid local speech response');return;}
       if(input.stream===true){
         if(result.status===401)pairing=undefined;
         if(!result.ok||!result.body||!result.headers.get('content-type')?.startsWith('text/event-stream')){
@@ -155,11 +159,14 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
         if(!abort.signal.aborted)res.end();return;
       }
       const reader=result.body?.getReader();let received=0;const output:Uint8Array[]=[];
-      if(reader)try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>(voice?16*1024:ttsAudio&&result.ok?1440044:speech?128*1024:LIMIT))throw new Error('Response too large');output.push(item.value);}}finally{await reader.cancel();}
+      if(reader)try{while(true){const item=await reader.read();if(item.done)break;received+=item.value.length;if(received>(voice?16*1024:cloudTts&&result.ok?8*1024*1024:ttsAudio&&result.ok?1440044:speech?128*1024:LIMIT))throw new Error('Response too large');output.push(item.value);}}finally{await reader.cancel();}
       if(abort.signal.aborted)return;
       const bytes=Buffer.concat(output);
-      if(ttsAudio&&result.ok&&(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WAVE'||bytes.readUInt32LE(4)+8!==bytes.length)){fail(502,'Invalid local speech audio');return;}
-      let body=ttsAudio&&result.ok?JSON.stringify({audioBase64:bytes.toString('base64'),requestId:input.requestId,provider:'libelizainference-paradee',contentType:'audio/wav'}):bytes.toString('utf8');
+      if(cloudSpeech&&(readFileSync(options.tokenFile,'utf8').trim()!==token||credential.expiresAt<=Date.now())){fail(409,'Cloud voice owner changed');return;}
+      if(cloudTts&&!bytes.length){fail(502,'Empty Cloud speech audio');return;}
+      if(ttsAudio&&!cloudTts&&result.ok&&(bytes.length<44||bytes.toString('ascii',0,4)!=='RIFF'||bytes.toString('ascii',8,12)!=='WAVE'||bytes.readUInt32LE(4)+8!==bytes.length)){fail(502,'Invalid local speech audio');return;}
+      let body=ttsAudio&&result.ok?JSON.stringify({audioBase64:bytes.toString('base64'),requestId:input.requestId,provider:cloudTts?'cartesia':'libelizainference-paradee',...(cloudTts?{route:'cloud'}:{}),contentType:cloudTts?'audio/mpeg':'audio/wav'}):bytes.toString('utf8');
+      if(cloudAsr){const transcript=JSON.parse(body);if(typeof transcript.text!=='string'||transcript.text.length>16000){fail(502,'Invalid Cloud transcript');return;}body=JSON.stringify({text:transcript.text,provider:'cartesia',route:'cloud',requestId:input.requestId});}
       // The upstream machine session ID is its bearer token. Keep it on the host.
       if(voice){try{if(readFileSync(options.tokenFile,'utf8').trim()!==token||credential.expiresAt<=Date.now())throw Error('Voice owner changed');const projected=voiceControlResponse(voice,input,result.status,body,origin);
         if(result.ok&&voice==='mint'){for(const [id,ticket]of tickets)if(ticket.expiresAt<=Date.now()){ticket.close?.();tickets.delete(id);}if(tickets.size>=32)throw Error('Voice capacity reached');tickets.set(projected.sessionId,{root:token,ownerId:credential.ownerId,expiresAt:projected.expiresAt,claimed:false});projected.wsUrl=`ws://${host}${LOCAL_VOICE_WS_PATH}?sessionId=${projected.sessionId}`;}
@@ -206,7 +213,7 @@ export function localAgentDevBridge():Plugin {
     if(process.env.VITE_LOCAL_AGENT!=='1')return;
     const tokenFile=process.env.ALPHA_LOCAL_AGENT_TOKEN_FILE;
     if(!tokenFile)throw new Error('ALPHA_LOCAL_AGENT_TOKEN_FILE is required for browser agent development.');
-    const handler=createLocalAgentDevHandler({origin:process.env.ALPHA_LOCAL_AGENT_ORIGIN||'http://127.0.0.1:47839',tokenFile,cartesiaEnabled:process.env.ALPHA_DEV_CARTESIA==='1'});
+    const handler=createLocalAgentDevHandler({origin:process.env.ALPHA_LOCAL_AGENT_ORIGIN||'http://127.0.0.1:47839',tokenFile,cartesiaEnabled:process.env.ALPHA_DEV_CARTESIA==='1',cloudVoiceEnabled:process.env.ALPHA_DEV_CLOUD_VOICE==='1'});
     const upgrade=(req:IncomingMessage,socket:Duplex,head:Buffer)=>{if(req.url?.startsWith(LOCAL_VOICE_WS_PATH))void handler.upgrade(req,socket,head);};
     server.httpServer?.on('upgrade',upgrade);server.httpServer?.once('close',()=>{server.httpServer?.off('upgrade',upgrade);handler.closeVoice();});
     server.middlewares.use((req,res,next)=>{if(req.url!==LOCAL_AGENT_BRIDGE_PATH){next();return;}void handler(req,res);});
