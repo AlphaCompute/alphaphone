@@ -15,6 +15,7 @@ import org.json.JSONObject;
 @CapacitorPlugin(name="Agent")
 public final class AlphaLocalAgentPlugin extends Plugin {
  private final ExecutorService workers=Executors.newFixedThreadPool(2);
+ private final ExecutorService voiceWorkers=new java.util.concurrent.ThreadPoolExecutor(1,1,0L,java.util.concurrent.TimeUnit.MILLISECONDS,new java.util.concurrent.SynchronousQueue<>());
  // Set only from in-process debug instrumentation; no route, intent or preference activation.
  static volatile java.net.ServerSocket instrumentationRecoveryEndpoint;
  private static String rootToken,ownerToken,ownerIdentity;
@@ -688,7 +689,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   try{synchronized(lifecycleLock){epoch=admittedEpoch();if(streams.keySet().stream().anyMatch(value->value.startsWith("voice-")))throw new IllegalStateException();streams.put(key,handle);streamInvalidators.put(key,()->notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end")));}}
   catch(Exception unavailable){call.reject("Voice subscription unavailable.");return;}
   call.resolve(new JSObject().put("subscriptionId",id));
-  Thread worker=new Thread(()->{try{
+  PluginWorkers.submit(voiceWorkers,()->{try{
    enroll(epoch);
    synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(key)!=handle)throw new Superseded();}
    JSONObject input=new JSONObject().put("streams",new org.json.JSONArray().put("voice-transcript"));
@@ -696,12 +697,12 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     requireCurrent(epoch);if(streams.get(key)!=handle)return;
     if(!owner.equals(ownerIdentity)||expiresAt<=System.currentTimeMillis()){handle.cancel();return;}
     JSONObject value=new JSONObject(event);
-    if("event".equals(value.optString("type"))){JSONObject envelope=value.optJSONObject("event");if(envelope==null||!"agent_event".equals(envelope.optString("type"))||!"voice-transcript".equals(envelope.optString("stream")))return;}
-    value.put("subscriptionId",id);notifyListeners("alphaVoiceEvent",new JSObject(value.toString()));
+    if(!"event".equals(value.optString("type")))return;
+    JSONObject envelope=value.optJSONObject("event");if(envelope==null||!"agent_event".equals(envelope.optString("type"))||!"voice-transcript".equals(envelope.optString("stream")))return;
+    notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","event").put("event",envelope));
    }catch(Exception ignored){handle.cancel();}}},handle);
   }catch(Exception unavailable){/* Final HTTP transcripts remain available if the optional feed fails. */}
-  finally{synchronized(lifecycleLock){if(streams.get(key)==handle){streams.remove(key);streamInvalidators.remove(key);notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end"));}handle.cancel();}}},"alpha-voice-events");
-  worker.setDaemon(true);worker.start();
+  finally{synchronized(lifecycleLock){if(streams.get(key)==handle){streams.remove(key);streamInvalidators.remove(key);notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end"));}handle.cancel();}}},()->{synchronized(lifecycleLock){if(streams.get(key)==handle){streams.remove(key);streamInvalidators.remove(key);notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end"));}handle.cancel();}});
  }
  @PluginMethod public void unsubscribeVoiceEvents(PluginCall call) {
   String key="voice-"+call.getString("subscriptionId","");
@@ -712,5 +713,5 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   * calls and streams. The shared runtime, its epoch and the owner enrollment stay valid for
   * other surfaces. When the last surface goes away (the app is closed or recreated) the epoch
   * advances and the enrollment is cleared, as before; the next surface enrolls again. */
- @Override protected void handleOnDestroy(){synchronized(lifecycleLock){disposed=true;invalidateOwnCalls();instances.remove(this);if(instances.isEmpty()){++lifecycleEpoch;clearEnrollment();}}workers.shutdownNow();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){synchronized(lifecycleLock){disposed=true;invalidateOwnCalls();instances.remove(this);if(instances.isEmpty()){++lifecycleEpoch;clearEnrollment();}}workers.shutdownNow();voiceWorkers.shutdownNow();super.handleOnDestroy();}
 }
