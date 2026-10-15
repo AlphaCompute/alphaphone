@@ -1,3 +1,4 @@
+import {localDraftRow} from './inbox-draft-navigation';
 // Journey F, reviewed provider operations: what the review shows is exactly what is dispatched.
 //
 // Evidence boundary: source/test evidence for the browser renderer only. Not APK, emulator, AOSP
@@ -178,7 +179,7 @@ test('F-5: the send review shows From, To, Cc, Bcc, subject, body and the attach
   await reviewed();
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
-  await button(page, 'Resume unsaved email').click();
+  await (await localDraftRow(page)).click();
   await button(page, 'Send email').click();
   await expect(review.getByRole('status')).toHaveText('Saved mail operation. Check its exact review and receipt before continuing.');
   await reviewed();
@@ -270,7 +271,7 @@ test('F-10: an email edited after its review is reviewed again under a new reque
   await expect(button(page, 'Mail review / receipt')).toHaveCount(0);
   expect((await provider(page)).dispatched).toEqual([]);
 
-  await button(page, 'Continue draft').click();
+  await (await localDraftRow(page)).click();
   await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Second body');
   await button(page, 'Send email').click();
   await expect(review.getByText('Second body', {exact: true})).toBeVisible();
@@ -290,7 +291,7 @@ test('F-10: an email edited after its review is reviewed again under a new reque
   await expect(review.getByRole('status')).toHaveText(notOpenStatus);
   await expect(review.getByRole('button', {name: 'Send this email', exact: true})).toHaveCount(0);
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
-  await button(page, 'Resume unsaved email').click();
+  await (await localDraftRow(page)).click();
   await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Second body');
   await button(page, 'Send email').click();
   expect((await provider(page)).prepared).toHaveLength(2);
@@ -317,22 +318,22 @@ test('F-10: a saved older version of a sent email is kept, labelled as such, and
   await expect(review).toContainText('An earlier saved version of this email is still on this device.');
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
   // Never removed on its own, and offered only under its label; Restore local draft is not shown.
-  await expect(button(page, 'Earlier version of a sent email')).toBeVisible();
+  await expect(await localDraftRow(page)).toContainText('Earlier version of a sent email');
   await expect(button(page, 'Restore local draft')).toHaveCount(0);
   // After a reload the receipt reopens; closing it leaves the label, which is kept with the saved copy.
   await openInbox(page, {}, true);
   await review.getByRole('button', {name: 'Close receipt', exact: true}).click();
   await expect(review).toHaveCount(0);
-  await expect(button(page, 'Earlier version of a sent email')).toBeVisible();
+  await expect(await localDraftRow(page)).toContainText('Earlier version of a sent email');
   // Declining the confirmation leaves it closed; accepting opens it, still unsent.
   const prompts: string[] = [];
   page.once('dialog', dialog => { prompts.push(dialog.message()); void dialog.dismiss(); });
-  await button(page, 'Earlier version of a sent email').click();
+  await (await localDraftRow(page)).click();
   await expect.poll(() => prompts.length).toBe(1);
   expect(prompts[0]).toContain('earlier version of an email that was already sent');
   await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveCount(0);
   page.once('dialog', dialog => { prompts.push(dialog.message()); void dialog.accept(); });
-  await button(page, 'Earlier version of a sent email').click();
+  await (await localDraftRow(page)).click();
   await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Saved first text');
   await expect(page.getByText(/Earlier version of a sent email\. Sending it creates another message/).first()).toBeVisible();
   const state = await provider(page);
@@ -391,7 +392,7 @@ test('F-10: a reload between an edit and the discard of its review never lets th
   await expect(review.getByRole('button', {name: 'Cancel unsent review', exact: true})).toBeVisible();
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
   // Resuming the edited email discards that review; the edited text gets its own.
-  await button(page, 'Resume unsaved email').click();
+  await (await localDraftRow(page)).click();
   await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Second body');
   await expect(page.getByText(editedStatus, {exact: true})).toBeVisible();
   await button(page, 'Send email').click();

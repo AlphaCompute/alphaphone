@@ -37,7 +37,7 @@ only when account/session/generation still match. Discard asks for confirmation
 when persisted or nonempty, removes only that account's slot, and awaits the
 receipt. A separate account-bound recovery copy retains unsaved edits, including
 incomplete recipients and the original saved-draft revision. Reopening offers
-**Resume unsaved email**; recovery never sends or prepares a provider operation.
+**More → Drafts**, then the **On this device** entry; recovery never sends or prepares a provider operation.
 The recovery status distinguishes completed persistence from pending or failed
 writes. Browser copies use the canonical transactional document store; Android
 uses the existing encrypted Inbox slot namespace. Account

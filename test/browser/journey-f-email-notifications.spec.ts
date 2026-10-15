@@ -1,3 +1,4 @@
+import {localDraftRow} from './inbox-draft-navigation';
 // Journey F: Email + reconnect notifications, driven through rendered controls in the browser build.
 //
 // Evidence boundary: a pass is source/test evidence for the browser renderer only. It is NOT
@@ -182,7 +183,7 @@ test('synthetic provider: reviewed send leaves exactly one receipt and one messa
 
   await test.step('Reload and restore', async () => {
     await openProviderInbox(page, true);
-    await button(page, 'Restore local draft').click();
+    await (await localDraftRow(page)).click();
     await expect(page.getByRole('textbox', {name: 'Subject', exact: true})).toHaveValue('Journey reviewed send');
     await expect(page.getByRole('textbox', {name: 'Message', exact: true})).toHaveValue('Reviewed body');
   });
@@ -263,7 +264,7 @@ test('synthetic provider: a lost send reply is an unknown outcome and is never s
   await review.getByRole('button', {name: 'Close mail review', exact: true}).click();
   await expect(button(page, 'Mail review / receipt')).toBeVisible();
   // An unknown outcome keeps the local copy. A second operation cannot start while it is unresolved.
-  await button(page, 'Resume unsaved email').click();
+  await (await localDraftRow(page)).click();
   await expect(page.getByRole('textbox', {name: 'Subject', exact: true})).toHaveValue('Journey lost reply');
   await button(page, 'Send email').click();
   await expect(review.getByRole('status')).toHaveText('Review the saved operation before starting another.');
