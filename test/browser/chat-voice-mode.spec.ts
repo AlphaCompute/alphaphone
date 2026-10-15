@@ -38,10 +38,11 @@ async function setup(page:Page,signed=true,theme='light'){
 async function utterance(page:Page){await page.evaluate(()=>(window as any).chatVoiceFixture.peak=.25);await page.waitForTimeout(950);await page.evaluate(()=>(window as any).chatVoiceFixture.peak=0);}
 async function noMedia(page:Page){expect(await page.evaluate(()=>{const f=(window as any).chatVoiceFixture;return {media:f.media,local:f.localProbes};})).toEqual({media:0,local:0});}
 
-test('unsigned chat voice stays in Home and offers only explicit Cloud sign-in',async({page})=>{
+test('unsigned chat voice stays in Home and offers only explicit Cloud sign-in',async({page},info)=>{
  await setup(page,false);await page.getByRole('button',{name:'Talk',exact:true}).click();await expect(voice(page)).toBeVisible();await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
- await expect(voice(page).getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();await expect(page.locator('[data-alpha-subview="notes-recording"]')).toHaveCount(0);await expect(page.locator('[data-alpha-transcript]')).toBeVisible();await expect(page.locator('textarea[data-alpha-composer]')).toHaveCount(0);
- await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await expect(voice(page)).toHaveCount(0);await page.getByRole('button',{name:'Type',exact:true}).click();await expect(page.locator('textarea[data-alpha-composer]')).toBeVisible();await noMedia(page);
+ await expect(page.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();await expect(voice(page).getByRole('button',{name:'Microphone off',exact:true})).toBeDisabled();await expect(voice(page).getByRole('button',{name:'Stop voice conversation',exact:true})).toBeEnabled();expect(await page.evaluate(()=>(window as any).chatVoiceFixture.starts)).toBe(0);await expect(page.locator('[data-alpha-subview="notes-recording"]')).toHaveCount(0);await expect(page.locator('[data-alpha-transcript]')).toBeVisible();await expect(page.locator('textarea[data-alpha-composer]')).toHaveCount(0);
+ await page.screenshot({path:info.outputPath('unsigned-stop-microphone-off.png'),animations:'disabled'});
+ await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);await expect(page.locator('[data-alpha-layer="conversation"]')).toBeVisible();await expect(page.locator('textarea[data-alpha-composer]')).toBeVisible();expect(await page.evaluate(()=>(window as any).chatVoiceFixture.starts)).toBe(0);await noMedia(page);
 });
 
 test('ongoing Cloud conversation stays in Calendar, sends only new speech and preserves the saved draft and Notes',async({page})=>{
@@ -62,6 +63,7 @@ test('the review send policy holds each transcript for an edited Send or a Disca
  await setup(page);expect(await page.evaluate(async()=>(await import('/src/runtime/voice-selection.ts')).setVoiceSendPolicyForTests('review'))).toBe(true);
  await page.getByRole('button',{name:'Talk',exact:true}).click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');await expect(voice(page)).toContainText('shown to you before anything is sent');
  await utterance(page);await expect(voice(page)).toHaveAttribute('data-voice-state','review');
+ await expect(voice(page).getByRole('button',{name:'Stop voice conversation',exact:true})).toBeEnabled();await expect(voice(page).getByRole('button',{name:'Microphone off',exact:true})).toBeDisabled();
  const review=voice(page).getByRole('textbox',{name:'Review transcript',exact:true});await expect(review).toHaveValue('Synthetic Cloud transcript');await expect(voice(page)).toContainText('Nothing has been sent.');
  expect(await page.evaluate(()=>(window as any).chatVoiceFixture.sends)).toBe(0);
  await review.fill('   ');await expect(voice(page).getByRole('button',{name:'Send voice message',exact:true})).toBeDisabled();

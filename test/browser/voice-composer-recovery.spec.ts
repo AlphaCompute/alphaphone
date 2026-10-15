@@ -8,8 +8,8 @@ async function setup(page:Page){
  export const developmentCartesiaVoiceEnabled=true;
  export async function developmentCartesiaConversation(input){
   const f=window.voicePresentationFixture;let muted=false;
-  f.partial=text=>input.onTranscript(text);
-  return {start:async()=>{f.starts++;input.onState('listening');},stop:async()=>{f.stops++;},recheck:()=>{},resume:()=>false,
+  f.partial=text=>input.onTranscript(text);f.fail=()=>input.onError(Error('Synthetic voice unavailable'));
+  return {start:async()=>{f.starts++;if(f.startHold){input.onState('connecting');await new Promise(resolve=>f.releaseStart=resolve);}input.onState('listening');},stop:async()=>{f.stops++;if(f.stopHold)await new Promise(resolve=>f.releaseStop=resolve);if(f.stopFailure)throw Error('Synthetic retirement unconfirmed');},recheck:()=>{},resume:()=>false,
    get microphoneMuted(){return muted;},setMicrophoneMuted:value=>{muted=value;f.muted=value;},needsPlaybackUnlock:false,unlockPlayback:async()=>{}};
  }`}));
  await page.addInitScript(()=>{
@@ -59,4 +59,36 @@ test('synthetic pill voice keeps five-bar synth, mute and Stop compact without o
  await pill.getByRole('button',{name:'Mute microphone',exact:true}).click();await expect(pill.getByRole('button',{name:'Unmute microphone',exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('synthetic-pill-voice.png'),animations:'disabled'});
  await pill.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(pill).toHaveCount(0);expect(await page.evaluate(()=>(window as any).voicePresentationFixture.shell.S().chat)).toBe('hidden');await noMediaOrSends(page);
+});
+
+for(const detent of ['sheet','full','hidden'])test(`synthetic voice error keeps a square Stop and truthful disabled mic: ${detent}`,async({page},info)=>{
+ await setup(page);await page.evaluate(detent=>new Promise<void>(resolve=>(window as any).voicePresentationFixture.shell.setState({chat:detent},resolve)),detent);
+ await page.getByRole('button',{name:'Talk',exact:true}).click();
+ const controls=page.locator(detent==='hidden'?'[data-alpha-pill-voice]':'.alpha-voice-composer');await expect(controls.getByRole('button',{name:'Mute microphone',exact:true})).toBeEnabled();
+ await page.evaluate(()=>(window as any).voicePresentationFixture.fail());
+ const stop=controls.getByRole('button',{name:'Stop voice conversation',exact:true});await expect(stop).toBeEnabled();await expect(stop.locator('[data-alpha-icon]')).toHaveAttribute('data-alpha-icon','/icons/lucide/square.svg');
+ const mic=controls.getByRole('button',{name:'Microphone status unconfirmed',exact:true});await expect(mic).toBeDisabled();await expect(mic).toHaveAttribute('aria-pressed','mixed');
+ await expect(controls.getByRole('button',{name:/Connect|Try voice/})).toHaveCount(0);
+ await page.screenshot({path:info.outputPath('synthetic-voice-error-'+detent+'.png'),animations:'disabled'});
+ await stop.click();await expect(controls).toHaveCount(0);expect(await page.evaluate(()=>(window as any).voicePresentationFixture.shell.S().chat)).toBe(detent);await noMediaOrSends(page);
+});
+
+test('synthetic retirement failure keeps Stop guarded and never claims the mic is off',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Talk',exact:true}).click();const controls=page.locator('.alpha-voice-composer');await expect(controls).toHaveAttribute('data-voice-state','listening');
+ await page.evaluate(()=>(window as any).voicePresentationFixture.stopFailure=true);await controls.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
+ await expect(controls).toHaveAttribute('data-voice-state','error');const mic=controls.getByRole('button',{name:'Microphone status unconfirmed',exact:true});await expect(mic).toBeDisabled();await expect(mic).toHaveAttribute('aria-pressed','mixed');
+ await controls.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(controls).toBeVisible();expect(await page.evaluate(()=>(window as any).voicePresentationFixture.starts)).toBe(1);await noMediaOrSends(page);
+});
+
+test('synthetic pending retirement stays unconfirmed until Stop acknowledgement',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Talk',exact:true}).click();const controls=page.locator('.alpha-voice-composer');await expect(controls).toHaveAttribute('data-voice-state','listening');
+ await page.evaluate(()=>(window as any).voicePresentationFixture.stopHold=true);await controls.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
+ await expect(controls).toHaveAttribute('data-voice-state','stopping');const mic=controls.getByRole('button',{name:'Microphone status unconfirmed',exact:true});await expect(mic).toBeDisabled();await expect(mic).toHaveAttribute('aria-pressed','mixed');await expect(controls.getByRole('button',{name:'Microphone off',exact:true})).toHaveCount(0);
+ await page.evaluate(()=>(window as any).voicePresentationFixture.releaseStop());await expect(controls).toHaveCount(0);await noMediaOrSends(page);
+});
+
+test('synthetic pending microphone startup is unconfirmed until the ready state',async({page})=>{
+ await setup(page);await page.evaluate(()=>(window as any).voicePresentationFixture.startHold=true);await page.getByRole('button',{name:'Talk',exact:true}).click();const controls=page.locator('.alpha-voice-composer');await expect(controls).toHaveAttribute('data-voice-state','starting');
+ const mic=controls.getByRole('button',{name:'Microphone status unconfirmed',exact:true});await expect(mic).toBeDisabled();await expect(mic).toHaveAttribute('aria-pressed','mixed');
+ await page.evaluate(()=>(window as any).voicePresentationFixture.releaseStart());await expect(controls.getByRole('button',{name:'Mute microphone',exact:true})).toBeEnabled();await controls.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(controls).toHaveCount(0);await noMediaOrSends(page);
 });

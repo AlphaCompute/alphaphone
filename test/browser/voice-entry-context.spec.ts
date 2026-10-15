@@ -23,7 +23,7 @@ test('unavailable chat voice preserves the selected note and returns to typing w
  await page.getByRole('button',{name:'Talk',exact:true}).press('Enter');
  const voice=page.getByRole('region',{name:'Voice conversation',exact:true});
  await expect(voice).toBeVisible();
- await expect(voice.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();
+ await expect(page.getByRole('button',{name:'Connect Eliza Cloud',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
  await expect(voice).toHaveCount(0);
  await page.getByRole('button',{name:'Type',exact:true}).click();
