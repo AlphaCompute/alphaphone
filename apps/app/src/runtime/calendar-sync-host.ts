@@ -360,9 +360,10 @@ export function startCalendarSyncHost() {
 	const changedOwner = () => {
 		const next = identity();
 		if (next !== key) {
+			const changedExistingOwner=!!key;
 			key = next;
 			controller.cancel();
-			if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
+			if(Capacitor.isNativePlatform()){nativeCalendarSync.cancel();if(changedExistingOwner){enabled=false;void nativeCalendarSync.pause().catch(()=>{status='Device sync pause could not be confirmed. Check pending deletions.';changed();});}}
 			status =
 				"Sync is off.";
 			changed();

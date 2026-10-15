@@ -42,7 +42,7 @@ export const nativeCalendarSync = {
  async observe(listener:()=>void){return bridge().addListener('calendarSyncChanged',listener);},
  port(admitted:NativeCalendarSource,current:()=>boolean,signal:AbortSignal):LinkedCalendarLocalPort<string>&{deletionUndone(id:string):boolean}{
   const input={lease:admitted.lease},undone=new Set<string>();
-  const get=async(id:string)=>{const result=await call('get',{...input,eventId:id},current,signal);if(result.status!=='ready')throw error(result);return snapshot(result.snapshot);};
+  const get=async(id:string)=>{const result=await call('get',{...input,eventId:id},current,signal);if(result.status!=='ready')throw error(result);const observed=snapshot(result.snapshot);if(result.recoveries!==undefined){if(!Array.isArray(result.recoveries)||result.recoveries.some(id=>typeof id!=='string'||!/^[a-f0-9]{64}$/.test(id)))throw Error('Invalid native Calendar recovery receipt');for(const operationId of result.recoveries)await call('ack',{...input,operationId},current,signal);}return observed;};
   return {
    get,
    deletionUndone:(id:string)=>undone.has(id),

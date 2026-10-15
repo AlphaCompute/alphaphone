@@ -9,7 +9,7 @@ function fixture(){
   if(input.kind==='prepare')return state.permission?projection():{status:'permission-required'};
   if(input.kind==='enable')return state.outcome==='cancelled'?{status:'cancelled'}:(state.enabled=true,projection());
   if(input.kind==='status')return projection();
-  if(input.kind==='get')return {status:'ready',snapshot:null};
+  if(input.kind==='get')return {status:'ready',snapshot:null,...(state.recoveries?{recoveries:state.recoveries}:{})};
   if(input.kind==='apply'){if(state.abortAfterApply)abort.abort();return state.outcome==='saved'?{status:'saved',snapshot:{eventId:'42',revision:'b'.repeat(64),event:{...structuredClone(input.event),...(state.invalidEnd?{endAt:'invalid-date'}:{})}}}:{status:state.outcome};}
   if(input.kind==='delete')return {status:'queued',receipt:{phase:'queued'}};
   if(input.kind==='deletion')return {status:'receipt',receipt:{phase:state.phase}};
@@ -55,3 +55,5 @@ test('an invalid native readback date is rejected without acknowledging or repla
 });
 
 test('a staging selection never falls through to a production native request',async()=>{const f=fixture();await assert.rejects(f.api.prepare({environment:'staging',connectionId:binding.connectionId,calendarId:'primary'},f.current,f.abort.signal),/different Cloud environment/);assert.equal(f.calls.length,0);});
+
+test('a recovered native receipt is acknowledged through a read-only get, without a write',async()=>{const f=fixture(),admitted=await f.prepare();f.state.recoveries=['c'.repeat(64)];assert.equal(await f.api.port(admitted,f.current,f.abort.signal).get('42'),null);assert.deepEqual(f.calls.map(c=>c.kind),['prepare','get','ack']);});

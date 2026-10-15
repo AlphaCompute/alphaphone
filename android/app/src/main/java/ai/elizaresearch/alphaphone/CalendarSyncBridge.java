@@ -22,6 +22,7 @@ final class CalendarSyncBridge {
  private final AlphaCalendarPlugin plugin;
  private final java.util.concurrent.ExecutorService worker=java.util.concurrent.Executors.newSingleThreadExecutor();
  private final AlphaCredentialStore store;
+ private final java.util.Map<JSONObject,String> revisions=java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
  private volatile long epoch;
  private volatile boolean retired;
  private android.app.AlertDialog dialog;
@@ -44,10 +45,23 @@ final class CalendarSyncBridge {
  private static JSObject status(String value){JSObject out=new JSObject();out.put("status",value);return out;}
  private boolean granted(){return ContextCompat.checkSelfPermission(plugin.getContext(),Manifest.permission.READ_CALENDAR)==PackageManager.PERMISSION_GRANTED&&ContextCompat.checkSelfPermission(plugin.getContext(),Manifest.permission.WRITE_CALENDAR)==PackageManager.PERMISSION_GRANTED;}
  private boolean foreground(){var a=plugin.getActivity();android.app.KeyguardManager lock=plugin.getContext().getSystemService(android.app.KeyguardManager.class);return !retired&&a!=null&&!a.isFinishing()&&!a.isDestroyed()&&a.getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)&&(a.hasWindowFocus()||dialog!=null&&dialog.isShowing()&&dialog.getWindow()!=null&&dialog.getWindow().getDecorView().hasWindowFocus())&&lock!=null&&!lock.isDeviceLocked();}
- private JSONObject saved()throws Exception{String raw=store.readCredentialSlot(SLOT);if(raw==null)return new JSONObject().put("version",1).put("enabled",false).put("operations",new JSONObject());JSONObject data=new JSONObject(raw);if(data.getInt("version")!=1||!(data.opt("enabled") instanceof Boolean))throw new IllegalStateException("Calendar sync settings need recovery");data.getJSONObject("operations");return data;}
- private void save(JSONObject data)throws Exception{if(data.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8).length>3*1024*1024)throw new IllegalStateException("Calendar sync receipt history needs review");store.writeCredentialSlot(SLOT,data.toString());}
+ private JSONObject saved()throws Exception{
+  String raw=store.readCredentialSlot(SLOT);JSONObject data=raw==null?new JSONObject().put("version",1).put("enabled",false).put("operations",new JSONObject()):new JSONObject(raw);
+  if(data.getInt("version")!=1||!(data.opt("enabled") instanceof Boolean))throw new IllegalStateException("Calendar sync settings need recovery");data.getJSONObject("operations");revisions.put(data,raw);return data;
+ }
+ private void save(JSONObject data)throws Exception{save(data,false);}
+ private void save(JSONObject data,boolean revoking)throws Exception{
+  if(revoking&&data.getBoolean("enabled"))throw new SecurityException("Only revocation may use reserved capacity");
+  String encoded=data.toString();if(encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length>(revoking?4:3)*1024*1024)throw new IllegalStateException("Calendar sync receipt history needs review");
+  if(!revisions.containsKey(data)||!store.compareExchangeCredentialSlot(SLOT,revisions.get(data),encoded))throw new IllegalStateException("Calendar sync journal changed");revisions.put(data,encoded);
+ }
  private static String digest(Object value)throws Exception{return HostedResultNotices.hash(value.toString());}
  private static boolean same(Object left,Object right)throws Exception{return DeferredDeletionJournal.same(left,right);}
+ private static String scope(Context context)throws Exception{
+  JSONObject identity=context.owner.getJSONObject("identity");JSONArray stable=new JSONArray().put(context.binding);
+  for(String key:new String[]{"subjectUserId","agentId","installationId","enrollmentId","accountRef","environment"})stable.put(identity.getString(key));
+  return digest(stable);
+ }
  private boolean enabled(Context context)throws Exception{JSONObject data=saved();return data.getBoolean("enabled")&&same(data.opt("binding"),context.binding)&&same(data.opt("identity"),context.owner.getJSONObject("identity"))&&context.credentialId.equals(data.optString("credentialId"));}
  private void check(Context context,boolean mutation)throws Exception{
   if(context==null||context!=lease||context.epoch!=epoch||android.os.SystemClock.elapsedRealtime()>=context.expires||!foreground()||!granted()||!NativeDeletionCoordinator.get(plugin.getContext()).stageAdmissible(context.owner))throw new SecurityException("Calendar sync context changed");
@@ -80,6 +94,7 @@ final class CalendarSyncBridge {
   String credential=store.readCredentialSlot("cloud:production");if(credential==null)throw new SecurityException("Connect Eliza Cloud before enabling sync");
   String credentialId=new JSONObject(credential).getString("credentialId"),token=LocalAgentProviderAdmission.cloudProviderToken(credential,credentialId,System.currentTimeMillis());
   JSONObject identity=AlphaConnectionPlugin.readCloudIdentity(token);
+  if(admittedEpoch!=epoch||!foreground()||!granted()||!NativeDeletionCoordinator.get(plugin.getContext()).stageAdmissible(owner)||!LocalAgentProviderAdmission.sameCloudCredential(credential,store.readCredentialSlot("cloud:production")))throw new SecurityException("Calendar review changed");
   JSONArray account=new JSONArray().put("cloud").put("production").put(identity.getString("userId")).put(identity.getString("organizationId"));
   if(!account.toString().equals(owner.getJSONObject("identity").getString("accountRef")))throw new SecurityException("Calendar and agent Cloud accounts differ");
   String connection=selection.getString("connectionId"),calendar=selection.getString("calendarId");
@@ -103,24 +118,29 @@ final class CalendarSyncBridge {
   return context;
  }
  private JSObject projection(Context context)throws Exception{return JSObject.fromJSONObject(new JSONObject().put("status","ready").put("lease",context.id).put("binding",context.binding).put("destination",context.destination).put("events",context.events).put("enabled",enabled(context)));}
- void call(PluginCall call){String kind=call.getString("kind","");if(kind.equals("cancel")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();call.resolve(status("cancelled"));return;}try{worker.execute(()->{
+ void call(PluginCall call){String kind=call.getString("kind","");
+ if(kind.equals("pause")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();try{boolean saved=false;for(int attempt=0;attempt<8&&!saved;attempt++){JSONObject data=saved();data.put("enabled",false);try{save(data,true);saved=true;}catch(IllegalStateException conflict){if(attempt==7)throw conflict;}}call.resolve(status("paused"));}catch(Exception unavailable){call.resolve(status("unavailable"));}return;}
+ if(kind.equals("cancel")){epoch++;lease=null;if(dialog!=null)dialog.dismiss();call.resolve(status("cancelled"));return;}try{worker.execute(()->{
   try{
-   if(kind.equals("pause")){JSONObject data=saved();data.put("enabled",false);save(data);epoch++;lease=null;call.resolve(status("paused"));return;}
    if(kind.equals("prepare")&&!granted()){call.resolve(status("permission-required"));return;}
    if(kind.equals("prepare")){Context context=prepare(call.getObject("selection",new JSObject()));call.resolve(projection(context));return;}
    Context context=lease;if(context==null||!context.id.equals(call.getString("lease")))throw new SecurityException("Review Calendar sync again");check(context,false);
    if(kind.equals("enable")){plugin.getActivity().runOnUiThread(()->consent(call,context));return;}
    if(kind.equals("status")){call.resolve(projection(context));return;}
    if(kind.equals("list")){JSObject out=status("ready");out.put("events",events(context));call.resolve(out);return;}
-   if(kind.equals("get")){CalendarSyncSnapshot snapshot=read(context,Long.parseLong(call.getString("eventId","")),!enabled(context));call.resolve(snapshot(snapshot));return;}
+   if(kind.equals("get")){
+    CalendarSyncSnapshot observed=read(context,Long.parseLong(call.getString("eventId","")),!enabled(context));JSObject result=snapshot(observed);
+    if(!observed.missing&&!observed.deleted){JSONObject data=saved(),event=observed.semantic();JSONArray recovered=CalendarSyncReceiptRecovery.observe(data,scope(context),Long.toString(observed.eventId),observed.revision,digest(CalendarSyncMutation.normalized(event)),event);if(recovered.length()>0){check(context,false);save(data);result.put("recoveries",recovered);}}
+    check(context,false);call.resolve(result);return;
+   }
    if(kind.equals("apply")||kind.equals("delete")){mutate(call,context,kind);return;}
    if(kind.equals("ack")){
     JSONObject data=saved(),entry=data.getJSONObject("operations").optJSONObject(call.getString("operationId",""));
-    if(entry==null||!digest(new JSONArray().put(context.binding).put(context.owner.getJSONObject("identity"))).equals(entry.optString("scope")))throw new SecurityException("Calendar receipt changed");
+    if(entry==null||!scope(context).equals(entry.optString("scope")))throw new SecurityException("Calendar receipt changed");
     JSONObject outcome=entry.optJSONObject("outcome");String state=outcome==null?"":outcome.optString("status");
     boolean confirmed=state.equals("saved")||state.equals("conflict");
     if(state.equals("queued")){JSONObject receipt=NativeDeletionCoordinator.get(plugin.getContext()).receipt("calendar",call.getString("operationId",""));confirmed=receipt!=null&&same(receipt.getJSONObject("owner"),context.owner)&&java.util.Set.of("deleted","undone","conflict").contains(receipt.optString("phase"));}
-    if(!confirmed)throw new IllegalStateException("Calendar outcome is still uncertain");entry.put("acknowledged",true);save(data);call.resolve(status("acknowledged"));return;
+    if(!confirmed)throw new IllegalStateException("Calendar outcome is still uncertain");entry.put("acknowledged",true).put("outcome",new JSONObject().put("status",state));save(data);call.resolve(status("acknowledged"));return;
    }
    if(kind.equals("deletion")){JSONObject receipt=NativeDeletionCoordinator.get(plugin.getContext()).receipt("calendar",call.getString("operationId",""));if(receipt==null||!same(receipt.getJSONObject("owner"),context.owner))throw new SecurityException("Deletion receipt unavailable");call.resolve(JSObject.fromJSONObject(new JSONObject().put("status","receipt").put("receipt",receipt)));return;}
    throw new IllegalArgumentException("Unknown Calendar sync operation");
@@ -158,14 +178,17 @@ final class CalendarSyncBridge {
   long id=Long.parseLong(call.getString("eventId",""));String expected=call.getString("expectedRevision","");CalendarSyncSnapshot before=read(context,id,false);
   JSONObject payload=new JSONObject().put("kind",kind).put("binding",context.binding).put("eventId",id).put("expectedRevision",expected).put("event",kind.equals("apply")?call.getObject("event"):JSONObject.NULL);String fingerprint=digest(payload);
   JSONObject data=saved(),operations=data.getJSONObject("operations"),retained=operations.optJSONObject(operationId);
-  if(retained!=null){if(!digest(new JSONArray().put(context.binding).put(context.owner.getJSONObject("identity"))).equals(retained.optString("scope"))||!fingerprint.equals(retained.getString("digest")))throw new SecurityException("Calendar operation changed");JSONObject outcome=retained.optJSONObject("outcome");
-   if(kind.equals("apply")&&outcome!=null&&outcome.optString("status").equals("saved")&&(before.missing||before.deleted||!before.revision.equals(outcome.getJSONObject("snapshot").getString("revision")))){call.resolve(status("conflict"));return;}
+  if(retained!=null){if(!scope(context).equals(retained.optString("scope"))||!fingerprint.equals(retained.getString("digest")))throw new SecurityException("Calendar operation changed");JSONObject outcome=retained.optJSONObject("outcome");
+   if(kind.equals("apply")&&outcome!=null&&outcome.optString("status").equals("saved")){
+    if(before.missing||before.deleted||!CalendarSyncMutation.equivalent(before.semantic(),call.getObject("event"))){call.resolve(status("conflict"));return;}
+    outcome=new JSONObject().put("status","saved").put("snapshot",new JSONObject().put("eventId",Long.toString(id)).put("revision",before.revision).put("event",before.semantic()));
+   }
    call.resolve(JSObject.fromJSONObject(outcome==null?new JSONObject().put("status","unknown"):outcome));return;}
   if(before.missing||before.deleted||!before.revision.equals(expected)){call.resolve(status("conflict"));return;}
   ArrayList<ContentProviderOperation> changes=kind.equals("apply")?CalendarSyncMutation.plan(before,expected,call.getObject("event",new JSObject())):null;
   if(operations.length()>=128){java.util.ArrayList<String> acknowledged=new java.util.ArrayList<>();for(var keys=operations.keys();keys.hasNext();){String key=keys.next();if(operations.getJSONObject(key).optBoolean("acknowledged"))acknowledged.add(key);}acknowledged.sort((a,b)->Long.compare(operations.optJSONObject(a).optLong("createdAt"),operations.optJSONObject(b).optLong("createdAt")));for(String key:acknowledged){if(operations.length()<64)break;operations.remove(key);}}
   if(operations.length()>=128)throw new IllegalStateException("Calendar sync receipt history needs review");
-  operations.put(operationId,new JSONObject().put("digest",fingerprint).put("scope",digest(new JSONArray().put(context.binding).put(context.owner.getJSONObject("identity")))).put("createdAt",System.currentTimeMillis()).put("phase","dispatching"));check(context,true);save(data);
+  operations.put(operationId,new JSONObject().put("digest",fingerprint).put("kind",kind).put("eventId",Long.toString(id)).put("semanticHash",kind.equals("apply")?digest(CalendarSyncMutation.normalized(call.getObject("event"))):JSONObject.NULL).put("scope",scope(context)).put("createdAt",System.currentTimeMillis()).put("phase","dispatching"));check(context,true);save(data);
   JSONObject outcome;
   try{
    check(context,true);

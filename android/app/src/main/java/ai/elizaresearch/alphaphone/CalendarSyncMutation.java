@@ -77,7 +77,7 @@ final class CalendarSyncMutation {
   return result;
  }
  static boolean equivalent(JSONObject left,JSONObject right)throws Exception{return DeferredDeletionJournal.same(normalized(left),normalized(right));}
- private static JSONObject normalized(JSONObject event)throws Exception{
+ static JSONObject normalized(JSONObject event)throws Exception{
   JSONObject copy=new JSONObject(event.toString());boolean allDay=copy.getBoolean("isAllDay");
   if(!allDay){copy.put("startAt",Instant.ofEpochMilli(instant(copy.getString("startAt"),false)).toString());copy.put("endAt",Instant.ofEpochMilli(instant(copy.getString("endAt"),false)).toString());}
   else copy.put("timeZone",JSONObject.NULL);
