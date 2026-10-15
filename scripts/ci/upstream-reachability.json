@@ -3,14 +3,22 @@
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
   "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "513d60d0d668b7172a9b13de513fb32ebabd9e41",
+  "head": "c705a3d911a54e49e021accc9eec44846b54a117",
   "recordedAt": "2026-10-15",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...513d60d0d668b7172a9b13de513fb32ebabd9e41",
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...c705a3d911a54e49e021accc9eec44846b54a117",
   "status": "diverged",
-  "aheadBy": 31,
+  "aheadBy": 33,
   "behindBy": 398,
   "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
   "pinOnlyCommits": [
+    {
+      "sha": "a60715fa41ea5efe567d9d6f6d89bd8bda540609",
+      "subject": "fix(calendar): expose existing-event selectors to standalone tools"
+    },
+    {
+      "sha": "c705a3d911a54e49e021accc9eec44846b54a117",
+      "subject": "fix(calendar): accept empty DELETE transport streams without accepting bodies"
+    },
     {
       "sha": "513d60d0d668b7172a9b13de513fb32ebabd9e41",
       "subject": "fix(calendar): ground approval replies in durable provider receipts"

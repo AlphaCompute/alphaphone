@@ -586,6 +586,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const homeRender = p.renderVals;
   p.renderVals = function () {
     const out = homeRender.call(this), binding=connectionController.getCloudClient(),connected = readable().length > 0;
+    // An unresolved startup has not established that email is disconnected.
+    const disconnected=connectionController.getSnapshot().startupResolved===true&&(!binding||accountsChecked&&!connected);
     const key=readKey(),cached=key&&inboxPreview?.key===key&&inboxPreview.sessionId===binding?.sessionId&&inboxPreview.accountId===selected?inboxPreview:null;
     const unread=cached?.messages.filter(m=>m.unread)||[],pending=phase==='busy'||phase==='scheduled';
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
@@ -595,9 +597,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     // the card says when it last updated, with the last count only in the accessible name.
     const stale=binding&&!cached&&!homeFailure&&!pending&&attention.state==='stale'&&attention.updatedAt?presentHomeAttention({state:'stale',unread:attention.unread,...(attention.source?{source:attention.source}:{}),updatedAt:attention.updatedAt},Date.now()):null;
     if(stale)return {...out,homeAttentionLabel:stale.label,homeInboxCount:'',homeInboxRows:[],homeInboxHasRows:false,homeInboxTitle:'Inbox',homeInboxStatus:stale.text,homeInboxDescription:stale.text};
-    return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:!binding||accountsChecked&&!connected?'Connect email':'Open Inbox',
+    return {...out,homeAttentionLabel:count?`Open Inbox: ${count} email${unread.length===1?'':'s'}`:disconnected?'Connect email':'Open Inbox',
       homeInboxCount:count,homeInboxRows:unread.slice(0,2).map(m=>({subject:m.subject||'(no subject)',from:m.from})),homeInboxHasRows:unread.length>0,
-      homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':!binding||accountsChecked&&!connected?'Connect email':'Inbox',
+      homeInboxTitle:unread.length?'':homeFailure==='revoked'?'Reconnect email':homeFailure?'Email unavailable':pending?'Loading email…':cached&&!cached.more?'No unread email':disconnected?'Connect email':'Inbox',
       homeInboxStatus,homeInboxDescription:homeInboxStatus};
   };
   // Mail content is never sent to the agent automatically, so chips ask only for help the agent can give.

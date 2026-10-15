@@ -69,7 +69,7 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'513d60d0d668b7172a9b13de513fb32ebabd9e41');assert.equal(stamp.projectionVersion,3);
+ assert.equal(stamp.baseCommit,'c705a3d911a54e49e021accc9eec44846b54a117');assert.equal(stamp.projectionVersion,3);
  const mapProjection=JSON.parse(fs.readFileSync('patches/eliza/client-global-basemap.json'));
  assert.equal(stamp.sourceFiles[mapProjection.path],mapProjection.beforeSha256);
  assert.equal(stamp.files[mapProjection.path],mapProjection.afterSha256);
