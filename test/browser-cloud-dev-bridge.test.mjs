@@ -287,3 +287,14 @@ test('a Cloud account change while the agent Gmail read is in flight drops the o
   await assert.rejects(pending,error=>error.code==='account-changed');
  }finally{await f.close();}
 });
+
+test('Maps capability discovery is a bare authenticated read, not a location or routing request',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({providerId:'synthetic-maps',revision:'1'}));
+  const call=input=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/v1/maps/capabilities',method:'GET',credentialReference:reference,...input}});
+  const result=await call({});assert.equal(result.status,200);assert.equal(result.data.data.providerId,'synthetic-maps');
+  const dispatched=f.calls.length;
+  for(const input of [{method:'POST',body:'{}'},{url:'https://api.eliza.app/api/v1/maps/capabilities?latitude=1'},{body:'{}'},{url:'https://api.eliza.app/api/v1/maps/routes',method:'POST',body:'{}'}])assert.notEqual((await call(input)).status,200);
+  assert.equal(f.calls.length,dispatched);
+ }finally{await f.close();}
+});
