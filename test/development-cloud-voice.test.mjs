@@ -21,7 +21,7 @@ async function fixture(enabled=true){
   signal=input.signal;if(mode==='wait')return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
   if(mode==='rotate')await writeFile(tokenFile,'2'.repeat(64),{mode:0o600});
   if(mode==='error')return Response.json({secret:'never-project-provider-error'},{status:402});
-  const headers={'x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':'cloud'};
+  const headers={'server-timing':mode==='timing'?'auth;dur=911, admission;dur=1497, synthesis;dur=195, private;desc=never-project-secret':'','x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':'cloud'};
   if(path==='/api/asr/cloud')return Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers});
   assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
   headers['content-type']=mode==='type'?'audio/wav':'audio/mpeg';return new Response(mode==='large'?new Uint8Array(8*1024*1024+1):new Uint8Array([73,68,51,1]),{headers});
@@ -51,3 +51,5 @@ test('actual Cloud driver uses explicit paired gateway with no renderer Cloud ac
  release=true;const stale=driver.transcribeRecording({recordingId:'clip',requestId:'request'});while(typeof release!=='function')await Promise.resolve();agent={session:{ownerId:'other',sessionId:'other'}};release();await assert.rejects(stale,/Voice agent changed/);
  box.developmentCloudVoiceEnabled=false;assert.throws(()=>box.create(),/Sign in/);box.developmentCloudVoiceEnabled=true;agent=null;assert.throws(()=>box.create(),/developer agent/);
 });
+
+test('Cloud bridge forwards numeric timing evidence without arbitrary header descriptions',async()=>{const f=await fixture();try{f.mode('timing');const result=await f.call(tts());assert.deepEqual(result.data.timings,[{name:'auth',durationMs:911},{name:'admission',durationMs:1497},{name:'synthesis',durationMs:195}]);assert.ok(!JSON.stringify(result).includes('never-project-secret'));}finally{await f.close();}});
