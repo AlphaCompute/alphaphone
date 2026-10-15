@@ -1,0 +1,35 @@
+import {test,expect} from '@playwright/test';
+import {writeFile} from 'node:fs/promises';
+// Explicit opt-in live provider test. No substituted transcript, navigation event,
+// response, model, adapter or runtime; Chrome supplies a generated virtual mic.
+test('real direct voice opens Notes through the actual renderer channel',async({page},info)=>{
+ test.skip(process.env.ALPHA_LIVE_VOICE_QA!=='1','Live-provider QA requires explicit opt-in');
+ const receipt:any={startedAt:new Date().toISOString(),console:[],timings:[]};
+ page.on('response',async response=>{if(response.status()>=400){let body='';try{body=(await response.text()).slice(0,800);}catch{}receipt.console.push({url:new URL(response.url()).pathname,status:response.status(),body});}});
+ page.on('console',m=>{if(m.type()==='error')receipt.console.push(m.text());});
+ await page.addInitScript(()=>{
+  const w=window as any;w.voiceLiveProof={partial:[],spokenAudioBytes:0,playbackStarts:0};
+  const Original=window.WebSocket;
+  w.WebSocket=new Proxy(Original,{construct(Target,args){const socket=new Target(...args as [string,string[]]);socket.addEventListener('message',event=>{if(typeof event.data==='string'){try{const frame=JSON.parse(event.data);if(frame.t==='stt_partial'||frame.t==='stt_final')w.voiceLiveProof.partial.push(frame);if(frame.t==='speaking_start')w.voiceLiveProof.playbackStarts++;}catch{}}else if(event.data instanceof ArrayBuffer)w.voiceLiveProof.spokenAudioBytes+=event.data.byteLength;else if(event.data instanceof Blob)w.voiceLiveProof.spokenAudioBytes+=event.data.size;});return socket;}});
+ });
+ await page.goto('/');await expect(page.getByRole('button',{name:'Talk',exact:true})).toBeVisible({timeout:30000});
+ await expect.poll(async()=>page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session&&!c.getSnapshot().busy&&!c.getSnapshot().open;}),{timeout:30000}).toBe(true);
+ await page.evaluate(async()=>{const {Component}=await import('/src/prototype/model.js');const f=(window as any).voiceLiveProof;f.lifecycle=[];const render=Component.prototype.renderVals;Component.prototype.renderVals=function(){(window as any).voiceLiveShell=this;return render.call(this);};for(const key of ['startVoice','prepareVoiceConversation','voiceConversationCurrent']){const original=Component.prototype[key];Component.prototype[key]=function(...args:any[]){f.lifecycle.push({key,hidden:document.hidden,state:{chat:this.S().chat,view:this.S().view},live:this.live});try{const result=original.apply(this,args);if(result?.then)return result.catch((error:any)=>{f.lifecycle.push({key,error:error.message});throw error;});return result;}catch(error:any){f.lifecycle.push({key,error:error.message});throw error;}}}});
+ await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeEnabled();
+ await expect.poll(()=>page.evaluate(()=>{const shell=(window as any).voiceLiveShell;return !!shell&&!shell.swallowed();})).toBe(true);
+ await page.getByRole('button',{name:'Talk',exact:true}).click();
+ const started=Date.now();
+ try{
+  await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible({timeout:20000});
+  await expect(page.locator('[data-alpha-voice-interim]')).toContainText(/open.*notes/i,{timeout:30000});receipt.timings.push({event:'visible-transcript',ms:Date.now()-started});
+  await expect(page.getByRole('heading',{name:'Notes',exact:true})).toBeVisible({timeout:30000});receipt.timings.push({event:'visible-notes',ms:Date.now()-started});
+  await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.spokenAudioBytes),{timeout:30000}).toBeGreaterThan(0);
+  receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
+  await page.screenshot({path:info.outputPath('actual-notes-open.png')});
+ }finally{
+  receipt.visible=await page.locator('body').innerText();receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
+  const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();
+  await writeFile(info.outputPath('receipt.json'),JSON.stringify(receipt,null,2));
+ }
+});

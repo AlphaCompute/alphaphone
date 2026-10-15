@@ -21,6 +21,23 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
  let refreshTask:Promise<void>|undefined,refreshAgain=false;
  const reconcile=()=>{if(refreshTask){refreshAgain=true;return;}refreshTask=(async()=>{do{refreshAgain=false;current();await connectionController.refreshDeveloperVoiceHistory(input.binding,lifecycle.signal);current();}while(refreshAgain&&!stopped);})().catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice history could not be verified.'));}).finally(()=>{refreshTask=undefined;});};
  const submitted=new Set<string>(),navigated=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();let phase='idle';
+ // OG's targeted renderer channel owns early delivery. The voice terminal
+ // suppresses its duplicate once that transport has accepted the frame.
+ const navigate=(event:{viewId:string;viewPath?:string;subview?:string;traceId:string})=>{
+  if(currentTurn!==event.traceId||!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
+  if(navigated.size>=64)navigated.delete(navigated.values().next().value!);navigated.add(event.traceId);
+  navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
+ };
+ const rendererHandoffs=new Set<string>();
+ renderer.onmessage=message=>{
+  if(stopped||typeof message.data!=='string')return;
+  try{current();const frame=JSON.parse(message.data);
+   if(frame?.type!=='shell:navigate:view'||frame.source!=='agent'||frame.viewType!=='gui'||typeof frame.viewId!=='string'||frame.action||frame.payload!==undefined||frame.views||frame.layout||frame.placement||frame.alwaysOnTop||!currentTurn||!submitted.has(currentTurn))return;
+   const id=frame.completedActionHandoffId;if(typeof id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||rendererHandoffs.has(id))return;
+   if(rendererHandoffs.size>=64)rendererHandoffs.delete(rendererHandoffs.values().next().value!);rendererHandoffs.add(id);
+   navigate({viewId:frame.viewId,viewPath:frame.viewPath,subview:frame.subview,traceId:currentTurn});
+  }catch(error){if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));}
+ };
  const client=createVoiceSessionClient({agentId:input.binding.session.agentId,conversationId:input.binding.conversationId,maxReconnects:0,preLiveMaxAttempts:1,getUiContext:()=>{current();const uiClientId=connectionController.voiceRendererClientId();if(!uiClientId)throw Error('The voice renderer is not bound.');return {...input.getUiContext?.(),uiClientId};},
   getConsentNonce:async()=>{const result=await request('/api/v1/voice/session/consent',{});return typeof result.consentNonce==='string'?result.consentNonce:null;},
   fetch:async(path,init={})=>{if(path!=='/api/v1/voice/session'||init.method!=='POST'||typeof init.body!=='string')throw Error('Unsupported developer voice request');const body=JSON.parse(init.body);if(body.agentId!==input.binding.session.agentId||body.conversationId!==input.binding.conversationId||body.transport!=='websocket')throw Error('Developer voice binding changed');return Response.json(await request(path,body,init.signal??lifecycle.signal));},
@@ -31,13 +48,7 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
    if(event.t==='interrupted'&&currentTurn===event.traceId)currentTurn=undefined;
    if(event.t==='stt_final'){if(submitted.size>=64)submitted.delete(submitted.values().next().value!);submitted.add(event.traceId);}
    if(['ready','stt_final','speaking_start','reply_complete','usage'].includes(event.t))reconcile();
-   if(event.t==='navigate_view'){
-    // A navigation effect must belong to an utterance finalized on this socket.
-    // Reject stale/unsolicited effects and dedupe each turn; never replay after reconnect.
-    if(currentTurn!==event.traceId||!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
-    if(navigated.size>=64)navigated.delete(navigated.values().next().value!);navigated.add(event.traceId);
-    navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
-   }
+   if(event.t==='navigate_view')navigate(event);
   },
   onPlaybackUnlockChange:()=>{if(!stopped)input.onPlaybackUnlockChange?.();},
   onError:error=>{if(!stopped)input.onError(error);},

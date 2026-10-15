@@ -6,7 +6,7 @@ import {stripTypeScriptTypes} from 'node:module';
 // Synthetic transport callbacks only; no socket, microphone, provider, or model calls.
 const source=fs.readFileSync(new URL('../apps/app/src/runtime/development-cartesia-conversation.ts',import.meta.url),'utf8');
 const js=stripTypeScriptTypes(source.replace(/^import .*;\n/gm,'').replace(/import\.meta\.env\.DEV===true&&devSurfacesEnabled&&!Capacitor\.isNativePlatform\(\)&&import\.meta\.env\.VITE_ALPHA_DEV_CARTESIA==='1'/,'true').replace("await import('@elizaos/ui/voice/voice-session-client')",'({createVoiceSessionClient:fixtureClient})').replace(/export /g,''),{mode:'transform'});
-class RendererSocket{constructor(){queueMicrotask(()=>this.onopen?.());}close(){}}
+class RendererSocket{static latest;constructor(){RendererSocket.latest=this;queueMicrotask(()=>this.onopen?.());}close(){}}
 const factory=new Function('connectionController','fixtureClient','WebSocket','location',js+'\nreturn developmentCartesiaConversation;');
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
 function harness(){
@@ -14,7 +14,7 @@ function harness(){
  const binding={conversationId:'room',session:{agentId:'agent'}},agent={request:async path=>path.includes('/health')?{ready:true,conversationId:'room',agentId:'agent'}:path==='/api/views/voice-channel'?{wsUrl:'ws://localhost/__alpha-local-renderer/ws?sessionId=fixture'}:{}};
  const controller={getBrowserSpeechAgent:()=>agent,voiceRendererClientId:()=>'11111111-1111-4111-8111-111111111111',voiceConversationCurrent:()=>current,refreshDeveloperVoiceHistory:async()=>{refreshes++;if(hold)await new Promise(resolve=>release=resolve);}};
  const createVoiceSessionClient=value=>{options=value;return {start:async()=>{},stop:async()=>{},setMicrophoneMuted:()=>{}};};
- return {create:()=>factory(controller,createVoiceSessionClient,RendererSocket,{host:'localhost'})({binding,assertCurrent:()=>{if(!current)throw Error('changed');},onState:()=>{},onTranscript:text=>transcripts.push(text),onError:error=>errors.push(error.message),getUiContext:()=>({uiViewPath:'/notes',uiBrowserSurface:'native'}),onNavigate:async event=>{navigations.push(event);}}),get options(){return options;},get refreshes(){return refreshes;},errors,navigations,transcripts,setCurrent:value=>current=value,hold:()=>hold=true,release:()=>{hold=false;release?.();}};
+ return {create:()=>factory(controller,createVoiceSessionClient,RendererSocket,{host:'localhost'})({binding,assertCurrent:()=>{if(!current)throw Error('changed');},onState:()=>{},onTranscript:text=>transcripts.push(text),onError:error=>errors.push(error.message),getUiContext:()=>({uiViewPath:'/notes',uiBrowserSurface:'native'}),onNavigate:async event=>{navigations.push(event);}}),renderer:event=>RendererSocket.latest.onmessage({data:JSON.stringify(event)}),get options(){return options;},get refreshes(){return refreshes;},errors,navigations,transcripts,setCurrent:value=>current=value,hold:()=>hold=true,release:()=>{hold=false;release?.();}};
 }
 test('authoritative progress refreshes canonical history with one in-flight loader and one coalesced followup',async()=>{
  const f=harness();await f.create();f.hold();for(const t of ['ready','stt_final','speaking_start','reply_complete','usage'])f.options.onServerEvent({t,text:'hello',traceId:'turn'});await flush();assert.equal(f.refreshes,1);f.release();await flush();assert.equal(f.refreshes,2);assert.deepEqual(f.transcripts,['hello']);assert.deepEqual(f.errors,[]);
@@ -59,4 +59,17 @@ test('direct adapter reports automatic playback mute separately from manual mute
  const f=harness(),voice=await f.create();assert.equal(voice.microphoneAutomaticallyMuted,false);
  f.options.onState({phase:'speaking'});assert.equal(voice.microphoneAutomaticallyMuted,true);
  f.options.onState({phase:'listening'});assert.equal(voice.microphoneAutomaticallyMuted,false);
+});
+
+test('targeted renderer delivery opens Notes even when the voice terminal suppresses its duplicate',async()=>{
+ const f=harness();await f.create();const frame={type:'shell:navigate:view',source:'agent',viewType:'gui',viewId:'notes',viewPath:'/notes',completedActionHandoffId:'22222222-2222-4222-8222-222222222222'};
+ f.renderer(frame);await flush();assert.equal(f.navigations.length,0);
+ f.options.onServerEvent({t:'stt_final',traceId:'turn',text:'open notes'});f.renderer(frame);await flush();assert.equal(f.navigations.length,1);assert.equal(f.navigations[0].viewId,'notes');
+ f.renderer(frame);f.options.onServerEvent({t:'navigate_view',traceId:'turn',viewId:'notes'});await flush();assert.equal(f.navigations.length,1);
+});
+test('targeted navigation refuses interrupted turns, unsupported effects and stopped owners',async()=>{
+ const f=harness(),voice=await f.create();const frame={type:'shell:navigate:view',source:'agent',viewType:'gui',viewId:'notes',completedActionHandoffId:'22222222-2222-4222-8222-222222222222'};
+ f.options.onServerEvent({t:'stt_final',traceId:'turn',text:'open notes'});f.renderer({...frame,payload:{record:'private'}});await flush();assert.equal(f.navigations.length,0);
+ f.options.onServerEvent({t:'interrupted',traceId:'turn'});f.renderer(frame);await flush();assert.equal(f.navigations.length,0);
+ await voice.stop();f.renderer(frame);await flush();assert.equal(f.navigations.length,0);
 });
