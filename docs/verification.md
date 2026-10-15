@@ -1417,17 +1417,23 @@ Both runners bind the bytes upstream pins to the admitted hashes in `preflightVa
 any install, so a build that overwrites the archive after admission fails the run instead of
 being recorded under the admitted hashes. These are source checks only, as above.
 
-## Latest upstream pin integration (2026-10-14)
+## Latest upstream pin integration (2026-10-15)
 
-The source pin moves from `c7a9a0d7e7ea399ead4016727737d2d975f2d5ba` to
-`f93d0dfabee30295dfca915e84addf9523260319`, the observed Eliza develop head.
-Its llama.cpp gitlink is `56e70ff2a0ca060fa2dc3fead2f38003cd7dd64f`, the observed
-fork main head after upstream integration PR #72. This includes the Android
-FFmpeg compatibility repair in Eliza #36279. The product continues using the
-llama.cpp speech migration already integrated into main.
+The candidate source pin is `968348d792d3d36df129bc53bd85cebed47d0830`.
+It contains merged Eliza #36157 and #36292. Its llama.cpp gitlink is
+`3e5f73922ee804806a2e955b50843a5042e6e401`, fork main after upstream integration
+#72 and the native build repairs in #80. All existing native patch target
+hashes match this Eliza revision unchanged. The bounded secure-storage memory
+and reset-revocation tests also pass at this candidate pin (two tests).
 
-Historical native-library receipts remain tied to their recorded source and
-bytes. This source pin update does not qualify those older libraries for the
-new revision. Strict Android distribution builds require newly built libraries
-and the existing qualification process; no emulator, AOSP boot or physical
-device acceptance is implied by the pin update.
+At this llama.cpp revision the local Release CPU speech library and architecture
+test target built. The ABI, Parakeet kernel and Kokoro layer-option tests passed.
+The full native build in the server-disabled configuration failed at test-chat
+because its server header requires mtmd.h. This is separate from the passing
+speech targets. Eliza #36292 passed all hosted checks and local `bun run verify`.
+
+New Android engine and full/voice-subset JNI libraries built for both ABIs.
+Their measured hashes are recorded in the unqualified voice-host manifest; ELF
+architecture, required exports and 16 KiB alignment checks passed. The separate
+resident-host qualification receipt remains historical and unchanged. A source pin or development library build does not establish
+emulator, AOSP boot, physical-device or distribution qualification.
