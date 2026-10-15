@@ -115,3 +115,20 @@ test('realtime transcribing streams revised words into one pending bubble until 
  await expect(pending).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();
  await noMediaOrSends(page);
 });
+
+test('blue synth distinguishes thinking from speech and respects reduced motion',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).voicePresentationFixture.shell.swallowed())).toBe(false);
+ await page.getByRole('button',{name:'Talk',exact:true}).click();
+ const wave=page.locator('.alpha-voice-composer [data-alpha-voice-animation]');
+ const sample=()=>wave.evaluate(el=>({color:getComputedStyle(el).color,timings:[...el.children].map(c=>c.getAnimations()[0]?.effect?.getTiming()).filter(Boolean).map(t=>({duration:t!.duration,delay:t!.delay}))}));
+ await page.evaluate(()=>(window as any).voicePresentationFixture.phase('thinking'));
+ await expect(wave).toHaveAttribute('data-phase','thinking');const thinking=await sample();
+ expect(thinking.timings[6].delay).toBeGreaterThan(thinking.timings[5].delay);
+ await page.evaluate(()=>(window as any).voicePresentationFixture.phase('speaking'));
+ await expect(wave).toHaveAttribute('data-phase','speaking');const speaking=await sample();
+ expect(speaking.color).not.toBe(thinking.color);expect(speaking.timings[0].duration).toBeLessThan(thinking.timings[0].duration);
+ await page.emulateMedia({reducedMotion:'reduce'});await expect(wave).toHaveAttribute('data-paused','true');
+ await expect.poll(()=>wave.evaluate(el=>[...el.children].flatMap(c=>c.getAnimations()).length)).toBe(0);
+ await page.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await noMediaOrSends(page);
+});
