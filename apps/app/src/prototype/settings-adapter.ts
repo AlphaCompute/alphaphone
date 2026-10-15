@@ -520,7 +520,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           page.groups = page.groups.map((g:Bag) => ({...g, rows:g.rows.filter((row:Bag) => !systemOnly.has(row.label))})).filter((g:Bag) => g.rows.length);
         }
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
-          row.val = topValues[row.label]; row.hasVal = true;
+          row.sub = topValues[row.label]; row.hasSub = true; row.val = ''; row.hasVal = false;
         }
         continue;
       }

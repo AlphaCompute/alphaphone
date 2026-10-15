@@ -35,7 +35,7 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  }
  const before=await page.evaluate(()=>JSON.stringify((window as any).cancelMail.slots));
  await page.evaluate(()=>(window as any).cancelMail.hold=true);
- if(request==='Check connection')await page.evaluate(()=>window.dispatchEvent(new Event('alpha:google-accounts-changed')));else await page.getByRole('button',{name:request,exact:true}).click();
+ if(request==='Check connection')await page.evaluate(()=>window.dispatchEvent(new Event('alpha:google-accounts-changed')));else if(request==='Search Gmail')await page.getByPlaceholder('Search mail').press('Enter');else await page.getByRole('button',{name:request,exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof (window as any).cancelMail.release)).toBe('function');
  await page.getByRole('button',{name:'Back to apps',exact:true}).click();
  await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();

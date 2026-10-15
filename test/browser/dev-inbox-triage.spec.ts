@@ -12,7 +12,7 @@ test.beforeEach(async({page})=>{
 });
 async function stored(page:any){return page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.dev.app.inbox')!));}
 test('search, archive, undo and delete preserve their local state through reload',async({page})=>{
- await page.getByRole('button',{name:'Search email',exact:true}).click();await page.getByRole('textbox',{name:'Search mail',exact:true}).fill('Train times');
+ await page.getByRole('button',{name:'Search email',exact:true}).click();await page.getByRole('searchbox',{name:'Search mail',exact:true}).fill('Train times');
  await expect(page.getByRole('button',{name:/Sender Two, Travel details/})).toBeVisible();await expect(page.getByRole('button',{name:/Sender One, Planning notes/})).toHaveCount(0);
  await page.getByRole('button',{name:'Close search',exact:true}).click();await page.getByRole('button',{name:/Sender One, Planning notes/}).click();
  await page.getByRole('button',{name:'Archive',exact:true}).click();expect((await stored(page)).mails[0].arch).toBe(true);

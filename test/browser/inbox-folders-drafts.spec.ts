@@ -44,12 +44,12 @@ test('Older servers offer only the query-based Archive folder',async({page})=>{
 test('Drafts, Archive and Trash load their lists; a Gmail draft opens for editing and saves only through review',async({page})=>{
  await install(page,{draftsList:true,searchTrash:true});
  // Folder filters, including the overflow menu, are full 44px touch targets (#411).
- for(const control of [page.getByRole('combobox',{name:'Other mail folders',exact:true}),page.getByRole('button',{name:'Archive',exact:true})])expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
- await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('trash');
+ for(const control of [page.getByRole('button',{name:'Other mail folders',exact:true}),page.getByRole('button',{name:'Archive',exact:true})])expect((await control.boundingBox())!.height).toBeGreaterThanOrEqual(43.5);
+ await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Trash',exact:true}).click();
  await expect(page.getByText('Trashed fixture',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Archive',exact:true}).click();
  await expect(page.getByText('Archived fixture',{exact:true})).toBeVisible();
- await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('drafts');
+ await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Gmail draft, Draft to friend@example\.invalid, Quarterly plan/})).toBeVisible();
  expect((await fixture(page)).searches.slice(-2)).toEqual(['in:trash','in:archive']);
  // A reply draft stays in Gmail: its thread headers cannot be reproduced exactly here.
