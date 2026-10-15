@@ -12,7 +12,7 @@ export interface LauncherBridge {
   addListener?(event: 'appsChanged', listener: (change: Bag) => void): unknown;
 }
 /** Ordered favorite keys, kept on this device only. `write` throws when storage refuses. */
-export interface FavoritesStore { read(): string[] | null; write(keys: string[]): void }
+export interface FavoritesStore { read(): string[] | null; write(keys: string[]): void; /** v1 only controlled installed shortcuts, not product Home apps. */ legacy?(): boolean }
 export type LauncherStatus = 'idle' | 'loading' | 'ready' | 'failed';
 export interface LauncherSnapshot {
   status: LauncherStatus;
@@ -104,17 +104,20 @@ const cleanKeys = (value: unknown): string[] => {
 /** Favorites in this origin's localStorage. A missing setting is distinct from an explicitly empty list; malformed data preserves an empty choice. */
 export function localFavorites(storage: () => Storage = () => globalThis.localStorage): FavoritesStore {
   return {
-    read() { try { const raw = storage().getItem(FAVORITES_KEY); if (raw === null) return null; const saved = JSON.parse(raw); return saved?.version === 1 ? cleanKeys(saved.keys) : []; } catch { return []; } },
-    write(keys) { storage().setItem(FAVORITES_KEY, JSON.stringify({version: 1, keys})); },
+    read() { try { const raw = storage().getItem(FAVORITES_KEY); if (raw === null) return null; const saved = JSON.parse(raw); return (saved?.version === 1 || saved?.version === 2) ? cleanKeys(saved.keys) : []; } catch { return []; } },
+    legacy() { try { return JSON.parse(storage().getItem(FAVORITES_KEY) || 'null')?.version === 1; } catch { return false; } },
+    write(keys) { storage().setItem(FAVORITES_KEY, JSON.stringify({version: 2, keys})); },
   };
 }
 
 /** Reads installed apps on each open and whenever Android reports a change (installs and removals
  * happen outside Alpha), and launches only from an explicit tap. Failures stay visible; nothing is
  * retried automatically. */
-export function createLauncher(bridge: LauncherBridge, changed: () => void, options: {icons?: boolean; favorites?: FavoritesStore} = {}) {
+export function createLauncher(bridge: LauncherBridge, changed: () => void, options: {icons?: boolean; favorites?: FavoritesStore; aliases?: Record<string, string>} = {}) {
   const store = options.favorites;
-  const saved = store ? store.read() : [];
+  const rawSaved = store ? store.read() : [];
+  const saved = rawSaved === null ? null : cleanKeys(rawSaved.map(key => options.aliases?.[key] || key));
+  let migrationPending = !!store?.legacy?.();
   let defaultsPending = saved === null;
   let builtins: InstalledApp[] = [];
   let state: LauncherSnapshot = {status: 'idle', apps: [], dial: null, launching: null, launchError: null, favorites: saved || []};
@@ -123,7 +126,7 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
   const message = (error: unknown) => error instanceof Error && error.message ? error.message : String(error || 'Unavailable');
   const saveFavorites = (favorites: string[]) => {
     if (!store) { update({launchError: 'Favorites cannot be saved on this device.'}); return; }
-    try { store.write(favorites); defaultsPending = false; update({favorites, launchError: null}); }
+    try { store.write(favorites); defaultsPending = false; migrationPending = false; update({favorites, launchError: null}); }
     catch { update({launchError: 'Favorites could not be saved. Nothing changed.'}); }
   };
   const installed = (key: string) => state.apps.some(app => appKey(app) === key);
@@ -140,10 +143,10 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
     // A failed read never leaves an older inventory on screen as if it were current.
     if (listed.status === 'rejected' || !Array.isArray(listed.value?.apps)) { update({status: 'failed', apps: [], dial: dialApp}); return; }
     const seen = new Set<string>();
-    const apps = [...builtins, ...listed.value.apps.filter(valid)].filter(app => !seen.has(appKey(app)) && !!seen.add(appKey(app)));
-    if (defaultsPending) {
-      const favorites = apps.map(appKey);
-      try { store?.write(favorites); defaultsPending = false; state = {...state, favorites}; }
+    const apps = [...builtins, ...listed.value.apps.filter(valid).filter(app => !options.aliases?.[appKey(app)])].filter(app => !seen.has(appKey(app)) && !!seen.add(appKey(app)));
+    if (defaultsPending || migrationPending) {
+      const favorites = defaultsPending ? apps.map(appKey) : state.favorites;
+      try { store?.write(favorites); defaultsPending = false; migrationPending = false; state = {...state, favorites}; }
       catch { state = {...state, favorites, launchError: 'Favorites could not be saved.'}; }
     }
     update({status: 'ready', apps, dial: dialApp});
@@ -156,6 +159,7 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       builtins = apps;
       state = {...state, apps: [...builtins, ...state.apps.filter(app => !old.has(appKey(app))) ]};
       if (defaultsPending) state = {...state, favorites: state.apps.map(appKey)};
+      else if (migrationPending) state = {...state, favorites: cleanKeys([...state.favorites, ...builtins.map(appKey)])};
     },
     load,
     /** Re-reads after an outside change. Does nothing before the first open; never shows the loading state over a list. */
@@ -221,7 +225,7 @@ export type Launcher = ReturnType<typeof createLauncher>;
 
 /** Home's All-apps drawer. Shell state (open, query) lives in the model so Back and Home close
  * it; the installed list lives here. */
-export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore; /** False when the bridge cannot report package changes; the drawer still re-reads on open and on resume. */ follow?: boolean} = {}) {
+export function installHomeLauncher(Component: any, bridge: LauncherBridge, options: {icons?: boolean; favorites?: FavoritesStore; /** Exact browser device mirrors only; never infer aliases from labels. */ aliases?: Record<string, string>; /** False when the bridge cannot report package changes; the drawer still re-reads on open and on resume. */ follow?: boolean} = {}) {
   const p = Component.prototype, mount = p.componentDidMount, unmount = p.componentWillUnmount, render = p.renderVals;
   let owner: any = null;
   const builtinRows = new Map<string, Bag>();

@@ -229,9 +229,9 @@ test('localStorage favorites round-trip and unreadable or malformed data reads a
   const store = localFavorites(() => storage);
   assert.equal(store.read(), null);
   store.write(['a.b/a.b.Main', 'c.d']);
-  assert.deepEqual(JSON.parse(data.get(FAVORITES_KEY)), {version: 1, keys: ['a.b/a.b.Main', 'c.d']});
+  assert.deepEqual(JSON.parse(data.get(FAVORITES_KEY)), {version: 2, keys: ['a.b/a.b.Main', 'c.d']});
   assert.deepEqual(store.read(), ['a.b/a.b.Main', 'c.d']);
-  for (const raw of ['{', '[]', '{"version":2,"keys":["a"]}', '{"version":1,"keys":"a"}']) { data.set(FAVORITES_KEY, raw); assert.deepEqual(store.read(), []); }
+  for (const raw of ['{', '[]', '{"version":3,"keys":["a"]}', '{"version":1,"keys":"a"}']) { data.set(FAVORITES_KEY, raw); assert.deepEqual(store.read(), []); }
   data.set(FAVORITES_KEY, JSON.stringify({version: 1, keys: ['a', 'a', 7, '', 'b']}));
   assert.deepEqual(store.read(), ['a', 'b']);
   assert.deepEqual(localFavorites(() => { throw Error('SecurityError'); }).read(), []);
@@ -440,4 +440,37 @@ test('shell Home and All apps use the same favorite order; product taps never ca
   rendered = shell.renderVals();
   assert.equal(rendered.apps.some(a => a.label === 'Notes'), false);
   assert.equal(rendered.launcher.rows.some(a => a.label === 'Notes'), true);
+});
+
+
+test('legacy installed favorites migrate to v2 without hiding product Home apps, and browser mirrors deduplicate', async () => {
+  const aliases = {'browser.mail': 'alpha:inbox', 'browser.notes': 'alpha:notes', 'browser.browser': 'alpha:browser'};
+  const builtins = [{packageName: 'alpha:inbox', label: 'Inbox'}, {packageName: 'alpha:notes', label: 'Notes'}, {packageName: 'alpha:browser', label: 'Browser'}];
+  for (const keys of [['browser.browser', 'browser.mail'], []]) {
+    const data = new Map([[FAVORITES_KEY, JSON.stringify({version: 1, keys})]]);
+    const store = localFavorites(() => ({getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value)}));
+    const nativeNotes = {packageName: 'org.other.notes', activityName: 'Notes', user: '10', label: 'Notes'};
+    const listed = [...Object.keys(aliases).map(packageName => ({packageName, label: 'Mirror'})), nativeNotes];
+    const launcher = createLauncher({list: async () => ({apps: listed}), launch: async () => {}}, () => {}, {favorites: store, aliases});
+    launcher.setBuiltins(builtins);
+    await launcher.load();
+    assert.deepEqual(launcher.snapshot().apps.map(appKey), [...builtins.map(appKey), appKey(nativeNotes)]);
+    assert.deepEqual(launcher.favoriteApps().map(appKey), keys.length ? ['alpha:browser', 'alpha:inbox', 'alpha:notes'] : builtins.map(appKey));
+    assert.equal(JSON.parse(data.get(FAVORITES_KEY)).version, 2);
+    assert.equal(launcher.isFavorite(nativeNotes), false, 'Legacy nonfavorite Android app remains nonfavorite');
+    const restarted = createLauncher({list: async () => ({apps: listed}), launch: async () => {}}, () => {}, {favorites: store, aliases});
+    restarted.setBuiltins(builtins);
+    await restarted.load();
+    assert.deepEqual(restarted.snapshot().favorites, launcher.snapshot().favorites);
+  }
+});
+test('v2 intentional empty Home stays empty, while native packages with matching names are not aliased', async () => {
+  const data = new Map([[FAVORITES_KEY, JSON.stringify({version: 2, keys: []})]]);
+  const store = localFavorites(() => ({getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value)}));
+  const native = {packageName: 'browser.notes', activityName: 'NativeNotes', user: '10', label: 'Notes'};
+  const launcher = createLauncher({list: async () => ({apps: [native]}), launch: async () => {}}, () => {}, {favorites: store, aliases: {'browser.notes': 'alpha:notes'}});
+  launcher.setBuiltins([{packageName: 'alpha:notes', label: 'Notes'}]);
+  await launcher.load();
+  assert.deepEqual(launcher.favoriteApps(), []);
+  assert.equal(launcher.snapshot().apps.some(app => appKey(app) === appKey(native)), true);
 });
