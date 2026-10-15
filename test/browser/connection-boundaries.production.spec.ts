@@ -399,6 +399,28 @@ test('the web build\'s forced sign-out does not create a secret store in a brows
 // revocation and history tests remain in scripts/test-remote-protocol.mjs and
 // scripts/test-connection-history.mjs as explicitly non-product development infrastructure.
 
+test('transient startup storage failures recover without flashing global notices',async({page})=>{
+  await android(page,{cloudCredential:true,balance:5});
+  await page.addInitScript(()=>{
+    const w=window as any,bridge=w.Capacitor,original=bridge.nativePromise;
+    w.startupStorage={pending:0,drafts:0,flashes:[]};
+    bridge.nativePromise=(plugin:string,method:string,input:any)=>{
+      if(plugin==='AlphaDeletions'&&method==='pending'&&++w.startupStorage.pending<=2)return Promise.reject(Error('Storage is opening'));
+      if(plugin==='AlphaConnection'&&method==='secureRead'&&input?.slot?.startsWith('assistant-draft:')&&++w.startupStorage.drafts===1)return Promise.reject(Error('Storage is opening'));
+      return original(plugin,method,input);
+    };
+    new MutationObserver(()=>{
+      const text=document.body?.textContent||'';
+      if(/Pending deletion status is unavailable|Opening local draft|Local draft could not/.test(text))w.startupStorage.flashes.push(text);
+    }).observe(document,{subtree:true,childList:true,characterData:true});
+  });
+  await page.goto('/');
+  await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>(window as any).startupStorage.pending)).toBeGreaterThanOrEqual(3);
+  await expect.poll(()=>page.evaluate(()=>(window as any).startupStorage.drafts)).toBeGreaterThanOrEqual(2);
+  expect(await page.evaluate(()=>(window as any).startupStorage.flashes)).toEqual([]);
+});
+
 test('an unavailable deletion receipt status does not block account settings controls', async ({ page }) => {
   await android(page, { cloudCredential: true, balance: 5, revoke: 'revoked' });
   await page.goto('/');

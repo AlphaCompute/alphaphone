@@ -18,7 +18,7 @@ import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-c
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { retireGmailBackground } from '../runtime/gmail-background';
-import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
+import { gmailGrantLabel, googleAccountAccessLabel } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { exportVoiceTiming } from '../runtime/voice-timing';
@@ -527,7 +527,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([{ kNav:true,label:'Manage Google accounts',lbl:'Manage Google accounts',chev:true,noAB:true,go:()=>googleConnectionController.open() },info('Gmail', gmail),
-          ...connected.map(a => info(a.label, { modify: 'Connected · read and change access', readonly: 'Connected · read access', none: 'Connected · read access not granted' }[gmailGrantTier(a)])),
+          ...connected.map(a => info(a.label, googleAccountAccessLabel(a))),
           ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
