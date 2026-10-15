@@ -1,3 +1,4 @@
+import { canonicalSyncRecurrence } from "../browser/calendar-sync-fields.ts";
 import type {
 	LinkedCalendarEventRecord,
 	LinkedCalendarProviderPort,
@@ -198,7 +199,12 @@ function eventSnapshot(value: unknown): LinkedCalendarProviderSnapshot {
 			isAllDay: event.isAllDay,
 			attendees,
 			...(event.recurrence
-				? { recurrence: [...(event.recurrence as string[])] }
+				? {
+						recurrence: canonicalSyncRecurrence(
+							event.recurrence as string[],
+							event.isAllDay,
+						),
+					}
 				: {}),
 		},
 	};

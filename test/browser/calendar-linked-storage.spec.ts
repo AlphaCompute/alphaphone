@@ -248,7 +248,7 @@ test("a provider deletion keeps the normal Undo window instead of erasing a loca
 	expect(result.afterUndo?.event.title).toBe("Keep until Undo ends");
 });
 
-test("unsupported series or contact-id translation is refused without flattening saved data", async ({
+test("unsupported series overrides or contact-id translation is refused without flattening saved data", async ({
 	page,
 }) => {
 	await open(page);
@@ -271,6 +271,7 @@ test("unsupported series or contact-id translation is refused without flattening
 					end: 1000,
 					revision: "r1",
 					repeat: "daily",
+					seriesId: "parent-series",
 				});
 			});
 			const before = await calendarDocument.readRaw();
@@ -282,7 +283,7 @@ test("unsupported series or contact-id translation is refused without flattening
 			} catch (error) {
 				refused =
 					error instanceof Error &&
-					error.message.includes("recurrence or attendee");
+					/series|attendee/.test(error.message);
 			}
 			return refused && before === (await calendarDocument.readRaw());
 		}),

@@ -1,3 +1,10 @@
+import {
+	syncAttendees,
+	localAttendees,
+	syncRecurrence,
+	localRecurrence,
+	type CalendarAttendeeResolver,
+} from "./calendar-sync-fields";
 import type {
 	LinkedCalendarLocalPort,
 	LinkedCalendarLocalSnapshot,
@@ -23,7 +30,10 @@ import {
 } from "../runtime/deletion-owner";
 import { revision } from "./revision";
 
-function semantic(row: CalendarRecord): LinkedCalendarSemanticEvent {
+function semantic(
+	row: CalendarRecord,
+	resolve?: CalendarAttendeeResolver,
+): LinkedCalendarSemanticEvent {
 	if (
 		row.calendarId !== "local" ||
 		!row.revision ||
@@ -32,17 +42,6 @@ function semantic(row: CalendarRecord): LinkedCalendarSemanticEvent {
 		row.end <= row.begin
 	)
 		throw Error("This local event needs recovery before syncing.");
-	// Recurrence and contact-id translation must be wired before these events can
-	// enter sync. Never flatten a series or turn local contact IDs into email addresses.
-	if (
-		row.seriesId ||
-		(row.repeat && row.repeat !== "none") ||
-		row.excluded?.length ||
-		row.who?.length
-	)
-		throw Error(
-			"This event needs recurrence or attendee sync support. Nothing changed.",
-		);
 	if (row.allDay && (row.begin % 86400000 !== 0 || row.end % 86400000 !== 0))
 		throw Error("The all-day event dates need review.");
 	const timeZone = row.allDay
@@ -61,7 +60,8 @@ function semantic(row: CalendarRecord): LinkedCalendarSemanticEvent {
 			: new Date(row.end).toISOString(),
 		timeZone,
 		isAllDay: !!row.allDay,
-		attendees: [],
+		attendees: syncAttendees(row, resolve),
+		recurrence: syncRecurrence(row),
 	};
 }
 /** Real browser calendar storage, with the same source/revision and Undo guards as manual edits.
@@ -69,6 +69,7 @@ function semantic(row: CalendarRecord): LinkedCalendarSemanticEvent {
 export function browserCalendarSyncPort(
 	sourceRevision: string,
 	current: () => boolean,
+	resolve?: CalendarAttendeeResolver,
 ): LinkedCalendarLocalPort<string> {
 	const check = (data?: BrowserCalendarState) => {
 		if (!current() || (data && data.sourceRevision !== sourceRevision))
@@ -88,7 +89,7 @@ export function browserCalendarSyncPort(
 	): LinkedCalendarLocalSnapshot<string> => ({
 		eventId: row.id,
 		revision: row.revision,
-		event: semantic(row),
+		event: semantic(row, resolve),
 	});
 	return {
 		async get(id) {
@@ -108,9 +109,7 @@ export function browserCalendarSyncPort(
 				!Number.isFinite(begin) ||
 				!Number.isFinite(end) ||
 				end <= begin ||
-				event.deleted ||
-				event.attendees.length ||
-				event.recurrence?.length
+				event.deleted
 			)
 				throw Error(
 					"This Google event cannot be represented locally without losing fields. Nothing changed.",
@@ -133,9 +132,13 @@ export function browserCalendarSyncPort(
 					const before = selected(data, id);
 					if (!before || before.revision !== expectedRevision)
 						throw Error("The local event changed before sync could apply.");
-					semantic(before);
+					semantic(before, resolve);
+					const recurrence = localRecurrence(event.recurrence, event.isAllDay),
+						attendees = localAttendees(before, event.attendees, resolve);
 					const next = {
 						...before,
+						...recurrence,
+						...attendees,
 						title: event.title,
 						body: event.description,
 						location: event.location,
@@ -167,8 +170,13 @@ export function browserCalendarSyncPort(
 					!browserDeletionOwnerCurrent(owner)
 				)
 					throw Error("The local event or owner changed before deletion.");
-				semantic(before);
-				stageCalendarDeletion(data, before, "event", owner);
+				semantic(before, resolve);
+				stageCalendarDeletion(
+					data,
+					before,
+					before.repeat && before.repeat !== "none" ? "series" : "event",
+					owner,
+				);
 			});
 			check();
 			window.dispatchEvent(new Event("alpha:deletions-changed"));

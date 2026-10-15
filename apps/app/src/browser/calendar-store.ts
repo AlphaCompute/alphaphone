@@ -13,7 +13,7 @@ const channel=typeof BroadcastChannel==='undefined'?null:new BroadcastChannel('a
 const refresh=()=>window.dispatchEvent(new Event('alpha:calendar-document-changed'));
 if(channel)channel.onmessage=event=>{if(event.data?.key===calendarStorageKey)refresh();};
 // The originating action owns its completion UI, including delayed receipts.
-const changed=()=>{channel?.postMessage({key:calendarStorageKey});};
+const changed=()=>{channel?.postMessage({key:calendarStorageKey});window.dispatchEvent(new Event('alpha:calendar-sync-source-changed'));};
 
 export const calendarDocument={
  read:<T>(initial:()=>T|Promise<T>,signal?:AbortSignal)=>domain.read(initial,signal),
