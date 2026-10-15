@@ -182,3 +182,27 @@ The native implementation must meet these boundaries before Settings enables it:
 - Retain the shared reconciliation journal, stable create key, exact Google ETag, uncertain-outcome readback and explicit conflict handling. No automatic retry of a provider write and no approval inferred from a successful read.
 
 Qualify the real bridge through the normal native producer and an authorized disposable fixture first. Source/JVM tests, four APK builds, installed source identity, Google write/readback and physical-device acceptance are separate receipts. The retained Seeker publication/install hold is not waived by a browser test or USB connection. No audio, account reset, unlock or phone install is implied by this contract.
+
+The native source now implements this boundary in `CalendarSyncBridge`,
+`CalendarSyncSnapshot` and `CalendarSyncMutation`, with the shared renderer
+controller wired through `native-calendar-sync.ts`. The native confirmation reads
+Cloud identity and Google capabilities itself. Its grant/dispatch journal is an
+encrypted native-only namespace; renderer storage cannot enable it. Only the
+verified Alpha-owned LOCAL calendar is eligible. Its source generation is set at
+native opt-in using a source-asserted, account-scoped CalendarProvider operation;
+ordinary event changes keep the normal application permission path. Exact reads
+and transaction assertions include recurrence families, attendees, reminders and
+extended properties. Unsupported fields are refused, not reconstructed.
+
+Google-origin deletions use the existing ten-second Undo coordinator. Pausing
+sync prevents queued sync deletions from dispatching. An observed Undo keeps the
+event and pauses that event's retained Google link, avoiding an automatic second
+deletion. Unknown native writes retain their dispatch claim and are not repeated.
+Only acknowledged, definite receipts can be retired from bounded native history.
+
+Host-JVM snapshot/mutation/owner/slot checks, native-port tests and renderer
+Settings tests exercise synthetic boundaries. `CalendarSyncProviderInstrumentedTest`
+is the disposable real-CalendarProvider follow-up; adding it does not run it.
+Normal native producer/build qualification, installed identity, actual owner
+consent, Google write/readback, Undo/restart and physical acceptance remain
+separate gates. Do not mark those complete from browser tests or source compilation.

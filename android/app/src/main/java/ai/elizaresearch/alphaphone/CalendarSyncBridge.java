@@ -132,7 +132,7 @@ final class CalendarSyncBridge {
  }
  private void enable(PluginCall call,Context context){
   try{
-   Context current=prepare(context.binding);if(!current.fingerprint.equals(context.fingerprint))throw new SecurityException("Calendar review changed");
+   check(context,false);Context current=prepare(context.binding);if(current.epoch!=context.epoch||!current.fingerprint.equals(context.fingerprint))throw new SecurityException("Calendar review changed");
    check(current,false);
    String marker=current.source.source.getAsString("cal_sync1");
    if(marker==null||marker.isEmpty()){

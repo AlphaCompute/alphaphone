@@ -29,6 +29,11 @@ export async function calendarSyncFixture(page:Page,native=false){
    const {BrowserCalendar}=await import('/src/browser/calendar.ts'),{syncAttendees,syncRecurrence}=await import('/src/browser/calendar-sync-fields.ts');
    const local=(await calendarDocument.read(initialCalendarState)).events[0];
    f.native={enabled:false,consents:0,calls:[],deny:false,permission:true,requests:0,revision:'a'.repeat(64),event:{title:local.title,description:local.body,location:local.location,startAt:new Date(local.begin).toISOString().slice(0,10),endAt:new Date(local.end).toISOString().slice(0,10),timeZone:null,isAllDay:true,attendees:syncAttendees(local),recurrence:syncRecurrence(local)}};
+   const slots=new Map<string,string>();
+   const {BrowserCloudConnection}=await import('/src/browser/cloud-connection.ts');
+   BrowserCloudConnection.prototype.secureRead=async(input:any)=>({value:slots.get(input.slot)??null});
+   BrowserCloudConnection.prototype.secureWrite=async(input:any)=>{slots.set(input.slot,input.value);return {};};
+   BrowserCloudConnection.prototype.secureCompareExchange=async(input:any)=>{if((slots.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)slots.delete(input.slot);else slots.set(input.slot,input.value);return {status:'saved'};};
    const projection=()=>({status:'ready',lease:'55555555-5555-4555-8555-555555555555',binding:{environment:'production',userId,organizationId,connectionId:grantId,providerAccountId:'fixture-google-user',calendarId:'primary',agentId:f.agentId,localSourceId:'native:7',localSourceRevision:'44444444-4444-4444-8444-444444444444'},destination:{account:'owner@example.invalid',calendar:'Personal'},events:[{id:'42',revision:f.native.revision}],enabled:f.native.enabled});
    (BrowserCalendar.prototype as any).sync=async(input:any)=>{
     f.native.calls.push(structuredClone(input));
@@ -38,6 +43,8 @@ export async function calendarSyncFixture(page:Page,native=false){
     if(input.kind==='list')return {status:'ready',events:[{id:'42',revision:f.native.revision}]};
     if(input.kind==='get')return {status:'ready',snapshot:{eventId:'42',revision:f.native.revision,event:structuredClone(f.native.event)}};
     if(input.kind==='apply'){if(!f.native.enabled)return {status:'context-changed'};if(input.expectedRevision!==f.native.revision)return {status:'conflict'};f.native.event=structuredClone(input.event);f.native.revision='b'.repeat(64);return {status:'saved',snapshot:{eventId:'42',revision:f.native.revision,event:structuredClone(f.native.event)}};}
+    if(input.kind==='delete'){if(!f.native.enabled)return {status:'context-changed'};return {status:'queued',receipt:{phase:'queued'}};}
+    if(input.kind==='deletion')return {status:'receipt',receipt:{phase:f.native.phase||'undone'}};
     if(input.kind==='ack')return {status:'acknowledged'};
     if(input.kind==='pause'){f.native.enabled=false;return {status:'paused'};}
     if(input.kind==='cancel')return {status:'cancelled'};

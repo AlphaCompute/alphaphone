@@ -40,11 +40,12 @@ export const nativeCalendarSync = {
  cancel(){source=undefined;void bridge().sync({kind:'cancel'}).catch(()=>{});},
  async enabled(){if(!source)return false;const result=await call('status',{lease:source.lease});if(result.status!=='ready')return false;return result.enabled===true;},
  async observe(listener:()=>void){return bridge().addListener('calendarSyncChanged',listener);},
- port(admitted:NativeCalendarSource,current:()=>boolean,signal:AbortSignal):LinkedCalendarLocalPort<string>{
-  const input={lease:admitted.lease};
+ port(admitted:NativeCalendarSource,current:()=>boolean,signal:AbortSignal):LinkedCalendarLocalPort<string>&{deletionUndone(id:string):boolean}{
+  const input={lease:admitted.lease},undone=new Set<string>();
   const get=async(id:string)=>{const result=await call('get',{...input,eventId:id},current,signal);if(result.status!=='ready')throw error(result);return snapshot(result.snapshot);};
   return {
    get,
+   deletionUndone:(id:string)=>undone.has(id),
    async applyProviderEvent(id,event,expectedRevision){
     const operation=await operationId(['native-calendar-apply-v1',admitted.binding,id,expectedRevision,event]);const result=await call('apply',{...input,eventId:id,expectedRevision,event,operationId:operation},current,signal);
     if(result.status!=='saved')throw error(result);const saved=snapshot(result.snapshot);if(!saved||saved.eventId!==id)throw Error('Device Calendar save was not confirmed');await call('ack',{...input,operationId:operation},current,signal);window.dispatchEvent(new Event('alpha:calendar-committed'));return saved;
@@ -56,7 +57,7 @@ export const nativeCalendarSync = {
     while(Date.now()<deadline){
      const response=await call('deletion',{...input,operationId:operation},current,signal);if(response.status!=='receipt')throw error(response);const receipt=object(response.receipt),phase=receipt.phase;
      if(phase==='deleted'){if(await get(id)!==null)throw Error('Calendar deletion readback changed');await call('ack',{...input,operationId:operation},current,signal);window.dispatchEvent(new Event('alpha:calendar-committed'));return;}
-     if(phase==='undone'){await call('ack',{...input,operationId:operation},current,signal);throw Error('Deletion undone. The local event is kept and its sync link needs review.');}
+     if(phase==='undone'){undone.add(id);await call('ack',{...input,operationId:operation},current,signal);throw Error('Deletion undone. The local event is kept and its Google link is paused.');}
      if(phase!=='queued')throw Error('Calendar deletion is paused or unconfirmed. It will not be repeated.');
      await new Promise<void>((resolve,reject)=>{const stop=()=>{clearTimeout(timer);reject(new DOMException('Calendar sync stopped','AbortError'));};const timer=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},400);signal.addEventListener('abort',stop,{once:true});if(signal.aborted)stop();});
     }

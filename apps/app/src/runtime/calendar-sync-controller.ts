@@ -19,6 +19,7 @@ export type CalendarSyncContext = {
 	local: LinkedCalendarLocalPort<string>;
 	storage: CalendarLinkStorage;
 	current: () => boolean;
+	localDeletionUndone?: (eventId:string)=>boolean;
 	events: () => Promise<Array<{ id: string; revision: string }>>;
 };
 export type CalendarSyncPreference = {
@@ -218,7 +219,13 @@ export class CalendarSyncController {
 						state: "dirty",
 						pendingOperation: "delete",
 					});
-				const outcome = await engine.reconcile(row);
+				let outcome = await engine.reconcile(row);
+				if(outcome==='quarantined'&&context.localDeletionUndone?.(row.localEventId)){
+					await opted();const latest=(await store.list()).find(item=>item.id===row.id);
+					if(latest?.state==='quarantined'&&latest.lastErrorCode==='LINKED_CALENDAR_LOCAL_DELETE_CAS_REJECTED'){
+						await store.save(latest,{state:'paused',pendingOperation:null,lastErrorCode:'LINKED_CALENDAR_LOCAL_DELETE_UNDONE',lastErrorMessage:'Deletion undone. The local event is kept and its Google link is paused.'});outcome='paused';
+					}
+				}
 				report[outcome]++;
 				await opted();
 			}

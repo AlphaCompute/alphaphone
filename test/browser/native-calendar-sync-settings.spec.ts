@@ -25,3 +25,11 @@ test('only Review sync may request a missing device Calendar permission',async({
  expect(await page.evaluate(()=>(window as any).calendarSyncFixture.native.requests)).toBe(0);
  await dialog.getByRole('button',{name:'Review sync',exact:true}).click();await expect(dialog.getByRole('button',{name:'Enable sync',exact:true})).toBeEnabled();expect(await page.evaluate(()=>(window as any).calendarSyncFixture.native.requests)).toBe(1);expect(await page.evaluate(()=>(window as any).calendarSyncFixture.writes)).toBe(0);
 });
+test('Undo keeps the native event and pauses only its link without deleting it on the next sync',async({page})=>{
+ const dialog=await calendarSyncFixture(page,true);await dialog.getByRole('button',{name:'Review sync',exact:true}).click();await expect(dialog.getByRole('button',{name:'Enable sync',exact:true})).toBeEnabled();await dialog.getByRole('button',{name:'Enable sync',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText(/1 sent to Google/);
+ await page.evaluate(()=>{const f=(window as any).calendarSyncFixture;f.remote=null;f.native.phase='undone';});
+ await dialog.getByRole('button',{name:'Sync now',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText(/1 links paused/);
+ expect(await page.evaluate(()=>(window as any).calendarSyncFixture.native.event.title)).toBe('Local appointment');
+ await dialog.getByRole('button',{name:'Sync now',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText(/1 links paused/);
+ expect(await page.evaluate(()=>(window as any).calendarSyncFixture.native.calls.filter((call:any)=>call.kind==='delete').length)).toBe(1);expect(await page.evaluate(()=>(window as any).calendarSyncFixture.writes)).toBe(1);
+});

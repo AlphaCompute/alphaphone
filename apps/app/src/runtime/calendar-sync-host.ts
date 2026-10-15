@@ -111,7 +111,8 @@ const controller = new CalendarSyncController(
 			const source=await nativeCalendarSync.prepare({connectionId:selected.selection.connectionId,calendarId:selected.selection.providerCalendarId},current,signal,nativePermissionReview),binding=source.binding;
 			if(binding.environment!==selected.account.environment||binding.userId!==selected.account.userId||binding.organizationId!==selected.account.organizationId||binding.agentId!==selected.agentId||binding.connectionId!==selected.selection.connectionId||binding.calendarId!==selected.selection.providerCalendarId)throw Error('Device and Google Calendar account bindings differ. Nothing was enabled.');
 			destination={...source.destination};preparedBinding={...binding};
-			return {reviewIdentity:key,binding,client:selected.cloud.client,current,local:nativeCalendarSync.port(source,current,signal),storage:calendarLinkStorage,events:()=>nativeCalendarSync.events(source,current,signal)};
+			const local=nativeCalendarSync.port(source,current,signal);
+			return {reviewIdentity:key,binding,client:selected.cloud.client,current,local,localDeletionUndone:local.deletionUndone,storage:calendarLinkStorage,events:()=>nativeCalendarSync.events(source,current,signal)};
 		}
 		const source=await prepareCalendarSource();
 		if(!current())throw new DOMException('Calendar sync context changed','AbortError');
@@ -233,7 +234,7 @@ function report(result: CalendarSyncReport) {
 	const warnings = result.conflicted + result.quarantined + result.dirty;
 	return warnings
 		? `Sync needs review: ${result.conflicted} conflicts, ${result.quarantined} unconfirmed changes, ${result.dirty} refused changes.`
-		: `Synced: ${result.pushed} sent to Google, ${result.pulled} received, ${result.clean} unchanged.`;
+		: `Synced: ${result.pushed} sent to Google, ${result.pulled} received, ${result.clean} unchanged.${result.paused?` ${result.paused} links paused.`:""}`;
 }
 export const calendarSyncHost = {
 	subscribe(listener: () => void) {
