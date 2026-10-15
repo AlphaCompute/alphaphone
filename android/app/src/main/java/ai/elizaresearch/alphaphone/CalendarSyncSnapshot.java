@@ -25,18 +25,18 @@ final class CalendarSyncSnapshot {
  final long calendarId,eventId;
  final String generation,sourceRevision,revision;
  final boolean missing,deleted;
- private final ContentValues source;
- private final List<ContentValues> family,attendees,reminders,properties;
+ final ContentValues source;
+ final List<ContentValues> family,attendees,reminders,properties;
  private final String familyWhere,childWhere;
  private final String[] familyArgs,childArgs;
 
- private CalendarSyncSnapshot(ContentResolver resolver,long calendarId,long eventId,String account,String name,String generation)throws Exception{
+ private CalendarSyncSnapshot(ContentResolver resolver,long calendarId,long eventId,String account,String name,String generation,boolean preparing)throws Exception{
   if(calendarId<=0||eventId<=0||account==null||account.isEmpty()||name==null||name.isEmpty()||generation==null||!generation.matches("[a-f0-9-]{36}"))throw new IllegalArgumentException("Invalid Calendar sync source");
   this.calendarId=calendarId;this.eventId=eventId;this.generation=generation;
   List<ContentValues> sources=rows(resolver,ContentUris.withAppendedId(CalendarContract.Calendars.CONTENT_URI,calendarId),SOURCE,null,null,1);
   if(sources.size()!=1)throw new IllegalStateException("Owned Calendar source is unavailable");
   source=sources.get(0);
-  if(number(source,"_id")!=calendarId||!account.equals(source.getAsString("account_name"))||!CalendarContract.ACCOUNT_TYPE_LOCAL.equals(source.getAsString("account_type"))||!name.equals(source.getAsString("name"))||!generation.equals(source.getAsString("cal_sync1"))||number(source,"calendar_access_level")<CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR)throw new SecurityException("Calendar sync source changed");
+  if(number(source,"_id")!=calendarId||!account.equals(source.getAsString("account_name"))||!CalendarContract.ACCOUNT_TYPE_LOCAL.equals(source.getAsString("account_type"))||!name.equals(source.getAsString("name"))||!(generation.equals(source.getAsString("cal_sync1"))||preparing&&empty(source,"cal_sync1"))||number(source,"calendar_access_level")<CalendarContract.Calendars.CAL_ACCESS_CONTRIBUTOR)throw new SecurityException("Calendar sync source changed");
   sourceRevision=digest(canonical(SOURCE,List.of(source)));
   List<ContentValues> exact=rows(resolver,ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,eventId),EVENT,null,null,1);
   if(!exact.isEmpty()&&number(exact.get(0),"calendar_id")!=calendarId)throw new SecurityException("Calendar event moved to another source");
@@ -63,8 +63,33 @@ final class CalendarSyncSnapshot {
   revision=digest(value);
  }
  static CalendarSyncSnapshot read(ContentResolver resolver,long calendarId,long eventId,String account,String localName,String generation)throws Exception{
-  return new CalendarSyncSnapshot(resolver,calendarId,eventId,account,localName,generation);
+  return new CalendarSyncSnapshot(resolver,calendarId,eventId,account,localName,generation,false);
  }
+ static CalendarSyncSnapshot review(ContentResolver resolver,long calendarId,long eventId,String account,String localName,String generation)throws Exception{
+  return new CalendarSyncSnapshot(resolver,calendarId,eventId,account,localName,generation,true);
+ }
+ ContentValues parent(){for(ContentValues row:family)if(number(row,"_id")==eventId)return row;return null;}
+ /** Semantic projection is deliberately conservative: a modified exception family cannot be
+  * represented by the linked-event contract. Its raw rows remain untouched. */
+ org.json.JSONObject semantic()throws Exception{
+  if(missing||deleted)return null;
+  if(family.size()!=1)throw new UnsupportedOperationException("This series has modified exceptions. Review it in Calendar before syncing.");
+  ContentValues row=parent();long begin=number(row,"dtstart"),end;
+  if(row.get("dtend")!=null)end=number(row,"dtend");
+  else{String duration=row.getAsString("duration");if(duration==null)throw new UnsupportedOperationException("Calendar event duration is unavailable");end=Math.addExact(begin,java.time.Duration.parse(duration).toMillis());}
+  if(end<=begin)throw new IllegalStateException("Invalid Calendar event times");
+  boolean allDay=number(row,"allDay")!=0;String zone=row.getAsString("eventTimezone");
+  if(!allDay&&(zone==null||zone.isEmpty()))throw new UnsupportedOperationException("Calendar event timezone is unavailable");
+  if(zone!=null&&!zone.isEmpty())java.time.ZoneId.of(zone);
+  if(allDay&&(Math.floorMod(begin,86400000L)!=0||Math.floorMod(end,86400000L)!=0))throw new UnsupportedOperationException("Review whole Calendar dates");
+  org.json.JSONArray recurrence=new org.json.JSONArray();
+  for(String field:new String[]{"rrule","rdate","exrule","exdate"}){String raw=row.getAsString(field);if(raw!=null&&!raw.isEmpty()){if(raw.contains("\r")||raw.contains("\n"))throw new UnsupportedOperationException("Review multiline recurrence before syncing");recurrence.put((allDay&&field.equals("exdate")?"EXDATE;VALUE=DATE":field.toUpperCase(java.util.Locale.ROOT))+":"+raw);}}
+  org.json.JSONArray guests=new org.json.JSONArray();java.util.HashSet<String> emails=new java.util.HashSet<>();
+  for(ContentValues guest:attendees){long relationship=number(guest,"attendeeRelationship");if(number(guest,"attendeeType")>2)throw new UnsupportedOperationException("Review unsupported Calendar guest types");if(relationship==2)continue;if(relationship!=0&&relationship!=1)throw new UnsupportedOperationException("Review Calendar guest roles before syncing");String email=guest.getAsString("attendeeEmail");if(email==null||!email.matches("[^\\s@,;<>]+@[^\\s@,;<>]+\\.[^\\s@,;<>]+")||!emails.add(email.toLowerCase(java.util.Locale.ROOT)))throw new UnsupportedOperationException("Review Calendar guest email addresses before syncing");guests.put(new org.json.JSONObject().put("email",email.toLowerCase(java.util.Locale.ROOT)).put("optional",number(guest,"attendeeType")==2));}
+  java.util.function.LongFunction<String> instant=value->java.time.Instant.ofEpochMilli(value).toString();
+  return new org.json.JSONObject().put("title",text(row,"title")).put("description",text(row,"description")).put("location",text(row,"eventLocation")).put("startAt",allDay?instant.apply(begin).substring(0,10):instant.apply(begin)).put("endAt",allDay?instant.apply(end).substring(0,10):instant.apply(end)).put("timeZone",allDay?org.json.JSONObject.NULL:zone).put("isAllDay",allDay).put("attendees",guests).put("recurrence",recurrence);
+ }
+ private static String text(ContentValues row,String field){String value=row.getAsString(field);return value==null?"":value;}
  /** All dependent rows and their counts belong in the same CalendarProvider applyBatch as
   * a permitted mutation. Never yield the transaction. Nothing in this method dispatches it. */
  ArrayList<ContentProviderOperation> assertions(){

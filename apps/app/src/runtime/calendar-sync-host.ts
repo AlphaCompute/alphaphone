@@ -17,16 +17,28 @@ import {
 	type CalendarSyncBinding,
 } from "./calendar-linked-store";
 import { connectionController } from "./connection-ui";
+import { nativeCalendarSync } from "./native-calendar-sync";
 import { readGoogleCalendarSelection } from "./google-calendar-selection";
-const configuration = new BrowserJsonDomainDocument(
+const browserConfiguration = new BrowserJsonDomainDocument(
 	"alpha.browser.calendar-sync-config.v1",
 );
+// Native configuration uses the same encrypted CAS storage boundary as checkpoints.
+const nativeConfigurationSlot="calendar-linked-sync:v1:7d1f8a65cde513c690bb719ba9fb6e93372b9f0dc6e8a92b40c18245f3b71df9";
+const configuration={
+ async readJson<T>():Promise<T|null>{return Capacitor.isNativePlatform()?await calendarLinkStorage.read(nativeConfigurationSlot) as T|null:browserConfiguration.readJson<T>();},
+ async editJson<T>(edit:(value:T|null)=>T|null):Promise<void>{
+  if(!Capacitor.isNativePlatform()){await browserConfiguration.editJson<T>(edit);return;}
+  for(let attempt=0;attempt<8;attempt++){const before=await calendarLinkStorage.read(nativeConfigurationSlot),after=edit(before as T|null);const result=await calendarLinkStorage.compareExchange(nativeConfigurationSlot,before,after);if(result.status==='saved')return;}
+  throw Error('Calendar sync settings changed. Review them again.');
+ },
+};
 type Configuration = {
 	version: 1;
 	scope: string;
 	binding: CalendarSyncBinding;
 	enabled: boolean;
 };
+let nativePermissionReview=false;
 let destination = { account: "", calendar: "" };
 let preparedBinding: CalendarSyncBinding | null = null,
 	status = "Sync is off.",
@@ -93,17 +105,16 @@ async function saved() {
 }
 const controller = new CalendarSyncController(
 	async (signal) => {
-		if (Capacitor.isNativePlatform())
-			throw Error(
-				"Google sync for device calendars is not available in this build.",
-			);
-		const selected = owner(),
-			key = identity(),
-			source = await prepareCalendarSource();
-		const current = () =>
-			!signal.aborted && !document.hidden && identity() === key;
-		if (!current())
-			throw new DOMException("Calendar sync context changed", "AbortError");
+		const selected=owner(),key=identity();
+		const current=()=>!signal.aborted&&!document.hidden&&identity()===key;
+		if(Capacitor.isNativePlatform()){
+			const source=await nativeCalendarSync.prepare({connectionId:selected.selection.connectionId,calendarId:selected.selection.providerCalendarId},current,signal,nativePermissionReview),binding=source.binding;
+			if(binding.environment!==selected.account.environment||binding.userId!==selected.account.userId||binding.organizationId!==selected.account.organizationId||binding.agentId!==selected.agentId||binding.connectionId!==selected.selection.connectionId||binding.calendarId!==selected.selection.providerCalendarId)throw Error('Device and Google Calendar account bindings differ. Nothing was enabled.');
+			destination={...source.destination};preparedBinding={...binding};
+			return {reviewIdentity:key,binding,client:selected.cloud.client,current,local:nativeCalendarSync.port(source,current,signal),storage:calendarLinkStorage,events:()=>nativeCalendarSync.events(source,current,signal)};
+		}
+		const source=await prepareCalendarSource();
+		if(!current())throw new DOMException('Calendar sync context changed','AbortError');
 		const raw = (await selected.cloud.client.googleCalendarSync(
 			{
 				kind: "capabilities",
@@ -170,7 +181,7 @@ const controller = new CalendarSyncController(
 	{
 		read: async (scope) => {
 			const value = await saved();
-			enabled = value?.scope === scope && value.enabled === true;
+			enabled = value?.scope === scope && value.enabled === true && (!Capacitor.isNativePlatform()||await nativeCalendarSync.enabled());
 			return enabled;
 		},
 		write: async (scope, nextEnabled) => {
@@ -245,6 +256,11 @@ export const calendarSyncHost = {
 				b?.connectionId === target.selection.connectionId &&
 				b?.calendarId === target.selection.providerCalendarId &&
 				b?.agentId === target.agentId;
+			if(enabled&&Capacitor.isNativePlatform()){
+				const key=identity(),native=await nativeCalendarSync.prepare({connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal);
+				enabled=native.enabled&&native.binding.localSourceRevision===b?.localSourceRevision;
+				if(!enabled)status='Device sync needs a new review. Saved events are retained.';
+			}
 		} catch {
 			enabled = false;
 		}
@@ -265,8 +281,8 @@ export const calendarSyncHost = {
 			b.calendarId !== target.selection.providerCalendarId
 		)
 			return new Set();
-		const source = await prepareCalendarSource();
-		if (source.sourceRevision !== b.localSourceRevision) return new Set();
+		const source=Capacitor.isNativePlatform()?await nativeCalendarSync.prepare({connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal):await prepareCalendarSource();
+		if(('binding' in source?source.binding.localSourceRevision:source.sourceRevision)!==b.localSourceRevision)return new Set();
 		const store = await CalendarLinkedStore.open(
 			b,
 			() => !document.hidden && identity() === key,
@@ -283,21 +299,21 @@ export const calendarSyncHost = {
 		);
 	},
 	destination: () => ({ ...destination }),
-	review: () =>
-		work(
-			() => controller.review(),
-			(review) => `Ready to link ${review.events.length} Alpha events.`,
-		),
+	review: () => work(async()=>{nativePermissionReview=true;try{return await controller.review();}finally{nativePermissionReview=false;}},review=>`Ready to link ${review.events.length} Alpha events.`),
 	enable: async (review: CalendarSyncReview) => {
-		await work(
-			() => controller.enable(review),
-			() => "Sync enabled.",
-		);
+		await work(async()=>{
+			if(Capacitor.isNativePlatform()){
+				if(review.reviewIdentity!==identity())throw Error('Calendar account changed. Review sync again.');
+				await nativeCalendarSync.enable(()=>!document.hidden&&review.reviewIdentity===identity());
+				try{const refreshed=await controller.review();await controller.enable(refreshed);}catch(error){await nativeCalendarSync.pause();throw error;}
+			}else await controller.enable(review);
+		},()=>"Sync enabled.");
 		return calendarSyncHost.sync();
 	},
 	sync: () => work(() => controller.sync(), report),
 	pause: async () => {
 		controller.cancel();
+		if(Capacitor.isNativePlatform())await nativeCalendarSync.pause();
 		await configuration.editJson<Configuration>((value) =>
 			value ? { ...value, enabled: false } : null,
 		);
@@ -306,9 +322,9 @@ export const calendarSyncHost = {
 		status = "Sync is off. Saved events and links are retained.";
 		changed();
 	},
-	cancel: () => controller.cancel(),
+	cancel: () => {controller.cancel();if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();},
 	async resume() {
-		if (running || Capacitor.isNativePlatform() || document.hidden) return;
+		if (running || document.hidden) return;
 		try {
 			const config = await saved();
 			if (!config?.enabled) return;
@@ -333,6 +349,9 @@ export const calendarSyncHost = {
 
 /** Foreground only: local edits and returning to Calendar refresh retained links; no polling or inference. */
 export function startCalendarSyncHost() {
+	let nativeRetired=false;
+	const nativeObserver=Capacitor.isNativePlatform()?nativeCalendarSync.observe(()=>window.dispatchEvent(new Event("alpha:calendar-sync-source-changed"))):undefined;
+	void nativeObserver?.then(handle=>{if(nativeRetired)void handle.remove();}).catch(()=>{});
 	let pendingLocalChange = false;
 	let key = identity(),
 		timer: ReturnType<typeof setTimeout> | undefined;
@@ -341,6 +360,7 @@ export function startCalendarSyncHost() {
 		if (next !== key) {
 			key = next;
 			controller.cancel();
+			if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
 			status =
 				"Sync is off.";
 			changed();
@@ -366,6 +386,7 @@ export function startCalendarSyncHost() {
 		if (document.hidden) {
 			clearTimeout(timer);
 			controller.cancel();
+			if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
 		} else void calendarSyncHost.resume();
 	};
 	const channel =
@@ -375,6 +396,7 @@ export function startCalendarSyncHost() {
 	if (channel)
 		channel.onmessage = () => {
 			controller.cancel();
+			if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
 			status = "Sync settings changed in another view.";
 			changed();
 		};
@@ -392,6 +414,7 @@ export function startCalendarSyncHost() {
 	document.addEventListener("visibilitychange", visible);
 	void calendarSyncHost.resume();
 	return () => {
+		nativeRetired=true;void nativeObserver?.then(handle=>handle.remove()).catch(()=>{});if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
 		clearTimeout(timer);
 		controller.cancel();
 		unsubscribe();

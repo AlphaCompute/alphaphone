@@ -32,7 +32,7 @@ final class AlphaCredentialStore {
  static int slotLimit(String name){
   if("sms-send-ledger:v1:device".equals(name))return 1024*1024;
   if("gmail-background:v1".equals(name))return 2*1024*1024;
-  if("native-delete-journal:v1".equals(name))return 4*1024*1024;
+  if("native-delete-journal:v1".equals(name)||"native-calendar-sync:v1".equals(name))return 4*1024*1024;
   if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;
   if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;
   if(NOTES_RECORDS.equals(name))return 32*1024*1024;

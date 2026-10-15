@@ -168,19 +168,27 @@ public final class AlphaConnectionPlugin extends Plugin {
   }
   return output.toByteArray();
  }
- /** Fixed authenticated identity route; no renderer URL or identity field is accepted. */
+ /** Native-owned read routes; URLs and credentials never come from Calendar renderer calls. */
  static JSONObject readCloudIdentity(String token)throws Exception {
+  JSONObject response=readCloudObject(token,"/api/v1/user");
+  if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
+  return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+ }
+ static JSONObject readCalendarSyncCapabilities(String token,String grant,String calendar)throws Exception {
+  if(!java.util.UUID.fromString(grant).toString().equalsIgnoreCase(grant)||calendar==null||calendar.isEmpty()||calendar.length()>1024||calendar.chars().anyMatch(c->c<32||c==127))throw new IllegalArgumentException();
+  JSONObject response=readCloudObject(token,"/api/v1/eliza/google/calendar/sync-v1/capabilities?grantId="+java.net.URLEncoder.encode(grant,"UTF-8")+"&calendarId="+java.net.URLEncoder.encode(calendar,"UTF-8"));
+  return response;
+ }
+ private static JSONObject readCloudObject(String token,String path)throws Exception {
   if(!AlphaLocalAgentPlugin.validProviderToken(token,16384))throw new IllegalArgumentException();
-  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app/api/v1/user",false).toURL().openConnection();
+  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app"+path,false).toURL().openConnection();
   try{
    connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);
    connection.setConnectTimeout(20000);connection.setReadTimeout(20000);connection.setRequestMethod("GET");
    connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+token);
-   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud identity unavailable");
+   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud read unavailable");
    byte[] bytes;try(InputStream input=connection.getInputStream()){bytes=readBounded(input,RESPONSE_LIMIT);}
-   JSONObject response=(JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
-   if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
-   return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+   return (JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
   }finally{connection.disconnect();}
  }
  static boolean validDeviceCapabilities(String value) {
