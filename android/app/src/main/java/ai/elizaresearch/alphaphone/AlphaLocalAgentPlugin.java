@@ -565,6 +565,32 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    catch(Exception unavailable){call.reject("Stop requested locally, but native shutdown could not be confirmed. Check runtime status.");}
   }
  }
+ /** Native speech uses only the existing enrollment, bound to its exact token and runtime epoch. */
+ static NativeLiveVoicePipe.Transport openNativeVoiceTransport(String expectedOwner)throws Exception{
+  final String root,token,owner;final long epoch;
+  synchronized(lifecycleLock){
+   captureResultSession(expectedOwner);root=rootToken;token=ownerToken;owner=ownerIdentity;epoch=lifecycleEpoch;
+  }
+  final NativeVoiceBinding binding=new NativeVoiceBinding(epoch,root,token,owner);
+  final java.util.concurrent.atomic.AtomicBoolean cancelled=new java.util.concurrent.atomic.AtomicBoolean();
+  final java.util.concurrent.atomic.AtomicReference<NativeVoiceIpc.Handle> active=new java.util.concurrent.atomic.AtomicReference<>();
+  class VoiceHandle implements NativeVoiceIpc.Handle {final ElizaAgentService.LocalStreamHandle handle=new ElizaAgentService.LocalStreamHandle();public void cancel(){handle.cancel();}}
+  final NativeVoiceIpc.Port port=new NativeVoiceIpc.Port(){
+   public NativeVoiceIpc.Handle open(){return new VoiceHandle();}
+   public void request(JSONObject input,java.util.function.Consumer<String> events,NativeVoiceIpc.Handle handle){ElizaAgentService.requestLocalAgentStream(input.toString(),events,((VoiceHandle)handle).handle);}
+  };
+  return new NativeLiveVoicePipe.Transport(){
+   public void check()throws Exception{synchronized(lifecycleLock){
+    if(!binding.current(lifecycleEpoch,rootToken,ownerToken,ownerIdentity,ElizaAgentService.localAgentToken(),expiresAt,System.currentTimeMillis(),accepting&&!stopping))throw new SecurityException("Voice enrollment changed");
+   }}
+   public void cancelInFlight(){cancelled.set(true);NativeVoiceIpc.Handle handle=active.get();if(handle!=null)handle.cancel();}
+   public JSONObject post(JSONObject body)throws Exception{
+    JSONObject headers=new JSONObject().put("Authorization","Bearer "+token).put("Content-Type","application/json").put("Accept","application/json");
+    JSONObject input=new JSONObject().put("path","/api/asr/local-inference/live").put("method","POST").put("body",body.toString()).put("headers",headers).put("timeoutMs",8000);
+    return NativeVoiceIpc.exchange(port,input,active,()->{check();if(cancelled.get()&&!body.optBoolean("close"))throw new IllegalStateException("Voice capture cancelled");},8000);
+   }
+  };
+ }
  // Native callers may bind background result reads to an existing enrollment.
  // This is deliberately not a Capacitor method and never initiates pairing.
  static JSONObject captureResultSession(String expectedOwner) throws Exception {
