@@ -720,10 +720,9 @@
         <sc-if value="{{inbox.d.hasHtml}}"><iframe title="Formatted email" sandbox="allow-same-origin" referrerpolicy="no-referrer" srcdoc="{{inbox.d.htmlDocument}}" onLoad="{{inbox.d.htmlLoaded}}" style="width:100%;border:0;display:block;height:400px;margin-top:22px;background:#fff"></iframe></sc-if>
         <sc-if value="{{inbox.d.noHtml}}"><div role="status" aria-busy="{{inbox.d.loading}}" style="font-size: 16px; line-height: 1.6; margin-top: 22px; white-space: pre-wrap">{{inbox.d.body}}</div></sc-if>
         <sc-if value="{{inbox.d.failed}}"><button onClick="{{inbox.d.retry}}" style="min-height:44px;color:var(--acct)">Retry message</button></sc-if>
-        <sc-if value="{{inbox.d.links}}">
-          <div role="group" aria-label="Links in this email" style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 18px">
-            <sc-for list="{{inbox.d.links}}" as="link"><button onClick="{{link.open}}" aria-label="{{link.aria}}" style="min-height: 44px; max-width: 100%; padding: 8px 14px; border-radius: 18px; background: var(--s2); color: var(--acct); text-align: left; overflow-wrap: anywhere">{{link.label}}</button></sc-for>
-          </div>
+        <sc-if value="{{inbox.d.hasLinks}}">
+          <sc-if value="{{inbox.d.hasHtml}}"><details style="margin-top:18px"><summary style="min-height:44px;align-content:center;font-size:13px;color:var(--mut);cursor:pointer">{{inbox.d.linkSummary}}</summary><div role="group" aria-label="Links in this email" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px"><sc-for list="{{inbox.d.links}}" as="link"><button onClick="{{link.open}}" style="min-height:44px;max-width:100%;padding:8px 0;color:var(--acct);text-align:left;overflow-wrap:anywhere">{{link.label}}</button></sc-for></div></details></sc-if>
+          <sc-if value="{{inbox.d.noHtml}}"><div role="group" aria-label="Links in this email" style="display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:18px"><sc-for list="{{inbox.d.links}}" as="link"><button onClick="{{link.open}}" style="min-height:44px;max-width:100%;padding:8px 0;color:var(--acct);text-align:left;overflow-wrap:anywhere">{{link.label}}</button></sc-for></div></sc-if>
         </sc-if>
         <sc-if value="{{inbox.d.hasAtt}}">
           <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 22px">
