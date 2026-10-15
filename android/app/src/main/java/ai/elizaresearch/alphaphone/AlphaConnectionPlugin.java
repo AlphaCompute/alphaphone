@@ -252,9 +252,9 @@ public final class AlphaConnectionPlugin extends Plugin {
     Iterator<String> names = headers.keys();
     while (names.hasNext()) {
      String name = names.next(), normalized = name.toLowerCase(Locale.ROOT);
-     if (!ConnectionRoutes.admittedHeader(normalized, BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)) throw new IllegalArgumentException();
      Object raw = headers.get(name); if (!(raw instanceof String)) throw new IllegalArgumentException();
      String value = (String) raw;
+     if (!ConnectionRoutes.admittedHeader(normalized, BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)&&!ConnectionRoutes.mapsRequestIdentity(normalized,value,url.getRawPath(),method)) throw new IllegalArgumentException();
      if (value.length() > 16384 || value.contains("\r") || value.contains("\n")) throw new IllegalArgumentException();
      if ("x-eliza-device-capabilities".equals(normalized) && !validDeviceCapabilities(value)) throw new IllegalArgumentException();
      if ("x-eliza-phone-protocol".equals(normalized) && !"1".equals(value)) throw new IllegalArgumentException();

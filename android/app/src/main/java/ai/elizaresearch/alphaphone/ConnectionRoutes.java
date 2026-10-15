@@ -110,6 +110,10 @@ final class ConnectionRoutes {
   if("accept".equals(name)||"content-type".equals(name)||"authorization".equals(name))return true;
   return testMocks&&("x-eliza-device-id".equals(name)||"x-eliza-device-key".equals(name)||"x-eliza-device-capabilities".equals(name)||"x-eliza-phone-protocol".equals(name));
  }
+ /** Maps request identity is admitted only on the reviewed POST data routes. */
+ static boolean mapsRequestIdentity(String name,String value,String path,String method){
+  return "idempotency-key".equals(name)&&value!=null&&value.matches("[A-Za-z0-9_-]{1,128}")&&"POST".equals(method)&&path!=null&&path.matches("/api/v1/maps/(geocode|reverse|places/search|places/details|routes)");
+ }
  /**
   * Cloud self-revocation: the presented sign-in key revokes only itself. Exactly
   * DELETE https://api.eliza.app/api/v1/api-keys/current on the default port, without a query
