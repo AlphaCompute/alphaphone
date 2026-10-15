@@ -44,6 +44,7 @@ final class AlphaCredentialStore {
   // 200 links of bounded ids and a hash stay well under this; a larger value is not a valid index.
   if(NOTE_ORIGINS.equals(name))return 512*1024;
   if(name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")))return 8*1024*1024;
+  if(name!=null&&name.matches("calendar-linked-sync:v1:[a-f0-9]{64}"))return 4*1024*1024;
   return 256*1024;
  }
  /** Notes Trash policy limit (30 MiB), now also its slot cap. */
