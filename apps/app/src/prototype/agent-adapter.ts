@@ -945,6 +945,30 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   p.canEditMessage=function(message:Shell){return message.from==='user'&&this.canReplyMessage(message)&&connectionController.canEditMessages();};
   p.replyToMessage=function(message:Shell){if(!this.canReplyMessage(message))return;this.messageEditTarget=undefined;this.messageReplyTarget=messageTarget(message);this.setState({chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
   p.editMessage=function(message:Shell){if(!this.canEditMessage(message))return;if(this.S().draft.trim()){this.toast('Finish or clear your current draft before editing a message.');return;}this.messageReplyTarget=undefined;this.messageEditTarget=messageTarget(message);this.setState({draft:message.text,chat:'full'},()=>document.querySelector<HTMLTextAreaElement>('[data-alpha-layer="conversation"] textarea[data-alpha-composer]')?.focus());};
+  function typedSendBinding(){return JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudEnvironment?.(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);}
+  function sendFromComposer(shell:Shell){
+    const origin=document.querySelector<HTMLTextAreaElement>('textarea[data-alpha-composer]:not([disabled])');
+    if(!origin){void shell.send();return;}
+    const before=shell.S(),binding=typedSendBinding(),previousFocus=document.activeElement,events=new AbortController();
+    let eligible=true,unsubscribe=()=>{};
+    const retire=()=>{eligible=false;events.abort();unsubscribe();};
+    document.addEventListener('pointerdown',retire,{capture:true,signal:events.signal});
+    document.addEventListener('keydown',retire,{capture:true,signal:events.signal});
+    document.addEventListener('focusin',event=>{if(event.target!==origin)retire();},{capture:true,signal:events.signal});
+    document.addEventListener('visibilitychange',retire,{signal:events.signal});
+    unsubscribe=connectionController.subscribe(()=>{if(typedSendBinding()!==binding)retire();});
+    const restore=()=>{
+      const now=shell.S(),active=document.activeElement,selected=connectionController.getSnapshot();
+      const current=eligible&&shell.live&&!document.hidden&&!selected.open&&!selected.busy&&typedSendBinding()===binding&&now.view===before.view&&now.screen===before.screen
+        &&(active===origin||active===previousFocus||active===document.body)&&!document.querySelector('[data-alpha-chat-recorder],[data-alpha-pill-voice]');
+      retire();
+      if(!current)return;
+      const input=document.querySelector<HTMLTextAreaElement>('textarea[data-alpha-composer]:not([disabled])');
+      input?.focus({preventScroll:true});input?.setSelectionRange(input.value.length,input.value.length);
+    };
+    // Focus follows the accepted optimistic commit, never a later network reply.
+    void shell.send(undefined,undefined,restore).finally(retire);
+  }
   p.renderVals = function () {
     const out = originalVals.call(this);
     const composeTarget=this.messageEditTarget||this.messageReplyTarget;
@@ -961,8 +985,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:'',residentPending].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
     out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
     out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
+    out.sendNow=()=>sendFromComposer(this);
     out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
-      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();void this.send();}
+      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing&&!event.nativeEvent?.isComposing&&event.keyCode!==229){event.preventDefault();sendFromComposer(this);}
     };
     // Pending proposals offer Decline beside approval. The digest card renders one button per row.
     const live:Shell[]=this.S().msgs||[];
@@ -1074,7 +1099,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       throw error;
     }finally{if(this.voiceSendTurnId===turnId&&this.live)await new Promise<void>(resolve=>this.setState(()=>this.voiceSendTurnId===turnId&&connectionController.voiceConversationCurrent(binding,false)?{typing:false}:null,()=>{if(this.voiceSendTurnId===turnId)this.voiceSendTurnId=undefined;resolve();}));}
   };
-  p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}) {
+  p.send = async function (argument?: string, expectedSession?: {sessionId:string;agentId:string;ownerId:string;origin:string}, focusAfterCommit?:()=>void) {
     const before=this.S(),reply=this.messageReplyTarget,edit=this.messageEditTarget;
     const sendBinding=()=>JSON.stringify([connectionController.getSnapshot().session,connectionController.getSnapshot().history?.conversationId,connectionController.getCloudEnvironment?.(),connectionController.getCloudClient()?.sessionId,connectionController.getCloudClient()?.credentialId]);
     if(this.stopVoiceConversation)context(this);const expectedContext=JSON.stringify(alphaClient.getState().context);
@@ -1097,7 +1122,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const sourceDraft=this.reviewedSourceDraft?.draft.trim()===text?sourceOf(this.reviewedSourceDraft.source):undefined;
     context(this);
     const revision=alphaClient.getState().context.revision,connection=connectionController.getSnapshot(),sessionId=connection.session?.sessionId,conversationId=connection.history?.conversationId;
-    const current=()=>{const selected=connectionController.getSnapshot();return this.live&&!document.hidden&&!selected.busy&&!selected.open&&selected.session?.sessionId===sessionId&&selected.history?.conversationId===conversationId&&alphaClient.getState().context.revision===revision;};
+    const current=()=>{const selected=connectionController.getSnapshot();return this.live&&!document.hidden&&!selected.busy&&!selected.open&&!document.querySelector('[data-alpha-chat-recorder],[data-alpha-pill-voice]')&&selected.session?.sessionId===sessionId&&selected.history?.conversationId===conversationId&&alphaClient.getState().context.revision===revision;};
     this.draftSendPending=true;
     // The durable draft keeps this text until the message is known to have been dispatched.
     try{await this.draftBindingTask;await this.composerDraft.hold(String(s.draft||'').trim(),current);}catch(error){this.toast(error instanceof Error?error.message:'Draft could not be prepared. Nothing was sent.');return;}finally{this.draftSendPending=false;}
@@ -1107,7 +1132,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const attempt:SendAttempt=this.sendAttempt={transportCalled:false,preDispatch:false,streamed:false};
     const userId=crypto.randomUUID(),streamedId=crypto.randomUUID();let streamed=false;
     const replaceStream=(value:string,streaming=true)=>this.setState((previous:Shell)=>({msgs:previous.msgs.map((message:Shell)=>message.id===streamedId?{...message,text:value,streaming}:message)}));
-    this.setState({ msgs: [...s.msgs, { id: userId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false });
+    this.setState({ msgs: [...s.msgs, { id: userId, from: 'user', text }], draft: '', typing: true, chat: s.chat === 'full' ? 'full' : 'sheet', shade: false },focusAfterCommit);
     let navigation:ReturnType<typeof connectionController.captureViewNavigation>|undefined,readyNavigation:readonly unknown[]|undefined;
     const deliverNavigation=(results:readonly unknown[]|undefined)=>deliverChatNavigation(this,navigation,results);
     try {
