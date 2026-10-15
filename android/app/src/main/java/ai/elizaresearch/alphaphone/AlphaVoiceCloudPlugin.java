@@ -235,7 +235,9 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
  private final ExecutorService liveWorker=Executors.newSingleThreadExecutor();
  private AlphaLiveVoiceCapture live; // Guarded by liveWorker (all access runs on it).
- private final Map<String,Long> livePermissionEpochs=new ConcurrentHashMap<>();
+ private final LiveCaptureAdmission liveAdmission=new LiveCaptureAdmission();
+ private final ExecutorService liveStopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
+ private final Map<String,LiveCaptureAdmission.Ticket> livePermissionEpochs=new ConcurrentHashMap<>();
  @PluginMethod public void liveCaptureStatus(PluginCall call){
   boolean permitted=getPermissionState("microphone")==PermissionState.GRANTED;
   PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
@@ -244,29 +246,38 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   String id=call.getString("captureId","");
   if(!id.matches("[0-9a-fA-F-]{36}")){call.reject("Invalid live capture");return;}
   if(isDraining()||destroyed||!speechForeground){call.reject("Recording cancelled");return;}
-  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),epoch.get());if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
-  startLive(call,id,epoch.get());
+  LiveCaptureAdmission.Ticket ticket=liveAdmission.begin(id,epoch.get());
+  if(getPermissionState("microphone")!=PermissionState.GRANTED){livePermissionEpochs.put(call.getCallbackId(),ticket);if(!LateLaunch.ask(call,()->requestPermissionForAlias("microphone",call,"liveMicrophonePermission")))livePermissionEpochs.remove(call.getCallbackId());return;}
+  startLive(call,ticket);
  }
- @PermissionCallback private void liveMicrophonePermission(PluginCall call){Long e=livePermissionEpochs.remove(call.getCallbackId());if(e==null||e!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,call.getString("captureId",""),e);}
- private void startLive(PluginCall call,String id,long e){
+ @PermissionCallback private void liveMicrophonePermission(PluginCall call){LiveCaptureAdmission.Ticket ticket=livePermissionEpochs.remove(call.getCallbackId());if(ticket==null||!liveAdmission.current(ticket)||ticket.epoch!=epoch.get()){call.reject("Recording cancelled");return;}if(getPermissionState("microphone")!=PermissionState.GRANTED){call.reject("Microphone permission denied","permission-denied");return;}startLive(call,ticket);}
+ private void startLive(PluginCall call,LiveCaptureAdmission.Ticket ticket){
+  String id=ticket.id;long e=ticket.epoch;
   PluginWorkers.submit(liveWorker,()->{
-   if(destroyed||!speechForeground||e!=epoch.get()){call.reject("Recording cancelled");return;}
+   if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){call.reject("Recording cancelled");return;}
    if(live!=null){live.stop();live=null;}
    AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
-    public void frames(String captureId,JSArray frames,JSArray vad,float peak){notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
-    public void ended(String captureId,String error){JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
+    private boolean admitted(){return !destroyed&&speechForeground&&e==epoch.get()&&liveAdmission.events(ticket);}
+    public void frames(String captureId,JSArray frames,JSArray vad,float peak){if(admitted())notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
+    public void ended(String captureId,String error){if(!admitted())return;JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
    },Boolean.TRUE.equals(call.getBoolean("echoCancel",false)));
-   try{next.start();live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()));}
-   catch(Exception|Error error){call.reject("Live capture could not start","capture");}
+   // Publish cancellation before native startup. The callback only marks and schedules: no UI join/AudioRecord.stop.
+   if(!liveAdmission.attach(ticket,()->{next.cancelPending();PluginWorkers.submit(liveStopWorker,next::requestStop,()->{/* liveWorker cleanup still stops this source. */});})){call.reject("Recording cancelled");return;}
+   try{
+    next.start();
+    if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){next.stop();call.reject("Recording cancelled");return;}
+    live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()));
+   }catch(Exception|Error error){next.stop();call.reject("Live capture could not start","capture");}
   },()->call.reject("Voice unavailable"));
  }
  @PluginMethod public void stopLiveCapture(PluginCall call){
   String id=call.getString("captureId","");
+  liveAdmission.stop(id);
   PluginWorkers.submit(liveWorker,()->{if(live==null||!live.captureId().equals(id)){call.resolve(new JSObject().put("captureId",id).put("durationMs",0));return;}long duration=live.stop();live=null;call.resolve(new JSObject().put("captureId",id).put("durationMs",duration));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0)));
  }
- private void stopLiveCapture(){PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
+ private void stopLiveCapture(){liveAdmission.cancelAll();PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
  @Override protected void handleOnPause(){speechForeground=false;stopLiveCapture();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();liveStopWorker.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */

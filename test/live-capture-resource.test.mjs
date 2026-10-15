@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {nativeSource, fixture, runJvm} from './fixtures/jvm-tools.mjs';
+
+test('capture cancellation unblocks a read and serializes source release', () => {
+ assert.match(runJvm([nativeSource('LiveCaptureResource.java'), fixture('LiveCaptureResourceTest.java')], 'ai.elizaresearch.alphaphone.LiveCaptureResourceTest'), /^PASS live capture resource/);
+ // Ensure the exercised owner is wired into the production capture and microphone, not a test-only path.
+ const source=fs.readFileSync(nativeSource('AlphaLiveVoiceCapture.java'),'utf8');
+ assert.match(source,/resource\.requestStop\(\);[\s\S]*active\.join\(1500\)/);
+ assert.match(source,/public void requestStop\(\)\{try\{recorder\.stop\(\)/);
+ assert.match(source,/if\(!resource\.attach\(recorder\)\)throw/);
+ assert.match(source,/finally\{\s*try\{resource\.release\(recorder\);\}/);
+});
+
+test('native admission cancels permission/start before the serialized worker can finish', () => {
+ assert.match(runJvm([nativeSource('LiveCaptureAdmission.java'), fixture('LiveCaptureAdmissionTest.java')], 'ai.elizaresearch.alphaphone.LiveCaptureAdmissionTest'), /^PASS live capture admission/);
+ const plugin=fs.readFileSync(nativeSource('AlphaVoiceCloudPlugin.java'),'utf8');
+ assert.match(plugin,/liveAdmission\.attach\(ticket,[\s\S]*next\.start\(\)/);
+ assert.match(plugin,/liveAdmission\.stop\(id\);\s*PluginWorkers\.submit\(liveWorker/);
+ assert.match(plugin,/next\.start\(\);\s*if\(destroyed\|\|!speechForeground\|\|e!=epoch\.get\(\)\|\|!liveAdmission\.current\(ticket\)\)/);
+});
