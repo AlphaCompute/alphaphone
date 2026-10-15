@@ -18,9 +18,10 @@ export async function calendarAgentWrite(client:CloudProtocol,grantId:string,sco
   const semantic=record(snapshot.event);if(typeof snapshot.eventId!=='string'||typeof snapshot.etag!=='string'||!snapshot.etag)throw Error('Calendar revision is missing');
   const start=Date.parse(semantic.startAt),end=Date.parse(semantic.endAt);if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('Calendar times are invalid');
   const feed=await client.googleCalendarFeed(grantId,input.calendarId,{timeMin:new Date(start-1000).toISOString(),timeMax:new Date(end+1000).toISOString(),timeZone:semantic.timeZone||'UTC'},signal);
-  const event=feed.events.find(row=>row.externalId===snapshot.eventId&&row.metadata.etag===snapshot.etag);
-  if(!event)throw Error('The exact Calendar revision could not be read back');
-  return {...event,id:`${source}:${event.externalId}`,agentId:'',provider:'google',side:'owner',grantId:source,connectorAccountId:source,syncedAt:feed.syncedAt,updatedAt:typeof event.metadata.updated==='string'?event.metadata.updated:feed.syncedAt};
+  const event=feed.events.find(row=>row.externalId===snapshot.eventId);
+  const attendees=(value:readonly {email?:string|null;optional?:boolean}[])=>JSON.stringify(value.map(a=>({email:(a.email??'').toLowerCase(),optional:a.optional===true})).sort((a,b)=>a.email.localeCompare(b.email)));
+  if(!event||(event.metadata.etag!==undefined&&event.metadata.etag!==null&&event.metadata.etag!==snapshot.etag)||event.title!==semantic.title||event.description!==semantic.description||event.location!==semantic.location||event.isAllDay!==semantic.isAllDay||Date.parse(event.startAt)!==Date.parse(semantic.startAt)||Date.parse(event.endAt)!==Date.parse(semantic.endAt)||attendees(event.attendees)!==attendees(semantic.attendees))throw Error('The exact Calendar revision could not be read back');
+  return {...event,metadata:{...event.metadata,etag:snapshot.etag},...(semantic.recurrence?{recurrence:semantic.recurrence}:{}),id:`${source}:${event.externalId}`,agentId:'',provider:'google',side:'owner',grantId:source,connectorAccountId:source,syncedAt:feed.syncedAt,updatedAt:typeof event.metadata.updated==='string'?event.metadata.updated:feed.syncedAt};
  }
  if(input.operation==='write-target'){
   const data=await get(external(input.eventId));if(data.event===null)throw Error('Calendar event is unavailable');return {event:await materialize(record(data.event))};
