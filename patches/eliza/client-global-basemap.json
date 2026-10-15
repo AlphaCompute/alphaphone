@@ -1,0 +1,8 @@
+{
+  "baseCommit": "968348d792d3d36df129bc53bd85cebed47d0830",
+  "path": "plugins/plugin-maps/src/client/map-plane.ts",
+  "patchSha256": "e48ded36465c44e87d5f179bf54b4433c1ec4ac6ab4e78fa4a55c7111238eb34",
+  "beforeSha256": "d36dc33a73a27313ae1e20aeaf448fa9122c57f26b3ebb92f52e6bedd6f3d632",
+  "afterSha256": "90701a73d2327d40ebf6d1ca2d35ba25abbbc5a57832646650fb8ef6cb661ffc",
+  "restoresCommit": "02274d02c745552d4b93e864b6cf05605bfb9d11"
+}

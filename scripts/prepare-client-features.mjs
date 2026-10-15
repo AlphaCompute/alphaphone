@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import os from 'node:os';
 import { upstreamNativeSource } from './upstream-native-source.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -126,9 +128,28 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   source.delete('packages/core/src/logger.ts');
   project('alpha-voice-core-types.ts',loggerTypes.slice(start,end));
   project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\n');
+  // Carry the previously qualified global renderer until it is restored in the upstream pin.
+  // Authenticate both sides and project outside vendor; a changed pin must be reviewed again.
+  const mapPatchRoot=path.join(root,'patches/eliza');
+  const mapProjection=JSON.parse(fs.readFileSync(path.join(mapPatchRoot,'client-global-basemap.json'),'utf8'));
+  const mapPath='plugins/plugin-maps/src/client/map-plane.ts';
+  const mapPatch=path.join(mapPatchRoot,'client-global-basemap.patch');
+  if(mapProjection.baseCommit!==upstream.pin||mapProjection.path!==mapPath||
+     sourceFiles[mapPath]!==mapProjection.beforeSha256||hash(fs.readFileSync(mapPatch))!==mapProjection.patchSha256)
+    throw Error('Review changed global map projection input');
+  const mapStage=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-map-projection-'));
+  try{
+    const target=path.join(mapStage,mapPath);fs.mkdirSync(path.dirname(target),{recursive:true});
+    fs.writeFileSync(target,source.get(mapPath).bytes);
+    execFileSync('patch',['--batch','--fuzz=0','--forward','-p1','--input',mapPatch],{cwd:mapStage,stdio:'pipe',timeout:30000});
+    const projected=fs.readFileSync(target);
+    if(hash(projected)!==mapProjection.afterSha256)throw Error('Global map projection output changed');
+    project(mapPath,projected.toString());
+  }finally{fs.rmSync(mapStage,{recursive:true,force:true});}
+
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?1:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?2:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');

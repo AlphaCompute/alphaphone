@@ -9,6 +9,7 @@ import {isAndroid} from '../native';
 import {NavigationVoice} from '../maps/navigation-voice';
 import {placeShare,routeShare,shareMap,type MapShare} from '../maps/share';
 import { MapPlane } from '../maps/map-plane';
+import { globalBasemap } from '../maps/basemap';
 import { initializeRegionalMaps, regionalMap, regionalDiagnostics, regionalMapsConfigured } from '../maps/regional-provider';
 import { initializeCloudMaps, cloudMapsCoverage, cloudMapsDiagnostics } from '../maps/cloud-maps';
 import { insideCloudCoverage } from '../maps/cloud-provider';
@@ -30,7 +31,7 @@ const coordLabel = (point: Coordinate) => `${point.latitude.toFixed(5)}, ${point
 const initializeMaps = () => regionalMapsConfigured ? initializeRegionalMaps() : initializeCloudMaps();
 const mapsDiagnostics = () => regionalMapsConfigured ? regionalDiagnostics() : cloudMapsDiagnostics();
 const mapsAttribution = () => regionalMap()?.attribution || cloudMapsCoverage()?.attribution || '';
-const mapsConnected = () => !!(regionalMap() || cloudMapsCoverage());
+const mapsConnected = () => mapsConnection().config.status === 'configured';
 
 /** Exact prototype chrome with honest no-provider state and real local/native flows. */
 export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views: Record<string, Bag>): () => void {
@@ -249,14 +250,12 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
     const error = snapshot.saved.error || snapshot.position.error || (choosingOrigin ? snapshot.originSearch.error : snapshot.search.error) || snapshot.route.error;
     const pending = locating || (choosingOrigin ? snapshot.originSearch.phase === 'loading' : snapshot.search.phase === 'loading');
     const unconfigured = snapshot.provider.status === 'unconfigured';
-    const region=regionalMap(),cloud=region?undefined:cloudMapsCoverage(),diagnostic=mapsDiagnostics();
-    // Signed out, no subscription, or Cloud Maps not deployed yet: an honest unconnected state, not a fault.
-    const notConnected=diagnostic.error==='unauthorized'||diagnostic.error==='unconfigured';
+    const region=regionalMap(),cloud=region?undefined:cloudMapsCoverage(),diagnostic=mapsDiagnostics(),basemap=region||globalBasemap,globalMap=!region;
     const point=selected?.coordinate,coverageName=region?.region||cloud?.regions.map(item=>item.name).join(', ')||'';
     const outsideCoverage=!!point&&(region?(point.longitude<region.bounds[0]||point.latitude<region.bounds[1]||point.longitude>region.bounds[2]||point.latitude>region.bounds[3]):!!cloud&&!insideCloudCoverage(cloud,point));
     const locationState=locating?'loading':snapshot.position.phase==='ready'||!!selected?'ready':snapshot.position.error?.code==='permission-denied'?'denied':snapshot.position.phase==='error'?'unavailable':'not-set';
-    const mapState=mapFailed?'error':region?(outsideCoverage?'outside-coverage':planeElement?.dataset.mapReady==='true'?'ready':'loading'):cloud?(outsideCoverage?'outside-coverage':'no-tiles'):initialization&&diagnostic.configured?'loading':diagnostic.error&&!notConnected?'error':'unconfigured';
-    const mapStatus=mapFailed?'Map rendering is unavailable. Retry the map, or use coordinates and saved places.':outsideCoverage?`This location is outside ${coverageName} map coverage. Its coordinates are retained.`:unconfigured&&diagnostic.error==='unauthorized'?'Sign in to Eliza Cloud with an active subscription to search places and plan routes.':unconfigured&&diagnostic.error==='unconfigured'?'Eliza Cloud Maps is not available yet. Enter coordinates or use saved places.':unconfigured&&diagnostic.error?'The configured Maps service is unavailable. Retry the connection or enter coordinates.':unconfigured?'Map tiles are not connected. A Maps provider is needed for the map, search and routes.':mapState==='loading'?'Loading map…':cloud?`Eliza Cloud Maps · ${coverageName}. Search and routes are available; map display is not. ${cloud.attribution}`:region?.region||'Connected Maps';
+    const mapState=mapFailed?'error':region&&outsideCoverage?'outside-coverage':planeElement?.dataset.mapReady==='true'?'ready':'loading';
+    const mapStatus=mapFailed?'Map rendering is unavailable. Retry the map, or use coordinates and saved places.':outsideCoverage?`This location is outside ${coverageName} search and route coverage. Its coordinates are retained.`:mapState==='loading'?'Loading map…':globalMap?(locationState==='ready'?'Location added':'Add a location'):region?.region||'Connected Maps';
     const status=(choosingOrigin && !snapshot.originSearch.error && snapshot.originSearch.phase !== 'loading' ? message : '')||snapshot.route.error?.message||message||error?.message||(pending?'Finding location…':mapStatus);
     const isPlace = !!selected && !directions && !navigating;
     const isResults = (searching && !isPlace && !directions && !navigating) || choosingOrigin;
@@ -270,9 +269,9 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
     const savedOrigins = choosingOrigin ? controller!.savedMatches(originText) : [];
     Object.assign(data, {
       rootRef:(element:HTMLElement)=>{if(element)element.dataset.mapDiagnostics=JSON.stringify({...mapsDiagnostics(),agentNavigation:{offered:agentNavigation.registered(),relay:residentMapsNavigationPort.relay},lifecycle:{...lifecycle,locating,permissionPending:controller?.awaitingLocationPermission()||navigationLocation.awaitingPermission(),position:state?.position.phase}});},
-      notNative:false, hasNativeMap:!!regionalMap(),mapAttribution:mapsAttribution(),attributionBottom:directions?310:isPlace?410:130,
-      mapRef:(element:HTMLElement)=>{if(element&&region){if(element!==planeElement&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,region,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}pinTap=onPin;plane?.update(outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
-      native: true, nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
+      notNative:false, hasNativeMap:true,globalBasemap:globalMap,regionalBasemap:!globalMap,mapLabel:globalMap?'World map':'Regional map',mapAttribution:globalMap?globalBasemap.attribution:mapsAttribution(),attributionBottom:directions?310:isPlace?410:130,
+      mapRef:(element:HTMLElement)=>{if(element&&basemap){if(element!==planeElement&&!mapFailed){mapObserver?.disconnect();plane?.destroy();planeElement=element;const generation=++mapGeneration;delete element.dataset.mapReady;delete element.dataset.mapError;try{plane=new MapPlane(element,basemap,()=>{if(generation!==mapGeneration||planeElement!==element||disposed||!api?.isActive())return;mapFailed=true;invalidate();},data.C,id=>pinTap(id));mapObserver=new MutationObserver(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});mapObserver.observe(element,{attributes:true,attributeFilter:['data-map-ready']});}catch{mapFailed=true;element.replaceChildren();queueMicrotask(()=>{if(generation===mapGeneration&&planeElement===element&&!disposed&&api?.isActive())invalidate();});}}pinTap=onPin;plane?.update(region&&outsideCoverage?undefined:selected?.coordinate,snapshot.route.value,overlay);}},
+      native: true, nativeStatusVisible:!isPlace||!!(mapFailed||outsideCoverage||snapshot.route.error||error||message), nativeStatus: status, nativeStatusTop: directions?232:isPlace ? 128 : searching ? 130 : 174,
       nativeSavedEmpty: !saved.length, nativeLocationBusy: locating, nativeLocation: locate,
       nativeLocationState:locationState,nativeMapState:mapState,nativeMapStatus:status===mapStatus?'':mapStatus,
       nativeLocationLabel:locating?'Finding location…':locationState==='ready'?'Use current location':'Add location',
@@ -280,7 +279,7 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
       nativeLocationHelp:locationState==='denied'?(isAndroid?'Allow location in app settings, or enter coordinates.':'Allow location in browser site settings, or enter coordinates.'):'Location access does not share it with your agent.',
       nativeLocationSettings:()=>{if(disposed||document.hidden||!currentApi.isActive())return;void device.openSettings({page:'privacy'}).catch(()=>{if(!disposed&&currentApi.isActive()){message='Location settings could not be opened. Check device or browser permissions, or enter coordinates.';invalidate();}});},
       nativeManualLocation:()=>{if(disposed||document.hidden||!currentApi.isActive())return;release();query='';searching=false;message='Enter latitude, longitude in Search, then press Enter.';invalidate();queueMicrotask(()=>{if(!disposed&&!document.hidden&&currentApi.isActive())document.querySelector<HTMLInputElement>('input[aria-label="Search places"]')?.focus();});},
-      nativeMapRetry:mapFailed||!!diagnostic.error,
+      nativeMapRetry:mapFailed,
       retryNativeMap:()=>{if(disposed||document.hidden||!currentApi.isActive())return;++mapGeneration;mapObserver?.disconnect();mapObserver=undefined;plane?.destroy();plane=undefined;planeElement=undefined;mapFailed=false;message='';if(diagnostic.error&&!initialization)initialization=initializeMaps().finally(()=>{initialization=undefined;invalidate();});invalidate();},
       mode:navigating?'nav':choosingOrigin?'origin':directions?'dir':isPlace?'place':searching?'results':'base', isBase:!isPlace&&!searching&&!directions&&!navigating,isResults,isPlace,isDir,isNav:navigating,
       showSearch:!directions&&!navigating, showRec:!navigating, grid: '', major: '', fwy: '', water: '', parks: '', rwy: '', routeD: '', doneD: '', hasRoute: false, pins: [], labels: [], meCss: 'display:none;',
@@ -314,10 +313,10 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
         name: item.label, meta: (item.origin === 'saved' ? 'Saved on this device' : item.origin === 'location' ? 'Device location' : 'Coordinates') + (detail?.phone ? ' · Phone ' + detail.phone : ''), addr: detail?.address || coordLabel(item.coordinate),
         hasHours: !!detail?.openingHours, openTxt: 'Hours', openCss: '', hoursTxt: detail?.openingHours || '',
         hasPhone: false, hasWeb: !!website, web: () => { if (website) openWebsite(website); },
-        canDir: true, min: 'Directions', saved: !!existing,
+        canDir: ensure().capabilities().modes.length>0, min: 'Directions', saved: !!existing,
         saveLabel: existing ? 'Remove from saved' : 'Save', starCss: existing ? 'color:var(--acct)' : '', starFill: existing ? 'fill:currentColor' : '',
         close: () => { selected = undefined; message = ''; invalidate(); }, save,
-        dirs: () => { if(unconfigured){message='Connect a Maps provider to plan a route. No route has been calculated.';}else{directions=true; message='Enter an origin latitude, longitude and press Enter, or explicitly use current location.'; if(item.origin!=='provider'&&snapshot.provider.status==='configured')void ensure().select({providerId:snapshot.provider.providerId,id:item.providerPlaceId||'manual',name:item.label,coordinate:item.coordinate,attribution:mapsAttribution(),fetchedAt:Date.now()},false);} invalidate(); },
+        dirs: () => { if(unconfigured){message='Connect a Maps provider to plan a route. No route has been calculated.';}else{directions=true; message='Enter an origin latitude, longitude and press Enter, or explicitly use current location.'; if(item.origin!=='provider'&&snapshot.provider.status==='configured')void ensure().select({providerId:snapshot.provider.providerId,id:item.providerPlaceId||'manual',name:item.label,coordinate:item.coordinate,attribution:'User-selected coordinates',fetchedAt:Date.now()},false);} invalidate(); },
         share: () => share(placeShare(item.label,item.coordinate),()=>!disposed&&!!api?.isActive()&&selected===item),
         nativeName: item.label, nativeEditing: !!item.editingName,
         nativeTitleRole: 'button', nativeTitleTabIndex: 0, nativeTitleLabel: 'Rename place',
