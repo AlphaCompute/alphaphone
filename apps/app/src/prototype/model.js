@@ -3673,7 +3673,7 @@ registerView("files", {
       var subs = FILES_FOLDERS.filter(function (d) { return d.parent === st.folder; }).map(folderRow);
       var items = subs.concat(sorted(files.filter(function (f) { return f.folder === st.folder; })).map(row));
       fd = {
-        name: st.folder, items: items, empty: items.length === 0,
+        name: st.folder, items: items, empty: items.length === 0, emptyText: "This folder is empty.", selectDisabled: items.length === 0,
         close: function () { var d = null; FILES_FOLDERS.forEach(function (x) { if (x.id === st.folder) d = x; }); api.set({ folder: d && d.parent ? d.parent : null, sel: null }); },
         viewIcon: st.grid ? IC.filesRows : IC.grid, viewLabel: st.grid ? "Show as list" : "Show as grid",
         toggleView: function () { api.set({ grid: !st.grid }); },
@@ -3779,7 +3779,7 @@ registerView("files", {
       storageW: copy("files").storageW || "0%",
       inFolder: !!fd, fd: fd,
       isList: !st.grid, isGrid: !!st.grid,
-      isSel: isSel, notSel: !isSel, selCount: selCount === 0 ? "Select" : String(selCount), hasSel: selCount > 0, selOp: selCount > 0 ? "1" : ".35",
+      isSel: isSel, notSel: !isSel, selectionBusy: false, selectionDisabled: selCount === 0, selCount: selCount === 0 ? "Select" : String(selCount), hasSel: selCount > 0, selOp: selCount > 0 ? "1" : ".35",
       exitSel: function () { api.set({ sel: null }); },
       selAll: function () { api.set({ sel: files.filter(function (x) { return x.folder === st.folder; }).map(function (x) { return x.id; }) }); },
       selShare: function () { if (selCount) api.set({ sheet: "share" }); },
