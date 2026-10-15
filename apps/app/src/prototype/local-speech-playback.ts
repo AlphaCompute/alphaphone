@@ -95,7 +95,7 @@ const replyDeadlineMs = 5 * 60 * 1000;
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
   const states = new WeakMap<object, Reading>();
-  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; announcement?:string; focus: boolean; binding: string }>();
+  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; announcement?:string; copied?:boolean; focus: boolean; binding: string }>();
   const holds = new WeakMap<object, { timer?: ReturnType<typeof setTimeout>; x: number; y: number; opened?:boolean; selecting?:boolean; start?:{node:Node;offset:number} }>();
   const suppressedClicks = new WeakMap<object, string>();
   const listeners = new WeakMap<object, () => void>();
@@ -235,13 +235,15 @@ export function installLocalSpeechPlayback(Component: Shell) {
         closeMessageActions: (event: MouseEvent) => closeMenu(this, event.detail===0), menuKey: (event: KeyboardEvent) => menuKey(this, event),
         copyMessage: async () => {
           if (!menu || menus.get(this) !== menu || menu.binding !== JSON.stringify(connectionController.getSnapshot().session)) return;
-          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = ''; menu.announcement = 'Copied.'; refresh(this); } }
-          catch { if (menus.get(this) === menu) { menu.announcement = ''; menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
+          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = ''; menu.announcement = 'Copied.'; menu.copied=true; refresh(this);setTimeout(()=>{if(menus.get(this)===menu){menu.copied=false;refresh(this);}},1400); } }
+          catch { if (menus.get(this) === menu) { menu.copied=false; menu.announcement = ''; menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
         },
+        copyMessageLabel: opened&&menu?.copied?'Copied!':'Copy',
+        copyMessageIcon: opened&&menu?.copied?out.ic.check:out.ic.copy,
         messageActionsNotice: opened && menu ? menu.notice : '',
         messageActionsAnnouncement: opened && menu ? menu.announcement || '' : '',
-        localSpeechAvailable: available && entry.from === 'agent', localSpeechLabel: selected && state?.controller ? 'Stop reading' : 'Read aloud',
-        localSpeechMessage: selected ? state?.message : '',
+        localSpeechAvailable: available && entry.from === 'agent', localSpeechLabel: 'Read aloud', localSpeechControlLabel:selected&&state?.controller?'Stop reading':'Read aloud',localSpeechIcon:selected&&state?.controller?out.ic.stop:out.ic.wave,localSpeechActive:!!(selected&&state?.controller),
+        localSpeechMessage: selected&&!state?.controller&&state?.message!=='Finished reading.' ? state?.message : '',
         localSpeech: () => { void listen(this, entry.id, entry.text); }
       };
     });

@@ -12,8 +12,8 @@ const owner=randomUUID(),agent=randomUUID(),conversation=randomUUID(),nonce='a'.
 const BASE='/api/v1/voice/session';
 async function fixture(enabled=true){
  const directory=await mkdtemp(join(tmpdir(),'alpha-voice-bridge-')),tokenFile=join(directory,'token');await writeFile(tokenFile,root,{mode:0o600});
- const calls=[];let mode='ok',upgrades=0;
- const runtimeSockets=new Set();const runtime=createServer();runtime.on('upgrade',(req,socket)=>{runtimeSockets.add(socket);socket.once('close',()=>runtimeSockets.delete(socket));upgrades++;assert.equal(req.headers.origin,runtimeOrigin);const accept=createHash('sha1').update(req.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);socket.on('error',()=>{});socket.on('data',data=>socket.write(data));});
+ const calls=[];let mode='ok',upgrades=0;const rendererHeaders=[];
+ const runtimeSockets=new Set();const runtime=createServer();runtime.on('upgrade',(req,socket)=>{runtimeSockets.add(socket);socket.once('close',()=>runtimeSockets.delete(socket));upgrades++;if(req.url.startsWith('/ws?'))rendererHeaders.push({url:req.url,authorization:req.headers.authorization});assert.equal(req.headers.origin,runtimeOrigin);const accept=createHash('sha1').update(req.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);socket.on('error',()=>{});socket.on('data',data=>socket.write(data));});
  await new Promise(r=>runtime.listen(0,'127.0.0.1',r));const runtimeOrigin=`http://127.0.0.1:${runtime.address().port}`;
  const request=async(url,input)=>{const path=new URL(url).pathname;calls.push({url,input});
   if(path==='/api/auth/status')return Response.json({instanceId:'fixture'});
@@ -30,7 +30,7 @@ async function fixture(enabled=true){
  const handler=createLocalAgentDevHandler({origin:runtimeOrigin,tokenFile,request,cartesiaEnabled:enabled}),server=createServer(handler);server.on('upgrade',(req,socket,head)=>void handler.upgrade(req,socket,head));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
  const call=async input=>{const response=await fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({ownerId:owner,headers:{Accept:'application/json'},...input})});return {status:response.status,data:await response.json()};};
- return {call,calls,origin,tokenFile,mode:value=>{mode=value;},upgrades:()=>upgrades,close:async()=>{handler.closeVoice();for(const socket of runtimeSockets)socket.destroy();server.closeAllConnections();runtime.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>runtime.close(r))]);await rm(directory,{recursive:true,force:true});}};
+ return {call,calls,origin,tokenFile,mode:value=>{mode=value;},rendererHeaders,upgrades:()=>upgrades,close:async()=>{handler.closeVoice();for(const socket of runtimeSockets)socket.destroy();server.closeAllConnections();runtime.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>runtime.close(r))]);await rm(directory,{recursive:true,force:true});}};
 }
 const mint=()=>({path:BASE,method:'POST',body:JSON.stringify({agentId:agent,conversationId:conversation,consentNonce:nonce,transport:'websocket'})});
 test('canonical developer voice controls reuse private owner and project only minted socket ticket',async()=>{
@@ -62,5 +62,17 @@ test('same-origin owned minted upgrade is single use; revoke and credential roll
   assert.equal((await upgrade(ticket.wsUrl,f.origin)).status,403);
   const closed=new Promise(r=>accepted.socket.once('close',r));accepted.socket.resume();await f.call({path:`${BASE}/${ticket.sessionId}/revoke`,method:'POST',body:'{}'});await Promise.race([closed,new Promise((_,reject)=>setTimeout(()=>reject(Error('Tunnel close timeout')),1000))]);
   const next=JSON.parse((await f.call(mint())).data.body);await writeFile(f.tokenFile,'2'.repeat(64),{mode:0o600});assert.equal((await upgrade(next.wsUrl,f.origin)).status,403);
+ }finally{await f.close();}
+});
+
+test('renderer channel uses a single-use same-origin ticket and keeps the paired bearer on the host',async()=>{
+ const f=await fixture();try{const clientId=randomUUID();
+ const result=await f.call({path:'/api/views/voice-channel',method:'POST',body:JSON.stringify({clientId})});
+ assert.equal(result.data.status,200);assert.ok(!JSON.stringify(result).includes(paired));
+ const {wsUrl}=JSON.parse(result.data.body);assert.ok(wsUrl.includes('/__alpha-local-renderer/ws?'));
+ assert.equal((await upgrade(wsUrl,'https://other.invalid')).status,403);
+ const connected=await upgrade(wsUrl,f.origin);assert.equal(connected.status,101);
+ assert.deepEqual(f.rendererHeaders,[{url:'/ws?clientId='+clientId,authorization:'Bearer '+paired}]);
+ assert.equal((await upgrade(wsUrl,f.origin)).status,403);connected.socket.destroy();
  }finally{await f.close();}
 });

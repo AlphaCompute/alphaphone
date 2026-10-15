@@ -6,20 +6,21 @@ import {stripTypeScriptTypes} from 'node:module';
 // Synthetic transport callbacks only; no socket, microphone, provider, or model calls.
 const source=fs.readFileSync(new URL('../apps/app/src/runtime/development-cartesia-conversation.ts',import.meta.url),'utf8');
 const js=stripTypeScriptTypes(source.replace(/^import .*;\n/gm,'').replace(/import\.meta\.env\.DEV===true&&devSurfacesEnabled&&!Capacitor\.isNativePlatform\(\)&&import\.meta\.env\.VITE_ALPHA_DEV_CARTESIA==='1'/,'true').replace("await import('@elizaos/ui/voice/voice-session-client')",'({createVoiceSessionClient:fixtureClient})').replace(/export /g,''),{mode:'transform'});
-const factory=new Function('connectionController','fixtureClient',js+'\nreturn developmentCartesiaConversation;');
+class RendererSocket{constructor(){queueMicrotask(()=>this.onopen?.());}close(){}}
+const factory=new Function('connectionController','fixtureClient','WebSocket','location',js+'\nreturn developmentCartesiaConversation;');
 const flush=async()=>{for(let i=0;i<30;i++)await Promise.resolve();};
 function harness(){
  let options,current=true,refreshes=0,hold,release;const errors=[],navigations=[],transcripts=[];
- const binding={conversationId:'room',session:{agentId:'agent'}},agent={request:async path=>path.includes('/health')?{ready:true,conversationId:'room',agentId:'agent'}:{}};
- const controller={getBrowserSpeechAgent:()=>agent,voiceConversationCurrent:()=>current,refreshDeveloperVoiceHistory:async()=>{refreshes++;if(hold)await new Promise(resolve=>release=resolve);}};
+ const binding={conversationId:'room',session:{agentId:'agent'}},agent={request:async path=>path.includes('/health')?{ready:true,conversationId:'room',agentId:'agent'}:path==='/api/views/voice-channel'?{wsUrl:'ws://localhost/__alpha-local-renderer/ws?sessionId=fixture'}:{}};
+ const controller={getBrowserSpeechAgent:()=>agent,voiceRendererClientId:()=>'11111111-1111-4111-8111-111111111111',voiceConversationCurrent:()=>current,refreshDeveloperVoiceHistory:async()=>{refreshes++;if(hold)await new Promise(resolve=>release=resolve);}};
  const createVoiceSessionClient=value=>{options=value;return {start:async()=>{},stop:async()=>{},setMicrophoneMuted:()=>{}};};
- return {create:()=>factory(controller,createVoiceSessionClient)({binding,assertCurrent:()=>{if(!current)throw Error('changed');},onState:()=>{},onTranscript:text=>transcripts.push(text),onError:error=>errors.push(error.message),getUiContext:()=>({uiViewPath:'/notes',uiBrowserSurface:'native'}),onNavigate:async event=>{navigations.push(event);}}),get options(){return options;},get refreshes(){return refreshes;},errors,navigations,transcripts,setCurrent:value=>current=value,hold:()=>hold=true,release:()=>{hold=false;release?.();}};
+ return {create:()=>factory(controller,createVoiceSessionClient,RendererSocket,{host:'localhost'})({binding,assertCurrent:()=>{if(!current)throw Error('changed');},onState:()=>{},onTranscript:text=>transcripts.push(text),onError:error=>errors.push(error.message),getUiContext:()=>({uiViewPath:'/notes',uiBrowserSurface:'native'}),onNavigate:async event=>{navigations.push(event);}}),get options(){return options;},get refreshes(){return refreshes;},errors,navigations,transcripts,setCurrent:value=>current=value,hold:()=>hold=true,release:()=>{hold=false;release?.();}};
 }
 test('authoritative progress refreshes canonical history with one in-flight loader and one coalesced followup',async()=>{
  const f=harness();await f.create();f.hold();for(const t of ['ready','stt_final','speaking_start','reply_complete','usage'])f.options.onServerEvent({t,text:'hello',traceId:'turn'});await flush();assert.equal(f.refreshes,1);f.release();await flush();assert.equal(f.refreshes,2);assert.deepEqual(f.transcripts,['hello']);assert.deepEqual(f.errors,[]);
 });
 test('only one finalized current socket turn may navigate; unsolicited and duplicate effects are ignored',async()=>{
- const f=harness();await f.create();const event={t:'navigate_view',traceId:'turn',viewId:'notes'};f.options.onServerEvent(event);await flush();assert.equal(f.navigations.length,0);f.options.onServerEvent({t:'stt_final',traceId:'turn',text:'open notes'});f.options.onServerEvent(event);f.options.onServerEvent(event);await flush();assert.equal(f.navigations.length,1);assert.equal(f.navigations[0].viewId,'notes');assert.deepEqual(f.options.getUiContext(),{uiViewPath:'/notes',uiBrowserSurface:'native'});
+ const f=harness();await f.create();const event={t:'navigate_view',traceId:'turn',viewId:'notes'};f.options.onServerEvent(event);await flush();assert.equal(f.navigations.length,0);f.options.onServerEvent({t:'stt_final',traceId:'turn',text:'open notes'});f.options.onServerEvent(event);f.options.onServerEvent(event);await flush();assert.equal(f.navigations.length,1);assert.equal(f.navigations[0].viewId,'notes');assert.deepEqual(f.options.getUiContext(),{uiViewPath:'/notes',uiBrowserSurface:'native',uiClientId:'11111111-1111-4111-8111-111111111111'});
 });
 test('stop retires queued effects and later history/transcript events without replay',async()=>{
  const f=harness(),voice=await f.create();f.options.onServerEvent({t:'stt_final',traceId:'turn',text:'open notes'});f.options.onServerEvent({t:'navigate_view',traceId:'turn',viewId:'notes'});await voice.stop();await flush();assert.equal(f.navigations.length,0);const count=f.refreshes;f.options.onServerEvent({t:'ready'});assert.equal(f.refreshes,count);assert.deepEqual(f.errors,[]);
@@ -52,4 +53,10 @@ test('projection refuses replaced ownership and hidden documents before any scre
 test('interrupted and superseded finalized turns cannot deliver a late screen effect',async()=>{
  const f=harness();await f.create();f.options.onServerEvent({t:'stt_final',traceId:'old',text:'open notes'});f.options.onServerEvent({t:'interrupted',traceId:'old'});f.options.onServerEvent({t:'navigate_view',traceId:'old',viewId:'notes'});await flush();assert.equal(f.navigations.length,0);
  f.options.onServerEvent({t:'stt_final',traceId:'old2',text:'open notes'});f.options.onServerEvent({t:'navigate_view',traceId:'old2',viewId:'notes'});f.options.onServerEvent({t:'stt_partial',traceId:'new',text:'no wait'});await flush();assert.equal(f.navigations.length,0);
+});
+
+test('direct adapter reports automatic playback mute separately from manual mute',async()=>{
+ const f=harness(),voice=await f.create();assert.equal(voice.microphoneAutomaticallyMuted,false);
+ f.options.onState({phase:'speaking'});assert.equal(voice.microphoneAutomaticallyMuted,true);
+ f.options.onState({phase:'listening'});assert.equal(voice.microphoneAutomaticallyMuted,false);
 });

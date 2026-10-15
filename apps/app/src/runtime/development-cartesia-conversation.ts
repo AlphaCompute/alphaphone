@@ -12,14 +12,20 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
  const request=async(path:string,body?:unknown,signal:AbortSignal=lifecycle.signal)=>{current();const result=await agent.request(path,body,signal);current();return result;};
  const health=await request('/api/v1/voice/session/health?conversationId='+encodeURIComponent(input.binding.conversationId));if(health.ready!==true||health.conversationId!==input.binding.conversationId||health.agentId!==input.binding.session.agentId)throw Error('The selected developer speech service is unavailable.');
  const {createVoiceSessionClient}=await import('@elizaos/ui/voice/voice-session-client');current();
+ const rendererId=connectionController.voiceRendererClientId();if(!rendererId)throw Error('The voice renderer is not bound.');
+ const rendererReply=await request('/api/views/voice-channel',{clientId:rendererId});
+ const rendererUrl=new URL(rendererReply.wsUrl);if(rendererUrl.protocol!=='ws:'||rendererUrl.host!==location.host||rendererUrl.pathname!=='/__alpha-local-renderer/ws')throw Error('Invalid voice renderer channel.');
+ const renderer=new WebSocket(rendererUrl);
+ await new Promise<void>((resolve,reject)=>{const timer=setTimeout(()=>{renderer.close();reject(Error('The voice renderer could not connect.'));},5000);renderer.onopen=()=>{clearTimeout(timer);resolve();};renderer.onerror=()=>{clearTimeout(timer);renderer.close();reject(Error('The voice renderer could not connect.'));};});
+ try{current();}catch(error){renderer.close();throw error;}
  let refreshTask:Promise<void>|undefined,refreshAgain=false;
  const reconcile=()=>{if(refreshTask){refreshAgain=true;return;}refreshTask=(async()=>{do{refreshAgain=false;current();await connectionController.refreshDeveloperVoiceHistory(input.binding,lifecycle.signal);current();}while(refreshAgain&&!stopped);})().catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice history could not be verified.'));}).finally(()=>{refreshTask=undefined;});};
- const submitted=new Set<string>(),navigated=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();
- const client=createVoiceSessionClient({agentId:input.binding.session.agentId,conversationId:input.binding.conversationId,maxReconnects:0,preLiveMaxAttempts:1,getUiContext:()=>{current();return input.getUiContext?.()??{};},
+ const submitted=new Set<string>(),navigated=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();let phase='idle';
+ const client=createVoiceSessionClient({agentId:input.binding.session.agentId,conversationId:input.binding.conversationId,maxReconnects:0,preLiveMaxAttempts:1,getUiContext:()=>{current();const uiClientId=connectionController.voiceRendererClientId();if(!uiClientId)throw Error('The voice renderer is not bound.');return {...input.getUiContext?.(),uiClientId};},
   getConsentNonce:async()=>{const result=await request('/api/v1/voice/session/consent',{});return typeof result.consentNonce==='string'?result.consentNonce:null;},
   fetch:async(path,init={})=>{if(path!=='/api/v1/voice/session'||init.method!=='POST'||typeof init.body!=='string')throw Error('Unsupported developer voice request');const body=JSON.parse(init.body);if(body.agentId!==input.binding.session.agentId||body.conversationId!==input.binding.conversationId||body.transport!=='websocket')throw Error('Developer voice binding changed');return Response.json(await request(path,body,init.signal??lifecycle.signal));},
   onMinted:result=>{minted.add(result.sessionId);try{current();}catch{void stop().catch(error=>input.onError(error instanceof Error?error:Error('Developer voice retirement was not confirmed.')));}},
-  onState:state=>{if(!stopped){current();input.onState(state.phase);}},
+  onState:state=>{if(!stopped){current();phase=state.phase;input.onState(state.phase);}},
   onServerEvent:event=>{if(stopped)return;current();if(event.t==='stt_partial'||event.t==='stt_final')input.onTranscript(event.text);
    if(event.t==='stt_partial'||event.t==='stt_final')currentTurn=event.traceId;
    if(event.t==='interrupted'&&currentTurn===event.traceId)currentTurn=undefined;
@@ -36,9 +42,10 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
   onPlaybackUnlockChange:()=>{if(!stopped)input.onPlaybackUnlockChange?.();},
   onError:error=>{if(!stopped)input.onError(error);},
  });
- const stop=()=>{if(stopPromise)return stopPromise;stopped=true;lifecycle.abort();stopPromise=(async()=>{await client.stop();for(const id of minted){if(agent!==connectionController.getBrowserSpeechAgent())throw Error('Developer voice retirement could not be confirmed after connection change.');try{const result=await agent.request(`/api/v1/voice/session/${id}/revoke`,{},new AbortController().signal);if(result.revoked!==true)throw Error('Developer voice retirement was not confirmed.');}catch(error){const failure=error as {status?:number;data?:{code?:string}};if(failure.status!==404||failure.data?.code!=='voice_session_not_found')throw error;}}})();return stopPromise;};
- return {start:async()=>{current();await client.start();current();},recheck:()=>{try{current();}catch{void stop().catch(error=>input.onError(error instanceof Error?error:Error('Developer voice retirement was not confirmed.')));}},resume:()=>false,
-  get microphoneMuted(){return client.microphoneMuted;},setMicrophoneMuted:(muted:boolean)=>{current();client.setMicrophoneMuted(muted);},
+ renderer.onclose=()=>{if(!stopped){void stop().catch(error=>input.onError(error));input.onError(Error('The voice renderer disconnected. Start voice again.'));}};
+ const stop=()=>{if(stopPromise)return stopPromise;stopped=true;renderer.close();lifecycle.abort();stopPromise=(async()=>{await client.stop();for(const id of minted){if(agent!==connectionController.getBrowserSpeechAgent())throw Error('Developer voice retirement could not be confirmed after connection change.');try{const result=await agent.request(`/api/v1/voice/session/${id}/revoke`,{},new AbortController().signal);if(result.revoked!==true)throw Error('Developer voice retirement was not confirmed.');}catch(error){const failure=error as {status?:number;data?:{code?:string}};if(failure.status!==404||failure.data?.code!=='voice_session_not_found')throw error;}}})();return stopPromise;};
+ return {start:async()=>{try{current();await client.start();current();}catch(error){await stop();throw error;}},recheck:()=>{try{current();}catch{void stop().catch(error=>input.onError(error instanceof Error?error:Error('Developer voice retirement was not confirmed.')));}},resume:()=>false,
+  get microphoneAutomaticallyMuted(){return phase==='speaking';},get microphoneMuted(){return client.microphoneMuted;},setMicrophoneMuted:(muted:boolean)=>{current();client.setMicrophoneMuted(muted);},
   get needsPlaybackUnlock(){return client.needsPlaybackUnlock;},unlockPlayback:async()=>{current();await client.unlockPlayback();current();},
   stop,
  };

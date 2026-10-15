@@ -6,11 +6,12 @@ import {once} from 'node:events';
 import {localAgentStorage} from './local-agent-dev-storage.ts';
 import type { Plugin } from 'vite';
 import { readFileSync, statSync } from 'node:fs';
-import {createHash} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {request as httpRequest,type IncomingMessage,type ServerResponse} from 'node:http';
 import type {Duplex} from 'node:stream';
 
 export const LOCAL_AGENT_BRIDGE_PATH='/__alpha-local-agent';
+export const LOCAL_RENDERER_WS_PATH='/__alpha-local-renderer/ws';
 export const LOCAL_VOICE_WS_PATH='/__alpha-local-voice/ws';
 const LIMIT=2*1024*1024;
 const AUDIO_ENVELOPE_LIMIT=3*1024*1024;
@@ -56,7 +57,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
   if(origin.protocol!=='http:'||origin.hostname!=='127.0.0.1'||origin.pathname!=='/'||origin.search||origin.hash||origin.username||origin.password)
     throw new Error('The development agent must use an explicit 127.0.0.1 HTTP origin.');
   const request=options.request||fetch;
-  const tickets=new Map<string,{root:string;ownerId:string;expiresAt:number;claimed:boolean;close?:()=>void}>();
+  const tickets=new Map<string,{root:string;ownerId:string;expiresAt:number;claimed:boolean;clientId?:string;close?:()=>void}>();
   let pairing:Promise<{root:string;token:string;ownerId:string;expiresAt:number}>|undefined;
   async function session(root:string) {
     if(pairing){const saved=await pairing;if(saved.root===root&&saved.expiresAt>Date.now()+30000)return saved;pairing=undefined;}
@@ -91,6 +92,9 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       const chunks:Buffer[]=[];let size=0;
       for await(const chunk of req){size+=chunk.length;if(size>AUDIO_ENVELOPE_LIMIT){fail(413,'Request too large');return;}chunks.push(Buffer.from(chunk));}
       const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const renderer=input.path==='/api/views/voice-channel';
+      if(renderer&&(!options.cartesiaEnabled||input.method!=='POST'||typeof input.ownerId!=='string'||typeof input.body!=='string'||Object.keys(input.headers??{}).some(key=>!['accept','content-type','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities'].includes(key.toLowerCase()))||input.stream||input.storage||input.audioBase64||input.requestId)){fail(400,'Invalid renderer channel request');return;}
+      let rendererId:string|undefined;if(renderer){const body=JSON.parse(input.body);if(!body||Object.keys(body).length!==1||!VOICE_UUID.test(body.clientId)){fail(400,'Invalid renderer identity');return;}rendererId=body.clientId;}
       const voicePath=typeof input.path==='string'&&input.path.startsWith(VOICE_PATH),voice=voicePath&&options.cartesiaEnabled===true?voiceControl(input):null;
       if(voicePath&&!voice){fail(400,'Unsupported development voice request');return;}
       const cloudAsr=input.path==='/api/asr/cloud',cloudTts=input.path==='/api/tts/cloud',cloudSpeech=cloudAsr||cloudTts;
@@ -99,7 +103,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       const speech=asr||tts,ttsAudio=(cloudTts||input.path===TTS_PATH)&&input.method==='POST';
       if(size>LIMIT&&!((cloudAsr||input.path===ASR_PATH)&&input.method==='POST')){fail(413,'Request too large');return;}
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
-      if((!voice&&!cloudSpeech&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
+      if((!renderer&&!voice&&!cloudSpeech&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
          ((input.path.startsWith('/api/views/')||input.path.endsWith('/messages/truncate'))&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
          (['GET','DELETE'].includes(input.method)&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
@@ -136,6 +140,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       for(const [id,ticket]of tickets)if(ticket.root!==token||ticket.expiresAt<=Date.now()){ticket.close?.();tickets.delete(id);}
       const credential=await session(token);
       if(input.ownerId!==undefined&&input.ownerId!==credential.ownerId){fail(409,'Local owner changed; reconnect before continuing');return;}
+      if(rendererId){if(tickets.size>=32){fail(429,'Voice capacity reached');return;}const id=randomUUID(),expiresAt=Math.min(credential.expiresAt,Date.now()+120000);tickets.set(id,{root:token,ownerId:credential.ownerId,expiresAt,claimed:false,clientId:rendererId});res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({status:200,body:JSON.stringify({wsUrl:`ws://${host}${LOCAL_RENDERER_WS_PATH}?sessionId=${id}`})}));return;}
       const headers:Record<string,string>={Accept:input.stream===true?'text/event-stream':'application/json','Content-Type':'application/json',Authorization:`Bearer ${credential.token}`};
       for(const key of ['X-Eliza-Device-Id','X-Eliza-Device-Key','X-Eliza-Device-Capabilities']){
         const value=input.headers?.[key];if(value!==undefined){if(typeof value!=='string'||value.length>2048||/[\r\n]/.test(value))throw new Error('Invalid device header');headers[key]=value;}
@@ -180,17 +185,17 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
     finally{res.off('close',onClose);}
   };
   const upgrade=async(req:IncomingMessage,socket:Duplex,head:Buffer)=>{
-    if(!req.url?.startsWith(LOCAL_VOICE_WS_PATH))return false;
+    if(!req.url?.startsWith(LOCAL_VOICE_WS_PATH)&&!req.url?.startsWith(LOCAL_RENDERER_WS_PATH))return false;
     const reject=()=>{socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');};
     try{
       const host=req.headers.host,url=new URL(req.url,'http://localhost'),id=url.searchParams.get('sessionId'),ticket=id?tickets.get(id):undefined;
-      if(!options.cartesiaEnabled||!host||!/^127\.0\.0\.1:\d+$/.test(host)||req.headers.origin!==`http://${host}`||req.method!=='GET'||url.pathname!==LOCAL_VOICE_WS_PATH||url.search!==`?sessionId=${id}`||!id||!VOICE_UUID.test(id)||!ticket||ticket.claimed||ticket.expiresAt<=Date.now()||req.headers.upgrade?.toLowerCase()!=='websocket'||req.headers['sec-websocket-version']!=='13'||typeof req.headers['sec-websocket-key']!=='string'||!/^[A-Za-z0-9+/]{22}==$/.test(req.headers['sec-websocket-key'])){reject();return true;}
+      if(!options.cartesiaEnabled||!host||!/^127\.0\.0\.1:\d+$/.test(host)||req.headers.origin!==`http://${host}`||req.method!=='GET'||url.pathname!==(ticket?.clientId?LOCAL_RENDERER_WS_PATH:LOCAL_VOICE_WS_PATH)||url.search!==`?sessionId=${id}`||!id||!VOICE_UUID.test(id)||!ticket||ticket.claimed||ticket.expiresAt<=Date.now()||req.headers.upgrade?.toLowerCase()!=='websocket'||req.headers['sec-websocket-version']!=='13'||typeof req.headers['sec-websocket-key']!=='string'||!/^[A-Za-z0-9+/]{22}==$/.test(req.headers['sec-websocket-key'])){reject();return true;}
       const stat=statSync(options.tokenFile);if(!stat.isFile()||(stat.mode&0o077)!==0)throw Error('Private runtime credential required');
       const currentRoot=readFileSync(options.tokenFile,'utf8').trim();for(const [key,entry]of tickets)if(entry.root!==currentRoot||entry.expiresAt<=Date.now()){entry.close?.();tickets.delete(key);}
       const credential=await session(currentRoot);
       if(ticket.root!==currentRoot||ticket.ownerId!==credential.ownerId||ticket.expiresAt<=Date.now()||tickets.get(id)!==ticket||ticket.claimed){reject();return true;}
       ticket.claimed=true;
-      const request=httpRequest(new URL(`${VOICE_PATH}/ws?sessionId=${id}`,origin),{headers:{Host:origin.host,Origin:origin.origin,Connection:'Upgrade',Upgrade:'websocket','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':req.headers['sec-websocket-key']}});
+      const request=httpRequest(new URL(ticket.clientId?`/ws?clientId=${ticket.clientId}`:`${VOICE_PATH}/ws?sessionId=${id}`,origin),{headers:{...(ticket.clientId?{Authorization:`Bearer ${credential.token}`} :{}),Host:origin.host,Origin:origin.origin,Connection:'Upgrade',Upgrade:'websocket','Sec-WebSocket-Version':'13','Sec-WebSocket-Key':req.headers['sec-websocket-key']}});
       const close=()=>{request.destroy();socket.destroy();};ticket.close=close;
       request.on('upgrade',(response,upstream,upstreamHead)=>{
         if(response.statusCode!==101||ticket.expiresAt<=Date.now()||tickets.get(id)!==ticket){upstream.destroy();close();return;}
@@ -214,7 +219,7 @@ export function localAgentDevBridge():Plugin {
     const tokenFile=process.env.ALPHA_LOCAL_AGENT_TOKEN_FILE;
     if(!tokenFile)throw new Error('ALPHA_LOCAL_AGENT_TOKEN_FILE is required for browser agent development.');
     const handler=createLocalAgentDevHandler({origin:process.env.ALPHA_LOCAL_AGENT_ORIGIN||'http://127.0.0.1:47839',tokenFile,cartesiaEnabled:process.env.ALPHA_DEV_CARTESIA==='1',cloudVoiceEnabled:process.env.ALPHA_DEV_CLOUD_VOICE==='1'});
-    const upgrade=(req:IncomingMessage,socket:Duplex,head:Buffer)=>{if(req.url?.startsWith(LOCAL_VOICE_WS_PATH))void handler.upgrade(req,socket,head);};
+    const upgrade=(req:IncomingMessage,socket:Duplex,head:Buffer)=>{if(req.url?.startsWith(LOCAL_VOICE_WS_PATH)||req.url?.startsWith(LOCAL_RENDERER_WS_PATH))void handler.upgrade(req,socket,head);};
     server.httpServer?.on('upgrade',upgrade);server.httpServer?.once('close',()=>{server.httpServer?.off('upgrade',upgrade);handler.closeVoice();});
     server.middlewares.use((req,res,next)=>{if(req.url!==LOCAL_AGENT_BRIDGE_PATH){next();return;}void handler(req,res);});
     const gmail=createGmailAgentDevBroker({profile:process.env.ALPHA_BROWSER_CLOUD_PROFILE||join(homedir(),'.local/share/alphaphone/browser-cloud'),tokenFile});
