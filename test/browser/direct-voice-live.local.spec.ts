@@ -2,10 +2,12 @@ import {test,expect} from '@playwright/test';
 import {writeFile} from 'node:fs/promises';
 // Explicit opt-in live provider test. No substituted transcript, navigation event,
 // response, model, adapter or runtime; Chrome supplies a generated virtual mic.
-test('real direct voice opens Notes through the actual renderer channel',async({page},info)=>{
+test('real voice opens Notes through the actual renderer channel',async({page},info)=>{
  test.skip(process.env.ALPHA_LIVE_VOICE_QA!=='1','Live-provider QA requires explicit opt-in');
  const long=process.env.ALPHA_LONG_VOICE_QA==='1';if(long)test.setTimeout(180000);
- const receipt:any={startedAt:new Date().toISOString(),console:[],timings:[]};
+ const cloud=process.env.ALPHA_LIVE_STREAMING_ROUTE==='cloud';
+ const receipt:any={startedAt:new Date().toISOString(),requestedRoute:cloud?'cloud':'direct',console:[],timings:[],health:[]};
+ page.on('response',async response=>{try{const input=JSON.parse(response.request().postData()||'{}');if(response.url().endsWith('/__alpha-local-agent')&&input.path?.startsWith('/api/v1/voice/session/health?')){const envelope=await response.json();receipt.health.push({status:envelope.status,...JSON.parse(envelope.body)});}}catch{}});
  page.on('response',async response=>{if(response.status()>=400){let body='';try{body=(await response.text()).slice(0,800);}catch{}let path;try{path=JSON.parse(response.request().postData()||'{}').path;}catch{}receipt.console.push({url:new URL(response.url()).pathname,path,status:response.status(),body});}});
  page.on('console',m=>{if(m.type()==='error')receipt.console.push(m.text());});
  await page.addInitScript(()=>{
@@ -23,6 +25,7 @@ test('real direct voice opens Notes through the actual renderer channel',async({
  const started=Date.now();receipt.talkAt=started;
  try{
   await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible({timeout:20000});
+  if(cloud){await expect.poll(()=>receipt.health.length,{timeout:20000}).toBeGreaterThan(0);expect(receipt.health[0]).toMatchObject({status:200,ready:true,speechRoute:'cloud',speechProvider:'cartesia',providerAdmission:'at-session-start'});}
   await expect(page.locator('[data-alpha-voice-interim]')).toContainText(/open.*notes/i,{timeout:30000});receipt.timings.push({event:'visible-transcript',ms:Date.now()-started});
   await expect(page.getByRole('heading',{name:'Notes',exact:true})).toBeVisible({timeout:30000});receipt.timings.push({event:'visible-notes',ms:Date.now()-started});
   await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.spokenAudioBytes),{timeout:30000}).toBeGreaterThan(0);
