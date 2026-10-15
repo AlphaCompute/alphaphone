@@ -188,7 +188,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(input.path==='/api/auth/me'&&result.status===200){const who=JSON.parse(body);if(who.session)who.session.id='host-owned-session';body=JSON.stringify(who);}
       if(result.status===401)pairing=undefined; // Never replay the failed request.
       res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
-      const timings=cloudSpeech?[...(result.headers.get('server-timing')||'').slice(0,4096).matchAll(/(?:^|,)\s*([A-Za-z][A-Za-z0-9_-]{0,80});dur=([0-9]+(?:\.[0-9]+)?)/g)].slice(0,32).map(match=>({name:match[1],durationMs:Number(match[2])})).filter(value=>Number.isFinite(value.durationMs)):[];res.end(JSON.stringify({status:result.status,body,...(timings.length?{timings}:{})}));
+      const timings=cloudSpeech?[...(result.headers.get('server-timing')||'').slice(0,4096).matchAll(/(?:^|,)\s*([A-Za-z][A-Za-z0-9_-]{0,80});dur=([0-9]+(?:\.[0-9]+)?)/g)].slice(0,32).map(match=>({name:match[1],durationMs:Number(match[2])})).filter(value=>Number.isFinite(value.durationMs)):[];const moderation=cloudTts?result.headers.get('x-eliza-tts-moderation'):null;const moderationCache=moderation==='reviewed'||moderation==='approved-hit'?moderation:undefined;res.end(JSON.stringify({status:result.status,body,...(timings.length?{timings}:{}),...(moderationCache?{moderationCache}:{})}));
     }catch{if(!abort.signal.aborted){if(!res.headersSent)fail(503,'Local runtime unavailable. Check the private host log.');else res.destroy();}}
     finally{res.off('close',onClose);}
   };

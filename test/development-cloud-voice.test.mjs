@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:30000});process.exit(child.status??1);}
 const {createLocalAgentDevHandler}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner=randomUUID(),root='1'.repeat(64),paired='fixture-private-owner';
-async function fixture(enabled=true){
+async function fixture(enabled=true,moderation){
  const directory=await mkdtemp(join(tmpdir(),'alpha-cloud-speech-')),tokenFile=join(directory,'token');await writeFile(tokenFile,root,{mode:0o600});
  let mode='ok',signal;const calls=[];
  const request=async(url,input)=>{const path=new URL(url).pathname;calls.push({path,input});
@@ -22,9 +22,10 @@ async function fixture(enabled=true){
   if(mode==='rotate')await writeFile(tokenFile,'2'.repeat(64),{mode:0o600});
   if(mode==='error')return Response.json({secret:'never-project-provider-error'},{status:402});
   const headers={'server-timing':mode==='timing'?'auth;dur=911, admission;dur=1497, synthesis;dur=195, private;desc=never-project-secret':'','x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':'cloud'};
-  if(path==='/api/asr/cloud')return Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers});
+  const receipt=response=>{if(moderation!==undefined){const get=response.headers.get.bind(response.headers);response.headers.get=name=>name.toLowerCase()==='x-eliza-tts-moderation'?moderation:get(name);}return response;};
+  if(path==='/api/asr/cloud')return receipt(Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers}));
   assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
-  headers['content-type']=mode==='type'?'audio/wav':'audio/mpeg';return new Response(mode==='large'?new Uint8Array(8*1024*1024+1):new Uint8Array([73,68,51,1]),{headers});
+  headers['content-type']=mode==='type'?'audio/wav':'audio/mpeg';return receipt(new Response(mode==='large'?new Uint8Array(8*1024*1024+1):new Uint8Array([73,68,51,1]),{headers}));
  };
  const handler=createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile,request,cloudVoiceEnabled:enabled}),server=createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
  const call=async(input,signal)=>{const response=await fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({ownerId:owner,headers:{},...input}),signal});return {status:response.status,data:await response.json()};};
@@ -53,3 +54,10 @@ test('actual Cloud driver uses explicit paired gateway with no renderer Cloud ac
 });
 
 test('Cloud bridge forwards numeric timing evidence without arbitrary header descriptions',async()=>{const f=await fixture();try{f.mode('timing');const result=await f.call(tts());assert.deepEqual(result.data.timings,[{name:'auth',durationMs:911},{name:'admission',durationMs:1497},{name:'synthesis',durationMs:195}]);assert.ok(!JSON.stringify(result).includes('never-project-secret'));}finally{await f.close();}});
+
+test('Cloud bridge projects only exact reviewed/approved-hit TTS receipts and never adds them to ASR',async()=>{
+ for(const receipt of ['reviewed','approved-hit']){const f=await fixture(true,receipt);try{const speech=await f.call(tts());assert.equal(speech.data.status,200);assert.equal(speech.data.moderationCache,receipt);const recognition=await f.call(asr());assert.equal(recognition.data.status,200);assert.equal(recognition.data.moderationCache,undefined);}finally{await f.close();}}
+});
+test('Cloud bridge drops invalid oversized and injected moderation evidence without exposing its bytes',async()=>{
+ for(const value of ['hit','APPROVED-HIT','approved-hit, reviewed','approved-hit'.repeat(500),'reviewed\r\nX-Secret: never-project-secret']){const f=await fixture(true,value);try{const result=await f.call(tts());assert.equal(result.data.status,200);assert.equal(result.data.moderationCache,undefined);assert.ok(!JSON.stringify(result).includes('never-project-secret'));}finally{await f.close();}}
+});
