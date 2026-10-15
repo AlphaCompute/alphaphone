@@ -43,6 +43,43 @@ public class DailyAppsInstrumentedTest {
   for(int i=0;i<100;i++){if("true".equals(evaluate(scenario,"Boolean("+condition+")")))return;SystemClock.sleep(100);}
   fail("Calendar flow condition missing: "+condition);
  }
+ /**
+  * Reminder deletion is the reviewed Undo window (AlphaDeletions.reviewReminder): a native dialog
+  * names the reminder; "Delete reminder" pauses its alert at once and commits after 10 seconds.
+  * Clicks the real dialog control through accessibility, never a renderer shortcut.
+  */
+ private void confirmReminderDeletion(String title) throws Exception {
+  for(int i=0;i<150;i++){
+   android.view.accessibility.AccessibilityNodeInfo root=InstrumentationRegistry.getInstrumentation().getUiAutomation().getRootInActiveWindow();
+   if(root!=null&&root.getPackageName()!=null&&InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageName().contentEquals(root.getPackageName())){
+    boolean titleShown=false,detailsShown=false;android.view.accessibility.AccessibilityNodeInfo button=null;
+    java.util.ArrayDeque<android.view.accessibility.AccessibilityNodeInfo> queue=new java.util.ArrayDeque<>();queue.add(root);
+    while(!queue.isEmpty()){
+     android.view.accessibility.AccessibilityNodeInfo node=queue.removeFirst();String text=node.getText()==null?"":node.getText().toString();
+     if(node.isVisibleToUser()){
+      if(text.equals("Delete reminder?"))titleShown=true;
+      if(text.contains(title)&&text.contains("10 seconds")&&text.contains("Undo"))detailsShown=true;
+      if(text.equalsIgnoreCase("Delete reminder")&&node.isClickable())button=node;
+     }
+     for(int c=0;c<node.getChildCount();c++){android.view.accessibility.AccessibilityNodeInfo child=node.getChild(c);if(child!=null)queue.add(child);}
+    }
+    if(titleShown&&detailsShown&&button!=null){assertTrue("Native deletion review control accepted",button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK));return;}
+   }
+   SystemClock.sleep(100);
+  }
+  fail("Native reminder deletion review missing for "+title);
+ }
+ /** The deletion review opens only for a focused, unlocked Activity; otherwise it resolves "unavailable". */
+ private void focused() throws Exception {
+  for(int i=0;i<150;i++){boolean[] ready={false};WebViewTestDriver.withActivity(MainActivity.class,a->ready[0]=a.hasWindowFocus()&&!a.isFinishing()&&!a.isDestroyed());if(ready[0])return;SystemClock.sleep(100);}
+  fail("Reminder deletion review requires actual Activity focus");
+ }
+ /** The queued deletion commits at its 10-second expiry and reads back as a cancelled record. */
+ private void awaitCommittedCancellation(android.content.Context context,String id) throws Exception {
+  long end=SystemClock.elapsedRealtime()+30000;JSONObject row=null;
+  while(SystemClock.elapsedRealtime()<end){row=ReminderTestAccess.read(context,id);if(row!=null&&"cancelled".equals(row.optString("status")))return;SystemClock.sleep(200);}
+  fail("Reviewed deletion did not commit as a cancelled reminder: "+row);
+ }
  @Test public void calendarFormCreatesAndDeletesRealReminder() throws Exception {
   android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
   if(android.os.Build.VERSION.SDK_INT>=33) InstrumentationRegistry.getInstrumentation().getUiAutomation().grantRuntimePermission(context.getPackageName(),android.Manifest.permission.POST_NOTIFICATIONS);
@@ -71,12 +108,16 @@ public class DailyAppsInstrumentedTest {
    String selected="[...document.querySelectorAll('button[aria-label]')].find(b=>b.getAttribute('aria-label').startsWith("+JSONObject.quote(title+", ")+"))";
    uiWait(scenario,selected);evaluate(scenario,"("+selected+").click()");
    uiWait(scenario,"[...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote(title)+")");
-   evaluate(scenario,"document.querySelector('button[aria-label=\"Delete event\"]').click()");
+   focused();evaluate(scenario,"document.querySelector('button[aria-label=\"Delete event\"]').click()");
+   // Delete opens the native review; the detail closes only once the deletion is queued.
+   confirmReminderDeletion(title);
    uiWait(scenario,"!document.querySelector('button[aria-label=\"Delete event\"]')");
+   assertNotEquals("Review queues without immediate cancellation","cancelled",ReminderTestAccess.read(context,reminderId).optString("status"));
+   awaitCommittedCancellation(context,reminderId);
    begin(scenario,"Capacitor.Plugins.DailyApps.listReminders()");rows=result(scenario).getJSONArray("reminders");
    boolean cancelled=false;
    for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(reminderId.equals(row.getString("id")))cancelled="cancelled".equals(row.getString("status"));}
-   assertTrue("Calendar Delete cancels the real native reminder",cancelled);
+   assertTrue("Calendar Delete cancels the real native reminder after its Undo window",cancelled);
   } finally {
    JSONArray rows=ReminderTestAccess.list(context);
    for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(title.equals(row.optString("title")))ReminderTestAccess.cancel(context,row.getString("id"));}
@@ -172,25 +213,63 @@ public class DailyAppsInstrumentedTest {
    // A fresh install still shows the first-run sign-in panel. The product keeps the tap while that
    // panel is open and opens the reminder when the owner answers it; it must not open underneath.
    String detail = "document.documentElement.dataset.activeView==='calendar' && [...document.querySelectorAll('[data-screen] h1')].some(h=>h.textContent==="+JSONObject.quote("Device flow test " + id)+") && !!document.querySelector('button[aria-label=\"Edit event\"]')";
-   String offline = "[...document.querySelectorAll('.alpha-connection-scrim button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(AppNavigation.CLOSE_CONNECTION)+"&&!e.disabled)";
+   String closable = "[...document.querySelectorAll('.alpha-connection-scrim button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(AppNavigation.CLOSE_CONNECTION)+"&&!e.disabled)";
+   boolean mandatorySignIn = false;
    if ("true".equals(evaluate(scenario, "!!document.querySelector('.alpha-connection-scrim')"))) {
     SystemClock.sleep(1500);
     assertEquals("The reminder does not open under the sign-in panel", "false", evaluate(scenario, "Boolean("+detail+")"));
     begin(scenario, "Capacitor.Plugins.DailyApps.pendingReminderTap()");
     JSONObject retainedTap = result(scenario);
     assertTrue("The tap is retained while the sign-in panel is open: " + retainedTap, retainedTap.optBoolean("retained") && retainedTap.has("token"));
-    uiWait(scenario, offline);
-    evaluate(scenario, "("+offline+").click()");
-    uiWait(scenario, "!document.querySelector('.alpha-connection-scrim')");
+    for (int i = 0; i < 100 && !"true".equals(evaluate(scenario, "Boolean("+closable+")")); i++) SystemClock.sleep(100);
+    if ("true".equals(evaluate(scenario, "Boolean("+closable+")"))) {
+     evaluate(scenario, "("+closable+").click()");
+     uiWait(scenario, "!document.querySelector('.alpha-connection-scrim')");
+    } else {
+     // A production build (no ELIZA_DEV_ALLOW_TEST_MOCKS) on first run requires Eliza Cloud
+     // sign-in and the dialog has no close control (connection-ui residentMustSignIn). This test
+     // never signs in, so the tap must stay retained, unopened, until the owner does.
+     assertFalse("Only a production build's first-run sign-in is undismissable", BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
+     uiWait(scenario, "[...document.querySelectorAll('.alpha-connection-scrim button')].some(b=>b.textContent.trim()==='Sign in with Eliza Cloud')");
+     mandatorySignIn = true;
+    }
    }
-   boolean detailOpened = false;
-   for (int i = 0; i < 80; i++) {
-    if ("true".equals(evaluate(scenario,"Boolean("+detail+")"))) { detailOpened=true; break; }
-    SystemClock.sleep(100);
+   if (mandatorySignIn) {
+    SystemClock.sleep(1500);
+    assertEquals("The reminder stays unopened behind the required sign-in", "false", evaluate(scenario, "Boolean("+detail+")"));
+    begin(scenario, "Capacitor.Plugins.DailyApps.pendingReminderTap()");
+    JSONObject stillRetained = result(scenario);
+    assertTrue("The tap stays retained until the owner signs in: " + stillRetained, stillRetained.optBoolean("retained") && stillRetained.has("token"));
+    android.os.Bundle note = new android.os.Bundle();
+    note.putString("reminderTapDetailNotExercised", "First-run Eliza Cloud sign-in is required on this production build; tap retention was verified, opening the detail needs a signed-in owner or a test-mocks build.");
+    InstrumentationRegistry.getInstrumentation().addResults(note);
+   } else {
+    boolean detailOpened = false;
+    for (int i = 0; i < 80; i++) {
+     if ("true".equals(evaluate(scenario,"Boolean("+detail+")"))) { detailOpened=true; break; }
+     SystemClock.sleep(100);
+    }
+    assertTrue("Notification tap opens this reminder's real Calendar detail", detailOpened);
    }
-   assertTrue("Notification tap opens this reminder's real Calendar detail", detailOpened);
-   begin(scenario, "(async()=>{const d=Capacitor.Plugins.DailyApps,id="+JSONObject.quote(id)+";const target=await d.selectedReminder({id});const operation={type:\"reminder_cancel\",target};const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest(\"SHA-256\",new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,\"0\")).join(\"\");return d.cancelReminder({id,target,operationId:crypto.randomUUID(),bindingHash});})()");
-   assertEquals("cancelled", result(scenario).getString("status"));
+   // ID or target cancellation outside the reviewed window is refused and changes nothing.
+   String target = "(async()=>{const d=Capacitor.Plugins.DailyApps,id="+JSONObject.quote(id)+";const target=await d.selectedReminder({id});const operation={type:\"reminder_cancel\",target};const bindingHash=Array.from(new Uint8Array(await crypto.subtle.digest(\"SHA-256\",new TextEncoder().encode(JSON.stringify(operation))))).map(v=>v.toString(16).padStart(2,\"0\")).join(\"\");return d.cancelReminder({id,target,operationId:crypto.randomUUID(),bindingHash});})()";
+   begin(scenario, target);
+   JSONObject refused = result(scenario);
+   assertTrue("Direct cancellation is refused: " + refused, refused.has("error") && !refused.has("status"));
+   assertEquals("Refused cancellation leaves the reminder posted", "posted", ReminderTestAccess.read(context, id).getString("status"));
+   // The reviewed deletion pauses the alert at once (its notice is withdrawn) and commits at expiry.
+   focused();
+   begin(scenario, "(async()=>{const target=await Capacitor.Plugins.DailyApps.selectedReminder({id:"+JSONObject.quote(id)+"});return Capacitor.Plugins.AlphaDeletions.reviewReminder({target});})()");
+   confirmReminderDeletion("Device flow test " + id);
+   assertEquals("queued", result(scenario).getString("status"));
+   boolean withdrawn = false;
+   for (int i = 0; i < 50 && !withdrawn; i++) {
+    withdrawn = true;
+    for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) if (id.equals(item.getTag())) withdrawn = false;
+    if (!withdrawn) SystemClock.sleep(100);
+   }
+   assertTrue("A queued deletion withdraws the reminder's notification immediately", withdrawn);
+   awaitCommittedCancellation(context, id);
    for (android.service.notification.StatusBarNotification item : notifications.getActiveNotifications()) assertNotEquals(id,item.getTag());
    begin(scenario, "Capacitor.Plugins.DailyApps.scheduleReminder({id:'past_test',title:'Past',at:1})");
    assertEquals("past", result(scenario).getString("status"));

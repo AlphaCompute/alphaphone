@@ -51,8 +51,10 @@ export function verifyParadeeRuntime(root,{allowAbsent=false}={}){
  if(allowAbsent&&!fs.existsSync(native))return {packaged:false,qualified:false};
  if(!fs.existsSync(path.join(native,'build-record.json')))throw Error('Paradee native build record is missing. Build pinned paradee-voice outputs outside vendor, then stage a reviewed ASR model pair.');
  if(fs.lstatSync(native).isSymbolicLink())throw Error('Paradee native output must not be a symbolic link');
- verifyParadeeFfi(root);
+ const {forkPin}=verifyParadeeFfi(root);
  const record=JSON.parse(fs.readFileSync(path.join(native,'build-record.json'),'utf8'));
+ const pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
+ if(record.sourceCommit!==pin||record.nativeCommit!==forkPin)throw Error('Paradee build record does not match the pinned source revisions');
  const inputs=JSON.parse(fs.readFileSync(path.join(root,PARADEE_SOURCE,'inputs.json'),'utf8'));
  if(JSON.stringify(record.inputs)!==JSON.stringify(inputs))throw Error('Paradee inputs do not match the pinned upstream source');
  if(!Array.isArray(record.abis)||!['arm64-v8a','x86_64'].every(abi=>record.abis.includes(abi)))throw Error('Paradee requires both Android ABIs');

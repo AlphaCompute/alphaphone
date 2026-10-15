@@ -288,11 +288,13 @@ export class CloudProtocol {
     await this.assertSameCredential(credential.credentialId, signal);
     const grant = data.grant && typeof data.grant === "object" && !Array.isArray(data.grant) ? data.grant as ObjectValue : null;
     if (data.success !== true || !grant || typeof data.replayed !== "boolean") throw new SubscriptionRedeemError("unavailable");
+    if (grant.revoked === true) throw new SubscriptionRedeemError("invalid");
     const endsAt = typeof grant.endsAt === "string" ? Date.parse(grant.endsAt) : NaN;
     const summary = data.entitlement && typeof data.entitlement === "object" ? data.entitlement as ObjectValue : null;
     const plan = summary?.plan && typeof summary.plan === "object" ? summary.plan as ObjectValue : null;
     const planName = typeof plan?.name === "string" && plan.name.trim() && plan.name.length <= 80 && !/[\x00-\x1f\x7f]/.test(plan.name) ? plan.name.trim() : null;
-    return { replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
+    const until = typeof summary?.effectiveUntil === "string" ? Date.parse(summary.effectiveUntil) : NaN;
+    return { planEndsAt: Number.isFinite(until) ? until : grant.paidPlanTakesPrecedence === true || !Number.isFinite(endsAt) ? null : endsAt, replayed: data.replayed, grantEndsAt: Number.isFinite(endsAt) ? endsAt : null, paidPlanTakesPrecedence: grant.paidPlanTakesPrecedence === true, planName };
   }
   private async assertSameCredential(credentialId: string, signal: AbortSignal) {
     const current = await this.credentials.read(this.environment);

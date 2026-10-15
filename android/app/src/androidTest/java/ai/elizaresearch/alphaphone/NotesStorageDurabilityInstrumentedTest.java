@@ -10,8 +10,10 @@ import static org.junit.Assert.*;
  * the instrumentation process cannot kill its own app process). Unique synthetic content only. */
 public final class NotesStorageDurabilityInstrumentedTest {
  private static String unique(){return UUID.randomUUID().toString();}
- /** A value of exactly n UTF-8 bytes that is a valid JSON string. */
- private static String jsonOfBytes(int n){StringBuilder out=new StringBuilder(n);out.append('"');for(int i=0;i<n-2;i++)out.append('x');return out.append('"').toString();}
+ /** A value of exactly n UTF-8 bytes that is a valid JSON string. Built from one byte array: a
+  * StringBuilder holds two bytes per char and copies again in toString, which alone took ~90 MiB of the
+  * 192 MiB app heap at the 30 MiB Trash fixtures this test also keeps live. */
+ private static String jsonOfBytes(int n){byte[] bytes=new byte[n];Arrays.fill(bytes,(byte)'x');bytes[0]=bytes[n-1]='"';return new String(bytes,java.nio.charset.StandardCharsets.US_ASCII);}
 
  @Test public void storageFullIsADistinctRefusalThatWritesNothing()throws Exception{
   AlphaCredentialStore store=new AlphaCredentialStore(InstrumentationRegistry.getInstrumentation().getTargetContext());

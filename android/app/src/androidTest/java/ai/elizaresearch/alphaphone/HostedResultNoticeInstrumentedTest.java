@@ -82,7 +82,12 @@ public final class HostedResultNoticeInstrumentedTest {
   assertEquals(HostedResultNotices.SUPERSEDE_AFTER_MS,result.getTimeoutAfter());assertEquals(AlphaHostedResultsPlugin.CHANNEL,result.getChannelId());assertEquals(android.app.Notification.VISIBILITY_PRIVATE,result.visibility);
   long now=System.currentTimeMillis(),expiresAt=now+5*3600000L;String source=UUID.randomUUID().toString();
   android.app.Notification renewal=poster.renewal(source,expiresAt,now).build();
-  assertEquals(5*3600000L,renewal.getTimeoutAfter());assertEquals(1,renewal.actions.length);assertEquals("Renew",renewal.actions[0].title.toString());assertEquals(android.app.Notification.VISIBILITY_PRIVATE,renewal.visibility);assertNotNull(renewal.publicVersion);
+  assertEquals(5*3600000L,renewal.getTimeoutAfter());
+  // Renew opens the review (it never renews by itself); Ask Alpha opens a question about this source and needs unlock.
+  assertEquals(2,renewal.actions.length);assertEquals("Renew",renewal.actions[0].title.toString());assertEquals("Renew only opens the review",renewal.contentIntent,renewal.actions[0].actionIntent);
+  assertEquals("Ask Alpha",renewal.actions[1].title.toString());assertNull("Ask has no inline send input",renewal.actions[1].getRemoteInputs());assertNotEquals("Ask is its own route, not the Renew review",renewal.contentIntent,renewal.actions[1].actionIntent);
+  if(android.os.Build.VERSION.SDK_INT>=31)assertTrue("Ask requires unlock",renewal.actions[1].isAuthenticationRequired());
+  assertEquals(android.app.Notification.VISIBILITY_PRIVATE,renewal.visibility);assertNotNull(renewal.publicVersion);
   assertFalse(renewal.extras.toString().contains(source));assertTrue(HostedNoticePoster.renewalTag(source).endsWith(source));
   assertThrows(IllegalArgumentException.class,()->poster.renewal("../escape",expiresAt,now));
  }

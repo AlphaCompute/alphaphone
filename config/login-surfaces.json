@@ -93,10 +93,18 @@
       "reason": "The six-digit email or second-verification code of the in-app Eliza Cloud sign-in. A one-time code, not a reusable credential: it is sent once to the native sign-in host, cleared from the field on submit and never stored; Android may offer its own one-time-code suggestion."
     },
     {
+      "id": "eliza-cloud-subscription-code",
+      "kind": "alpha-owned",
+      "eligible": false,
+      "file": "apps/app/src/runtime/connection-ui.tsx",
+      "pattern": "name=\"subscription-code\" autoComplete=\"one-time-code\"",
+      "reason": "A subscription grant redemption code, not a username or reusable password. It remains only in the input after a refused attempt and is cleared after successful redemption; Alpha never persists it. This privileged renderer WebView is excluded from Android Autofill, and the field is not an integrated-vault or password-provider fill target."
+    },
+    {
       "id": "google-account-authorization",
       "kind": "external-browser",
       "eligible": false,
-      "owner": "apps/app/src/runtime/google-connection-ui.tsx (openConnectionBrowser → AlphaConnectionPlugin.openExternal)",
+      "owner": "apps/app/src/runtime/google-connection-ui.tsx (openConnectionBrowser \u2192 AlphaConnectionPlugin.openExternal)",
       "reason": "Google account authorization for Gmail and Calendar opens accounts.google.com in the user's own browser through the same handoff. Alpha never shows a Google password field; that browser's manager fills it."
     },
     {

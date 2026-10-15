@@ -35,16 +35,25 @@ public final class SettingsRolesInstrumentedTest {
  private void button(String label)throws Exception{String q="[...document.querySelectorAll('button')].find(e=>e.textContent.trim().startsWith("+JSONObject.quote(label)+"))";until(q);js("("+q+").click()");}
  private void settings()throws Exception{js(AppNavigation.request("Home"));until(AppNavigation.selected("Home"));js(AppNavigation.request("Settings"));until(AppNavigation.selected("Settings"));}
  private boolean holdsHome()throws Exception{return shell("cmd role get-role-holders --user 0 "+HOME).contains(context.getPackageName());}
+ /**
+  * Android's role dialog belongs to PermissionController, another process. On the loaded API 36
+  * emulator (campaign of 2026-10-14) it was displayed 5.5 s after the request and its frames took
+  * up to 6.6 s each to draw (HWUI "Davey" frames of PermissionController), so its nodes appeared
+  * about 10 s after the click, at the edge of the former 10 s bound. The wait is bounded at 20 s
+  * and still requires that dialog.
+  */
+ private static final int DIALOG_POLLS=200;
  private AccessibilityNodeInfo dialogNode(String... labels){
-  for(int i=0;i<100;i++){
+  for(int i=0;i<DIALOG_POLLS;i++){
    AccessibilityNodeInfo root=ui().getRootInActiveWindow();
    if(root!=null&&!context.getPackageName().contentEquals(root.getPackageName()))for(String label:labels){List<AccessibilityNodeInfo> found=root.findAccessibilityNodeInfosByText(label);if(!found.isEmpty())return found.get(0);}
    SystemClock.sleep(100);
   }
   return null;
  }
- private AccessibilityNodeInfo exactDialogNode(String label){
-  for(int i=0;i<100;i++){
+ private AccessibilityNodeInfo exactDialogNode(String label){return exactDialogNode(label,DIALOG_POLLS);}
+ private AccessibilityNodeInfo exactDialogNode(String label,int polls){
+  for(int i=0;i<polls;i++){
    AccessibilityNodeInfo root=ui().getRootInActiveWindow();
    if(root!=null&&!context.getPackageName().contentEquals(root.getPackageName()))for(AccessibilityNodeInfo node:root.findAccessibilityNodeInfosByText(label))if(node.getText()!=null&&label.equalsIgnoreCase(node.getText().toString().trim()))return node;
    SystemClock.sleep(100);
@@ -139,7 +148,7 @@ public final class SettingsRolesInstrumentedTest {
    button("Make Alpha your Home app");
    // The dialog's title also contains the app name; the list row is the node whose text is exactly it.
    AccessibilityNodeInfo alpha=exactDialogNode("Alpha Phone");assertNotNull("Alpha listed as a Home app",alpha);assertTrue("Alpha's row is selectable",click(alpha));
-   AccessibilityNodeInfo confirm=null;for(int i=0;i<50&&(confirm==null||!confirm.isEnabled());i++){confirm=exactDialogNode("Set as default");if(confirm==null||!confirm.isEnabled())SystemClock.sleep(100);}
+   AccessibilityNodeInfo confirm=null;for(int i=0;i<50&&(confirm==null||!confirm.isEnabled());i++){confirm=exactDialogNode("Set as default",100);if(confirm==null||!confirm.isEnabled())SystemClock.sleep(100);}
    if(confirm!=null)assertTrue("Set as default is pressed",click(confirm));
    for(int i=0;i<200&&!holdsHome();i++)SystemClock.sleep(100);
    assertTrue("Android reports Alpha as HOME holder",holdsHome());

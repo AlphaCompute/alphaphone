@@ -43,7 +43,10 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "note": "not rebuilt at this pin; Gradle :local-speech builds it from the pinned elizavoice-jni source (voice subset, now including the seven nativeAsrStream* natives)"
+            "note": "Historical unstripped Debug JNI bridge built at 87d9bd96477f; exports only JNI_OnLoad with 16 KiB alignment. Not rebuilt or executed at current pin fb6232523074.",
+            "sourcePin": "87d9bd96477f37a01c27ac76f6c5b3a3bff3faad",
+            "bytes": 364632,
+            "sha256": "7d2a65c8c2e2db95713a281d4cbfe36ca8ba5e69f1692961bd2e26d364d70379"
           }
         },
         "app": {
@@ -53,7 +56,8 @@
           "referenceBuild": {
             "sha256": "3e9e2d069ab308c267fa61d2357d1d4df8dfce34f9764c217b09020a7311bbba",
             "bytes": 1182048,
-            "note": "unstripped candidate from scripts/prepare-embedding-host.mjs --build --remap-build-path at this pin; not reviewed"
+            "note": "unstripped candidate from scripts/prepare-embedding-host.mjs --build --remap-build-path at this pin; not reviewed",
+            "sourcePin": "fb6232523074e020dacc849cca5ed390d28b8d67"
           }
         }
       },
@@ -84,7 +88,10 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "note": "not rebuilt at this pin; Gradle :local-speech builds it from the pinned elizavoice-jni source (voice subset, now including the seven nativeAsrStream* natives)"
+            "note": "Historical unstripped Debug JNI bridge built at 87d9bd96477f; exports only JNI_OnLoad with 16 KiB alignment. Not rebuilt or executed at current pin fb6232523074.",
+            "sourcePin": "87d9bd96477f37a01c27ac76f6c5b3a3bff3faad",
+            "bytes": 348960,
+            "sha256": "6bff5009b8619cd6d8a3149a12cc05fb6a99ff4d793a1702bc36d1ee16282a57"
           }
         },
         "app": {
@@ -94,7 +101,8 @@
           "referenceBuild": {
             "sha256": "d84b68ed1f26b69472903690b457f2480f0784e235f7c9c05b970ef1a74e7352",
             "bytes": 1066824,
-            "note": "unstripped candidate from scripts/prepare-embedding-host.mjs --build --remap-build-path at this pin; not reviewed"
+            "note": "unstripped candidate from scripts/prepare-embedding-host.mjs --build --remap-build-path at this pin; not reviewed",
+            "sourcePin": "fb6232523074e020dacc849cca5ed390d28b8d67"
           }
         }
       },

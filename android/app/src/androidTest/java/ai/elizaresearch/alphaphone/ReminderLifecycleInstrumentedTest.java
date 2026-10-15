@@ -105,9 +105,13 @@ public class ReminderLifecycleInstrumentedTest {
    ReminderLifecycleTestAccess.restore(c,boot);
    StatusBarNotification again=notification(once),againDaily=notification(daily);assertNotNull("Posted reminder re-posted after reboot",again);assertNotNull(againDaily);
    assertEquals("Same tap route",first.getNotification().contentIntent,again.getNotification().contentIntent);
-   assertEquals(2,again.getNotification().actions.length);
+   // Done, Snooze and the configured question action (AlphaReminders: "Ask Alpha", unlock required).
+   assertEquals(3,first.getNotification().actions.length);assertEquals(3,again.getNotification().actions.length);
    assertEquals("Done action unchanged",first.getNotification().actions[0].actionIntent,again.getNotification().actions[0].actionIntent);
    assertEquals("Snooze action unchanged",first.getNotification().actions[1].actionIntent,again.getNotification().actions[1].actionIntent);
+   assertEquals(AlphaReminders.CONFIGURATION.questionActionLabel,again.getNotification().actions[2].title.toString());
+   assertEquals("Question route unchanged",first.getNotification().actions[2].actionIntent,again.getNotification().actions[2].actionIntent);
+   if(android.os.Build.VERSION.SDK_INT>=31)assertTrue("Ask requires unlock",again.getNotification().actions[2].isAuthenticationRequired());
    assertEquals("Record, occurrence and target unchanged",before,ReminderTestAccess.read(c,once).toString());
    assertEquals("Recurrence not advanced",beforeDaily,ReminderTestAccess.read(c,daily).toString());
    assertTrue(ReminderTestAccess.Taps.same(targetBefore,ReminderTestAccess.selected(c,once)));

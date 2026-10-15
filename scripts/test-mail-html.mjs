@@ -11,6 +11,8 @@ const blocked=prepareMailHtml(html),clean=parse(blocked.document);
 assert.equal(blocked.remoteImages,1);assert.equal(clean.querySelectorAll('script,form,input,iframe,object,embed').length,0);assert.equal(clean.querySelectorAll('[onerror],img[src^="https:"],a[href]').length,0);
 assert.ok(clean.querySelector('table strong'));assert.equal(clean.querySelector('td').getAttribute('style'),'color:red');assert.equal(clean.querySelector('a[data-alpha-link]').getAttribute('data-alpha-link'),'https://example.invalid/read');
 assert.ok(blocked.document.includes("script-src 'none'"));assert.ok(blocked.document.includes("connect-src 'none'"));assert.ok(blocked.document.includes("img-src data:;"));
+assert.deepEqual([...blocked.inlineLinks],['https://example.invalid/read']);
+assert.equal(prepareMailHtml('<p>Visit https://example.invalid/read</p>').inlineLinks.size,0);
 const shown=prepareMailHtml(html,true);assert.equal(parse(shown.document).querySelector('img').src,'https://tracker.invalid/image.png');assert.ok(shown.document.includes('img-src data: https:'));
 const hostile=prepareMailHtml('<svg onload="alert(1)"><foreignObject><script>alert(2)</script></foreignObject></svg><a href="javascript:alert(3)">Bad link</a><img src="data:image/svg+xml;base64,PHN2Zz4=">');assert.equal(parse(hostile.document).querySelectorAll('svg,script,a[data-alpha-link],img').length,0);
 assert.throws(()=>prepareMailHtml('x'.repeat(512*1024+1)),/too large/);

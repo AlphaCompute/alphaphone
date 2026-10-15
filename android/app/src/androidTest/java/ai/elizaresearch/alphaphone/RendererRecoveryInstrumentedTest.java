@@ -86,7 +86,11 @@ public class RendererRecoveryInstrumentedTest {
    String state;
    try { state = WebViewTestDriver.evaluate("JSON.stringify({view:document.documentElement.dataset.activeView||null,marker:typeof window." + MARKER + "})"); }
    catch (AssertionError notYet) { last = "page not answering yet"; continue; }
-   org.json.JSONObject page = new org.json.JSONObject((String) new org.json.JSONTokener(state).nextValue());
+   // evaluateJavascript answers JSON null, not the stringified object, while the new WebView has no
+   // document to run in yet (measured on the API 36 emulator right after recreate()). Not ready yet.
+   Object answer = new org.json.JSONTokener(state).nextValue();
+   if (!(answer instanceof String)) { last = "new WebView has no document yet (answered " + state + ")"; continue; }
+   org.json.JSONObject page = new org.json.JSONObject((String) answer);
    if (page.isNull("view")) { last = "page has no active view yet"; continue; }
    assertEquals("The recovered page runs in a new renderer, not the killed one", "undefined", page.getString("marker"));
    List<String> stages = mainActivityStages();
