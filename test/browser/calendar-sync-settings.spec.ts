@@ -29,7 +29,7 @@ async function fixture(page:Page){
  return page.getByRole('dialog',{name:'Google Calendar sync',exact:true});
 }
 test('Settings reviews the destination before opt-in, then syncs actual local data in both directions',async({page})=>{
- const dialog=await fixture(page);await expect(dialog.getByRole('button',{name:'Enable sync',exact:true})).toBeDisabled();
+ const dialog=await fixture(page);await expect(dialog.getByRole('button',{name:'Enable sync',exact:true})).toBeHidden();
  await dialog.getByRole('button',{name:'Review sync',exact:true}).click();await expect(dialog.getByText(/owner@example.invalid.*Personal.*1 Alpha events/)).toBeVisible();
  expect(await page.evaluate(()=>(window as any).calendarSyncFixture.writes)).toBe(0);
  await dialog.getByRole('button',{name:'Enable sync',exact:true}).click();await expect(dialog.getByRole('status')).toHaveText(/1 sent to Google/);

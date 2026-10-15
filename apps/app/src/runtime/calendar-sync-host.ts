@@ -342,7 +342,7 @@ export function startCalendarSyncHost() {
 			key = next;
 			controller.cancel();
 			status =
-				"Sync is off for this account or calendar until its saved configuration is checked.";
+				"Sync is off.";
 			changed();
 			void calendarSyncHost.resume();
 		}

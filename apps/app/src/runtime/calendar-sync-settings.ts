@@ -21,7 +21,7 @@ export function openCalendarSyncSettings() {
 	title.textContent = "Google Calendar sync";
 	const description = document.createElement("p");
 	description.textContent =
-		"Link events created in Alpha to your selected Google calendar. Event details and guest email addresses are shared with Google. Later changes to these linked events sync both ways while Alpha is open. Other Google events stay separate. Pausing keeps saved events.";
+		"Events created in Alpha sync to your selected Google calendar. Later edits and deletions sync both ways for linked events while Alpha is open. Google receives event details and guest email addresses. Pausing keeps saved events.";
 	const summary = document.createElement("p");
 	summary.setAttribute("role", "status");
 	summary.setAttribute("aria-live", "polite");
@@ -35,6 +35,7 @@ export function openCalendarSyncSettings() {
 		close = document.createElement("button");
 	reviewButton.textContent = "Review sync";
 	enable.textContent = "Enable sync";
+ enable.style.cssText="background:var(--acc,#0000ff);color:#fff";
 	enable.disabled = true;
 	sync.textContent = "Sync now";
 	pause.textContent = "Pause sync";
@@ -60,7 +61,7 @@ export function openCalendarSyncSettings() {
 		sync.hidden = !state.enabled;
 		pause.hidden = !state.enabled && !state.running;
 		reviewButton.hidden = state.enabled;
-		enable.hidden = state.enabled;
+		enable.hidden = state.enabled || !review;
 		pause.disabled = false;
 	};
 	const unsubscribe = calendarSyncHost.subscribe(update);
