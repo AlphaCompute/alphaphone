@@ -52,7 +52,13 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   try{await saveShelf(next);if(token!==epoch)return false;if(saved){const receipt=await inboxLocalStore.compareExchange(slot(),saved,null);if(token!==epoch)return false;if(receipt.status!=='saved')throw Error('The saved draft changed. Reload before continuing.');saved=null;}await retained?.clear();if(token!==epoch)return false;pendingEdits.delete(owner);draft=null;open=false;confirm=false;baseRevision=null;staleBase=false;toQ='';status='Draft saved';return true;}
   catch(error){if(token===epoch)toast(error instanceof Error?error.message:'The draft could not be saved. Your edits remain here.');return false;}finally{if(token===epoch){busy=false;publish();}}
  }
- async function newEmail(){if(!ready||busy){toast(status||'Wait for drafts to load.');return false;}if(!await setAside())return false;return begin();}
+ async function newEmail(reply?:GmailMessage,mode:'reply'|'reply-all'|'forward'='reply',forwardedBody='',extra:{body?:string;forward?:ForwardSource|null}={}){
+  if(!ready||busy){toast(status||'Wait for drafts to load.');return false;}
+  if(reply&&mode!=='forward'&&draft?.reply?.messageId===reply.id&&draft.reply.threadId===reply.threadId&&(draft.mode||'reply')===mode)return begin();
+  const token=epoch,target=reply?structuredClone(reply):undefined,options=structuredClone(extra);
+  if(!await setAside()||token!==epoch)return false;
+  return begin(target,mode,forwardedBody,undefined,options);
+ }
  async function openShelved(id:string){const row=shelf?.items.find(item=>item.draft.id===id);if(!row||!ready||busy)return;if(row.draft.earlierThanSent&&!window.confirm('This is an earlier version of a sent email. Open it for editing? Sending it creates another message.'))return;const token=epoch;if(!await setAside()||token!==epoch)return;draft=structuredClone(row.draft);toQ=row.toQ;baseRevision=null;staleBase=false;open=true;confirm=false;status='Draft on this device';persist();publish();}
 
  const pendingEdits=new Map<string,{draft:Draft;toQ:string;baseRevision:string|null;persist?:boolean}>();
