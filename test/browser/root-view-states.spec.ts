@@ -12,7 +12,7 @@ const EMPTY: Record<View, RegExp> = {
   Inbox: /Connect Eliza Cloud to use Gmail/,
   Calendar: /No visible events|Nothing scheduled/,
   Browser: /No open pages|New tab/,
-  Camera: /Camera unavailable or permission denied/,
+  Camera: /Camera unavailable\. Tap the shutter to retry\./,
   Photos: /^No photos$/,
   Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/,
   Notes: /No notes yet/,
