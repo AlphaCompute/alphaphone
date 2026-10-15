@@ -1,3 +1,4 @@
+import {developmentCloudRealtimeVoiceEnabled} from './development-cloud-voice';
 import {Capacitor} from '@capacitor/core';
 import {devSurfacesEnabled} from '../build-flags';
 import {connectionController} from './connection-ui';
@@ -5,13 +6,16 @@ import type {VoiceConversationBinding} from './alpha-client';
 export const developmentCartesiaVoiceEnabled=import.meta.env.DEV===true&&devSurfacesEnabled&&!Capacitor.isNativePlatform()&&import.meta.env.VITE_ALPHA_DEV_CARTESIA==='1';
 /** Canonical self-hosted voice owns the runtime turn; this adapter never sends its transcript twice. */
 export async function developmentCartesiaConversation(input:{binding:VoiceConversationBinding;assertCurrent:()=>void;onState:(phase:string)=>void;onTranscript:(text:string)=>void;onError:(error:Error)=>void;onPlaybackUnlockChange?:()=>void;getUiContext?:()=>import('@elizaos/host/protocol').VoiceUiContext;onNavigate?:(event:{viewId:string;viewPath?:string;subview?:string;traceId:string})=>Promise<void>}){
- if(!developmentCartesiaVoiceEnabled)throw Error('Direct developer speech is disabled.');
+ if(developmentCartesiaVoiceEnabled&&developmentCloudRealtimeVoiceEnabled)throw Error('Choose direct or Cloud realtime speech, not both.');
+ if(!developmentCartesiaVoiceEnabled&&!developmentCloudRealtimeVoiceEnabled)throw Error('Developer realtime speech is disabled.');
  const agent=connectionController.getBrowserSpeechAgent();if(!agent)throw Error('Connect the local developer agent first.');
  const lifecycle=new AbortController(),minted=new Set<string>();let stopped=false,stopPromise:Promise<void>|undefined,rendererId:string|undefined;
  let renderer:WebSocket|undefined,pendingRenderer:WebSocket|undefined,rendererRenewal:ReturnType<typeof setTimeout>|undefined,rendererTask:Promise<void>|undefined;
  const current=()=>{lifecycle.signal.throwIfAborted();input.assertCurrent();if(agent!==connectionController.getBrowserSpeechAgent()||!connectionController.voiceConversationCurrent(input.binding)||rendererId!==undefined&&rendererId!==connectionController.voiceRendererClientId())throw new DOMException('Developer voice connection changed','AbortError');};
  const request=async(path:string,body?:unknown,signal:AbortSignal=lifecycle.signal)=>{current();const result=await agent.request(path,body,signal);current();return result;};
  const health=await request('/api/v1/voice/session/health?conversationId='+encodeURIComponent(input.binding.conversationId));if(health.ready!==true||health.conversationId!==input.binding.conversationId||health.agentId!==input.binding.session.agentId)throw Error('The selected developer speech service is unavailable.');
+ if(developmentCloudRealtimeVoiceEnabled&&(health.speechRoute!=='cloud'||health.speechProvider!=='cartesia'||health.providerAdmission!=='at-session-start'))throw Error('Cloud realtime speech was not attested.');
+ if(!developmentCloudRealtimeVoiceEnabled&&health.speechRoute!==undefined&&health.speechRoute!=='direct')throw Error('Direct realtime speech route changed.');
  const {createVoiceSessionClient}=await import('@elizaos/ui/voice/voice-session-client');current();
  rendererId=connectionController.voiceRendererClientId();if(!rendererId)throw Error('The voice renderer is not bound.');
  let refreshTask:Promise<void>|undefined,refreshAgain=false;

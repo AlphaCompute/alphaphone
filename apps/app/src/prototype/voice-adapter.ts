@@ -1,4 +1,4 @@
-import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
+import {developmentCloudVoiceEnabled,developmentCloudRealtimeVoiceEnabled} from '../runtime/development-cloud-voice';
 import React from 'react';
 import {VoiceActivity} from './voice-activity';
 import {testMocksEnabled} from '../build-flags';
@@ -204,9 +204,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     stopLocalSpeechPlayback(); cleanup(true,!chat); chatDestination=chat;reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
     if(previousChat&&!chat)previousChat.shell.setState({chat:previousChat.chat});
     cloudMode = selected === 'cloud';
-    cloudConnectRequired = cloudMode && !developmentCloudVoiceEnabled && !(chat&&developmentCartesiaVoiceEnabled) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
+    cloudConnectRequired = cloudMode && !developmentCloudVoiceEnabled && !(chat&&(developmentCartesiaVoiceEnabled||developmentCloudRealtimeVoiceEnabled)) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
     deviceOnly = !cloudMode && (browserDevProfile || localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
-    driver = cloudMode && !cloudConnectRequired ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
+    driver = cloudMode && !cloudConnectRequired && !developmentCloudRealtimeVoiceEnabled ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     if (cloudConnectRequired) error = 'Sign in to Eliza Cloud to use voice.';
     onDeviceVoice = !cloudMode && (route === 'device' || browserDevProfile && route === 'agent') ? preparedLocal || createOnDeviceVoice() : null;
     if (route === 'manual') { cloudMode = false; deviceOnly = true; driver = deviceVoice; }
@@ -485,13 +485,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   async function beginConversation(){
     const chat=chatDestination;if(!chat||!chatCurrent())return;
     const token=generation;
-    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
+    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled&&!developmentCloudRealtimeVoiceEnabled&&!developmentCloudVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
     const controller=new AbortController();readiness=controller;conversationReviewRequired=false;conversationState={phase:'starting'};error='';refresh();
     const current=()=>{controller.signal.throwIfAborted();if(token!==generation||chatDestination!==chat||!chatCurrent())throw new DOMException('Voice conversation changed','AbortError');};
     try{
       current();const prepared=await chat.shell.prepareVoiceConversation(controller.signal);current();conversationPrepared=prepared;current();
       const previous=conversationVoice;conversationVoice=undefined;await stopping;await previous?.stop();current();
-      if(developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){
+      if(developmentCloudRealtimeVoiceEnabled||(developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled)){
         const direct=await developmentCartesiaConversation({binding:prepared.binding,assertCurrent:current,getUiContext:()=>{current();const context=chat.shell.voiceConversationContext(prepared.binding);return {uiViewPath:context.view==='home'?'/chat':'/'+(context.view==='workflows'?'automations':context.view),uiBrowserSurface:'native' as const,uiTimeZone:Intl.DateTimeFormat().resolvedOptions().timeZone};},onNavigate:async event=>{current();chat.shell.voiceSendTurnId=event.traceId;try{await chat.shell.applyRealtimeVoiceNavigation({...event,binding:prepared.binding,assertCurrent:current,navigation:navigationContinuation(chat,token,event.traceId)});current();}finally{if(chat.shell.voiceSendTurnId===event.traceId)chat.shell.voiceSendTurnId=undefined;}},onState:phase=>{if(token!==generation)return;if(phase==='listening'&&['thinking','speaking'].includes(conversationState.phase))conversationInterim='';conversationState={phase:phase==='connecting'?'starting':['listening','transcribing','thinking','speaking'].includes(phase)?phase as 'listening'|'transcribing'|'thinking'|'speaking':'idle'};refresh();},onPlaybackUnlockChange:()=>{if(token===generation)refresh();},onTranscript:text=>{if(token===generation){if(!conversationInterim)directInterimKnownMessages=new Set((chat.shell.S().msgs||[]).map((m:Bag)=>String(m.id)));conversationLastTranscript=text;conversationInterim=text;refresh();}},onError:failure=>{if(token===generation){error=failure.message;conversationState={phase:'error',error:failure};refresh();}}});
         current();conversationVoice=direct;await direct.start();current();return;
       }
@@ -616,7 +616,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   function conversationRecorderView(icons:Bag){
     const token=generation,chat=chatDestination,owned=()=>token===generation&&chatDestination===chat&&chatCurrent();
     const phase=conversationState.phase,live=phase==='listening',seconds=live?(Date.now()-started)/1000:(clip?.durationMs||0)/1000;
-    const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:developmentCartesiaVoiceEnabled?'Listening · Cartesia development. Replies use the local agent’s direct Cerebras provider.':(testMocksEnabled?(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.'):(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed on this device and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed on this device and sent to this conversation; matching replies play aloud.')),transcribing:testMocksEnabled?'Transcribing your speech with Eliza Cloud…':'Transcribing your speech on this device…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':testMocksEnabled?'Preparing the matching reply with Eliza Cloud…':'Preparing the matching reply on this device…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
+    const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:developmentCloudRealtimeVoiceEnabled?'Listening · Eliza Cloud realtime speech. The agent runs on this Mac.':developmentCartesiaVoiceEnabled?'Listening · Cartesia development. Replies use the local agent’s direct Cerebras provider.':(testMocksEnabled?(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.'):(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed on this device and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed on this device and sent to this conversation; matching replies play aloud.')),transcribing:testMocksEnabled?'Transcribing your speech with Eliza Cloud…':'Transcribing your speech on this device…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':testMocksEnabled?'Preparing the matching reply with Eliza Cloud…':'Preparing the matching reply on this device…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
     const recover=()=>{if(!owned()||mediaUnconfirmed)return;if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error'&&!conversationReviewRequired)void beginConversation();else cancelChat(false,true);};
     const awaiting=phase==='awaiting-user-input'||conversationReviewRequired;
     const reviewing=conversationReview,reviewOwned=()=>owned()&&conversationReview===reviewing;
@@ -624,7 +624,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       review:true,transcript:reviewing.text,transcriptDisabled:false,onTranscript:(event:Event)=>{if(!reviewOwned())return;reviewing.text=(event.target as HTMLTextAreaElement).value;refresh();},
       typeChoice:false,lastTranscript:'',lastReply:'',primaryLabel:'Send voice message',primaryIcon:icons.check,primaryDisabled:!reviewing.text.trim(),stop:()=>{if(reviewOwned()&&reviewing.text.trim())reviewing.settle(reviewing.text);},
       pauseLabel:'Discard voice message',pauseIcon:icons.x,toggle:()=>{if(reviewOwned())reviewing.settle(null);},discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
-    const direct=developmentCartesiaVoiceEnabled&&conversationVoice&&'setMicrophoneMuted' in conversationVoice?conversationVoice:undefined;
+    const direct=(developmentCartesiaVoiceEnabled||developmentCloudRealtimeVoiceEnabled)&&conversationVoice&&'setMicrophoneMuted' in conversationVoice?conversationVoice:undefined;
     // Voice assistant: the microphone stays on while Alpha speaks so speech interrupts it; Mute turns it off.
     const assistant=conversationLive&&conversationVoice===conversationLive?conversationLive:undefined;
     if(assistant){

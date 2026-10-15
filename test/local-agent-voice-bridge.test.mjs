@@ -10,7 +10,7 @@ if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['-
 const {createLocalAgentDevHandler,localAgentPathAllowed,LOCAL_VOICE_WS_PATH}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner=randomUUID(),agent=randomUUID(),conversation=randomUUID(),nonce='a'.repeat(43),voiceToken='b'.repeat(43),root='1'.repeat(64),paired='synthetic-owner-bearer';
 const BASE='/api/v1/voice/session';
-async function fixture(enabled=true){
+async function fixture(enabled=true,cloudRealtime=false,attestation={}){
  const directory=await mkdtemp(join(tmpdir(),'alpha-voice-bridge-')),tokenFile=join(directory,'token');await writeFile(tokenFile,root,{mode:0o600});
  const calls=[];let mode='ok',upgrades=0;const rendererHeaders=[];
  const runtimeSockets=new Set();const runtime=createServer();runtime.on('upgrade',(req,socket)=>{runtimeSockets.add(socket);socket.once('close',()=>runtimeSockets.delete(socket));upgrades++;if(req.url.startsWith('/ws?'))rendererHeaders.push({url:req.url,authorization:req.headers.authorization});assert.equal(req.headers.origin,runtimeOrigin);const accept=createHash('sha1').update(req.headers['sec-websocket-key']+'258EAFA5-E914-47DA-95CA-C5AB0DC85B11').digest('base64');socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);socket.on('error',()=>{});socket.on('data',data=>socket.write(data));});
@@ -22,12 +22,12 @@ async function fixture(enabled=true){
   assert.equal(input.headers.Authorization,'Bearer '+paired);
   if(path==='/api/auth/me')return Response.json({identity:{id:owner},access:{role:'OWNER'},session:{id:paired,expiresAt:Date.now()+600000}});
   if(mode==='error')return Response.json({code:'voice_owner_session_required'},{status:403});
-  if(path.endsWith('/health'))return Response.json({ready:true,agentId:agent,conversationId:mode==='wrong-health'?randomUUID():conversation});
+  if(path.endsWith('/health'))return Response.json({ready:true,agentId:agent,conversationId:mode==='wrong-health'?randomUUID():conversation,...attestation});
   if(path.endsWith('/consent'))return Response.json({consentNonce:nonce,expiresAt:Date.now()+120000});
   if(path.endsWith('/revoke'))return Response.json({revoked:true});
   const sessionId=randomUUID();return Response.json({sessionId,token:voiceToken,expiresAt:mode==='expired'?Date.now()-1:Date.now()+120000,wsUrl:`${mode==='foreign'?'ws://other.invalid':runtimeOrigin.replace('http:','ws:')}${BASE}/ws?sessionId=${sessionId}`,uplink:{codecs:['pcm16']},downlink:{codecs:['pcm16']},iceServers:null,...(mode==='secret'?{apiKey:'never-return'}:{})});
  };
- const handler=createLocalAgentDevHandler({origin:runtimeOrigin,tokenFile,request,cartesiaEnabled:enabled}),server=createServer(handler);server.on('upgrade',(req,socket,head)=>void handler.upgrade(req,socket,head));
+ const handler=createLocalAgentDevHandler({origin:runtimeOrigin,tokenFile,request,cartesiaEnabled:enabled,cloudRealtimeEnabled:cloudRealtime}),server=createServer(handler);server.on('upgrade',(req,socket,head)=>void handler.upgrade(req,socket,head));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
  const call=async input=>{const response=await fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({ownerId:owner,headers:{Accept:'application/json'},...input})});return {status:response.status,data:await response.json()};};
  return {call,calls,origin,tokenFile,mode:value=>{mode=value;},rendererHeaders,upgrades:()=>upgrades,close:async()=>{handler.closeVoice();for(const socket of runtimeSockets)socket.destroy();server.closeAllConnections();runtime.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>runtime.close(r))]);await rm(directory,{recursive:true,force:true});}};
@@ -94,3 +94,6 @@ test('renderer renewal issues a fresh single-use short ticket; expired and old-r
   assert.ok(f.rendererHeaders.every(row=>row.authorization===`Bearer ${paired}`));accepted.socket.destroy();
  }finally{Date.now=realNow;await f.close();}
 });
+
+test('Cloud realtime bridge shares owned voice/renderer controls but requires genuine route attestation',async()=>{const f=await fixture(false,true,{speechRoute:'cloud',speechProvider:'cartesia',providerAdmission:'at-session-start'});try{const result=await f.call({path:BASE+'/health?conversationId='+conversation,method:'GET'});assert.equal(result.data.status,200);assert.equal(JSON.parse(result.data.body).speechRoute,'cloud');const minted=await f.call(mint());assert.equal(minted.data.status,200);assert.match(JSON.parse(minted.data.body).wsUrl,/__alpha-local-voice/);}finally{await f.close();}});
+test('Cloud realtime rejects absent/direct provider metadata, and contradictory flags fail before enrollment',async()=>{for(const attestation of [{},{speechRoute:'direct',speechProvider:'cartesia',providerAdmission:'at-session-start'},{speechRoute:'cloud',speechProvider:'cartesia',providerAdmission:'deferred'}]){const f=await fixture(false,true,attestation);try{assert.notEqual((await f.call({path:BASE+'/health?conversationId='+conversation,method:'GET'})).data.status,200);}finally{await f.close();}}assert.throws(()=>createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile:'unused',cartesiaEnabled:true,cloudRealtimeEnabled:true}),/cannot both/);});

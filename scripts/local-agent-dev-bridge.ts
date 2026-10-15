@@ -33,10 +33,10 @@ function voiceControl(input:any):'health'|'consent'|'mint'|'revoke'|null {
  if(input.path===VOICE_PATH&&Object.keys(value).every(key=>['agentId','conversationId','consentNonce','transport'].includes(key))&&VOICE_AGENT_ID.test(value.agentId)&&VOICE_UUID.test(value.conversationId)&&typeof value.consentNonce==='string'&&/^[A-Za-z0-9_-]{43}$/.test(value.consentNonce)&&value.transport==='websocket')return 'mint';
  return null;
 }
-function voiceControlResponse(kind:string,input:any,status:number,raw:string,origin:URL){
+function voiceControlResponse(kind:string,input:any,status:number,raw:string,origin:URL,cloudRealtime=false){
  const value=JSON.parse(raw),now=Date.now(),exact=(keys:string[])=>value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).every(key=>keys.includes(key));
  if(status<200||status>=300){if(!exact(['code'])||typeof value.code!=='string'||!/^[a-z0-9_]{1,100}$/.test(value.code))throw Error('Invalid voice error');return value;}
- if(kind==='health'){if(!exact(['ready','agentId','conversationId'])||value.ready!==true||!VOICE_AGENT_ID.test(value.agentId)||value.conversationId!==input.path.split('=')[1])throw Error('Invalid voice health');}
+ if(kind==='health'){if(!exact(['ready','agentId','conversationId','speechRoute','speechProvider','providerAdmission'])||value.ready!==true||!VOICE_AGENT_ID.test(value.agentId)||value.conversationId!==input.path.split('=')[1])throw Error('Invalid voice health');if(cloudRealtime&&(value.speechRoute!=='cloud'||value.speechProvider!=='cartesia'||value.providerAdmission!=='at-session-start'))throw Error('Cloud realtime speech was not attested');if(!cloudRealtime&&value.speechRoute!==undefined&&value.speechRoute!=='direct')throw Error('Direct speech route changed');if(value.speechProvider!==undefined&&value.speechProvider!=='cartesia'||value.providerAdmission!==undefined&&value.providerAdmission!=='at-session-start')throw Error('Invalid voice provider attestation');}
  else if(kind==='consent'){if(!exact(['consentNonce','expiresAt'])||typeof value.consentNonce!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(value.consentNonce))throw Error('Invalid voice consent');}
  else if(kind==='revoke'){if(!exact(['revoked'])||value.revoked!==true)throw Error('Invalid voice revocation');}
  else{
@@ -58,7 +58,9 @@ export function localAgentPathAllowed(path:unknown):path is string {
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
-export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch;cartesiaEnabled?:boolean;cloudVoiceEnabled?:boolean}) {
+export function createLocalAgentDevHandler(options:{origin:string;tokenFile:string;request?:typeof fetch;cartesiaEnabled?:boolean;cloudVoiceEnabled?:boolean;cloudRealtimeEnabled?:boolean}) {
+  if(options.cartesiaEnabled&&options.cloudRealtimeEnabled)throw Error('Direct and Cloud realtime voice cannot both be enabled.');
+  const realtimeEnabled=options.cartesiaEnabled===true||options.cloudRealtimeEnabled===true;
   const origin=new URL(options.origin);
   if(origin.protocol!=='http:'||origin.hostname!=='127.0.0.1'||origin.pathname!=='/'||origin.search||origin.hash||origin.username||origin.password)
     throw new Error('The development agent must use an explicit 127.0.0.1 HTTP origin.');
@@ -99,9 +101,9 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       for await(const chunk of req){size+=chunk.length;if(size>AUDIO_ENVELOPE_LIMIT){fail(413,'Request too large');return;}chunks.push(Buffer.from(chunk));}
       const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
       const renderer=input.path==='/api/views/voice-channel';
-      if(renderer&&(!options.cartesiaEnabled||input.method!=='POST'||typeof input.ownerId!=='string'||typeof input.body!=='string'||Object.keys(input.headers??{}).some(key=>!['accept','content-type','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities'].includes(key.toLowerCase()))||input.stream||input.storage||input.audioBase64||input.requestId)){fail(400,'Invalid renderer channel request');return;}
+      if(renderer&&(!realtimeEnabled||input.method!=='POST'||typeof input.ownerId!=='string'||typeof input.body!=='string'||Object.keys(input.headers??{}).some(key=>!['accept','content-type','x-eliza-device-id','x-eliza-device-key','x-eliza-device-capabilities'].includes(key.toLowerCase()))||input.stream||input.storage||input.audioBase64||input.requestId)){fail(400,'Invalid renderer channel request');return;}
       let rendererId:string|undefined;if(renderer){const body=JSON.parse(input.body);if(!body||Object.keys(body).length!==1||!VOICE_UUID.test(body.clientId)){fail(400,'Invalid renderer identity');return;}rendererId=body.clientId;}
-      const voicePath=typeof input.path==='string'&&input.path.startsWith(VOICE_PATH),voice=voicePath&&options.cartesiaEnabled===true?voiceControl(input):null;
+      const voicePath=typeof input.path==='string'&&input.path.startsWith(VOICE_PATH),voice=voicePath&&realtimeEnabled?voiceControl(input):null;
       if(voicePath&&!voice){fail(400,'Unsupported development voice request');return;}
       const cloudAsr=input.path==='/api/asr/cloud',cloudTts=input.path==='/api/tts/cloud',cloudSpeech=cloudAsr||cloudTts;
       if(cloudSpeech&&options.cloudVoiceEnabled!==true){fail(400,'Developer Cloud speech is disabled');return;}
@@ -179,7 +181,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       let body=ttsAudio&&result.ok?JSON.stringify({audioBase64:bytes.toString('base64'),requestId:input.requestId,provider:cloudTts?'cartesia':'libelizainference-paradee',...(cloudTts?{route:'cloud'}:{}),contentType:cloudTts?'audio/mpeg':'audio/wav'}):bytes.toString('utf8');
       if(cloudAsr){const transcript=JSON.parse(body);if(typeof transcript.text!=='string'||transcript.text.length>16000){fail(502,'Invalid Cloud transcript');return;}body=JSON.stringify({text:transcript.text,provider:'cartesia',route:'cloud',requestId:input.requestId});}
       // The upstream machine session ID is its bearer token. Keep it on the host.
-      if(voice){try{if(readFileSync(options.tokenFile,'utf8').trim()!==token||credential.expiresAt<=Date.now())throw Error('Voice owner changed');const projected=voiceControlResponse(voice,input,result.status,body,origin);
+      if(voice){try{if(readFileSync(options.tokenFile,'utf8').trim()!==token||credential.expiresAt<=Date.now())throw Error('Voice owner changed');const projected=voiceControlResponse(voice,input,result.status,body,origin,options.cloudRealtimeEnabled===true);
         if(result.ok&&voice==='mint'){for(const [id,ticket]of tickets)if(ticket.expiresAt<=Date.now()){ticket.close?.();tickets.delete(id);}if(tickets.size>=32)throw Error('Voice capacity reached');tickets.set(projected.sessionId,{root:token,ownerId:credential.ownerId,expiresAt:projected.expiresAt,claimed:false});projected.wsUrl=`ws://${host}${LOCAL_VOICE_WS_PATH}?sessionId=${projected.sessionId}`;}
         if(result.ok&&voice==='revoke'){const id=input.path.split('/')[5];tickets.get(id)?.close?.();tickets.delete(id);}
         body=JSON.stringify(projected);}catch{if(result.status===401)pairing=undefined;throw Error('Invalid development voice response');}}
@@ -195,7 +197,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
     const reject=()=>{socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');};
     try{
       const host=req.headers.host,url=new URL(req.url,'http://localhost'),id=url.searchParams.get('sessionId'),ticket=id?tickets.get(id):undefined;
-      if(!options.cartesiaEnabled||!host||!/^127\.0\.0\.1:\d+$/.test(host)||req.headers.origin!==`http://${host}`||req.method!=='GET'||url.pathname!==(ticket?.clientId?LOCAL_RENDERER_WS_PATH:LOCAL_VOICE_WS_PATH)||url.search!==`?sessionId=${id}`||!id||!VOICE_UUID.test(id)||!ticket||ticket.claimed||ticket.expiresAt<=Date.now()||req.headers.upgrade?.toLowerCase()!=='websocket'||req.headers['sec-websocket-version']!=='13'||typeof req.headers['sec-websocket-key']!=='string'||!/^[A-Za-z0-9+/]{22}==$/.test(req.headers['sec-websocket-key'])){reject();return true;}
+      if(!realtimeEnabled||!host||!/^127\.0\.0\.1:\d+$/.test(host)||req.headers.origin!==`http://${host}`||req.method!=='GET'||url.pathname!==(ticket?.clientId?LOCAL_RENDERER_WS_PATH:LOCAL_VOICE_WS_PATH)||url.search!==`?sessionId=${id}`||!id||!VOICE_UUID.test(id)||!ticket||ticket.claimed||ticket.expiresAt<=Date.now()||req.headers.upgrade?.toLowerCase()!=='websocket'||req.headers['sec-websocket-version']!=='13'||typeof req.headers['sec-websocket-key']!=='string'||!/^[A-Za-z0-9+/]{22}==$/.test(req.headers['sec-websocket-key'])){reject();return true;}
       const stat=statSync(options.tokenFile);if(!stat.isFile()||(stat.mode&0o077)!==0)throw Error('Private runtime credential required');
       const currentRoot=readFileSync(options.tokenFile,'utf8').trim();for(const [key,entry]of tickets)if(entry.root!==currentRoot||entry.expiresAt<=Date.now()){entry.close?.();tickets.delete(key);}
       const credential=await session(currentRoot);
@@ -224,7 +226,7 @@ export function localAgentDevBridge():Plugin {
     if(process.env.VITE_LOCAL_AGENT!=='1')return;
     const tokenFile=process.env.ALPHA_LOCAL_AGENT_TOKEN_FILE;
     if(!tokenFile)throw new Error('ALPHA_LOCAL_AGENT_TOKEN_FILE is required for browser agent development.');
-    const handler=createLocalAgentDevHandler({origin:process.env.ALPHA_LOCAL_AGENT_ORIGIN||'http://127.0.0.1:47839',tokenFile,cartesiaEnabled:process.env.ALPHA_DEV_CARTESIA==='1',cloudVoiceEnabled:process.env.ALPHA_DEV_CLOUD_VOICE==='1'});
+    const handler=createLocalAgentDevHandler({origin:process.env.ALPHA_LOCAL_AGENT_ORIGIN||'http://127.0.0.1:47839',tokenFile,cartesiaEnabled:process.env.ALPHA_DEV_CARTESIA==='1',cloudVoiceEnabled:process.env.ALPHA_DEV_CLOUD_VOICE==='1',cloudRealtimeEnabled:process.env.ALPHA_DEV_CLOUD_REALTIME_VOICE==='1'});
     const upgrade=(req:IncomingMessage,socket:Duplex,head:Buffer)=>{if(req.url?.startsWith(LOCAL_VOICE_WS_PATH)||req.url?.startsWith(LOCAL_RENDERER_WS_PATH))void handler.upgrade(req,socket,head);};
     server.httpServer?.on('upgrade',upgrade);server.httpServer?.once('close',()=>{server.httpServer?.off('upgrade',upgrade);handler.closeVoice();});
     server.middlewares.use((req,res,next)=>{if(req.url!==LOCAL_AGENT_BRIDGE_PATH){next();return;}void handler(req,res);});
