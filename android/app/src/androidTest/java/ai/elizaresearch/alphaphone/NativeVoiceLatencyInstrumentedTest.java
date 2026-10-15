@@ -260,6 +260,7 @@ public final class NativeVoiceLatencyInstrumentedTest {
    }
    public long captureTimeNs(long frame){return VoiceLatencyTrials.frameTimeNs(start,0,frame,AlphaLiveVoiceCapture.SAMPLE_RATE);}
    public String clock(){return "synthetic-feed";}
+   public void requestStop(){closed=true;}
    public void close(){closed=true;}
   };
  }

@@ -253,10 +253,11 @@ try {
   for(const [failure,expected] of [
     [{kind:'insufficient_credits',message:'Synthetic upstream text',transient:false},/^Eliza Cloud declined this AI request for your account's billing\. Check your account in Settings\. Alpha Phone did not retry your message, and nothing is purchased automatically\./],
     [{kind:'rate_limited',message:'Synthetic upstream text',transient:true},/^The AI request rate limit was reached\. Wait a moment before sending again\. Alpha Phone did not retry your message\.$/],
+    [{kind:'rate_limited',message:'Synthetic upstream text',transient:true,rateLimit:{kind:'rate_limited',retryAfterMs:2400,planId:'synthetic',scope:'burst'}},/^The AI request rate limit was reached\. Try again in about 3 seconds\. Alpha Phone did not retry your message\.$/],
     [{kind:'provider_issue',message:'Synthetic upstream text',transient:true},/^The agent’s model provider could not be reached; nothing was retried\.$/],
   ]){
     const before=remote.failureReplies||0;remote.failureReply=failure;
-    const refused=await controller.send('Refused turn',{view:'home',revision:13,sensitive:false},'refused-'+failure.kind,new AbortController().signal).then(()=>null,error=>error);
+    const refused=await controller.send('Refused turn',{view:'home',revision:13,sensitive:false},'refused-'+failure.kind+(failure.rateLimit?'-live-wait':''),new AbortController().signal).then(()=>null,error=>error);
     assert.ok(refused,'a refused turn rejects: '+failure.kind);assert.match(refused.message,expected,failure.kind);
     assert.equal(remote.failureReplies,before+1,'the refused turn is posted once and never retried');
   }

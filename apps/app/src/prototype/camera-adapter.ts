@@ -583,7 +583,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
         if (disposed) return;
         captures = [item, ...captures.filter(row => row.id !== item.id)]; loaded = false;
         api?.setView('photos', { nativeCaptureRevision: item.id });
-        message('');
+        message(browserMode?'Video saved in this app. Clearing app data removes saved videos.':'');
       } catch { if (!disposed) message('Video could not be finalized. No successful recording was confirmed.'); }
       finally { finalizing = undefined; }
     })();
@@ -639,7 +639,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       loaded = false;
       owner.setView('photos', { nativeCaptureRevision: item.id });
       if (token === epoch && active()) {
-        message('');
+        message(browserMode?'Photo saved in this app. Clearing app data removes saved photos.':'');
       }
     } catch { if (token === epoch && active()) message('Photo could not be saved. No successful capture was confirmed.'); }
     finally { capturing = false; }

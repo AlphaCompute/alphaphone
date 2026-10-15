@@ -5,8 +5,10 @@ import type { VerifiedSession, ChatChannel } from './alpha-client';
 import { conversationRoomId, messagePageQuery, turnAbortOutcome, turnAbortPath, type MessagePage, type RemoteChatReply, type RemoteConversation, type TurnAbortOutcome } from './remote-protocol';
 import { readLocalAgentStream } from './local-agent-stream';
 import { streamNativeAgent, type NativeStreamPort } from './local-agent-native-stream';
+import { subscribeNativeVoiceEvents, type NativeVoiceEventPort } from './local-agent-native-events';
 
 export interface LocalAgentBridge {
+  subscribeVoiceEvents?(ownerId:string,listener:(envelope:unknown)=>void):()=>void;
   start(input?:{requestId:string}): Promise<unknown>;
   cancelStart?(input:{requestId:string}):Promise<unknown>;
   stop?():Promise<unknown>;
@@ -21,10 +23,10 @@ export interface LocalAgentBridge {
   request(input: { path: string; audioBase64?:string;requestId?:string;ownerId?:string; method: AutomationsMethod; headers: Record<string,string>; body?: string; timeoutMs: number }, signal?:AbortSignal): Promise<{status:number;body?:string}>;
   stream?(input:{path:string;ownerId:string;headers:Record<string,string>;body:string},signal:AbortSignal,onText:(text:string)=>void,onReplyReady?:(results:readonly unknown[]|undefined)=>void):Promise<RemoteChatReply>;
 }
-const native = registerPlugin<LocalAgentBridge & NativeStreamPort>('Agent');
+const native = registerPlugin<Omit<LocalAgentBridge, 'subscribeVoiceEvents'> & NativeStreamPort & NativeVoiceEventPort>('Agent');
 // Capacitor proxies synthesize functions for unknown methods. Do not use that
 // proxy to feature-detect streaming before the native IPC adapter implements it.
-const nativeBridge:LocalAgentBridge={start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText,onReplyReady)=>streamNativeAgent(native,input,signal,onText,onReplyReady)};
+const nativeBridge:LocalAgentBridge={subscribeVoiceEvents:(ownerId,listener)=>subscribeNativeVoiceEvents(native,ownerId,listener),start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText,onReplyReady)=>streamNativeAgent(native,input,signal,onText,onReplyReady)};
 // The host bridge at /__alpha-local-agent exists only on the development server
 // with ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). This
 // module is also imported by Node contract tests, where import.meta.env is absent.
@@ -80,6 +82,15 @@ export class LocalAgentProtocol {
   session: VerifiedSession | null = null;
   private generation = 0;
   private streams = new Set<AbortController>();
+  private voiceSubscriptions = new Set<()=>void>();
+  subscribeVoiceEvents(listener:(envelope:unknown)=>void):()=>void {
+    const session=this.session,generation=this.generation;
+    if(!session||!this.bridge.subscribeVoiceEvents)return ()=>{};
+    let active=true;
+    const detach=this.bridge.subscribeVoiceEvents(session.ownerId,envelope=>{if(active&&session===this.session&&generation===this.generation)listener(envelope);});
+    const close=()=>{if(!active)return;active=false;this.voiceSubscriptions.delete(close);detach();};
+    this.voiceSubscriptions.add(close);return close;
+  }
   deviceHeaders:Record<string,string>={};
   constructor(private bridge:LocalAgentBridge = Capacitor.isNativePlatform() ? nativeBridge : browserBridge ?? unavailableBridge) {}
   async request(path:string, body:unknown|undefined, signal:AbortSignal, headers:Record<string,string> = {}, method:AutomationsMethod = body===undefined?'GET':'POST'):Promise<any> {
@@ -183,7 +194,7 @@ export class LocalAgentProtocol {
       return new Blob([bytes],{type:'audio/wav'});
     }finally{this.streams.delete(controller);}
   }
-  async disconnect() { this.generation++; this.session=null; for(const controller of this.streams)controller.abort();this.streams.clear(); }
+  async disconnect() { for(const close of this.voiceSubscriptions)close();this.voiceSubscriptions.clear();this.generation++; this.session=null; for(const controller of this.streams)controller.abort();this.streams.clear(); }
   private async json(path:string,body:unknown|undefined,signal?:AbortSignal) {
     if(!this.session)throw new Error('Start the local agent first.');
     return record(await this.request(path,body,signal||new AbortController().signal));

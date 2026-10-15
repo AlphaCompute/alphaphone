@@ -1546,10 +1546,10 @@ export const connectionController = {
   getResidentReadingBinding(){return active?.kind==='resident'&&state.session?{execution:'device' as const,ownerId:state.session.ownerId,sessionId:state.session.sessionId}:null;},
   getBrowserSpeechAgent(){return active?.kind==='resident'&&state.session&&active.remote.browserSpeechAvailable?active.remote:null;},
   /** The resident agent's owner-authenticated request path, for its on-device live ASR route (live-voice.ts). */
-  getResidentLiveVoice():{sessionId:string;request:(path:string,body:unknown,signal:AbortSignal)=>Promise<unknown>}|null{
+  getResidentLiveVoice():{sessionId:string;subscribe:(listener:(envelope:unknown)=>void)=>()=>void;request:(path:string,body:unknown,signal:AbortSignal)=>Promise<unknown>}|null{
     const selected=active;if(selected?.kind!=='resident'||!state.session)return null;
     const remote=selected.remote,sessionId=state.session.sessionId;
-    return {sessionId,request:(path,body,signal)=>remote.request(path,body,signal,{},body===undefined?'GET':'POST')};
+    return {sessionId,subscribe:listener=>remote.subscribeVoiceEvents(listener),request:(path,body,signal)=>remote.request(path,body,signal,{},body===undefined?'GET':'POST')};
   },
   async refreshDeveloperVoiceHistory(binding:VoiceConversationBinding,signal:AbortSignal){if(!browserLocalAgentEnabled||active?.kind!=='resident'||!this.voiceConversationCurrent(binding))throw Error('Developer voice conversation changed');await restoreConversationHistory(binding.conversationId,signal,true);if(!this.voiceConversationCurrent(binding))throw Error('Developer voice conversation changed');},
   getPairedVoiceBinding(): { origin: string; ownerId: string; expiresAt: number; sessionId: string } | null {

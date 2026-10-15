@@ -16,7 +16,7 @@ import type { AssistantCapture, AssistantListenHandlers } from './voice-assistan
  * Only VAD segment audio leaves the app process, and only to the on-device agent of the owner who
  * started the capture: the transport refuses every request once the resident session changed.
  * Nothing is stored or logged. Interim partials appear only when the agent transport carries an
- * event stream; the Android agent IPC does not yet, so finals alone are delivered there.
+ * event stream; Android uses an ephemeral voice-only feed bound to the resident owner.
  */
 type FramesEvent = { captureId?: unknown; frames?: unknown; vad?: unknown; peak?: unknown };
 type EndedEvent = { captureId?: unknown; error?: unknown };
@@ -55,14 +55,13 @@ export async function nativeLiveVoiceReady(signal: AbortSignal): Promise<boolean
   }
 }
 
-type ResidentEvents = { subscribe?: (listener: (envelope: unknown) => void) => () => void };
 /**
  * The live ASR transport of the current owner's resident agent, or null. Requests after the
  * resident session changed are refused, so audio never reaches another owner's agent. When the
  * resident connection exposes an agent event stream (`subscribe`), interim partials flow through it.
  */
 export function residentLiveTransport(): LiveVoiceTransport | null {
-  const resident = connectionController.getResidentLiveVoice() as (ReturnType<typeof connectionController.getResidentLiveVoice> & ResidentEvents) | null;
+  const resident = connectionController.getResidentLiveVoice();
   if (!resident) return null;
   const owner = resident.sessionId;
   const same = () => connectionController.getResidentLiveVoice()?.sessionId === owner;
@@ -133,12 +132,12 @@ export async function openNativeLiveStream(input: {
   let echoCancelled = false;
   try {
     input.signal.throwIfAborted();
+    input.signal.addEventListener('abort', abort, { once: true });
     const result = await plugin.startLiveCapture({ captureId, echoCancel: input.echoCancel });
     if (result?.captureId !== captureId || result.sampleRate !== 16000) throw Error('Live capture identity changed.');
     echoCancelled = input.echoCancel && result.echoCancelled === true;
     input.signal.throwIfAborted();
-  } catch (error) { stream.cancel(); await stopNative(); throw error; }
-  input.signal.addEventListener('abort', abort, { once: true });
+  } catch (error) { input.signal.removeEventListener('abort', abort); stream.cancel(); await stopNative(); throw error; }
   const startedAt = Date.now();
   return {
     startedAt,

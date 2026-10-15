@@ -344,7 +344,7 @@ test('sentence splitting keeps the reply text and avoids tiny fragments', () => 
   assert.throws(() => new VoiceAssistantSession({conversationId: 'r', assertCurrent() {}, listen: async () => ({close: async () => {}, cancel() {}}), send: async () => ({}), speak: async () => {}}, {timing: {shortGapMs: 900, longGapMs: 300}}), RangeError);
 });
 
-test('Android (no event stream): consecutive failed segments each yield one null, even when the next speech starts before the 502', async () => {
+test('Final-only fallback: consecutive failed segments each yield one null, even when the next speech starts before the 502', async () => {
   const pending = [];
   const transport = {post: body => body.vad?.some(edge => edge.type === 'speech-end') ? new Promise((_, reject) => pending.push(() => reject(Object.assign(Error('Live ASR error'), {status: 502, data: {code: 'ASR_FAILED'}})))) : Promise.resolve({ok: true})};
   const results = [];
