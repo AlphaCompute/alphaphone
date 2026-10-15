@@ -2,13 +2,13 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "90ce37dfa0434d7c672ee8c43f364bb31bf3bd36",
+  "baseCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
   "head": "221a0bc4e0d501a670943d274f10d7818357ada4",
   "recordedAt": "2026-10-15",
   "command": "gh api repos/elizaOS/eliza/compare/develop...221a0bc4e0d501a670943d274f10d7818357ada4",
   "status": "diverged",
   "aheadBy": 5,
-  "behindBy": 66,
+  "behindBy": 72,
   "mergeBase": "968348d792d3d36df129bc53bd85cebed47d0830",
   "pinOnlyCommits": [
     {
@@ -340,12 +340,13 @@
       "mergedAt": "2026-10-15T03:21:11Z",
       "mergeCommit": "c0145e3090cefe3fb87c22963fb5c15b76945162",
       "head": "adef3e4e3e7ca48e89a5a858404a3349269acac7"
+    },
+    {
+      "number": 36309,
+      "state": "merged",
+      "mergedAt": "2026-10-15T03:57:10Z",
+      "mergeCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
+      "head": "5089d99262639d4ff41dfcdf8fde83a925e7d89c"
     }
-  ],
-  "pendingPullRequest": {
-    "number": 36309,
-    "url": "https://github.com/elizaOS/eliza/pull/36309",
-    "state": "open",
-    "note": "Develop-based equivalent of isolated P-56 allowance commits 3345eeacc4 and 221a0bc4e0; native source and dependency lock unchanged."
-  }
+  ]
 }
