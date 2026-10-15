@@ -298,3 +298,37 @@ test('Maps capability discovery is a bare authenticated read, not a location or 
   assert.equal(f.calls.length,dispatched);
  }finally{await f.close();}
 });
+
+test('Maps POST data routes forward one bounded request identity and reject foreign headers, routes and bodies',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({ok:true}));
+  const requestId=randomUUID(),base={url:'https://api.eliza.app/api/v1/maps/routes',method:'POST',credentialReference:reference,headers:{'Idempotency-Key':requestId},body:JSON.stringify({from:{latitude:1,longitude:2},to:{latitude:3,longitude:4}})};
+  const call=change=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{...base,...change}});
+  for(const route of ['geocode','reverse','places/search','places/details','routes']){
+   const count=f.calls.length;assert.equal((await call({url:'https://api.eliza.app/api/v1/maps/'+route})).status,200);assert.equal(f.calls.length,count+1);
+   const sent=f.calls.at(-1).input;assert.equal(new Headers(sent.headers).get('Idempotency-Key'),requestId);assert.equal(new Headers(sent.headers).get('Authorization'),'Bearer '+secret);assert.equal(sent.body,base.body);
+  }
+  const count=f.calls.length;
+  for(const change of [
+   {url:'https://api.eliza.app/api/v1/maps/routes?latitude=1'}, {url:'https://api.eliza.app/api/v1/maps/routes/'},
+   {url:'https://api.eliza.app/api/v1/maps/capabilities'}, {url:'https://api.eliza.app/api/v1/user'}, {method:'GET'}, {method:'DELETE'},
+   {headers:{}}, {headers:{'Idempotency-Key':'x'.repeat(129)}}, {headers:{'Idempotency-Key':'bad\nvalue'}},
+   {headers:{'Idempotency-Key':requestId,'idempotency-key':requestId}}, {headers:{'Idempotency-Key':requestId,Authorization:'Bearer attacker'}},
+   {headers:{'Idempotency-Key':1}}, {body:'null'}, {body:'[]'}, {body:'not JSON'}, {body:{}}, {body:JSON.stringify({query:'x'.repeat(128*1024)})},
+   {credentialReference:'browser-cloud-reference:'+randomUUID()},
+  ])assert.notEqual((await call(change)).status,200,JSON.stringify(change).slice(0,160));
+  assert.equal(f.calls.length,count,'refusals never dispatch');
+  f.setResponse(async()=>{throw Error('Synthetic unknown acknowledgement');});
+  assert.notEqual((await call({})).status,200);assert.equal(f.calls.length,count+1,'unknown outcome is not automatically retried');
+ }finally{await f.close();}
+});
+
+test('Maps data returning after a Cloud owner switch is discarded',async()=>{
+ const f=await fixture();let release;try{
+  let enter;const entered=new Promise(r=>{enter=r}),held=new Promise(r=>{release=r});
+  f.setResponse(async()=>{enter();await held;return Response.json({places:[{name:'Previous owner result'}]});});
+  const pending=f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/v1/maps/places/search',method:'POST',credentialReference:reference,headers:{'Idempotency-Key':randomUUID()},body:JSON.stringify({query:'coffee'})}});
+  await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
+  const result=await pending;assert.notEqual(result.status,200);assert.equal(JSON.stringify(result).includes('Previous owner result'),false);
+ }finally{release?.();await f.close();}
+});

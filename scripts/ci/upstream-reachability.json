@@ -2,15 +2,36 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "172e072c623c7b08b66f120020997e5f90f4de7a",
-  "head": "968348d792d3d36df129bc53bd85cebed47d0830",
+  "baseCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
+  "head": "221a0bc4e0d501a670943d274f10d7818357ada4",
   "recordedAt": "2026-10-15",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...968348d792d3d36df129bc53bd85cebed47d0830",
-  "status": "behind",
-  "aheadBy": 0,
-  "behindBy": 15,
+  "command": "gh api repos/elizaOS/eliza/compare/develop...221a0bc4e0d501a670943d274f10d7818357ada4",
+  "status": "diverged",
+  "aheadBy": 5,
+  "behindBy": 72,
   "mergeBase": "968348d792d3d36df129bc53bd85cebed47d0830",
-  "pinOnlyCommits": [],
+  "pinOnlyCommits": [
+    {
+      "sha": "2d1c8a9071dc5db1db253b940e4eba350e389861",
+      "subject": "Bind Maps navigation to authenticated phone turns"
+    },
+    {
+      "sha": "c70652190ad3a1cbdee6888bf73d665aa6164577",
+      "subject": "fix(maps): require string relay phases and result fields"
+    },
+    {
+      "sha": "1a5a05db0c80dceeff528d3b70c1724cf84ea153",
+      "subject": "Test nonstring Maps protocol fields"
+    },
+    {
+      "sha": "3345eeacc4dcbf4c18ee4dea4428e4e123f7ceaf",
+      "subject": "Enforce a separate durable Maps request allowance without monetary charges"
+    },
+    {
+      "sha": "221a0bc4e0d501a670943d274f10d7818357ada4",
+      "subject": "Require selected shared Maps burst and sustained policy"
+    }
+  ],
   "pullRequests": [
     {
       "number": 34453,
@@ -312,6 +333,20 @@
       "mergedAt": "2026-10-14T21:44:16Z",
       "mergeCommit": "f7f3765d0a9cb8414f6c3a472446cff77e6fb9c7",
       "head": "claude/alpha-ipc-events"
+    },
+    {
+      "number": 36303,
+      "state": "merged",
+      "mergedAt": "2026-10-15T03:21:11Z",
+      "mergeCommit": "c0145e3090cefe3fb87c22963fb5c15b76945162",
+      "head": "adef3e4e3e7ca48e89a5a858404a3349269acac7"
+    },
+    {
+      "number": 36309,
+      "state": "merged",
+      "mergedAt": "2026-10-15T03:57:10Z",
+      "mergeCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
+      "head": "5089d99262639d4ff41dfcdf8fde83a925e7d89c"
     }
   ]
 }

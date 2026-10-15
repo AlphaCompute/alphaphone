@@ -22,10 +22,10 @@ export type AgentPlaceRef = Readonly<{
  coordinateBinding?: Readonly<{ provider: 'coordinates'; providerPlaceId: string; coordinates: Coordinate }>;
 }>;
 export interface MapsDeviceNavigation {
- select(place: AgentPlaceRef): Promise<MapsDeviceNavigationStatus>;
- start(request: { destination: AgentPlaceRef; travelMode: TravelMode }): Promise<MapsDeviceNavigationStatus>;
- reroute(): Promise<MapsDeviceNavigationStatus>;
- stop(): Promise<MapsDeviceNavigationStatus>;
+ select(place: AgentPlaceRef, signal?: AbortSignal): Promise<MapsDeviceNavigationStatus>;
+ start(request: { destination: AgentPlaceRef; travelMode: TravelMode }, signal?: AbortSignal): Promise<MapsDeviceNavigationStatus>;
+ reroute(signal?: AbortSignal): Promise<MapsDeviceNavigationStatus>;
+ stop(signal?: AbortSignal): Promise<MapsDeviceNavigationStatus>;
 }
 
 /** plugin-maps `MapsErrorCode` values a relay reports for a refusal from this phone. */
@@ -108,16 +108,20 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
  retire() { this.retired = true; this.request?.abort(); this.request = undefined; this.released(); }
 
  /** One agent request at a time; a newer request (or Stop) cancels the older one. */
- private begin() {
+ private begin(signal?: AbortSignal) {
+  if (signal?.aborted) throw unavailable('The Maps request was cancelled on the phone.');
   this.request?.abort();
   const request = new AbortController();
   this.request = request;
+  const cancel = () => request.abort();
+  signal?.addEventListener('abort', cancel, { once: true });
   const check = () => {
    if (this.retired || !this.owner.current()) throw new DeviceNavigationFailure('MAPS_PROVIDER_CHANGED', 'The Maps account on the phone changed. Nothing was changed on the map.');
    if (request.signal.aborted) throw unavailable('The Maps request was cancelled on the phone.');
   };
-  check();
-  return { signal: request.signal, check, done: () => { if (this.request === request) this.request = undefined; } };
+  const done = () => { signal?.removeEventListener('abort', cancel); if (this.request === request) this.request = undefined; };
+  try { check(); } catch (error) { done(); throw error; }
+  return { signal: request.signal, check, done };
  }
 
  /** Converts an agent place into a phone place under this installation's provider. */
@@ -158,8 +162,8 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
   throw unavailable('The place could not be shown on the phone.');
  }
 
- async select(value: AgentPlaceRef): Promise<MapsDeviceNavigationStatus> {
-  const run = this.begin();
+ async select(value: AgentPlaceRef, signal?: AbortSignal): Promise<MapsDeviceNavigationStatus> {
+  const run = this.begin(signal);
   try {
    const { place, resolveDetails } = this.destination(value);
    // Selecting another place would replace the route of active guidance; the user ends it first.
@@ -177,8 +181,8 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
   * begins from an agent request: the phone reports awaiting-confirmation, or
   * awaiting-location when it has no fresh, precise enough fix.
   */
- async start(request: { destination: AgentPlaceRef; travelMode: TravelMode }): Promise<MapsDeviceNavigationStatus> {
-  const run = this.begin();
+ async start(request: { destination: AgentPlaceRef; travelMode: TravelMode }, signal?: AbortSignal): Promise<MapsDeviceNavigationStatus> {
+  const run = this.begin(signal);
   try {
    const travelMode = request?.travelMode;
    if (!MODES.includes(travelMode)) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'Travel mode must be drive, walk, bicycle, or transit.');
@@ -217,8 +221,8 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
   * "Reroute from here". Without a fresh, precise fix the current route is kept and the
   * agent is told so; a stale fix is never a route origin.
   */
- async reroute(): Promise<MapsDeviceNavigationStatus> {
-  const run = this.begin();
+ async reroute(signal?: AbortSignal): Promise<MapsDeviceNavigationStatus> {
+  const run = this.begin(signal);
   try {
    const active = this.surface.guidance();
    if (!active) throw new DeviceNavigationFailure('MAPS_INVALID_INPUT', 'No navigation is active on the phone.');
@@ -239,8 +243,8 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
  }
 
  /** Ends guidance and the location watch. Stop is idempotent and cancels a pending request. */
- async stop(): Promise<MapsDeviceNavigationStatus> {
-  const run = this.begin();
+ async stop(signal?: AbortSignal): Promise<MapsDeviceNavigationStatus> {
+  const run = this.begin(signal);
   try {
    const active = this.surface.guidance();
    await this.surface.stop();

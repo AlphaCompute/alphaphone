@@ -542,11 +542,11 @@ export class CloudProtocol {
     return url.href;
   }
   /** Reject responses from an account that changed while its request was in flight. */
-  private async accountRequest(path:string,signal:AbortSignal,body?:unknown):Promise<unknown> {
+  private async accountRequest(path:string,signal:AbortSignal,body?:unknown,headers?:Record<string,string>):Promise<unknown> {
     const credential=await this.credentials.read(this.environment);signal.throwIfAborted();
     if(!credential)throw new CloudProtocolError('credentials-missing');
     const binding=JSON.stringify([credential.credentialId,credential.credentialReference,credential.token,credential.userId,credential.organizationId]);
-    const data=await this.requestData(path,signal,{authenticated:true,credentialId:credential.credentialId,body});
+    const data=await this.requestData(path,signal,{authenticated:true,credentialId:credential.credentialId,body,headers});
     const current=await this.credentials.read(this.environment);signal.throwIfAborted();
     if(!current||JSON.stringify([current.credentialId,current.credentialReference,current.token,current.userId,current.organizationId])!==binding)throw new CloudProtocolError('account-changed');
     return data;
@@ -555,7 +555,7 @@ export class CloudProtocol {
    * travel only in the JSON body; capabilities is a bare read. GPS and navigation stay on the phone. */
   async mapsRequest(route:CloudMapsRoute,signal:AbortSignal,body?:Record<string,unknown>):Promise<Record<string,unknown>> {
     if(!['capabilities','geocode','reverse','places/search','places/details','routes'].includes(route)||(route==='capabilities')!==(body===undefined))throw new CloudProtocolError('invalid-response');
-    return object(await this.accountRequest(`/api/v1/maps/${route}`,signal,body));
+    return object(await this.accountRequest(`/api/v1/maps/${route}`,signal,body,body===undefined?undefined:{'Idempotency-Key':crypto.randomUUID()}));
   }
   async googleCalendars(grantId:string,signal:AbortSignal):Promise<GoogleCalendarSummary[]> {
     const params=new URLSearchParams({side:'owner',grantId:uuid(grantId)});

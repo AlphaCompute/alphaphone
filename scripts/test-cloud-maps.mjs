@@ -123,3 +123,9 @@ console.log('PASS Cloud Maps device provider: coverage, search, details, route, 
  await assert.rejects(request('routes', new AbortController().signal, { from: CASINO, to: PORT }), error => error.code === 'unauthorized');
  assert.equal(calls, 1, 'the new account received no retained coordinates');
 }
+
+assert.equal(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).code,'unconfigured');
+assert.match(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).message,/not available yet/);
+assert.match(cloudMapsFailure(cloudError(503,'maps_admission_unknown')).message,/not retry automatically/);
+assert.match(cloudMapsFailure(cloudError(409,'maps_request_already_admitted')).message,/not retry automatically/);
+assert.match(cloudMapsFailure(cloudError(429,'allowance_exhausted')).message,/used your Maps allowance/);

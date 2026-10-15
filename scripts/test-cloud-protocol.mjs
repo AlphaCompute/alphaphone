@@ -22,6 +22,7 @@ let mode = 'ok', agentReads = 0, polls = 0, saved = null;
 // Order of the replaced key's revocation and the new key's storage.
 const replacement = [];
 const runtimeTargets = [];
+const mapsRequests = [];
 const mail = { externalId: 'mail/id', threadId: 'thread', subject: 'Synthetic subject', from: 'Fixture sender', fromEmail: 'sender@example.invalid', to: ['owner@example.invalid'], snippet: 'Synthetic preview', receivedAt: '2026-09-29T12:00:00Z', isUnread: true };
 const grant = 'grant/one';
 const formattedMail = '<table><tr><td><img src="https://images.example.invalid/logo.png">Formatted mail</td></tr></table>';
@@ -52,6 +53,11 @@ const server = http.createServer(async (req, res) => {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
       if (req.url === '/api/v1/eliza/agents') agentReads++;
       if (mode === 'outage') { status = 503; data = {}; }
+      else if (req.url.startsWith('/api/v1/maps/')) {
+       mapsRequests.push({ path:req.url,method:req.method,key:req.headers['idempotency-key'],body });
+       if(req.method==='POST') assert.match(req.headers['idempotency-key'],/^[a-f0-9-]{36}$/); else assert.equal(req.headers['idempotency-key'],undefined);
+       status=mode==='maps-unknown'?503:200;data=mode==='maps-unknown'?{code:'maps_admission_unknown'}:{};
+      }
       else if (req.url === '/api/v1/user') data = { success: true, data: { id, organization_id: sessionId } };
       else if (req.url.endsWith('/api/conversations') && req.method === 'POST') data = { conversation: { id: conversationId, title: body.title } };
       else if (req.url.endsWith('/api/conversations')) data = { conversations: [{ id: conversationId, title: 'Fixture' }] };
@@ -153,6 +159,12 @@ try {
   const signedIn = await client.verifyEmailSignIn(started.attemptId, '123456', signal());
   assert.deepEqual({ ...signedIn, expiresAt: typeof signedIn.expiresAt }, { status: 'authenticated', environment: 'production', expiresAt: 'number', accountCreated: false });
   assert.equal(saved.token, token); assert.equal(opened.length, 0, 'in-app sign-in opens no Eliza Cloud page');
+  await client.mapsRequest('capabilities',signal());
+  await client.mapsRequest('places/search',signal(),{query:'Synthetic place'});
+  await client.mapsRequest('places/search',signal(),{query:'Synthetic place'});
+  assert.equal(mapsRequests.length,3);assert.notEqual(mapsRequests[1].key,mapsRequests[2].key);
+  mode='maps-unknown';await assert.rejects(client.mapsRequest('routes',signal(),{from:{latitude:1,longitude:2}}),e=>e.code==='http'&&e.status===503);
+  assert.equal(mapsRequests.length,4,'an unknown admission never retries');mode='ok';
   assert.equal((await client.identity(signal())).userId, id);
   assert.equal((await agents.listAgents(signal()))[0].id, id);
   assert.equal((await agents.listConversations(id, signal()))[0].id, conversationId);
