@@ -305,6 +305,21 @@ test('revocation to no plan stops refreshing, and a rejected sign-in stops the r
   assert.equal(legacyChecks, 1);
 });
 
+test('live resident terminal rate limits retain the provider wait while replays do not invent one', () => {
+  // ChatTerminalFailure at pinned Eliza 968348d792d3; both JSON and SSE use this payload.
+  const terminalFailure = {kind: 'rate_limited', message: 'Provider wait', transient: true,
+    rateLimit: {kind: 'rate_limited', retryAfterMs: 2400, planId: 'pro', scope: 'burst'}};
+  for (const source of [{failureKind: 'rate_limited', terminalFailure}, {error: {terminalFailure}}]) {
+    const limit = readServiceLimit(source, NOW);
+    assert.deepEqual(limit, {kind: 'rate-limited', retryAfterMs: 2400, resetsAt: null});
+    assert.match(serviceLimitMessage(limit, NOW), /Try again in about 3 seconds/);
+    assert.match(serviceLimitMessage(limit, NOW), /did not retry your message/);
+  }
+  const {rateLimit, ...replay} = terminalFailure;
+  assert.equal(readServiceLimit({terminalFailure: replay}, NOW).retryAfterMs, null);
+  assert.equal(readServiceLimit({terminalFailure: {...terminalFailure, rateLimit: {...rateLimit, retryAfterMs: 90000000}}}, NOW).retryAfterMs, null);
+});
+
 test('Cloud limit refusals carry retry information and never imply a purchase or an automatic retry', () => {
   const rate = readServiceLimit({code: 'http', status: 429, data: {error: 'rate_limited', retryAfterSeconds: 42}}, NOW);
   assert.deepEqual(rate, {kind: 'rate-limited', retryAfterMs: 42000, resetsAt: null});
@@ -327,8 +342,7 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   const bare = readServiceLimit({status: 402, data: {}}, NOW);
   assert.equal(bare.kind, 'billing-refused');
   assert.doesNotMatch(serviceLimitMessage(bare, NOW), /plan/i);
-  // The pinned upstream reply shape (contracts chat.ts ChatTerminalFailure; chat-routes
-  // terminalFailureContentValue keeps only kind, message, transient and code).
+  // Legacy replies and history without a live provider wait remain supported.
   const upstreamCredits = readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'Synthetic upstream message', transient: false}}, NOW);
   assert.deepEqual(upstreamCredits, {kind: 'billing-refused', retryAfterMs: null, resetsAt: null});
   assert.match(serviceLimitMessage(upstreamCredits, NOW), /^Eliza Cloud declined this AI request for your account's billing\. .*did not retry your message, and nothing is purchased automatically\./);

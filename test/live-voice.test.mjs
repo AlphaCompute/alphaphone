@@ -77,7 +77,7 @@ test('partials replace the interim text, stale turns and other sessions are drop
   session.dispose();
 });
 
-test('the Android transport has no event stream: the final comes from the HTTP response alone', async () => {
+test('a transport without an event stream: the final comes from the HTTP response alone', async () => {
   const posts = [];
   const session = live.createLiveVoiceSession({transport: {post: async body => { posts.push(body); return body.vad?.[0]?.type === 'speech-end' ? {ok: true, mode: 'batch', framesReceived: 2, final: {turnId: 'turn-a', text: 'hello', mode: 'batch', asrFinalFromSpeechEndMs: 300}} : {ok: true, mode: 'batch', framesReceived: 1}; }}});
   const next = session.nextFinal();

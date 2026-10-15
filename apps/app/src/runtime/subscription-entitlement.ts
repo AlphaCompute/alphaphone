@@ -483,9 +483,8 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
  * Retry times in the body win; `retryAfter` (the Retry-After header the transports return)
  * fills in when the body has none.
  *
- * At the pinned upstream revision a resident-agent reply carries terminalFailure as only
- * {kind, message, transient, code} (chat-routes terminalFailureContentValue), so retry and reset
- * times reach the phone only on direct HTTP refusals. Reply-path timing needs an upstream change.
+ * Live resident replies carry the provider wait in terminalFailure.rateLimit. Upstream
+ * omits that relative wait from idempotent replays and history; absent timing stays absent.
  */
 export function readServiceLimit(source: unknown, now: number = Date.now()): ServiceLimit | null {
   const visit = (value: unknown, depth: number, status: number | null): ServiceLimit | null => {
@@ -495,7 +494,7 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
     // A specific code (e.g. terminalFailure.code) wins over a generic kind on the same row.
     const kinds = [row.kind, row.failureKind, row.code, row.error, row.type].filter((item): item is string => typeof item === 'string').map(item => item.toLowerCase());
     const has = (set: Set<string>) => kinds.some(item => set.has(item));
-    for (const key of ['terminalFailure', 'data', 'error', 'details']) {
+    for (const key of ['terminalFailure', 'rateLimit', 'data', 'error', 'details']) {
       const nested = visit(row[key], depth + 1, ownStatus);
       if (nested) {
         const own = retryFields(row, now);

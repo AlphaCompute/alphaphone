@@ -12,7 +12,7 @@ export const secureCameraComponent = `${secureCameraPackage}/com.android.camera.
 export const secureCameraActions = ["STILL_IMAGE_CAMERA_SECURE", "IMAGE_CAPTURE_SECURE"];
 
 /** Authenticate source inputs only. A clean pinned checkout is not a built-image receipt. */
-export function verifySecureCameraSource(root, contract = reviewed) {
+export function verifySecureCameraSource(root, contract = reviewed, reviewedOverrides = []) {
   if (!root) throw Error("Production staging requires explicit --aosp-source PATH");
   const base = fs.realpathSync(root);
   const modules = contract.modules.map(module => {
@@ -24,14 +24,21 @@ export function verifySecureCameraSource(root, contract = reviewed) {
     if (git("ls-files", "-v").split("\n").some(row => row && !row.startsWith("H "))) throw Error(`Source index hides changes: ${module.path}`);
     if (git("ls-files", "--others", "--ignored", "--exclude-standard")) throw Error(`Ignored source inputs present: ${module.path}`);
     // Includes untracked sources because Camera2 compiles src/**/*.java.
-    if (git("status", "--porcelain", "--untracked-files=all")) throw Error(`Source module is not clean: ${module.path}`);
+    const changes = execFileSync("git", ["-C", directory, "status", "--porcelain=v1", "-z", "--untracked-files=all"], {encoding:"utf8", env:{...process.env, GIT_OPTIONAL_LOCKS:"0"}}).split("\0").filter(Boolean);
+    const allowed = reviewedOverrides.filter(entry => entry.path.startsWith(module.path + "/"));
+    const actual = changes.map(row => module.path + "/" + row.slice(3)).sort();
+    if (JSON.stringify(actual) !== JSON.stringify(allowed.map(entry => entry.path).sort())) throw Error(`Source module is not clean: ${module.path}`);
+    for (const entry of allowed) {
+      const file = fs.realpathSync(path.join(base, entry.path));
+      if (!file.startsWith(directory + path.sep) || fs.statSync(file).size !== entry.sizeBytes || sha(fs.readFileSync(file)) !== entry.sha256) throw Error(`Reviewed source override differs: ${entry.path}`);
+    }
     for (const [relative, expected] of Object.entries(module.files)) {
       const file = fs.realpathSync(path.join(directory, relative));
       if (!file.startsWith(directory + path.sep) || sha(fs.readFileSync(file)) !== expected) throw Error(`Source bytes differ: ${module.path}/${relative}`);
     }
     return { path: module.path, commit: module.commit, files: module.files };
   });
-  return { sourceVerified: true, contractSha256: sha(JSON.stringify(contract)), modules, imageVerified: false, lockedCaptureVerified: false, deviceAcceptanceVerified: false };
+  return { sourceVerified: true, contractSha256: sha(JSON.stringify(contract)), modules, reviewedOverrides, imageVerified: false, lockedCaptureVerified: false, deviceAcceptanceVerified: false };
 }
 
 export function writeSecureCameraOverlay(output, evidence) {

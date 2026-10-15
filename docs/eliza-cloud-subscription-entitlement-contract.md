@@ -112,20 +112,22 @@ retries the message or buys anything.
 
 The resident agent's reply path is narrower. At the pinned upstream revision the agent reports a
 refused turn as `failureKind` / `terminalFailure.kind` from upstream `CHAT_FAILURE_KINDS`
-(`packages/contracts/src/contracts/chat.ts`), and `terminalFailureContentValue` in
-`packages/agent/src/api/chat-routes.ts` keeps only `kind`, `message`, `transient` and `code`.
-So on that path:
+(`packages/contracts/src/contracts/chat.ts`). A live `rate_limited` failure may include
+`terminalFailure.rateLimit` with the provider's bounded `retryAfterMs`. Alpha reads that wait
+without adding an entitlement request or automatically retrying the message. On that path:
 
 | Upstream reply | Phone copy |
 |---|---|
 | `insufficient_credits` (how upstream reports a Cloud 402 today) | Neutral: Eliza Cloud declined the request for the account's billing; check the account in Settings. It does not claim a plan is missing, because the kind does not say whether the plan is missing or its usage is spent |
 | `insufficient_credits` with `code` `allowance_exhausted` or `subscription_required` | The specific allowance or no-plan copy |
-| `rate_limited` | Rate-limit copy with "wait a moment"; no countdown |
+| `rate_limited` with `rateLimit.retryAfterMs` | Rate-limit copy with the provider wait rounded up for display |
+| `rate_limited` without a live wait | Rate-limit copy with "wait a moment"; no invented countdown |
 | any other kind | "The agent could not complete this response." |
 
-`retryAfterMs`, `retryAt` and `resetsAt` cannot reach the phone on the reply path until upstream
-`ChatTerminalFailure` carries them. That needs an upstream change. Until then the phone shows
-retry and reset times only for direct HTTP refusals.
+At pin `968348d792d3`, upstream removes the relative `rateLimit` wait from idempotent replays
+and conversation history. Alpha therefore does not restart a stale countdown on replay. Direct
+HTTP refusals continue to support retry and reset times; the resident contract does not yet
+carry allowance reset timestamps. Controlled parser tests are not live Cloud latency evidence.
 
 ## 4. Phone behaviour by condition
 
@@ -218,6 +220,6 @@ reset is recorded; a failure never blocks the local reset.
   billing-outage conditions. It needs the deployed Cloud.
 - The numeric burst and sustained limits, the allowance and the price are not selected. They must
   be proposed from measured provider cost and pilot traffic, and the owner decides them.
-- Retry and reset times on the resident-agent reply path need upstream `ChatTerminalFailure` to
-  carry them.
+- Live resident rate-limit waits are supported at the current pin. Allowance reset timestamps
+  on that reply path still need an upstream contract; direct HTTP reset times are supported.
 - No real Cloud account, Android device or AOSP image was used for acceptance.
