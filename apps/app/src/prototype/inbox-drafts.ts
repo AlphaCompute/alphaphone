@@ -37,6 +37,24 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  const forwardProposal=(d:Draft)=>d.forward&&d.forward.parts.length?{forwardAttachments:{messageId:d.forward.messageId,historyId:d.forward.historyId,partIds:d.forward.parts.map(p=>p.partId)}}:{};
  let reviewRevision=0;
  let owner='',account='',session='',epoch=0,saved:Draft|null=null,draft:Draft|null=null;
+ type Shelved={draft:Draft;toQ:string};type Shelf={version:1;owner:string;items:Shelved[]};
+ let shelf:Shelf|null=null,shelfKey='';const shelfSlot=()=>`inbox-drafts:v1:shelf:${shelfKey}`;
+ const shelfDraft=(d:Draft)=>valid({...d,to:[],cc:[],bcc:[]},owner)&&[d.to,d.cc||[],d.bcc||[]].every(list=>Array.isArray(list)&&list.length<=20&&list.every(a=>typeof a==='string'&&a.length<=254));
+ const shelfValid=(v:any):v is Shelf=>!!v&&v.version===1&&v.owner===owner&&Array.isArray(v.items)&&v.items.length<=50&&new Set(v.items.map((row:Shelved)=>row?.draft?.id)).size===v.items.length&&v.items.every((row:Shelved)=>row&&shelfDraft(row.draft)&&typeof row.toQ==='string'&&row.toQ.length<=4096);
+ async function saveShelf(next:Shelf){const token=epoch,expected=shelf;const receipt=await inboxLocalStore.compareExchange(shelfSlot(),expected,next);if(token!==epoch)throw Error('Draft account changed');if(receipt.status!=='saved')throw Error('Drafts changed in another window. Reload before continuing.');shelf=next;}
+ /** Persist the current email before replacing its composer; no provider operation runs. */
+ async function setAside():Promise<boolean>{
+  if(!ready||busy)return false;if(retained?.error||retained?.conflict||staleBase){toast('Reload the saved draft before starting another email. Your edits are retained.');return false;}
+  const kept=retained?.peek();if(retained?.available&&!kept){toast('Recover the retained draft before starting another email.');return false;}
+  const meaningful=(row:Shelved)=>!!(row.toQ.trim()||row.draft.to.length||row.draft.cc?.length||row.draft.bcc?.length||row.draft.subject.trim()||row.draft.body.trim()||row.draft.attachments?.length||row.draft.forward?.parts.length);const copies=new Map<string,Shelved>();for(const row of shelf?.items||[])copies.set(row.draft.id,row);if(saved)copies.set(saved.id,{draft:structuredClone(saved),toQ:''});if(kept)copies.set(kept.draft.id,{draft:structuredClone(kept.draft) as Draft,toQ:kept.toQ});if(draft)copies.set(draft.id,{draft:structuredClone(draft),toQ});
+  if(!saved&&!kept&&!draft)return true;const next:Shelf={version:1,owner,items:[...copies.values()].filter(meaningful)};if(!shelfValid(next)||new TextEncoder().encode(JSON.stringify(next)).length>8*1024*1024){toast('Draft storage is full. Your current email is still here.');return false;}
+  const token=epoch;busy=true;publish();
+  try{await saveShelf(next);if(token!==epoch)return false;if(saved){const receipt=await inboxLocalStore.compareExchange(slot(),saved,null);if(token!==epoch)return false;if(receipt.status!=='saved')throw Error('The saved draft changed. Reload before continuing.');saved=null;}await retained?.clear();if(token!==epoch)return false;pendingEdits.delete(owner);draft=null;open=false;confirm=false;baseRevision=null;staleBase=false;toQ='';status='Draft saved';return true;}
+  catch(error){if(token===epoch)toast(error instanceof Error?error.message:'The draft could not be saved. Your edits remain here.');return false;}finally{if(token===epoch){busy=false;publish();}}
+ }
+ async function newEmail(){if(!ready||busy){toast(status||'Wait for drafts to load.');return false;}if(!await setAside())return false;return begin();}
+ async function openShelved(id:string){const row=shelf?.items.find(item=>item.draft.id===id);if(!row||!ready||busy)return;if(row.draft.earlierThanSent&&!window.confirm('This is an earlier version of a sent email. Open it for editing? Sending it creates another message.'))return;const token=epoch;if(!await setAside()||token!==epoch)return;draft=structuredClone(row.draft);toQ=row.toQ;baseRevision=null;staleBase=false;open=true;confirm=false;status='Draft on this device';persist();publish();}
+
  const pendingEdits=new Map<string,{draft:Draft;toQ:string;baseRevision:string|null;persist?:boolean}>();
  let retained:ReturnType<typeof inboxUnsaved>|null=null,baseRevision:string|null=null,staleBase=false;
  // The retained recovery record (runtime/inbox-unsaved-record.ts) does not yet admit forwarded source
@@ -74,6 +92,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
     if(!cleared){status='Sent. A retained copy of this email could not be removed from this device.';return;}
     removed=true;
    }
+   if(shelf?.items.some(row=>row.draft.id===draftId)){await saveShelf({...shelf,items:shelf.items.flatMap(row=>row.draft.id!==draftId?[row]:!row.toQ.trim()&&sentContent(row.draft,proposal,true)?[]:[{...row,draft:{...row.draft,earlierThanSent:true}}])});if(token!==epoch)return;}
    const expected=saved;
    if(expected&&expected.id===draftId&&sentContent(expected,proposal,true)){
     try{const receipt=await inboxLocalStore.compareExchange(key,expected,null);if(token!==epoch)return;if(receipt.status==='saved'){saved=null;baseRevision=null;removed=true;}}catch{}
@@ -95,7 +114,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
  const earlierVersion=()=>!!saved&&(saved.earlierThanSent===true||saved.id===earlier);
  /** The saved draft as an editable copy; the earlier-version mark stays with the saved copy. */
  const fromSaved=()=>{const {earlierThanSent:_earlier,...copy}=structuredClone(saved!);return copy as Draft;};
- function reset(){sent=null;earlier='';account='';retained?.retire();retained=null;baseRevision=null;staleBase=false;pendingEdits.clear();epoch++;owner='';session='';saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';}
+ function reset(){sent=null;earlier='';account='';retained?.retire();retained=null;baseRevision=null;staleBase=false;pendingEdits.clear();shelf=null;shelfKey='';epoch++;owner='';session='';saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';}
  async function bind(account_:string,accountLabel:string){
   const identity=connectionController.getSnapshot().cloudAccount, binding=connectionController.getCloudClient();
   const next=identity&&binding?.sessionId===identity.sessionId&&account_?JSON.stringify([identity.environment,identity.userId,identity.organizationId||'',account_]):'';
@@ -105,8 +124,8 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   retained?.retire();retained=null;baseRevision=null;staleBase=false;
   epoch++;saved=draft=null;loading=ready=busy=open=confirm=recipientDetails=false;toQ='';status='';owner=next;account=next?account_:'';session=binding?.sessionId||'';label=accountLabel;
   if(!owner)return;
-  const token=epoch, key=slot();loading=true;status='Checking local draft…';publish();
-  try{const value=await inboxLocalStore.read<Draft>(key);if(token!==epoch)return;
+  const token=epoch, key=slot();shelf=null;shelfKey='';loading=true;status='Checking local draft…';publish();
+  try{const value=await inboxLocalStore.read<Draft>(key);if(token!==epoch)return;const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(owner))),n=>n.toString(16).padStart(2,'0')).join('');if(token!==epoch)return;shelfKey=hash;const storedShelf=await inboxLocalStore.read<Shelf>(shelfSlot());if(token!==epoch)return;if(storedShelf!==null&&!shelfValid(storedShelf))throw Error('Saved drafts need recovery');shelf=storedShelf;
    if(value!==null&&!valid(value,owner))throw Error();saved=value;const pending=pendingEdits.get(owner);draft=pending?.draft||null;toQ=pending?.toQ||'';baseRevision=pending?pending.baseRevision:value?.revision||null;staleBase=!!pending&&baseRevision!==(saved?.revision||null);const recovery=retained=inboxUnsaved(owner,publish,restored=>{if(token===epoch)restoreRetained(restored);});await recovery.ready;if(token!==epoch)return;ready=true;if(pending?.persist){pendingEdits.set(owner,{...pending,persist:false});persist();}status=draft?'Edits retained for this account':value?'Saved draft on this device':'No saved local draft';
   }catch{if(token===epoch)status='Local draft storage unavailable. Retry connection to reload.';}
   if(token===epoch){loading=false;publish();void settleSent();}
@@ -158,7 +177,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   const token=epoch,key=slot(),expected=saved;busy=true;publish();
   try{const receipt=await inboxLocalStore.compareExchange(key,expected,value);if(token!==epoch)return;
    if(receipt.status!=='saved'){status='Draft changed in another window. Close this composer and reload before replacing it.';ready=false;toast(status);return;}
-   pendingEdits.delete(owner);saved=value;earlier='';let cleared=true;try{await retained?.clear();}catch{cleared=false;}if(token!==epoch)return;baseRevision=value?.revision||null;staleBase=false;draft=value?structuredClone(value):cleared?null:draft;status=cleared?(remove?'Local draft discarded':'Saved locally on this device'):(remove?'Saved local draft removed; retained edits could not be cleared. Review recovery before closing.':'Saved locally; retained edits could not be cleared. Review recovery before closing.');confirm=false;if(remove&&cleared)open=false;toast(status);
+   pendingEdits.delete(owner);saved=value;earlier='';let cleared=true;if(shelf?.items.some(row=>row.draft.id===draft!.id)){try{await saveShelf({...shelf,items:shelf.items.filter(row=>row.draft.id!==draft!.id)});}catch{cleared=false;}if(token!==epoch)return;}try{await retained?.clear();}catch{cleared=false;}if(token!==epoch)return;baseRevision=value?.revision||null;staleBase=false;draft=value?structuredClone(value):cleared?null:draft;status=cleared?(remove?'Local draft discarded':'Saved locally on this device'):(remove?'Saved local draft removed; retained edits could not be cleared. Review recovery before closing.':'Saved locally; retained edits could not be cleared. Review recovery before closing.');confirm=false;if(remove&&cleared)open=false;toast(status);
   }catch{if(token===epoch){status='Local draft update failed. Your edits remain here.';toast(status);}}
   finally{if(token===epoch){busy=false;publish();void settleSent();}}
  }
@@ -191,7 +210,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   return {ready:true,kind:'new',append:false,reply:false,subject:'',to:[],room:64000,token:JSON.stringify([owner,'new'])};
  }
  return {
-  bind,reset,begin,transfer,
+  bind,reset,begin,newEmail,transfer,
   /** An explicit Files review adds exact bytes to this account's draft, never a provider operation. */
   attachReviewed(file:MailAttachment,expected:string):boolean{
    const target=suggestionTarget();if(!target.ready||target.token!==expected)return false;
@@ -235,12 +254,13 @@ setFromSwitch(value:typeof fromSwitch){fromSwitch=value;},get ready(){return rea
     const reuse=earlierVersion();
     if(reuse&&!window.confirm('This saved draft is an earlier version of an email that was already sent.\n\nOpen it to edit or send? Sending it creates another message.'))return;
     draft=fromSaved();baseRevision=saved!.revision;staleBase=false;open=true;confirm=false;toQ='';if(reuse)status='Earlier version of a sent email. Sending it creates another message; nothing has been sent.';publish();})]:[]),
+   ...(shelf?.items.filter(row=>row.draft.id!==local?.id).map(row=>({...chip('Open local draft',()=>void openShelved(row.draft.id)),subject:row.draft.subject||'(No subject)',snippet:row.draft.body.slice(0,160)||'Draft on this device'}))||[]),
    ...(retained?.error?[chip('Recover email edits',()=>retained?.recover(draft))]:[]),
-  ].map(row=>({...row,subject:local?.subject||'(No subject)',snippet:local?.body?.slice(0,160)||'Draft on this device',recovery:row.label==='Recover email edits'})):[];},
+  ].map((row:Bag)=>({...row,subject:row.subject||local?.subject||'(No subject)',snippet:row.snippet||local?.body?.slice(0,160)||'Draft on this device',recovery:row.label==='Recover email edits'})):[];},
   /** Called for a provider-confirmed send that recorded its source draft; safe to repeat. */
   settleSent(draftId:string,proposal:Bag,grant:string,savedRevision?:string){if(!grant||grant!==account)return Promise.resolve();sent={draftId,proposal:structuredClone(proposal),account:grant,...(savedRevision?{savedRevision}:{})};return settleSent();},
   /** What the receipt may say about local copies of the sent draft. */
-  sentNote(draftId:string){if(!ready||busy||sent)return 'Checking the local copy of this email on this device.';if(draft?.id!==draftId&&retained?.peek()?.draft.id!==draftId&&saved?.id===draftId&&earlierVersion())return 'An earlier saved version of this email is still on this device. It is kept until you discard it; sending it creates another message.';return draft?.id===draftId||retained?.peek()?.draft.id===draftId||saved?.id===draftId?'A local copy of this email is still on this device because it was edited after sending or could not be removed. Sending it creates another message.':'The local draft and unsaved copy of this sent email were removed from this device.';},
+  sentNote(draftId:string){if(!ready||busy||sent)return 'Checking the local copy of this email on this device.';if(shelf?.items.some(row=>row.draft.id===draftId&&row.draft.earlierThanSent)||draft?.id!==draftId&&retained?.peek()?.draft.id!==draftId&&saved?.id===draftId&&earlierVersion())return 'An earlier saved version of this email is still on this device. It is kept until you discard it; sending it creates another message.';return draft?.id===draftId||retained?.peek()?.draft.id===draftId||saved?.id===draftId||shelf?.items.some(row=>row.draft.id===draftId)?'A local copy of this email is still on this device because it was edited after sending or could not be removed. Sending it creates another message.':'The local draft and unsaved copy of this sent email were removed from this device.';},
   render(){return {composeDisabled:loading||busy,composing:open&&!!draft,c: draft?{
    local:true,status,busy,confirm,recoveryVisible:!!retained?.error||!!retained?.conflict,sendDisabled:busy||!provider?.capabilities()?.send,showSendHint:!!provider?.capabilities()&&!provider.capabilities()?.send,heading:draft.mode==='reply-all'?'Reply all':draft.mode==='reply'?'Reply':draft.mode==='forward'?'Forward':'New message',showRecipientDetails:recipientDetails||!!draft.cc?.length||!!draft.bcc?.length,toggleRecipientDetails:()=>{recipientDetails=!recipientDetails;publish();},retainedStatus:retained?.status,retainedConflict:retained?.conflict,retainedError:retained?.error,restoreEdits:()=>retained?.resume(),replaceEdits:()=>{if(window.confirm('Replace the retained email edits with this composer?'))retained?.replace();},retryEdits:()=>void retained?.retry(),recoverEdits:()=>retained?.recover({draft,toQ}),staleBase,useLatest:async()=>{if(!window.confirm('Discard these edits and review the latest saved local draft?'))return;const token=epoch;try{await retained?.clear();if(token!==epoch)return;draft=saved?fromSaved():null;toQ='';baseRevision=saved?.revision||null;staleBase=false;open=!!draft;status='Review the latest saved local draft.';publish();}catch{if(token===epoch)toast('Retained edits changed. Review recovery before discarding them.');}},save:()=>void update(),discard:()=>{if(!busy){confirm=true;publish();}},cancelDiscard:()=>{confirm=false;publish();},confirmDiscard:()=>void update(true),
    send:()=>{if(!provider?.capabilities()?.send){toast('Sending is unavailable for this account. Save locally; no email has been sent.');return;}if(toQ.trim()){add();if(toQ.trim())return;}void provider.prepare({kind:'send',mode:draft!.mode||(draft!.reply?'reply':'compose'),to:[...draft!.to],cc:[...(draft!.cc||[])],bcc:[...(draft!.bcc||[])],subject:draft!.subject,bodyText:draft!.body,attachments:[...(draft!.attachments||[])],...forwardProposal(draft!),...(draft!.reply?{replyMessageId:draft!.reply.messageId}:{})},{draftId:draft!.id,...(saved?.id===draft!.id?{savedRevision:saved.revision}:{})});},

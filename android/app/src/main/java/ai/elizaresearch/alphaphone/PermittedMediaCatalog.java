@@ -169,11 +169,12 @@ final class PermittedMediaCatalog implements AutoCloseable {
   }
   current(snapshot,volumes);JSObject result=new JSObject();result.put("items",items);result.put("next",next);result.put("access",access());return result;
  }
- JSObject read(String id,String expectedRevision,boolean pixels)throws Exception{
+ JSObject read(String id,String expectedRevision,boolean pixels)throws Exception{return read(id,expectedRevision,pixels,false);}
+ JSObject read(String id,String expectedRevision,boolean pixels,boolean trashed)throws Exception{
   MediaLibraryKey key=MediaLibraryKey.parse(id);List<String> volumes=volumes();String snapshot=snapshot(volumes);if(!volumes.contains(key.volume))throw new IllegalArgumentException("Media volume unavailable");
-  JSObject result=inspect(key);String revision=result.getString("revision");if(expectedRevision!=null&&!expectedRevision.equals(revision))throw new IllegalStateException("Selected media changed");
+  JSObject result=inspect(key,trashed);if(trashed&&!Boolean.TRUE.equals(result.getBoolean("trashed")))throw new IllegalStateException("Selected media is no longer deleted");String revision=result.getString("revision");if(expectedRevision!=null&&!expectedRevision.equals(revision))throw new IllegalStateException("Selected media changed");
   if(pixels)result.put("image",thumbnail(key,1024));
-  if(!revision.equals(inspect(key).getString("revision")))throw new IllegalStateException("Selected media changed");current(snapshot,volumes);return result;
+  if(!revision.equals(inspect(key,trashed).getString("revision")))throw new IllegalStateException("Selected media changed");current(snapshot,volumes);return result;
  }
  private JSObject inspect(MediaLibraryKey key){return inspect(key,false);}
  private JSObject inspect(MediaLibraryKey key,boolean includeTrash){

@@ -705,17 +705,14 @@
           <sc-if value="{{inbox.d.hasNextThread}}"><button onClick="{{inbox.d.nextThread}}" style="padding:8px 12px;white-space:nowrap">Next thread page</button></sc-if>
         </div>
         </sc-if><h1 class="serif" style="margin: 0; font-size: 32px; line-height: 1.1; letter-spacing: -.01em">{{inbox.d.subj}}</h1>
-        <div style="display: flex; align-items: center; gap: 12px; margin-top: 20px">
+        <div style="display: flex; align-items: flex-start; gap: 12px; margin-top: 20px">
           <sc-if value="{{inbox.d.hasPerson}}">
             <button aria-label="{{inbox.d.name}}" onClick="{{inbox.d.who}}" style="width: 44px; height: 44px; border-radius: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; background: var(--s2); white-space: nowrap">{{inbox.d.ini}}</button>
           </sc-if>
           <sc-if value="{{inbox.d.noPerson}}">
-            <span style="width: 44px; height: 44px; border-radius: 22px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; background: var(--s2); white-space: nowrap">{{inbox.d.ini}}</span>
+            <span class="mail-sender-avatar"><span>{{inbox.d.ini}}</span><sc-if value="{{inbox.d.senderImage}}"><img src="{{inbox.d.senderImage}}" alt="" decoding="async" onError="{{inbox.d.hideSenderImage}}"></sc-if></span>
           </sc-if>
-          <div style="min-width: 0">
-            <div style="font-weight: 600; font-size: 16px">{{inbox.d.name}}</div>
-            <div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{inbox.d.meta}}</div>
-          </div>
+          <details class="mail-addresses"><summary aria-label="Show message details"><span style="font-weight:600;font-size:16px">{{inbox.d.name}}</span><span class="mail-address-chevron" aria-hidden="true"></span><span style="display:block;font-size:13px;color:var(--mut);margin-top:2px">{{inbox.d.meta}}</span></summary><dl><dt>From</dt><dd>{{inbox.d.fullFrom}}</dd><dt>To</dt><dd>{{inbox.d.fullTo}}</dd><sc-if value="{{inbox.d.hasCc}}"><dt>Cc</dt><dd>{{inbox.d.fullCc}}</dd></sc-if><sc-if value="{{inbox.d.hasReplyTo}}"><dt>Reply-to</dt><dd>{{inbox.d.fullReplyTo}}</dd></sc-if><dt>Date</dt><dd>{{inbox.d.fullDate}}</dd></dl></details>
         </div>
         <sc-if value="{{inbox.d.hasRemoteImages}}"><p style="margin:16px 0 8px;font-size:13px;color:var(--mut)">Remote images are hidden. <button onClick="{{inbox.d.showImages}}" style="min-height:44px;color:var(--acct)">Show images</button></p></sc-if>
         <sc-if value="{{inbox.d.hasHtml}}"><iframe title="Formatted email" sandbox="allow-same-origin" referrerpolicy="no-referrer" srcdoc="{{inbox.d.htmlDocument}}" onLoad="{{inbox.d.htmlLoaded}}" style="width:100%;border:0;display:block;height:400px;margin-top:22px;background:#fff"></iframe></sc-if>
@@ -1724,6 +1721,7 @@
     <div data-alpha-app-header="detail" style="display: flex; align-items: center; height: 56px; margin-top: 44px; padding: 0 8px 0 8px; gap: 6px; flex-shrink: 0">
       <button class="ib" aria-label="Cancel selection" onClick="{{photos.selCancel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button>
       <h1 data-alpha-app-title class="serif" style="margin: 0; font-size: 32px; letter-spacing: -.01em">{{photos.selN}}</h1>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -1783,6 +1781,7 @@
           <button aria-label="{{photos.askLabel}}" onClick="{{photos.askQ}}" style="height: 36px; max-width: 100%; padding: 0 16px 0 12px; border-radius: 18px; background: var(--s2); display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600"><span style="font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 18px; color: var(--acct)"><span class="alpha-compute-mark" aria-hidden="true"></span></span><span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.askLabel}}</span></button>
         </div>
       </sc-if>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -1817,6 +1816,7 @@
         <span style="font-size: 13px; color: var(--mut)">{{photos.trashN}}</span>
         <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut)"><path d="{{ic.right}}"></path></svg>
       </button>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -1827,6 +1827,7 @@
         <button class="ib" aria-label="Back to albums" onClick="{{photos.alb.close}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.back}}"></path></svg></button>
         <h1 data-alpha-app-title class="serif" style="margin: 0 0 0 4px; font-size: 26px; letter-spacing: -.01em; flex-grow: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">{{photos.alb.title}}</h1>
         <span style="font-size: 13px; color: var(--mut); padding: 0 8px">{{photos.alb.count}}</span>
+        <sc-if value="{{photos.alb.isTrash}}"><button class="tap" aria-label="Select deleted items" onClick="{{photos.alb.select}}" style="min-height:44px;padding:0 12px;font:inherit;color:var(--acct)">{{photos.alb.selectLabel}}</button><sc-if value="{{photos.alb.selecting}}"><button class="tap" onClick="{{photos.alb.selectAll}}" style="min-height:44px;padding:0 12px;color:var(--acct)">Select shown</button></sc-if></sc-if>
         <sc-if value="{{photos.alb.isCustom}}"><button class="ib" aria-label="Manage album" onClick="{{photos.alb.manage}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.more}}"></path></svg></button></sc-if>
         <sc-if value="{{photos.alb.canEmpty}}">
           <button class="ib" aria-label="Delete all forever" onClick="{{photos.alb.emptyTrash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
@@ -1880,14 +1881,17 @@
           </div>
         </sc-if>
       </div>
+      </sc-if>
     </div>
   </sc-if>
 
   <sc-if value="{{photos.selecting}}">
     <div inert="{{photos.albumCovered}}" aria-hidden="{{photos.albumCovered}}" style="position: absolute; left: 0; right: 0; bottom: 96px; height: 64px; z-index: 6; background: var(--bg); box-shadow: 0 -1px 0 var(--line); display: flex; align-items: flex-start; justify-content: space-around; padding: 12px 40px 0; box-sizing: border-box; {{photos.selDim}}">
+      <sc-if value="{{photos.trashSelecting}}"><button class="tap" aria-label="Recover selected" onClick="{{photos.selRecover}}" style="min-height:44px;padding:0 16px;color:var(--acct);font-weight:600">Recover</button><sc-if value="{{photos.trashCanDelete}}"><button class="tap" aria-label="Delete selected forever" onClick="{{photos.selDeleteForever}}" style="min-height:44px;padding:0 16px;color:var(--fg)">Delete</button></sc-if></sc-if><sc-if value="{{photos.normalSelecting}}">
       <button class="ib" aria-label="Share selected" onClick="{{photos.selShare}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button>
       <button class="ib" aria-label="Favorite selected" onClick="{{photos.selFav}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.heart}}"></path></svg></button>
       <button class="ib" aria-label="Delete selected" onClick="{{photos.selDel}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
+      </sc-if>
     </div>
   </sc-if>
 
@@ -1921,10 +1925,12 @@
         <div style="display: flex; justify-content: space-around; width: 100%; padding: 0 16px 34px; pointer-events: {{photos.v.chromePE}}">
           <sc-if value="{{photos.v.canEmail}}"><button class="ib" aria-label="Use photo in email" onClick="{{photos.v.email}}" style="font-size:12px">Email</button></sc-if>
           <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="{{photos.v.shareLabel}}" onClick="{{photos.v.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button></sc-if>
+          <sc-if value="{{photos.v.isDeleted}}"><button class="tap" aria-label="Recover deleted item" onClick="{{photos.v.recover}}" style="min-height:48px;padding:0 18px;color:#fff;font:inherit;font-weight:600">Recover</button><sc-if value="{{photos.v.canDeleteForever}}"><button class="tap" aria-label="Delete this item forever" onClick="{{photos.v.deleteForever}}" style="min-height:48px;padding:0 18px;color:#fff;font:inherit">Delete</button></sc-if></sc-if><sc-if value="{{photos.v.notDeleted}}">
           <button class="ib" aria-label="{{photos.v.favLabel}}" onClick="{{photos.v.fav}}"><svg class="i" viewBox="0 0 24 24" style="{{photos.v.favIcon}}"><path d="{{ic.heart}}"></path></svg></button>
           <button class="ib" aria-label="{{photos.v.editLabel}}" onClick="{{photos.v.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
           <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="{{photos.v.infoLabel}}" onClick="{{photos.v.info}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.info}}"></path></svg></button></sc-if>
           <button class="ib" aria-label="{{photos.v.deleteLabel}}" onClick="{{photos.v.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
+          </sc-if>
         </div>
       </div>
     </div>

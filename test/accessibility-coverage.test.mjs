@@ -175,8 +175,9 @@ test('the layout fixes the sweep depends on stay in the stylesheet and template'
   for (const label of ['Search mail', 'Search photos', 'Search notes', 'Search files']) {
     const at = template.indexOf(`aria-label="${label}" placeholder`);
     assert.ok(at > 0, `${label} field is in the template`);
-    const wrapper = template.lastIndexOf('<div style="flex-grow: 1;', at);
-    assert.match(template.slice(wrapper, at), /^<div style="flex-grow: 1; min-width: 0;/, `${label} wrapper can shrink`);
+    const wrappers=[...template.slice(0,at).matchAll(/<(?:div|form)\b[^>]*style="flex-grow: 1;[^>]*>/g)];
+    const wrapper=wrappers.at(-1)?.[0]||'';
+    assert.match(wrapper, /style="flex-grow: 1; min-width: 0;/, `${label} wrapper can shrink`);
   }
   // Every menu or sheet over a scrim owns focus: the scrim is out of the tab order, the panel is
   // a named dialog, and both sit in a container bound to a focus-owning ref.

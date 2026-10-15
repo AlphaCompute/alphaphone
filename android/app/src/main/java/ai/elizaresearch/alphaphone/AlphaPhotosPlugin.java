@@ -146,13 +146,15 @@ public class AlphaPhotosPlugin extends Plugin {
  });}
  @PluginMethod public void read(PluginCall call){submit(call,()->{
   try{
+   boolean trashed=Boolean.TRUE.equals(call.getBoolean("includeTrashed",false));
    if(call.getString("id","").startsWith("m:")){
-    String key=call.getString("id");JSObject result=permitted.read(key,call.getString("revision"),true);MediaLibraryKey media=MediaLibraryKey.parse(key);String revision=result.getString("revision");
-    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);return;
+    String key=call.getString("id");JSObject result=permitted.read(key,call.getString("revision"),true,trashed);MediaLibraryKey media=MediaLibraryKey.parse(key);String revision=result.getString("revision");
+    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false,trashed);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);return;
    }
    String key=call.getString("id","");long id=id(key);boolean video=key.startsWith("v:");
    Uri uri=uri(id,video);JSObject result;
-   try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),owned()+" AND _id=? AND media_type=?",new String[]{getContext().getPackageName(),Long.toString(id),video?"3":"1"},null)){
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,owned(trashed)+" AND _id=? AND media_type=?");query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{getContext().getPackageName(),Long.toString(id),video?"3":"1"});if(Build.VERSION.SDK_INT>=30)query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,trashed?MediaStore.MATCH_ONLY:MediaStore.MATCH_EXCLUDE);
+   try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),query,null)){
     if(row==null||!row.moveToFirst())throw new IllegalArgumentException();result=metadata(row);
    }
    result.put("image",image(id,video,1024));if(video)result.put("path",playback.authorize(uri));call.resolve(result);
@@ -273,11 +275,16 @@ public class AlphaPhotosPlugin extends Plugin {
  @PluginMethod public void prepareDeleteTrash(PluginCall call){submit(call,()->{
   if(Build.VERSION.SDK_INT<30){call.reject("Android trash requires Android 11 or later");return;}
   try{
-   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,owned(true)+MEDIA);query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{getContext().getPackageName()});query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);query.putInt(ContentResolver.QUERY_ARG_LIMIT,501);
+   JSArray requested=call.getArray("items");java.util.Map<String,String> wanted=new java.util.HashMap<>();
+   if(call.getData().has("items")){if(requested==null||requested.length()<1||requested.length()>20)throw new IllegalArgumentException();for(int i=0;i<requested.length();i++){org.json.JSONObject item=requested.getJSONObject(i);String key=item.getString("id"),version=item.getString("revision");if(!key.matches("(?:v:)?[1-9][0-9]*")||version.isEmpty()||wanted.put(key,version)!=null)throw new IllegalArgumentException();}}
+   String selection=owned(true)+MEDIA;java.util.List<String> args=new java.util.ArrayList<>();args.add(getContext().getPackageName());
+   if(requested!=null){StringBuilder ids=new StringBuilder();for(String key:wanted.keySet()){if(ids.length()>0)ids.append(',');ids.append('?');args.add(Long.toString(id(key)));}selection+=" AND _id IN ("+ids+")";}
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,selection);query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,args.toArray(new String[0]));query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);query.putInt(ContentResolver.QUERY_ARG_LIMIT,501);
    java.util.List<TrashItem> items=new java.util.ArrayList<>();
    try(Cursor rows=getContext().getContentResolver().query(CATALOG,fields(),query,null)){
-    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(items.size()>=500){call.reject("More than 500 owned items are in trash. Manage a smaller batch in Android Photos.");return;}items.add(new TrashItem((rows.getInt(5)==3?"v:":"")+rows.getLong(0),rows.getLong(9)));}
+    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(items.size()>=500){call.reject("More than 500 owned items are in trash. Manage a smaller batch in Android Photos.");return;}String key=(rows.getInt(5)==3?"v:":"")+rows.getLong(0);if(requested!=null){if(!wanted.containsKey(key))continue;if(!mutationRevision(rows).equals(wanted.get(key)))throw new IllegalArgumentException();}items.add(new TrashItem(key,rows.getLong(9)));}
    }
+   if(requested!=null&&items.size()!=wanted.size())throw new IllegalArgumentException();
    confirmations.entrySet().removeIf(entry->entry.getValue().until<android.os.SystemClock.elapsedRealtime());while(confirmations.size()>=4)confirmations.remove(confirmations.keySet().iterator().next());
    String token=java.util.UUID.randomUUID().toString();confirmations.put(token,new TrashConfirmation(items));JSObject result=new JSObject();result.put("confirmation",token);result.put("count",items.size());call.resolve(result);
   }catch(Exception failure){call.reject("Trash could not be prepared for confirmation");}

@@ -478,3 +478,22 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .mail-sender-avatar img{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;object-fit:contain;padding:9px;background:var(--s2)}
 
 .mail-search-input::-webkit-search-cancel-button,.mail-search-input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
+
+.content-question-dialog{padding:20px;border-radius:24px;max-height:min(calc(100dvh - 24px),calc(var(--phone-height,100dvh) - 24px))}
+.content-question-dialog h2{font:600 22px/1.25 'Public Sans',system-ui,sans-serif;margin:0 0 4px;letter-spacing:-.015em}
+.content-question-source{font-size:13px;line-height:1.4;color:var(--source-mut,#666);margin:0 0 12px;overflow-wrap:anywhere}
+.content-question-dialog .content-question-help{font-size:13px;line-height:1.4;margin:0 0 12px;color:var(--source-mut,#666)}
+.content-question-dialog label{font-size:14px;font-weight:500}
+.content-question-dialog textarea{font-size:16px!important;line-height:1.4!important;resize:none;background:var(--source-s2,#f3f3f3);border:0;border-radius:12px;min-height:72px}
+.content-question-dialog footer{gap:8px;padding-top:4px}
+.content-question-dialog footer button{font-size:15px;font-weight:600;min-height:48px}
+.content-question-dialog button.content-question-primary{background:var(--source-acc,#0000ff);color:#fff}
+
+.mail-addresses{min-width:0;flex:1;overflow-wrap:anywhere}
+.mail-addresses summary{display:block;list-style:none;cursor:pointer;min-height:44px}
+.mail-addresses summary::-webkit-details-marker{display:none}
+.mail-address-chevron{display:inline-block;width:14px;height:14px;margin-inline-start:8px;vertical-align:middle;background:var(--mut);mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}
+.mail-addresses[open] .mail-address-chevron{transform:rotate(180deg)}
+.mail-addresses summary:focus-visible{outline:2px solid var(--acct);outline-offset:3px;border-radius:4px}
+.mail-addresses dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:12px 0 0;font-size:13px;line-height:1.45}
+.mail-addresses dt{color:var(--mut)}.mail-addresses dd{margin:0;min-width:0;user-select:text}
