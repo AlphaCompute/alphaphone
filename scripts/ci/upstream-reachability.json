@@ -1,16 +1,121 @@
 {
   "schema": 1,
   "repository": "elizaOS/eliza",
-  "base": "develop",
-  "baseCommit": "172e072c623c7b08b66f120020997e5f90f4de7a",
-  "head": "968348d792d3d36df129bc53bd85cebed47d0830",
+  "base": "recorded-local-origin/develop",
+  "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
+  "head": "39344df6eda68d846f8d1521d4b754da131f38e3",
   "recordedAt": "2026-10-15",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...968348d792d3d36df129bc53bd85cebed47d0830",
-  "status": "behind",
-  "aheadBy": 0,
-  "behindBy": 15,
-  "mergeBase": "968348d792d3d36df129bc53bd85cebed47d0830",
-  "pinOnlyCommits": [],
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...39344df6eda68d846f8d1521d4b754da131f38e3",
+  "status": "diverged",
+  "aheadBy": 26,
+  "behindBy": 398,
+  "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
+  "pinOnlyCommits": [
+    {
+      "sha": "39344df6eda68d846f8d1521d4b754da131f38e3",
+      "subject": "fix: cancel disconnected Cloud speech proxy requests"
+    },
+    {
+      "sha": "de2270c88d2d910198da2311265f41a9edfbfc4c",
+      "subject": "fix(core): refresh embedding batch capability per drain"
+    },
+    {
+      "sha": "1b7302945de2f29f51b46cc97fa61bcd9995724c",
+      "subject": "Use the fresh provider revision for explicit Calendar conflict resolution"
+    },
+    {
+      "sha": "d06481eb6a4705296be495e88808a4b4ddc00929",
+      "subject": "Integrate reviewed SDK native tool strictness forwarding"
+    },
+    {
+      "sha": "a9dbf384823299716fe52425eb9c0eb1e553cb52",
+      "subject": "Bound complete Calendar updates without discarding metadata"
+    },
+    {
+      "sha": "dd678111e38c6d9381d3ef5100d5472be0465a95",
+      "subject": "Preserve Calendar provider metadata during conditional updates"
+    },
+    {
+      "sha": "c3fd76ccacb75380dfa849abfb257b1aaacc94c1",
+      "subject": "Keep managed Gmail registration idempotent after adapter rename"
+    },
+    {
+      "sha": "9666ee7d502ffacefa6aeb42a6b5857a67855c97",
+      "subject": "Use the owner-visible Google Calendar name in sync review"
+    },
+    {
+      "sha": "cafde9e92fb276842d355c3a0ef824e674afce64",
+      "subject": "Make linked Calendar hashes independent of host locale"
+    },
+    {
+      "sha": "b599ae8946e7f386fcb8eaec6a9246d2dd0cb018",
+      "subject": "Validate native reply parts against the active Stage1 schema"
+    },
+    {
+      "sha": "46a4bd49b58f6d2ec58c071bad9e24cc4e53a3fe",
+      "subject": "Return verified Calendar destination labels for sync review"
+    },
+    {
+      "sha": "d85826cd02d1ea293976bea6f412c4a7a1bf4e5c",
+      "subject": "fix(cloud): preserve absent offline product selection"
+    },
+    {
+      "sha": "0d0bece7bf9d3ee551f2d1c2dd63adb36266725e",
+      "subject": "fix(cloud): retain model defaults under sealed development settings"
+    },
+    {
+      "sha": "2f64f2fe60e65854f16e66bcb2a20ac920691ee4",
+      "subject": "Apply Calendar sync import checks"
+    },
+    {
+      "sha": "2c7ddf216b50e154a7bb0f5fbe7bb80674c74cc5",
+      "subject": "Bind Calendar sync operations to the reviewed Google account"
+    },
+    {
+      "sha": "dbc035a0bd23355cb3b87e996ce9e11774651ab6",
+      "subject": "Add owner-scoped conditional Google Calendar sync API"
+    },
+    {
+      "sha": "b70c8d87d9335c8e9d496457edadd6534bd3c8fb",
+      "subject": "Preserve recurrence in linked Calendar comparisons and provider writes"
+    },
+    {
+      "sha": "1b5facd77af32edeeeef8f98138f6eb3410893d5",
+      "subject": "fix(cloud): preserve absent native product in sealed development authority"
+    },
+    {
+      "sha": "52ff5e61c4e1f01fd47e85fce58d006d99daec2c",
+      "subject": "Share Calendar reconciliation with browser and opaque revision hosts"
+    },
+    {
+      "sha": "ef4a3ea5ce016c1fc67c0e51936c68574029d1fe",
+      "subject": "Distinguish unavailable Google endpoints from account disconnection"
+    },
+    {
+      "sha": "1c2180707db7278b16fe19cd9f04dbe386154aaa",
+      "subject": "Require complete parameters in promoted email draft tools"
+    },
+    {
+      "sha": "ed7c26e631345eba97e3f1e45bec0865dccbda7a",
+      "subject": "Add owner-reviewed managed Gmail sends to standard message tools"
+    },
+    {
+      "sha": "6f863cdcec627ef6823942be7bd71ac6886e6610",
+      "subject": "Recognize exact owner-scoped managed Google grant IDs in Calendar reads"
+    },
+    {
+      "sha": "071ce34c9ca8709f9558ed93b58f310b28d4b393",
+      "subject": "Explain exact connected-source retry when phone Calendar ownership blocks an unscoped read"
+    },
+    {
+      "sha": "d2b52f6abdcb091acc72a0564fdd9104e9600ffa",
+      "subject": "Verify the exact source health identity on managed Calendar feeds"
+    },
+    {
+      "sha": "892318c1ee4cc393a61457b066ccd43057cf1386",
+      "subject": "Read managed owner Google calendars through the existing Calendar service"
+    }
+  ],
   "pullRequests": [
     {
       "number": 34453,
@@ -313,5 +418,8 @@
       "mergeCommit": "f7f3765d0a9cb8414f6c3a472446cff77e6fb9c7",
       "head": "claude/alpha-ipc-events"
     }
-  ]
+  ],
+  "sourceBoundary": "Private local commit; GitHub compare returned404. This is local graph against recorded cached develop, not fresh public reachability.",
+  "remoteHeadObserved": "ae5ce423ad25c0d15d370cb59ecbbbe1976a068e",
+  "remoteHeadAvailableLocally": false
 }
