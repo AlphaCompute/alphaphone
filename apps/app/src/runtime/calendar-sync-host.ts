@@ -56,6 +56,7 @@ function owner() {
 		throw Error(
 			"Connect your Cloud account and agent before enabling Calendar sync.",
 		);
+	if(Capacitor.isNativePlatform()&&account.environment!=='production')throw Error('Device Calendar sync requires the production Cloud account; no other environment was used.');
 	const selection = readGoogleCalendarSelection({
 		environment: account.environment,
 		userId: account.userId,
@@ -108,7 +109,7 @@ const controller = new CalendarSyncController(
 		const selected=owner(),key=identity();
 		const current=()=>!signal.aborted&&!document.hidden&&identity()===key;
 		if(Capacitor.isNativePlatform()){
-			const source=await nativeCalendarSync.prepare({connectionId:selected.selection.connectionId,calendarId:selected.selection.providerCalendarId},current,signal,nativePermissionReview),binding=source.binding;
+			const source=await nativeCalendarSync.prepare({environment:selected.account.environment,connectionId:selected.selection.connectionId,calendarId:selected.selection.providerCalendarId},current,signal,nativePermissionReview),binding=source.binding;
 			if(binding.environment!==selected.account.environment||binding.userId!==selected.account.userId||binding.organizationId!==selected.account.organizationId||binding.agentId!==selected.agentId||binding.connectionId!==selected.selection.connectionId||binding.calendarId!==selected.selection.providerCalendarId)throw Error('Device and Google Calendar account bindings differ. Nothing was enabled.');
 			destination={...source.destination};preparedBinding={...binding};
 			const local=nativeCalendarSync.port(source,current,signal);
@@ -258,7 +259,7 @@ export const calendarSyncHost = {
 				b?.calendarId === target.selection.providerCalendarId &&
 				b?.agentId === target.agentId;
 			if(enabled&&Capacitor.isNativePlatform()){
-				const key=identity(),native=await nativeCalendarSync.prepare({connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal);
+				const key=identity(),native=await nativeCalendarSync.prepare({environment:target.account.environment,connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal);
 				enabled=native.enabled&&native.binding.localSourceRevision===b?.localSourceRevision;
 				if(!enabled)status='Device sync needs a new review. Saved events are retained.';
 			}
@@ -282,7 +283,7 @@ export const calendarSyncHost = {
 			b.calendarId !== target.selection.providerCalendarId
 		)
 			return new Set();
-		const source=Capacitor.isNativePlatform()?await nativeCalendarSync.prepare({connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal):await prepareCalendarSource();
+		const source=Capacitor.isNativePlatform()?await nativeCalendarSync.prepare({environment:target.account.environment,connectionId:target.selection.connectionId,calendarId:target.selection.providerCalendarId},()=>!document.hidden&&identity()===key,new AbortController().signal):await prepareCalendarSource();
 		if(('binding' in source?source.binding.localSourceRevision:source.sourceRevision)!==b.localSourceRevision)return new Set();
 		const store = await CalendarLinkedStore.open(
 			b,
@@ -359,9 +360,10 @@ export function startCalendarSyncHost() {
 	const changedOwner = () => {
 		const next = identity();
 		if (next !== key) {
+			const changedExistingOwner=!!key;
 			key = next;
 			controller.cancel();
-			if(Capacitor.isNativePlatform())nativeCalendarSync.cancel();
+			if(Capacitor.isNativePlatform()){nativeCalendarSync.cancel();if(changedExistingOwner){enabled=false;void nativeCalendarSync.pause().catch(()=>{status='Device sync pause could not be confirmed. Check pending deletions.';changed();});}}
 			status =
 				"Sync is off.";
 			changed();
