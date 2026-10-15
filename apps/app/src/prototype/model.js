@@ -5537,7 +5537,7 @@ class Component extends DCLogic {
 
     var apps = ORDER.filter(function (k) { return !VIEWS[k].hidden; }).map(function (k) {
       var def = VIEWS[k];
-      return { d: IC[def.icon] || IC.grid, label: def.title, open: function () { self.openView(k); }, badge: def.badge && ["phone", "messages", "inbox"].indexOf(k) >= 0 ? !!def.badge(self.vget(k)) : false };
+      return { key: k, d: IC[def.icon] || IC.grid, label: def.title, open: function () { self.openView(k); }, badge: def.badge && ["phone", "messages", "inbox"].indexOf(k) >= 0 ? !!def.badge(self.vget(k)) : false };
     });
 
     var NOTIFS = NOTIF.map(function (n) { return Object.assign({}, n, { d: IC[n.icon] || IC.bell }); });
