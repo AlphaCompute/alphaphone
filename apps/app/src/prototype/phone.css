@@ -99,12 +99,12 @@ html:not(.standalone-app) [data-alpha-layer="home"][data-alpha-home-fits="true"]
 .note-source-actions:empty { display:none; }
 .note-source-actions .note-source-trigger { flex:1; margin:0; }
 .note-source-trigger { flex-shrink:0; min-height:44px; margin:4px 24px; padding:8px 12px; border-radius:16px; background:var(--s2); text-align:left; font:inherit; }
-.note-source-dialog { width:min(560px,calc(100vw - 24px)); max-height:calc(100dvh - 24px); box-sizing:border-box; padding:20px; border:1px solid #888; border-radius:20px; background:var(--source-bg,Canvas); color:var(--source-fg,CanvasText); font:16px system-ui; font-size:calc(16px * var(--browser-text-scale,1)); overflow:hidden; }
+.note-source-dialog { width:min(480px,calc(100vw - 24px),calc(var(--phone-width,100vw) - 24px)); max-height:min(calc(100dvh - 24px),calc(var(--phone-height,100dvh) - 24px)); box-sizing:border-box; padding:20px; border:0; border-radius:20px; background:var(--source-bg,Canvas); color:var(--source-fg,CanvasText); font:16px 'Public Sans',system-ui,sans-serif; font-size:calc(16px * var(--browser-text-scale,1)); overflow:hidden; }
 .note-source-dialog[open] { display:flex; flex-direction:column; gap:12px; }
-.note-source-dialog h2 { margin:0; font-size:1.2em; overflow-wrap:anywhere; }
+.note-source-dialog h2 { margin:0 0 12px; font-family:Denton,Fraunces,Georgia,serif; font-weight:300; font-size:1.875em; overflow-wrap:anywhere; }
 .note-source-content { min-height:0; overflow:auto; overflow-wrap:anywhere; }
 .note-source-dialog footer { display:flex; flex-wrap:wrap; gap:8px; flex-shrink:0; }
-.note-source-dialog button { min-height:44px; padding:8px 12px; border:1px solid currentColor; border-radius:12px; background:var(--source-bg,Canvas); color:var(--source-fg,CanvasText); font:inherit; }
+.note-source-dialog button { min-height:44px; padding:8px 12px; border:0; border-radius:24px; background:var(--s2,#f3f3f3); color:var(--source-fg,CanvasText); font:inherit; }
 
 .note-source-dialog footer button { flex:1 1 180px; min-width:0; overflow-wrap:normal; }
 .note-source-content:focus-visible { outline:2px solid currentColor; outline-offset:-2px; }
@@ -246,17 +246,12 @@ html:not(.standalone-app) [data-alpha-layer="home"][data-alpha-home-fits="true"]
 [data-screen][data-alpha-chat-half="true"] [data-alpha-home-clearance] { height:max(0px,calc(var(--alpha-chat-clearance,0px) + 16px - 108px)); }
 [data-screen][data-alpha-chat-half="true"] [data-alpha-layer="home"] { scroll-padding-bottom:calc(var(--alpha-chat-clearance,0px) + 16px)!important; }
 
-/* Nothing on Home is drawn under the floating dock (composer bar or pill).
- * Home used to scroll beneath it behind 108px of padding: once Home had to scroll (200% text, a
- * short screen, Android's navigation inset raising the dock) its last row sat under the composer
- * and was read after it. Home's scroll area now ends above the dock, whose footprint is measured
- * (runtime/dock-clearance.ts). 108px is the design's own reserve and stays the minimum, so Home
- * looks as before wherever it fitted. In landscape the dock is beside Home, not over it. */
+/* Home fills the phone behind its floating assistant. Keep the measured dock
+ * clearance inside the scroll content so labels never hit a hard clipping edge
+ * and the last row can still be brought fully above the assistant. */
 :root { --alpha-dock-reserve:max(108px,calc(var(--alpha-dock-clearance,102px) + 6px)); --alpha-dock-rest-reserve:max(108px,calc(var(--alpha-dock-rest,102px) + 6px)); }
-html:not(.alpha-landscape) .alpha-phone [data-alpha-layer="home"] { bottom:var(--alpha-dock-reserve)!important; scroll-padding-bottom:16px!important; }
-/* Rows are laid out against the bar at rest: a status line stacked on the bar for a moment
- * shortens the scroll area (Home scrolls to what it hid) and does not move every row. */
-html:not(.alpha-landscape) .alpha-phone [data-alpha-home-layout] { padding-bottom:0!important; min-height:calc(100% + var(--alpha-dock-reserve) - var(--alpha-dock-rest-reserve))!important; }
+html:not(.alpha-landscape) .alpha-phone [data-alpha-layer="home"] { bottom:0!important; scroll-padding-bottom:var(--alpha-dock-reserve)!important; }
+html:not(.alpha-landscape) .alpha-phone [data-alpha-home-layout] { padding-bottom:var(--alpha-dock-reserve)!important; min-height:100%!important; }
 /* The app library fills the screen behind the floating dock. Its final row can
    scroll above the dock because the clearance belongs inside the list. */
 html:not(.alpha-landscape) .alpha-phone [data-alpha-layer="drawer"] { padding-bottom:0!important; }
@@ -434,3 +429,11 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .mail-folder-select{appearance:none;-webkit-appearance:none;height:44px;width:100%;min-width:0;padding:0 36px 0 14px;border:0;border-radius:22px;background:transparent;color:inherit;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
 .mail-folder-select:focus-visible{outline:2px solid var(--acct);outline-offset:2px}
 .mail-folder-chevron{position:absolute;right:12px;top:14px;width:16px;height:16px;pointer-events:none;background:currentColor;mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}
+
+.note-source-dialog .content-question-help{font-size:.875em;color:var(--mut,#666);margin:0 0 16px;line-height:1.5}
+.note-source-dialog textarea{display:block;border:1px solid var(--line,#ddd);border-radius:12px;background:var(--s1,#fafafa);color:inherit;resize:vertical;min-height:72px}
+.note-source-dialog textarea:focus-visible{outline:2px solid var(--acc,#0000ff);outline-offset:2px}
+.note-source-dialog button.content-question-primary{background:var(--acc,#0000ff);color:#fff}
+.note-source-dialog footer{flex-direction:row-reverse}
+.note-source-dialog footer button{flex:1 1 120px}
+.note-source-dialog [role=status]:empty{display:none}
