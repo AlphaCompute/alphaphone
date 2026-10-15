@@ -81,6 +81,8 @@ test("staging copies the reviewed configuration and APK and refuses a different 
   assert.equal(fs.existsSync(path.join(output, "listener")), false, "nothing copied after a refusal");
   const target = stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP });
   assert.equal(fs.readFileSync(path.join(target, "AlphaSense.apk"), "utf8"), "apk-bytes");
+  for (const file of ["systemui/manifest.json", "systemui/microphone-ops.patch"])
+    assert.equal(fs.readFileSync(path.join(target, file), "utf8"), read(file), "staged SystemUI input matches reviewed bytes");
   for (const file of ["Android.bp", "listener.mk", "permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml", "sysconfig/alphaphone-sense.xml", "overlay/frameworks/base/core/res/res/values/config.xml"])
     assert.ok(fs.existsSync(path.join(target, file)), file);
   assert.match(fs.readFileSync(path.join(output, "product.mk"), "utf8"), /^include .*\/listener\/listener\.mk$/m);
