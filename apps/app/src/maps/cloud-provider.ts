@@ -29,12 +29,14 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
   if (failure.code === 'invalid-response') return new MapsFailure('invalid-response', 'Eliza Cloud Maps sent an invalid response.');
   if (failure.code !== 'http') return new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.');
   const code = failure.data && typeof failure.data === 'object' ? (failure.data as { code?: unknown }).code : undefined;
+  if(code==='maps_allowance_unconfigured')return new MapsFailure('unconfigured','Contact the service operator to configure the Maps request allowance.');
+  if(code==='maps_admission_unknown'||code==='maps_request_already_admitted'||code==='maps_request_identity_conflict')return new MapsFailure('unavailable','Maps admission is already consumed or could not be confirmed. This request will not be replayed.');
   switch (failure.status) {
    case 401: return new MapsFailure('unauthorized', 'Sign in to Eliza Cloud to use Maps.');
    // An authenticated 404 means this Cloud deployment does not serve Maps yet (#412).
    case 404: return new MapsFailure('unconfigured', 'Eliza Cloud Maps is not available yet.');
    case 403: return new MapsFailure('unauthorized', code === 'subscription_required' ? 'Maps needs an active Eliza subscription.' : 'Eliza Cloud refused this Maps request.');
-   case 429: return new MapsFailure('rate-limited', 'Maps request limit reached. Try again later.');
+   case 429: return new MapsFailure('rate-limited', code==='allowance_exhausted'?'The separate Maps request allowance is exhausted until its reset.':'Maps request limit reached. Try again later.');
    case 422: return new MapsFailure('unsupported', code === 'no_route' ? 'No route is available between these places.' : code === 'unsupported_mode' ? 'This travel mode is not available from Eliza Cloud Maps.' : 'This location is outside Eliza Cloud Maps coverage.');
    case 503: return code === 'maps_not_configured' ? new MapsFailure('unconfigured', 'Eliza Cloud Maps is not available yet.') : new MapsFailure('unavailable', 'Eliza Cloud Maps is temporarily unavailable. Try again later.');
    default: return new MapsFailure(failure.status === 502 ? 'invalid-response' : 'unavailable', 'Eliza Cloud Maps could not complete this request.');

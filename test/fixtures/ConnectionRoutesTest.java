@@ -17,6 +17,11 @@ public final class ConnectionRoutesTest {
   for(String name:new String[]{"x-eliza-device-id","x-eliza-device-key","x-eliza-device-capabilities","x-eliza-phone-protocol"}){check(!ConnectionRoutes.admittedHeader(name,false),"flag-off refuses "+name);check(ConnectionRoutes.admittedHeader(name,true),"test mocks keep "+name);}
   for(String name:new String[]{"cookie","x-eliza-agent-id","Authorization","X-Eliza-Phone-Protocol","",null})check(!ConnectionRoutes.admittedHeader(name,true)&&!ConnectionRoutes.admittedHeader(name,false),"header "+name);
 
+  for(String path:new String[]{"geocode","reverse","places/search","places/details","routes"})check(ConnectionRoutes.mapsRequestIdentity("idempotency-key","request_1","/api/v1/maps/"+path,"POST"),"Maps request identity "+path);
+  for(String path:new String[]{"/api/v1/subscription/redeem","/api/v1/maps/capabilities","/api/v1/maps/routes/","//api/v1/maps/routes",null})check(!ConnectionRoutes.mapsRequestIdentity("idempotency-key","request_1",path,"POST"),"identity route refused "+path);
+  for(String value:new String[]{"","bad id","query=location","line\r\nbreak",null,"x".repeat(129)})check(!ConnectionRoutes.mapsRequestIdentity("idempotency-key",value,"/api/v1/maps/routes","POST"),"invalid Maps identity");
+  check(!ConnectionRoutes.mapsRequestIdentity("idempotency-key","request_1","/api/v1/maps/routes","GET"),"read does not carry request identity");
+  check(!ConnectionRoutes.mapsRequestIdentity("authorization","request_1","/api/v1/maps/routes","POST"),"identity rule cannot admit credentials");
   check(revoke("https","api.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"production self-revocation");
   check(revoke("https","api.eliza.app",443,"/api/v1/api-keys/current",null,"DELETE",false,false),"explicit default port");
   check(!revoke("https","api-staging.eliza.app",-1,"/api/v1/api-keys/current",null,"DELETE",false,false),"staging needs test mocks");
