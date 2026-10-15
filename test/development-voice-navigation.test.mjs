@@ -48,3 +48,8 @@ test('projection refuses replaced ownership and hidden documents before any scre
  const f=projectionHarness();f.replace();await assert.rejects(f.apply({viewId:'notes'}),/changed/);assert.equal(f.commits,0);
  const g=projectionHarness();g.background();await assert.rejects(g.apply({viewId:'notes'}),/changed/);assert.equal(g.commits,0);
 });
+
+test('interrupted and superseded finalized turns cannot deliver a late screen effect',async()=>{
+ const f=harness();await f.create();f.options.onServerEvent({t:'stt_final',traceId:'old',text:'open notes'});f.options.onServerEvent({t:'interrupted',traceId:'old'});f.options.onServerEvent({t:'navigate_view',traceId:'old',viewId:'notes'});await flush();assert.equal(f.navigations.length,0);
+ f.options.onServerEvent({t:'stt_final',traceId:'old2',text:'open notes'});f.options.onServerEvent({t:'navigate_view',traceId:'old2',viewId:'notes'});f.options.onServerEvent({t:'stt_partial',traceId:'new',text:'no wait'});await flush();assert.equal(f.navigations.length,0);
+});

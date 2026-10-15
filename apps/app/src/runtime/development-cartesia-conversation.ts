@@ -14,21 +14,23 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
  const {createVoiceSessionClient}=await import('@elizaos/ui/voice/voice-session-client');current();
  let refreshTask:Promise<void>|undefined,refreshAgain=false;
  const reconcile=()=>{if(refreshTask){refreshAgain=true;return;}refreshTask=(async()=>{do{refreshAgain=false;current();await connectionController.refreshDeveloperVoiceHistory(input.binding,lifecycle.signal);current();}while(refreshAgain&&!stopped);})().catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice history could not be verified.'));}).finally(()=>{refreshTask=undefined;});};
- const submitted=new Set<string>(),navigated=new Set<string>();let navigationTask=Promise.resolve();
+ const submitted=new Set<string>(),navigated=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();
  const client=createVoiceSessionClient({agentId:input.binding.session.agentId,conversationId:input.binding.conversationId,maxReconnects:0,preLiveMaxAttempts:1,getUiContext:()=>{current();return input.getUiContext?.()??{};},
   getConsentNonce:async()=>{const result=await request('/api/v1/voice/session/consent',{});return typeof result.consentNonce==='string'?result.consentNonce:null;},
   fetch:async(path,init={})=>{if(path!=='/api/v1/voice/session'||init.method!=='POST'||typeof init.body!=='string')throw Error('Unsupported developer voice request');const body=JSON.parse(init.body);if(body.agentId!==input.binding.session.agentId||body.conversationId!==input.binding.conversationId||body.transport!=='websocket')throw Error('Developer voice binding changed');return Response.json(await request(path,body,init.signal??lifecycle.signal));},
   onMinted:result=>{minted.add(result.sessionId);try{current();}catch{void stop().catch(error=>input.onError(error instanceof Error?error:Error('Developer voice retirement was not confirmed.')));}},
   onState:state=>{if(!stopped){current();input.onState(state.phase);}},
   onServerEvent:event=>{if(stopped)return;current();if(event.t==='stt_partial'||event.t==='stt_final')input.onTranscript(event.text);
+   if(event.t==='stt_partial'||event.t==='stt_final')currentTurn=event.traceId;
+   if(event.t==='interrupted'&&currentTurn===event.traceId)currentTurn=undefined;
    if(event.t==='stt_final'){if(submitted.size>=64)submitted.delete(submitted.values().next().value!);submitted.add(event.traceId);}
    if(['ready','stt_final','speaking_start','reply_complete','usage'].includes(event.t))reconcile();
    if(event.t==='navigate_view'){
     // A navigation effect must belong to an utterance finalized on this socket.
     // Reject stale/unsolicited effects and dedupe each turn; never replay after reconnect.
-    if(!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
+    if(currentTurn!==event.traceId||!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
     if(navigated.size>=64)navigated.delete(navigated.values().next().value!);navigated.add(event.traceId);
-    navigationTask=navigationTask.then(async()=>{current();await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
+    navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
    }
   },
   onPlaybackUnlockChange:()=>{if(!stopped)input.onPlaybackUnlockChange?.();},
