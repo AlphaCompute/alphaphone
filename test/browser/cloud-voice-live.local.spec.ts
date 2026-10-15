@@ -10,10 +10,10 @@ test('real Cloud voice records admission, transcription, navigation and playback
  await expect.poll(()=>page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return !!c.getSnapshot().session&&!c.getSnapshot().busy&&!c.getSnapshot().open;}),{timeout:30000}).toBe(true);
  await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>{const root=document.querySelector('[data-alpha-layer="conversation"]');return !!root&&root.getAnimations({subtree:true}).every(a=>a.playState!=='running');})).toBe(true);
- started=Date.now();await page.getByRole('button',{name:'Talk',exact:true}).click();
+ started=Date.now();receipt.talkAt=started;await page.getByRole('button',{name:'Talk',exact:true}).click();
  try{await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible({timeout:20000});
  await expect(page.getByRole('heading',{name:'Notes',exact:true})).toBeVisible({timeout:60000});receipt.notesMs=Date.now()-started;
- await expect.poll(()=>page.evaluate(()=>(window as any).cloudVoiceLiveProof.playback.length),{timeout:30000}).toBeGreaterThan(0);receipt.playbackMs=Date.now()-started;
+ await expect.poll(()=>page.evaluate(()=>(window as any).cloudVoiceLiveProof.playback.length),{timeout:30000}).toBeGreaterThan(0);receipt.playbackMs=Date.now()-started;await expect.poll(()=>receipt.requests.filter((row:any)=>/\/api\/(asr|tts)\/cloud/.test(row.path)&&row.provider==='cartesia'&&row.route==='cloud'&&row.upstreamStatus===200).length).toBe(2);
  await page.screenshot({path:info.outputPath('cloud-notes-open.png')});
- }finally{receipt.proof=await page.evaluate(()=>(window as any).cloudVoiceLiveProof);receipt.visible=await page.locator('body').innerText();const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();await writeFile(info.outputPath('receipt.json'),JSON.stringify(receipt,null,2));}
+ }finally{receipt.proof=await page.evaluate(()=>(window as any).cloudVoiceLiveProof);const thinking=receipt.proof.states.find((value:any)=>value.state==='thinking');receipt.audioAfterTranscriptThinkingMs=thinking&&receipt.proof.playback[0]?receipt.proof.playback[0]-thinking.at:null;receipt.visible=await page.locator('body').innerText();const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();await writeFile(info.outputPath('receipt.json'),JSON.stringify(receipt,null,2));}
 });
