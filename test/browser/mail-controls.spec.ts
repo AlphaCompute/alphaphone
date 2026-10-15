@@ -16,7 +16,10 @@ test('More has a consistent chevron and Drafts is available without provider dra
   c.getCloudClient=()=>({client,sessionId:'controls-session',credentialId:'fixture'} as any);const snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:'controls-owner',sessionId:'controls-session',credentialId:'fixture'}} as any;c.getSnapshot=()=>snapshot;
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();const folders=page.getByRole('combobox',{name:'Other mail folders',exact:true});await expect(folders).toBeVisible();
- expect(await folders.evaluate(el=>({appearance:getComputedStyle(el).appearance,height:el.getBoundingClientRect().height,paddingRight:parseFloat(getComputedStyle(el).paddingRight)}))).toEqual({appearance:'none',height:44,paddingRight:36});
+ const metrics=await folders.evaluate(el=>({appearance:getComputedStyle(el).appearance,height:el.getBoundingClientRect().height,paddingRight:parseFloat(getComputedStyle(el).paddingRight)}));
+ expect(metrics.appearance).toBe('none');expect(metrics.paddingRight).toBe(36);
+ // Chromium layout transforms can introduce subpixel floating-point rounding.
+ expect(metrics.height).toBeCloseTo(44,4);
  expect(await folders.evaluate(el=>el.getBoundingClientRect().right<=document.querySelector('[data-screen]')!.getBoundingClientRect().right-8)).toBe(true);
  await folders.selectOption('drafts');await expect(page.getByRole('heading',{name:'Drafts',exact:true})).toBeVisible();await expect(page.getByText('Drafts on this device',{exact:true})).toBeVisible();
 });

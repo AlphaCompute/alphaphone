@@ -88,21 +88,22 @@ recording a clip on the device:
    `AcousticEchoCanceler` (and `NoiseSuppressor`) when the device has one (`LiveCaptureSource`), so
    the microphone can stay open while the reply plays. Transcribe keeps the recognition source.
    Stopping flushes the frames of an open segment that were read before the stop.
-2. **Renderer.** `live-segment-stream.ts` and `live-voice.ts` forward the frames (the upstream
-   `AudioFrameEvent` wire format, base64 LE s16) and VAD edges in order to the resident agent's
-   `POST /api/asr/local-inference/live` through the owner-authenticated agent bridge
-   (`AlphaLocalAgentPlugin` admits exactly `/api/asr/local-inference/live` and `/live/status`).
-   The transport refuses every request once the resident session changed, so audio never reaches
-   another owner's agent. Each closed segment yields exactly one result.
+2. **Native transport.** On a bridge advertising `nativeTransport`, the app process forwards
+   PCM and VAD directly over owner-bound resident IPC; the renderer receives only levels,
+   VAD and transcripts. The enrolled owner, token, root and lifecycle epoch are checked on
+   every request and response. The bounded queue fails closed on overload, and cancellation
+   closes the current IPC read. See [native transport](native-live-pcm-transport.md).
+   Older native packages retain the renderer-forwarding compatibility path through
+   `live-segment-stream.ts` and `live-voice.ts`; errors do not silently replay on that path.
 3. **Agent.** The live route (elizaOS #36213, #36214) decodes with the Phonon-2 streaming decoder
    through the bionic host (`BionicAsrStreams`, staged from the pin) and returns
    `final.text` in the response to the request that carries `speech-end`.
-4. **Stop reconciliation.** Stop (Transcribe), Mute and the end of a conversation cut the capture
-   at the tap: frames (stamped with the end of their audio on the capture clock, start time plus
-   samples read) later than the tap are dropped, an open segment is closed at the tap and its final
-   is awaited, so a transcript holds the audio up to the stop at 32 ms window granularity. Cancel
-   discards everything. A segment whose transcription fails (`502 ASR_FAILED`) yields no text and
-   the capture continues; an unavailable route or transport failure ends it.
+4. **Stop reconciliation.** Stop (Transcribe), Mute and conversation end stop capture,
+   omit queued frames after the cutoff, finalize the open segment and await the explicit
+   server close acknowledgement. PCM already sent before native Stop arrives cannot be
+   retracted. Cancel drops queued audio and late output; IPC closure does not roll back
+   inference already running. A segment whose transcription fails (`502 ASR_FAILED`) yields
+   no text and capture continues; an unavailable route or transport failure stops it.
 5. **Endpointing (assistant).** After the last segment's final, a short gap (300 ms) asks a
    semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
    which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
@@ -137,12 +138,11 @@ with the full running text, `final`, `error`) on its WebSocket event stream. `li
 replaces the interim text on each newer partial of the current turn, drops other sessions and
 stale turns, delivers each final once and shows the interim text in the conversation view
 (`data-alpha-voice-interim`, "Heard so far, not sent"). It is never stored, logged, written to a
-draft or sent. **Consumer wiring gap:** pin `fb6232523074` includes private agent-event
-subscriptions (elizaOS/eliza#36261), but Alpha's resident transport does not consume them yet.
-The phone therefore still shows final transcripts only; interim text appears where a transport
-carries the event stream (the browser spec's stub agent). The generic native live transport can
-forward `subscribe` events when its resident adapter exposes them. Nothing synthesizes a
-partial in the meantime.
+draft or sent. Alpha now consumes the private voice-only event subscription, fenced by
+owner, runtime and surface lifecycle. The direct native transport uses that feed for
+interim display and native HTTP responses as authoritative finals/errors; the
+compatibility renderer transport retains its existing event/response deduplication.
+Installed event-flow acceptance remains separate from source wiring.
 
 Latency is recorded per turn as numbers only (`voice-timing.ts` `live`: ASR mode, partial count,
 speech-start to first partial, speech-end to final on the client and the agent's own last-frame to
@@ -250,8 +250,8 @@ still required.
 
 ## Upstream gaps
 
-- Interim live transcripts do not reach the Android app: the agent publishes `voice-transcript`
-  events through its WebSocket and private IPC, but the Alpha resident adapter does not consume the IPC subscription yet (see Live voice).
+- Live event subscription and direct native PCM routing are implemented in the consumer;
+  current installed capture/IPC/inference/playback acceptance remains open (see Live voice).
 - The app-process recorded-clip path (`NativeAsr.transcribe`, used by Notes dictation and when the
   live route is not ready) is batch; Paradee returns a complete buffer.
 - The Paradee GGUF, the misaki lexicon and the Phonon-2 GGUF are not published for download; they

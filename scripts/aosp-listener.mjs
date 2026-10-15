@@ -188,6 +188,12 @@ export function stageListener({ root, output, apk, dump, signer, launcherSigner,
   if (fs.existsSync(target)) throw new Error(`${target} already exists`);
   fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false });
   fs.copyFileSync(apk, path.join(target, "AlphaSense.apk"), fs.constants.COPYFILE_EXCL);
+  // The optional source-patched SystemUI trusts only the APK certificate admitted above.
+  // Empty default in SystemUI disables attribution; this is not an image qualification flag.
+  const chipOverlay = path.join(target, "systemui/chip/overlay/frameworks/base/packages/SystemUI/res/values");
+  fs.mkdirSync(chipOverlay, { recursive: true });
+  fs.writeFileSync(path.join(chipOverlay, "alpha-listener-certificate.xml"),
+    `<resources><string name="config_alphaListeningCertificateSha256" translatable="false">${signer}</string></resources>\n`, { flag: "wx" });
   fs.appendFileSync(path.join(output, "product.mk"), listenerProductMakefile());
   return target;
 }

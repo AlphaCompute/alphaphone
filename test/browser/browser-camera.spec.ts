@@ -63,8 +63,10 @@ test('browser camera permission denial retries explicitly without a saved photo'
   navigator.mediaDevices.getUserMedia=async()=>{(window as any).cameraAttempts++;throw new DOMException('Synthetic denial','NotAllowedError');};
  });
  await page.goto('/');await page.getByRole('button',{name:'Camera',exact:true}).click();
- await expect(page.getByText('Camera unavailable or permission denied. Tap the shutter to retry.',{exact:true})).toBeVisible();
  const recovery=page.getByRole('alert',{name:'Camera access is off'});
+ await expect(recovery).toBeVisible();
+ await expect(page.locator('[data-alpha-camera="said"]')).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).cameraAttempts)).toBe(1);
  await expect(recovery).toContainText('Allow camera access for this site in your browser settings');
  await expect(recovery.getByRole('button',{name:'Open Android settings'})).toHaveCount(0);
  await page.getByRole('button',{name:'Take photo',exact:true}).click();

@@ -3,6 +3,7 @@ import { registerPlugin } from '../platform-plugins';
 import { connectionController } from './connection-ui';
 import { LIVE_ASR_PATH, LIVE_ASR_STATUS_PATH, type LiveAudioFrame, type LiveVadEdge, type LiveVoiceLatency, type LiveVoiceTransport } from './live-voice';
 import { createLiveSegmentStream } from './live-segment-stream';
+import {openNativeResidentCapture, type NativeResidentPort} from './native-resident-capture';
 import type { AssistantCapture, AssistantListenHandlers } from './voice-assistant';
 
 /**
@@ -21,7 +22,7 @@ import type { AssistantCapture, AssistantListenHandlers } from './voice-assistan
 type FramesEvent = { captureId?: unknown; frames?: unknown; vad?: unknown; peak?: unknown };
 type EndedEvent = { captureId?: unknown; error?: unknown };
 const plugin = registerPlugin<{
-  liveCaptureStatus(): Promise<{ available?: unknown }>;
+  liveCaptureStatus(): Promise<{ available?: unknown; nativeTransport?: unknown }>;
   startLiveCapture(input: { captureId: string; echoCancel?: boolean }): Promise<{ captureId?: unknown; sampleRate?: unknown; echoCancelled?: unknown }>;
   stopLiveCapture(input: { captureId: string }): Promise<{ captureId?: unknown; durationMs?: unknown }>;
   addListener(event: 'liveCaptureFrames', callback: (event: FramesEvent) => void): Promise<PluginListenerHandle>;
@@ -90,6 +91,19 @@ export async function openNativeLiveStream(input: {
   input.signal.throwIfAborted();
   const transport = residentLiveTransport();
   if (!transport) throw Error('The on-device agent is not connected.');
+  const capability=await plugin.liveCaptureStatus?.();
+  input.signal.throwIfAborted();
+  if(capability?.nativeTransport===true){
+    const owner=connectionController.getResidentReadingBinding();
+    if(!owner)throw Error('The on-device agent is not connected.');
+    const resident=connectionController.getResidentLiveVoice();
+    return openNativeResidentCapture(plugin as unknown as NativeResidentPort,{
+      ...input,ownerId:owner.ownerId,
+      current:()=>{const now=connectionController.getResidentReadingBinding();return now?.ownerId===owner.ownerId&&now.sessionId===owner.sessionId;},
+      subscribe:resident?.subscribe,
+    });
+  }
+  // Compatibility with an older native package: PCM still crosses the renderer on this path.
   let accepting = true, stopping = false, lost = false;
   const lose = (error: unknown) => { if (stopping || lost) return; lost = true; input.onLost(error); };
   const stream = createLiveSegmentStream({
@@ -132,12 +146,12 @@ export async function openNativeLiveStream(input: {
   let echoCancelled = false;
   try {
     input.signal.throwIfAborted();
+    input.signal.addEventListener('abort', abort, { once: true });
     const result = await plugin.startLiveCapture({ captureId, echoCancel: input.echoCancel });
     if (result?.captureId !== captureId || result.sampleRate !== 16000) throw Error('Live capture identity changed.');
     echoCancelled = input.echoCancel && result.echoCancelled === true;
     input.signal.throwIfAborted();
-  } catch (error) { stream.cancel(); await stopNative(); throw error; }
-  input.signal.addEventListener('abort', abort, { once: true });
+  } catch (error) { input.signal.removeEventListener('abort', abort); stream.cancel(); await stopNative(); throw error; }
   const startedAt = Date.now();
   return {
     startedAt,
