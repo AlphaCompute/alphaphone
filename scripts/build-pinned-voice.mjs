@@ -9,7 +9,9 @@ import {upstreamNativeSource} from './upstream-native-source.mjs';
 import {verifyParadeeFfi} from './paradee-runtime.mjs';
 
 const identity = root => {
-  const {pin} = upstreamNativeSource(root);
+  const source = upstreamNativeSource(root);
+  for (const prefix of ['packages/app/scripts/paradee-voice', 'packages/app/scripts/stage-elizavoice-lib.ts', 'packages/app/platforms/android/paradee-voice/inputs.json']) source.read(prefix);
+  const pin = source.pin;
   const {forkPin} = verifyParadeeFfi(root);
   return {sourceCommit: pin, nativeCommit: forkPin};
 };
