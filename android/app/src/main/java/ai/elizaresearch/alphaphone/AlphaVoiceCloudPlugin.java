@@ -235,12 +235,14 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  // Live voice (live-voice.ts / native-live-voice.ts): app-process capture with Silero VAD. One capture at a time.
  private final ExecutorService liveWorker=Executors.newSingleThreadExecutor();
  private AlphaLiveVoiceCapture live; // Guarded by liveWorker (all access runs on it).
+ private final ExecutorService nativeVoiceWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
+ private final Map<String,NativeLiveVoicePipe> livePipes=new ConcurrentHashMap<>();
  private final LiveCaptureAdmission liveAdmission=new LiveCaptureAdmission();
  private final ExecutorService liveStopWorker=new ThreadPoolExecutor(1,1,30,TimeUnit.SECONDS,new SynchronousQueue<>());
  private final Map<String,LiveCaptureAdmission.Ticket> livePermissionEpochs=new ConcurrentHashMap<>();
  @PluginMethod public void liveCaptureStatus(PluginCall call){
   boolean permitted=getPermissionState("microphone")==PermissionState.GRANTED;
-  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
+  PluginWorkers.submit(liveWorker,()->{JSObject result=new JSObject();result.put("permission",permitted);result.put("nativeTransport",true);result.put("available",!destroyed&&AlphaLiveVoiceCapture.vadAvailable(getContext()));call.resolve(result);},()->call.resolve(new JSObject().put("permission",permitted).put("available",false)));
  }
  @PluginMethod public void startLiveCapture(PluginCall call){
   String id=call.getString("captureId","");
@@ -255,29 +257,46 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   String id=ticket.id;long e=ticket.epoch;
   PluginWorkers.submit(liveWorker,()->{
    if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){call.reject("Recording cancelled");return;}
-   if(live!=null){live.stop();live=null;}
+   if(live!=null){String old=live.captureId();live.stop();live=null;closeNativePipe(old,true,System.currentTimeMillis());}
+   final NativeLiveVoicePipe pipe;
+   try{
+    pipe=Boolean.TRUE.equals(call.getBoolean("nativeAsr",false))?new NativeLiveVoicePipe(
+     AlphaLocalAgentPlugin.openNativeVoiceTransport(call.getString("ownerId","")),new NativeLiveVoicePipe.Sink(){
+      public void result(JSONObject value){if(!destroyed&&speechForeground&&e==epoch.get()&&liveAdmission.events(ticket))notifyListeners("liveCaptureTranscript",new JSObject().put("captureId",id).put("final",value));}
+      public void failed(String code){if(!liveAdmission.events(ticket))return;if(!"ASR_FAILED".equals(code))liveAdmission.stop(id);notifyListeners("liveCaptureTranscript",new JSObject().put("captureId",id).put("error",code));}
+     },id,call.getString("roomId",null)):null;
+    if(pipe!=null){livePipes.put(id,pipe);if(!pipe.start(nativeVoiceWorker)){livePipes.remove(id,pipe);call.reject("Native voice transport busy");return;}if(!pipe.ready().get(10000,TimeUnit.MILLISECONDS))throw new IllegalStateException("Native voice startup unavailable");}
+   }catch(Exception unavailable){closeNativePipe(id,true,System.currentTimeMillis());call.reject("Native voice enrollment unavailable");return;}
    AlphaLiveVoiceCapture next=new AlphaLiveVoiceCapture(getContext(),id,new AlphaLiveVoiceCapture.Sink(){
     private boolean admitted(){return !destroyed&&speechForeground&&e==epoch.get()&&liveAdmission.events(ticket);}
-    public void frames(String captureId,JSArray frames,JSArray vad,float peak){if(admitted())notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",frames).put("vad",vad).put("peak",peak));}
-    public void ended(String captureId,String error){if(!admitted())return;JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);}
+    public void frames(String captureId,JSArray frames,JSArray vad,float peak){if(!admitted())return;notifyListeners("liveCaptureFrames",new JSObject().put("captureId",captureId).put("frames",pipe==null?frames:new JSArray()).put("vad",vad).put("peak",peak));if(pipe!=null)pipe.offer(frames,vad);}
+    public void ended(String captureId,String error){if(!admitted())return;JSObject event=new JSObject().put("captureId",captureId);if(error!=null)event.put("error",error);notifyListeners("liveCaptureEnded",event);if(error!=null&&pipe!=null)pipe.close(true,System.currentTimeMillis());}
    },Boolean.TRUE.equals(call.getBoolean("echoCancel",false)));
    // Publish cancellation before native startup. The callback only marks and schedules: no UI join/AudioRecord.stop.
-   if(!liveAdmission.attach(ticket,()->{next.cancelPending();PluginWorkers.submit(liveStopWorker,next::requestStop,()->{/* liveWorker cleanup still stops this source. */});})){call.reject("Recording cancelled");return;}
+   if(!liveAdmission.attach(ticket,()->{next.cancelPending();if(pipe!=null&&!liveAdmission.events(ticket))pipe.close(true,System.currentTimeMillis());PluginWorkers.submit(liveStopWorker,next::requestStop,()->{/* liveWorker cleanup still stops this source. */});})){closeNativePipe(id,true,System.currentTimeMillis());call.reject("Recording cancelled");return;}
    try{
     next.start();
-    if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){next.stop();call.reject("Recording cancelled");return;}
-    live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()));
-   }catch(Exception|Error error){next.stop();call.reject("Live capture could not start","capture");}
+    if(destroyed||!speechForeground||e!=epoch.get()||!liveAdmission.current(ticket)){next.stop();closeNativePipe(id,true,System.currentTimeMillis());call.reject("Recording cancelled");return;}
+    live=next;call.resolve(new JSObject().put("captureId",id).put("sampleRate",AlphaLiveVoiceCapture.SAMPLE_RATE).put("echoCancelled",next.echoCancelled()).put("nativeAsr",pipe!=null));
+   }catch(Exception|Error error){next.stop();closeNativePipe(id,true,System.currentTimeMillis());call.reject("Live capture could not start","capture");}
   },()->call.reject("Voice unavailable"));
  }
- @PluginMethod public void stopLiveCapture(PluginCall call){
-  String id=call.getString("captureId","");
-  liveAdmission.stop(id);
-  PluginWorkers.submit(liveWorker,()->{if(live==null||!live.captureId().equals(id)){call.resolve(new JSObject().put("captureId",id).put("durationMs",0));return;}long duration=live.stop();live=null;call.resolve(new JSObject().put("captureId",id).put("durationMs",duration));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0)));
+ /** Waits only on liveWorker, never the bridge/UI thread. False explicitly means server close unconfirmed. */
+ private boolean closeNativePipe(String id,boolean discard,double at){
+  NativeLiveVoicePipe pipe=livePipes.get(id);if(pipe==null)return true;
+  try{return pipe.close(discard,at).get(12000,TimeUnit.MILLISECONDS);}catch(Exception uncertain){pipe.close(true,at);return false;}
+  finally{livePipes.remove(id,pipe);}
  }
- private void stopLiveCapture(){liveAdmission.cancelAll();PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}},()->{/* Already shut down: its last task stopped the capture. */});}
+ @PluginMethod public void stopLiveCapture(PluginCall call){
+  String id=call.getString("captureId","");boolean discard=Boolean.TRUE.equals(call.getBoolean("discard",false));
+  double at=call.getData().optDouble("cutoffMs",System.currentTimeMillis());if(!Double.isFinite(at))at=System.currentTimeMillis();final double cutoff=at;
+  NativeLiveVoicePipe pipe=livePipes.get(id);if(pipe!=null){pipe.cutoff(cutoff);if(discard||!pipe.ready().isDone())pipe.close(true,cutoff);}
+  liveAdmission.stop(id);
+  PluginWorkers.submit(liveWorker,()->{long duration=0;if(live!=null&&live.captureId().equals(id)){duration=live.stop();live=null;}boolean acknowledged=closeNativePipe(id,discard,cutoff);call.resolve(new JSObject().put("captureId",id).put("durationMs",duration).put("serverClosed",acknowledged));},()->call.resolve(new JSObject().put("captureId",id).put("durationMs",0).put("serverClosed",false)));
+ }
+ private void stopLiveCapture(){liveAdmission.cancelAll();for(NativeLiveVoicePipe pipe:livePipes.values())pipe.close(true,System.currentTimeMillis());PluginWorkers.submit(liveWorker,()->{if(live!=null){live.stop();live=null;}for(String id:livePipes.keySet())closeNativePipe(id,true,System.currentTimeMillis());},()->{/* Already shut down: its last task stopped the capture. */});}
  @Override protected void handleOnPause(){speechForeground=false;stopLiveCapture();scheduleLocalRelease(30000);if(permissionEpochs.isEmpty())epoch.incrementAndGet();if(capture!=null)capture.stopAutomatically();for(Pending request:pending.values())request.cancel();main.post(this::clearPlayback);super.handleOnPause();}
- @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();liveStopWorker.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnDestroy(){destroyed=true;stopLiveCapture();liveWorker.shutdown();liveStopWorker.shutdown();nativeVoiceWorker.shutdown();livePermissionEpochs.clear();finishDrain(false,"Voice unavailable");epoch.incrementAndGet();permissionEpochs.clear();for(Pending request:pending.values())request.cancel();if(capture!=null)capture.cancel();main.post(this::clearPlayback);main.removeCallbacks(localIdleRelease);getContext().unregisterComponentCallbacks(localMemoryCallbacks);PluginWorkers.submit(workers,localEngine::close,()->{/* Already stopped: its last task closed nothing new. */});workers.shutdown();super.handleOnDestroy();}
 }
 
 /** One foreground-only private audio draft. Capture and upload are separate user actions. */
