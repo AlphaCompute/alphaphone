@@ -34,7 +34,13 @@ final class CalendarSyncBridge {
   JSONArray events;
   CalendarSyncSnapshot source;
  }
- CalendarSyncBridge(AlphaCalendarPlugin plugin){this.plugin=plugin;store=new AlphaCredentialStore(plugin.getContext());for(android.net.Uri uri:new android.net.Uri[]{CalendarContract.Calendars.CONTENT_URI,CalendarContract.Events.CONTENT_URI,CalendarContract.Attendees.CONTENT_URI,CalendarContract.Reminders.CONTENT_URI,CalendarContract.ExtendedProperties.CONTENT_URI})plugin.getContext().getContentResolver().registerContentObserver(uri,true,observer);}
+ private boolean observing;
+ CalendarSyncBridge(AlphaCalendarPlugin plugin){this.plugin=plugin;store=new AlphaCredentialStore(plugin.getContext());}
+ private void observe(){
+  if(observing)return;
+  try{for(android.net.Uri uri:new android.net.Uri[]{CalendarContract.Calendars.CONTENT_URI,CalendarContract.Events.CONTENT_URI,CalendarContract.Attendees.CONTENT_URI,CalendarContract.Reminders.CONTENT_URI,CalendarContract.ExtendedProperties.CONTENT_URI})plugin.getContext().getContentResolver().registerContentObserver(uri,true,observer);observing=true;}
+  catch(RuntimeException unavailable){plugin.getContext().getContentResolver().unregisterContentObserver(observer);throw unavailable;}
+ }
  private static JSObject status(String value){JSObject out=new JSObject();out.put("status",value);return out;}
  private boolean granted(){return ContextCompat.checkSelfPermission(plugin.getContext(),Manifest.permission.READ_CALENDAR)==PackageManager.PERMISSION_GRANTED&&ContextCompat.checkSelfPermission(plugin.getContext(),Manifest.permission.WRITE_CALENDAR)==PackageManager.PERMISSION_GRANTED;}
  private boolean foreground(){var a=plugin.getActivity();android.app.KeyguardManager lock=plugin.getContext().getSystemService(android.app.KeyguardManager.class);return !retired&&a!=null&&!a.isFinishing()&&!a.isDestroyed()&&a.getLifecycle().getCurrentState().isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)&&(a.hasWindowFocus()||dialog!=null&&dialog.isShowing()&&dialog.getWindow()!=null&&dialog.getWindow().getDecorView().hasWindowFocus())&&lock!=null&&!lock.isDeviceLocked();}
@@ -65,7 +71,7 @@ final class CalendarSyncBridge {
  }
  private Context prepare(JSONObject selection)throws Exception{
   if(!foreground()||!granted())throw new SecurityException("Calendar permission and unlocked foreground are required");
-  Context previous=lease;lease=null;
+  observe();Context previous=lease;lease=null;
   long admittedEpoch=epoch;
   JSONObject owner=NativeDeletionCoordinator.get(plugin.getContext()).agentOwner();
   String credential=store.readCredentialSlot("cloud:production");if(credential==null)throw new SecurityException("Connect Eliza Cloud before enabling sync");
@@ -186,5 +192,5 @@ final class CalendarSyncBridge {
   String raw=new AlphaCredentialStore(context).readCredentialSlot(SLOT);if(raw==null)return "sync-paused";JSONObject data=new JSONObject(raw);
   return data.getBoolean("enabled")&&same(data.getJSONObject("identity"),owner.getJSONObject("identity"))&&same(data.getJSONObject("binding"),target.getJSONObject("binding"))?null:"sync-paused";
  }catch(Exception unavailable){return "sync-unavailable";}}
- void destroy(){retired=true;pause();plugin.getContext().getContentResolver().unregisterContentObserver(observer);worker.shutdown();}
+ void destroy(){retired=true;pause();if(observing)plugin.getContext().getContentResolver().unregisterContentObserver(observer);worker.shutdown();}
 }
