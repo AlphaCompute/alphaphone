@@ -2,6 +2,7 @@
 import {lstat,readFile} from 'node:fs/promises';
 import {timingSafeEqual} from 'node:crypto';
 import type {IncomingMessage,ServerResponse} from 'node:http';
+import {CalendarAgentWriteRefused} from './calendar-agent-write-host.ts';
 import {createGmailAgentReadHost} from './gmail-agent-read-host.ts';
 export function createGmailAgentDevBroker(options:{profile:string;tokenFile:string}){
  const reader=createGmailAgentReadHost(options.profile);
@@ -37,6 +38,7 @@ export function createGmailAgentDevBroker(options:{profile:string;tokenFile:stri
    controller.signal.throwIfAborted();const body=JSON.stringify(result);if(Buffer.byteLength(body)>256*1024)throw Error('Gmail result too large');
    res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(body);
   }catch(error){
+   if(error instanceof CalendarAgentWriteRefused&&!res.writableEnded&&!res.destroyed){send(200,{calendarFailure:error.refusal});return;}
    const failure=error as {code?:unknown;status?:unknown;data?:{error?:unknown}}|null;
    const unavailable=failure?.code==='http'&&failure.status===404&&failure.data?.error==='Not found';
    if(!res.writableEnded&&!res.destroyed)send(409,{error:'Google request could not be verified. Check the current account, permissions, and any saved operation receipt before retrying.',...(unavailable?{reason:'provider-route-unavailable'}:{})});

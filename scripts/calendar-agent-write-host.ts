@@ -1,7 +1,12 @@
 /** Canonical Calendar transport for the owner-reviewed runtime mutation ledger. */
-import type {CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
+import type {CloudProtocolError,CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
 import type {CalendarSyncRequest} from '../apps/app/src/runtime/calendar-linked-provider.ts';
 const record=(v:unknown):Record<string,any>=>{if(!v||typeof v!=='object'||Array.isArray(v))throw Error('Invalid Calendar operation');return v as Record<string,any>;};
+/** Only an explicit rejection of the mutation request itself may cross as retryable. */
+export class CalendarAgentWriteRefused extends Error{
+ readonly refusal:{code:string;outcome:'not_accepted'|'precondition_failed';grantId:string;calendarId:string;accountId:string};
+ constructor(refusal:CalendarAgentWriteRefused['refusal']){super('Calendar change was refused before acceptance.');this.refusal=refusal;}
+}
 export async function calendarAgentWrite(client:CloudProtocol,grantId:string,scope:string,input:Record<string,any>,signal:AbortSignal){
  const source=`alpha-google:${scope}`;
  const allowed=input.operation==='write-capabilities'?['operation','grantId','calendarId']:input.operation==='write-target'?['operation','grantId','calendarId','eventId']:['operation','grantId','calendarId','accountId','payload','preflight'];
@@ -12,6 +17,17 @@ export async function calendarAgentWrite(client:CloudProtocol,grantId:string,sco
  if(caps.calendarId!==input.calendarId||typeof caps.accountId!=='string'||caps.read!==true||caps.write!==true||caps.idempotentCreate!==true||caps.conditionalWrites!==true||caps.providerExactlyOnce!==false)throw Error('Calendar write access is unavailable');
  if(input.operation==='write-capabilities')return {...caps,grantId:source};
  const selected={...selection,accountId:caps.accountId};
+ const write=async(command:CalendarSyncRequest)=>{
+  try{return await client.googleCalendarSync(command,signal);}
+  catch(error){
+   const failure=error as CloudProtocolError|null;
+   if(failure?.name==='CloudProtocolError'&&failure.code==='http'&&[400,403,409,412,413,429].includes(failure.status||0)){
+    const data=failure.data as Record<string,unknown>|undefined;
+    if(data&&typeof data.code==='string'&&/^CALENDAR_SYNC_[A-Z_]{1,80}$/.test(data.code)&&(data.outcome==='not_accepted'||data.outcome==='precondition_failed'))throw new CalendarAgentWriteRefused({code:data.code,outcome:data.outcome,grantId:source,calendarId:input.calendarId,accountId:caps.accountId});
+   }
+   throw error;
+  }
+ };
  const external=(id:unknown)=>{if(typeof id!=='string'||!id||id.length>1024||/[\s\p{Cc}]/u.test(id))throw Error('Calendar target changed');if(id.startsWith('alpha-google:')){if(!id.startsWith(source+':')||!id.slice(source.length+1))throw Error('Calendar source changed');return id.slice(source.length+1);}return id;};
  const get=async(eventId:string)=>record(await client.googleCalendarSync({kind:'get',selection:selected,reference:{eventId}},signal));
  async function materialize(snapshot:Record<string,any>){
@@ -38,7 +54,7 @@ export async function calendarAgentWrite(client:CloudProtocol,grantId:string,sco
  if(payload.action==='cancel_event'){
   if(!prior||!['organizer_cancel','remove_private_copy'].includes(payload.cancellationMode))throw Error('This cancellation needs Calendar review');
   const event=await materialize(prior);
-  const result=record(await client.googleCalendarSync({kind:'delete',selection:selected,eventId:prior.eventId,expectedEtag:prior.etag},signal));
+  const result=record(await write({kind:'delete',selection:selected,eventId:prior.eventId,expectedEtag:prior.etag}));
   if(result.deleted!==true)throw Error('Calendar deletion was not confirmed');
   if((await get(prior.eventId)).event!==null)throw Error('Calendar event is still present');
   return {event};
@@ -61,7 +77,7 @@ export async function calendarAgentWrite(client:CloudProtocol,grantId:string,sco
   command={kind:'create',selection:selected,idempotencyKey:preflight.idempotencyKey,event};
  }else if(payload.action==='modify_event'&&prior)command={kind:'update',selection:selected,eventId:prior.eventId,expectedEtag:prior.etag,event};
  else throw Error('Unsupported Calendar change');
- const result=record(await client.googleCalendarSync(command,signal)),snapshot=record(result.event),written=record(snapshot.event);
+ const result=record(await write(command)),snapshot=record(result.event),written=record(snapshot.event);
  const list=(value:unknown)=>Array.isArray(value)?value:[];
  const guests=(value:unknown)=>JSON.stringify(list(value).map(a=>({email:String(a.email).toLowerCase(),optional:a.optional===true})).sort((a,b)=>a.email.localeCompare(b.email)));
  if(['title','description','location','isAllDay','timeZone'].some(key=>written[key]!==event[key as keyof typeof event])||Date.parse(written.startAt)!==Date.parse(event.startAt)||Date.parse(written.endAt)!==Date.parse(event.endAt)||guests(written.attendees)!==guests(event.attendees)||JSON.stringify(list(written.recurrence).sort())!==JSON.stringify(list(event.recurrence).sort()))throw Error('Calendar result does not match the approved change');

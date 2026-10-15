@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {calendarAgentWrite} from '../scripts/calendar-agent-write-host.ts';
+import {calendarAgentWrite,CalendarAgentWriteRefused} from '../scripts/calendar-agent-write-host.ts';
 const scope='a'.repeat(64),source=`alpha-google:${scope}`;
 const event={title:'Private test',description:'',location:'',startAt:'2026-10-14T18:00:00.000Z',endAt:'2026-10-14T18:02:00.000Z',timeZone:'UTC',isAllDay:false,attendees:[],recurrence:[]};
 const snapshot={eventId:'event-1',etag:'"version-1"',event};
@@ -23,3 +23,23 @@ test('a provider event id stays confined to the explicitly selected source',asyn
 
 test('a provider result with different event content never reports success or repeats the write',async()=>{const f=fixture();f.setSnapshot({...snapshot,event:{...event,title:'Different'}});await assert.rejects(calendarAgentWrite(f.client,'grant',scope,{...base,payload,preflight:{idempotencyKey:'stable'}},signal()),/approved change/);assert.equal(f.calls.filter(x=>x.kind==='create').length,1);});
 test('authoritative sync ETag is retained when the feed omits revision metadata',async()=>{const f=fixture();f.setFeedVersion(undefined);const r=await calendarAgentWrite(f.client,'grant',scope,{...base,payload,preflight:{idempotencyKey:'stable'}},signal());assert.equal(r.event.metadata.etag,snapshot.etag);});
+
+// The protocol adapter creates this error from an authenticated Cloud HTTP response.
+const refused=(status=400,data={code:'CALENDAR_SYNC_INVALID',outcome:'not_accepted'})=>Object.assign(new Error('Cloud response'),{name:'CloudProtocolError',code:'http',status,data});
+test('only explicit nonacceptance from the mutation itself is retryable',async()=>{
+ for(const [status,outcome] of [[400,'not_accepted'],[412,'precondition_failed']]){
+  const f=fixture(),sync=f.client.googleCalendarSync;f.client.googleCalendarSync=async input=>{if(input.kind==='create'){f.calls.push(input);throw refused(status,{code:'CALENDAR_SYNC_INVALID',outcome});}return sync(input);};
+  await assert.rejects(calendarAgentWrite(f.client,'grant',scope,{...base,payload,preflight:{idempotencyKey:'stable'}},signal()),error=>error instanceof CalendarAgentWriteRefused&&error.refusal.outcome===outcome&&error.refusal.grantId===source&&error.refusal.accountId===caps.accountId);
+  assert.equal(f.calls.filter(x=>x.kind==='create').length,1);
+ }
+});
+test('timeouts, generic HTTP failures and malformed rejection claims stay unknown',async()=>{
+ for(const failure of [new TypeError('Network failed'),refused(503),refused(400,{code:'OTHER_INVALID',outcome:'not_accepted'}),refused(400,{code:'CALENDAR_SYNC_INVALID',outcome:'unknown'}),Object.assign(refused(),{code:'invalid-response'}),{code:'http',status:400,data:{code:'CALENDAR_SYNC_INVALID',outcome:'not_accepted'}}]){
+  const f=fixture(),sync=f.client.googleCalendarSync;f.client.googleCalendarSync=async input=>{if(input.kind==='create')throw failure;return sync(input);};
+  await assert.rejects(calendarAgentWrite(f.client,'grant',scope,{...base,payload,preflight:{idempotencyKey:'stable'}},signal()),error=>!(error instanceof CalendarAgentWriteRefused));
+ }
+});
+test('a rejection of post-write readback cannot turn acceptance into a safe retry',async()=>{
+ const f=fixture();f.client.googleCalendarFeed=async()=>{throw refused();};
+ await assert.rejects(calendarAgentWrite(f.client,'grant',scope,{...base,payload,preflight:{idempotencyKey:'stable'}},signal()),error=>!(error instanceof CalendarAgentWriteRefused));assert.equal(f.calls.filter(x=>x.kind==='create').length,1);
+});
