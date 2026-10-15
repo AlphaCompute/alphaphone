@@ -1457,3 +1457,7 @@ same 98 findings across 3675 package versions and the same normalized input hash
 existing reviewed dispositions and deadlines remain unchanged. This does not
 replace a packaged-runtime audit or device qualification. Hosted consumer checks
 and the upstream review/CI gate remain required before integration is accepted.
+
+## Separate Maps allowance source admission (2026-10-15)
+
+Candidate `221a0bc4e0d501a670943d274f10d7818357ada4` adds the reviewed P-56 allowance changes above `1a5a05db0c80`. Source equivalence is recorded in `docs/evidence/maps-allowance-pin-source-equivalence-2026-10-15.json`. Its 36 Cloud Maps tests and 17 Maps plugin tests pass. Native source, engine gitlinks and the dependency lock are unchanged. This does not transfer historical native qualification. Selected numeric limits, deployment, real-provider and device acceptance remain open. Issue #410 remains open.
