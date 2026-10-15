@@ -863,6 +863,7 @@
       <h1 data-alpha-app-title class="serif" style="margin: 0; min-width: 0; font-size: 32px; letter-spacing: -.01em; white-space: nowrap">{{calendar.month}}</h1>
       <svg class="i" viewBox="0 0 24 24" style="width: 18px; height: 18px; color: var(--mut); margin-top: 4px"><path d="{{calendar.chevron}}"></path></svg>
     </button>
+    <sc-if value="{{calendar.canRefreshGoogleCalendar}}"><button class="ib" aria-label="Refresh Google Calendar" disabled="{{calendar.googleCalendarRefreshing}}" onClick="{{calendar.refreshGoogleCalendar}}"><span aria-hidden="true" style="display:block;width:20px;height:20px;background:currentColor;mask:url('/icons/lucide/rotate-cw.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/rotate-cw.svg') center/contain no-repeat"></span></button></sc-if>
     <button class="ib" aria-label="Clock alarms" onClick="{{calendar.openClock}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.clock}}"></path></svg></button>
 
     <sc-if value="{{calendar.dayMode}}">
@@ -886,7 +887,7 @@
   <sc-if value="{{calendar.reminderRecovery}}"><button aria-label="Recover browser reminder action history" onClick="{{calendar.openReminderActionRecovery}}" style="margin:0 16px 8px;padding:12px;border-radius:12px;background:var(--s2);color:var(--fg)">Reminder action recovery</button></sc-if>
   <sc-if value="{{calendar.creationRecovery}}"><div role="status" style="margin: 0 16px 8px; padding: 12px; border-radius: 12px; background: var(--s2); font-size: 13px"><p>{{calendar.creationRecoveryText}}</p><button onClick="{{calendar.checkCreations}}" style="padding: 8px">Check event creation receipts</button><button onClick="{{calendar.separateCreation}}" style="padding: 8px">Create a separate event</button></div></sc-if>
   <sc-if value="{{calendar.nativeStatusLabel}}"><button aria-label="Retry calendar and reminders" onClick="{{calendar.nativeStatusRetry}}" style="margin: 0 16px 8px; padding: 10px 12px; border-radius: 12px; background: var(--s2); color: var(--fg); text-align: left; font-size: 13px">{{calendar.nativeStatusLabel}}</button></sc-if>
-  <sc-if value="{{calendar.canManageGoogleCalendars}}"><div style="display:flex;gap:8px;padding:4px 16px 8px"><button aria-label="Manage Google Calendar connection" onClick="{{calendar.manageGoogleCalendars}}" style="min-height:44px;padding:8px 12px;border-radius:12px;background:var(--s2);color:var(--fg)">{{calendar.googleCalendarStatus}}</button><button aria-label="Refresh Google Calendar" onClick="{{calendar.refreshGoogleCalendar}}" style="min-height:44px;padding:8px">Refresh</button></div></sc-if>
+  <sc-if value="{{calendar.googleCalendarNotice}}"><p role="status" style="margin:0;padding:4px 24px 8px;font-size:13px;color:var(--mut)">{{calendar.googleCalendarNotice}}</p></sc-if>
   <div style="display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 4px 12px 8px; flex-shrink: 0">
     <sc-for list="{{calendar.week}}" as="w">
       <button onClick="{{w.pick}}" aria-label="Day {{w.n}}" style="display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 4px 0">
@@ -1617,13 +1618,13 @@
     <button class="ib" aria-label="{{camera.flashLabel}}" onClick="{{camera.toggleFlash}}"><svg class="i" viewBox="0 0 24 24"><path d="{{camera.flashIcon}}"></path></svg></button>
     <sc-if value="{{camera.importAvailable}}"><button data-alpha-header-icon-action aria-label="Choose image" onClick="{{camera.importImage}}" style="min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Choose image</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.photo}}"></path></svg></button><button data-alpha-header-icon-action aria-label="Scan document" onClick="{{camera.scanDocument}}" style="min-height:44px;padding:0 12px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit"><span class="app-header-action-label">Scan document</span><svg class="i app-header-action-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="{{ic.camScan}}"></path></svg></button></sc-if>
     <sc-if value="{{camera.rec}}">
-      <span style="display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 15px; background: #E53935; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums"><span class="dot" style="width: 7px; height: 7px; border-radius: 4px; background: #ffffff"></span>{{camera.recTime}}</span>
+      <span role="timer" aria-label="Recording" style="display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;background:rgba(0,0,0,.75);color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums"><span class="dot" aria-hidden="true" style="width:7px;height:7px;border-radius:4px;background:#ff453a"></span>{{camera.recTime}}</span>
     </sc-if>
     <button class="ib" aria-label="Ask Alpha about this" onClick="{{camera.ask}}"><span style="width: 30px; height: 30px; border-radius: 15px; background: rgba(255,255,255,.16); display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 18px"><span class="alpha-compute-mark" aria-hidden="true"></span></span></button>
   </div>
 
   <sc-if value="{{camera.hasSaid}}">
-    <button class="drop" data-alpha-camera="said" aria-label="Dismiss" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
+    <button class="drop" data-alpha-camera="said" aria-label="Dismiss camera message" onClick="{{camera.clearSaid}}" style="position: absolute; left: 16px; right: 16px; top: 108px; z-index: 3; display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 22px; background: rgba(0,0,0,.62); color: #ffffff; text-align: left">
       <span style="width: 26px; height: 26px; border-radius: 13px; background: var(--acc); flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 16px"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
       <span style="font-size: 14.5px; line-height: 1.4">{{camera.said}}</span>
     </button>
@@ -1671,12 +1672,12 @@
 
   <div data-alpha-camera="capture" style="position: absolute; left: 0; right: 0; top: 712px; height: 90px; display: flex; align-items: center; justify-content: space-between; padding: 0 44px">
     <sc-if value="{{camera.hasLast}}">
-      <button aria-label="Open last photo" onClick="{{camera.openLast}}" style="position: relative; width: 52px; height: 52px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1.5px rgba(255,255,255,.7); display: block">
+      <button aria-label="{{camera.lastLabel}}" onClick="{{camera.openLast}}" style="position: relative; width: 52px; height: 52px; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1.5px rgba(255,255,255,.7); display: block">
         <span style="position: absolute; left: 0; width: 100%; top: 50%; aspect-ratio: 3 / 4; display: block; background: {{camera.lastBg}}; transform: translateY(-50%) {{camera.lastTf}}; filter: {{camera.lastFlt}}"></span>
       </button>
     </sc-if>
     <sc-if value="{{camera.noLast}}"><span style="width: 52px; height: 52px"></span></sc-if>
-    <button aria-label="{{camera.shutterLabel}}" onClick="{{camera.shutter}}" style="width: 80px; height: 80px; border-radius: 40px; box-shadow: inset 0 0 0 4px #ffffff; display: flex; align-items: center; justify-content: center">
+    <button aria-label="{{camera.shutterLabel}}" aria-description="{{camera.shutterHint}}" onClick="{{camera.shutter}}" style="width: 80px; height: 80px; border-radius: 40px; box-shadow: inset 0 0 0 4px #ffffff; display: flex; align-items: center; justify-content: center">
       <span style="display: flex; align-items: center; justify-content: center; color: #000000; transition: all .25s cubic-bezier(.2,.8,.2,1); {{camera.innerCss}}">
         <sc-if value="{{camera.scanGlyph}}"><svg class="i" viewBox="0 0 24 24" style="width: 26px; height: 26px"><path d="{{ic.camScan}}"></path></svg></sc-if>
       </span>
@@ -1705,9 +1706,7 @@
         </sc-for>
       </div>
       <button class="ib" aria-label="Search photos" onClick="{{photos.search}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.search}}"></path></svg></button>
-      <sc-if value="{{photos.libTab}}">
-        <button class="ib" aria-label="Select photos" onClick="{{photos.selStart}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.phSelect}}"></path></svg></button>
-      </sc-if>
+      <button class="ib" aria-label="Select photos" onClick="{{photos.selStart}}"><svg class="i" viewBox="0 0 24 24" style="width: 20px; height: 20px"><path d="{{ic.phSelect}}"></path></svg></button>
     </div>
   </sc-if>
   <sc-if value="{{photos.copyRecovery}}"><button aria-label="Recover saved-copy request" onClick="{{photos.openCopyRecovery}}" style="margin:8px 16px;padding:10px;border-radius:12px;background:var(--s2);color:var(--fg)">Saved-copy recovery</button></sc-if>
@@ -1920,11 +1919,11 @@
       <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; background: linear-gradient(to top, rgba(0,0,0,.8) 90px, rgba(0,0,0,0)); pointer-events: none; opacity: {{photos.v.chromeOp}}; transition: opacity .25s; z-index: 3; display: flex; align-items: flex-end">
         <div style="display: flex; justify-content: space-around; width: 100%; padding: 0 16px 34px; pointer-events: {{photos.v.chromePE}}">
           <sc-if value="{{photos.v.canEmail}}"><button class="ib" aria-label="Use photo in email" onClick="{{photos.v.email}}" style="font-size:12px">Email</button></sc-if>
-          <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="Share photo" onClick="{{photos.v.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button></sc-if>
+          <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="{{photos.v.shareLabel}}" onClick="{{photos.v.share}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.share}}"></path></svg></button></sc-if>
           <button class="ib" aria-label="{{photos.v.favLabel}}" onClick="{{photos.v.fav}}"><svg class="i" viewBox="0 0 24 24" style="{{photos.v.favIcon}}"><path d="{{ic.heart}}"></path></svg></button>
-          <button class="ib" aria-label="Edit photo" onClick="{{photos.v.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
-          <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="Photo info" onClick="{{photos.v.info}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.info}}"></path></svg></button></sc-if>
-          <button class="ib" aria-label="Delete photo" onClick="{{photos.v.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
+          <button class="ib" aria-label="{{photos.v.editLabel}}" onClick="{{photos.v.edit}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.edit}}"></path></svg></button>
+          <sc-if value="{{photos.v.notSecure}}"><button class="ib" aria-label="{{photos.v.infoLabel}}" onClick="{{photos.v.info}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.info}}"></path></svg></button></sc-if>
+          <button class="ib" aria-label="{{photos.v.deleteLabel}}" onClick="{{photos.v.del}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.trash}}"></path></svg></button>
         </div>
       </div>
     </div>

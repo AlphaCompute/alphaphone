@@ -420,7 +420,6 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
         .map(el => ({ el, box: el.getBoundingClientRect() })).filter(item => item.box.width > 1 && item.box.height > 1);
       // Only the page the dock floats over is judged; menus, sheets, the shade and toasts are drawn above it.
       const UNDER = '[data-alpha-layer="home"],[data-alpha-layer="drawer"],[data-alpha-layer="app"]';
-      const STRICT = '[data-alpha-layer="home"]';
       const scale = (() => { const screen = document.querySelector<HTMLElement>('[data-screen]'); return screen && screen.offsetWidth ? screen.getBoundingClientRect().width / screen.offsetWidth : 1; })();
       const judge = (el: Element, rect: Box, what: string) => {
         const layer = el.closest(UNDER); if (!layer || !docks.length) return;
@@ -431,17 +430,15 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
           // The dock really is what is painted there (an inline dialog or a sheet above both is not the dock's doing).
           const hit = document.elementFromPoint(Math.max(box.left, item.box.left) + width / 2, Math.max(box.top, item.box.top) + height / 2);
           if (!hit || !(item.el === hit || item.el.contains(hit))) continue;
-          // Home and the app library end above the composer bar and the pill. The conversation
-          // sheet is opened over them on purpose and they scroll under it, like any app page.
-          const strict = !!el.closest(STRICT) && !item.el.matches('[data-alpha-layer="conversation"]');
-          // Elsewhere the page scrolls under the dock by design: what matters is that it can be scrolled clear.
+          // Floating docks intentionally cover scroll content. Every covered
+          // control must have enough remaining scroll range to clear them.
           let room = 0;
-          for (let node = el.parentElement; node && !strict; node = node.parentElement) {
+          for (let node = el.parentElement; node; node = node.parentElement) {
             const style = getComputedStyle(node);
             if (scrolls(style.overflowY) && node.scrollHeight > node.clientHeight) { room = (node.scrollHeight - node.clientHeight - node.scrollTop) * scale; break; }
           }
           const need = rect.bottom - item.box.top;
-          if (strict || room + 1 < need) out.push({ rule: 'obscured-by-dock', target: describe(el), detail: `${what} has ${Math.round(width)}x${Math.round(height)} under ${item.el.getAttribute('data-alpha-layer') || item.el.parentElement?.getAttribute('data-alpha-layer')}${strict ? '' : `, and only ${Math.round(room)}px of the ${Math.round(need)}px needed can be scrolled`}` });
+          if (room + 1 < need) out.push({ rule: 'obscured-by-dock', target: describe(el), detail: `${what} has ${Math.round(width)}x${Math.round(height)} under ${item.el.getAttribute('data-alpha-layer') || item.el.parentElement?.getAttribute('data-alpha-layer')}, and only ${Math.round(room)}px of the ${Math.round(need)}px needed can be scrolled` });
           return;
         }
       };

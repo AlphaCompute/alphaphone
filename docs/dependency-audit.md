@@ -406,6 +406,8 @@ nothing.
 | --- | --- |
 | `apps/app/src/prototype/prototype.css` line 7 | The only `@font-face` for `Denton`; the only URL for the file |
 | `apps/app/src/prototype/prototype.css` line 8 | `.serif{font-family:'Denton','Fraunces',Georgia,serif;font-weight:300}`; `.serif` is used 89 times in `template.html` |
+| `apps/app/src/prototype/phone.css` | Content-question dialog headings use the existing Denton font; no additional font file is loaded. |
+| `apps/app/src/prototype/scan-dialog.css` | Shared document and media-review headings use the same existing Denton font. |
 | `apps/app/src/prototype/template.html` | 36 inline `Denton, Fraunces, Georgia, serif` stacks, and one `Denton, Georgia, serif` (line 1275) |
 | `apps/app/src/prototype/asset-manifest.json` | Source URL, size and hash of the file |
 | `licenses/font-licenses.json` | The owner-statement record for "Denton typeface", by exact hash |

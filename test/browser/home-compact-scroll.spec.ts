@@ -7,10 +7,7 @@ for(const theme of ['light','dark'])test(`compact Home reaches lower apps and ho
  await returnToApps(page);await page.getByRole('button',{name:'Open workflows',exact:true}).click();await expect(page.locator('html')).toHaveAttribute('data-active-view','workflows');await returnToApps(page);await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();
 });
 
-// Round 8 (AccessibilityInstrumentedTest, standalone): at 200% font Home's last app row was drawn under
-// the floating composer, so reading order went up from All apps to Open conversation. Home's scroller
-// now ends above the floating dock (--alpha-dock-reserve, runtime/dock-clearance.ts). Chromium on the development server,
-// not a WebView or TalkBack result.
+// Home may flow beneath the floating assistant, but its final row must scroll clear.
 async function homeOrder(page:Page){
  return page.evaluate(()=>{
   const layer=document.querySelector<HTMLElement>('[data-alpha-layer="home"]')!,view=layer.getBoundingClientRect();
@@ -28,7 +25,7 @@ async function homeOrder(page:Page){
   return {names:controls.map(row=>row.name),under,backwards,composerBelow:composer.top>=lowest-1,scrollable:layer.scrollHeight>layer.clientHeight};
  });
 }
-test('Home at 200% text: no app tile or control is drawn under the composer, at the top or the bottom of the scroll',async({page})=>{
+test('Home at 200% text fills the screen and its last app row scrolls above the composer',async({page})=>{
  await page.setViewportSize({width:412,height:915});
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).waitFor();
@@ -39,12 +36,12 @@ test('Home at 200% text: no app tile or control is drawn under the composer, at 
   await layer.evaluate((el,at)=>{el.scrollTop=at==='top'?0:el.scrollHeight;},at);await page.waitForTimeout(100);
   const order=await homeOrder(page);
   expect(order.scrollable,'200% Home scrolls').toBe(true);
-  expect(order.under,at+': under the composer').toEqual([]);
+  if(at==='bottom')expect(order.under,at+': under the composer').toEqual([]);
   expect(order.backwards,at+': reading order goes back up').toEqual([]);
-  expect(order.composerBelow,at+': the composer is below every visible Home control').toBe(true);
+  if(at==='bottom')expect(order.composerBelow,at+': the composer is below every visible Home control').toBe(true);
   if(at==='bottom')expect(order.names).toContain('All apps');
  }
- // The Home scroller ends where the composer begins.
- const edges=await page.evaluate(()=>({home:document.querySelector('[data-alpha-layer="home"]')!.getBoundingClientRect().bottom,composer:document.querySelector('[data-alpha-layer="composer"]')!.getBoundingClientRect().top}));
- expect(edges.home).toBeLessThanOrEqual(edges.composer+1);
+ // The Home scroller fills the phone instead of clipping labels above the assistant.
+ const edges=await page.evaluate(()=>({home:document.querySelector('[data-alpha-layer="home"]')!.getBoundingClientRect().bottom,screen:document.querySelector('[data-screen]')!.getBoundingClientRect().bottom}));
+ expect(Math.abs(edges.home-edges.screen)).toBeLessThanOrEqual(1);
 });

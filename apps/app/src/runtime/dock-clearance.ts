@@ -8,14 +8,14 @@
  * the screen (round 8 emulator run). A fixed number cannot be right either way: Android moves the
  * dock up by the navigation bar inset, and the composer grows with a longer draft or a status
  * line. So the footprint is measured and published as `--alpha-dock-clearance` on the root
- * element; phone.css ends Home above it, and gives the app library and every app scroller that
+ * element; phone.css gives Home, the app library and every app scroller that
  * much scroll padding so a focused control is brought wholly above the dock.
+ * Home and the app library fill the phone behind the floating dock; clearance
+ * belongs inside their scroll content rather than clipping the outer viewport.
  *
- * Two lengths are published. `--alpha-dock-clearance` is everything the dock covers now, and is
- * where Home's scroll area ends. `--alpha-dock-rest` is the bar alone, without a status line or
- * reply context stacked on it: Home lays its rows out against that, so a line that comes and goes
- * above the bar (the draft status at startup) shortens what is visible of Home instead of moving
- * every row.
+ * Two lengths are published. `--alpha-dock-clearance` is everything the dock
+ * covers now. `--alpha-dock-rest` is the bar alone. Home uses their difference
+ * to extend its scroll content when a status appears, preserving app positions.
  *
  * While no dock is on screen (the shade, a voice session, the lock screen) the last footprint is
  * kept, so Home does not jump when the dock returns.

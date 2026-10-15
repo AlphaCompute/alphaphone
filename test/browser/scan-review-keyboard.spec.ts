@@ -16,11 +16,11 @@ for(const kind of ['document','correction','searchable'] as const)for(const them
  // Reach the review with Tab, then read past the opening copy without moving a
  // crop handle or changing a text field. Actual keyboard scrolling is required.
  await dialog.locator('h2').evaluate(el=>{(el as HTMLElement).tabIndex=-1;(el as HTMLElement).focus();});
- await page.keyboard.press('Tab');await expect(region).toBeFocused();
+ await page.keyboard.press('Tab');await expect(dialog.locator('.scan-dialog-close')).toBeFocused();await page.keyboard.press('Tab');await expect(region).toBeFocused();
  await region.evaluate(el=>{el.scrollTop=0;});await page.keyboard.press('PageDown');
  await expect.poll(()=>region.evaluate(el=>el.scrollTop)).toBeGreaterThan(0);
  expect(await region.evaluate(el=>el.clientHeight)).toBeGreaterThan(60);
- for(const action of await dialog.locator('.scan-dialog-actions button').all()){
+ for(const action of await dialog.locator('.scan-dialog-actions button:visible').all()){
   const box=(await action.boundingBox())!;expect(box.y).toBeGreaterThanOrEqual(0);expect(box.y+box.height).toBeLessThanOrEqual(360);expect(box.height).toBeGreaterThanOrEqual(44);
  }
  await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);
