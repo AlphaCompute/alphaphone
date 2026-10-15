@@ -81,3 +81,18 @@ test('image question review is compact and only stages explicitly reviewed text'
  await expect(proceed).toBeEnabled();expect(await review.evaluate(el=>el.getBoundingClientRect().width)).toBeLessThanOrEqual(388);await page.screenshot({path:info.outputPath('image-question-review.png')});
  await proceed.click();await expect(review).toHaveCount(0);expect(await page.evaluate(()=>(window as any).questionDraft)).toContain('A synthetic tan frame.');
 });
+
+for(const endpoint of ['start','end'] as const)test(`trim ${endpoint} handle can save its minimum span`,async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Photos',exact:true}).focus();await page.evaluate(async()=>{
+  const canvas=document.createElement('canvas');canvas.width=320;canvas.height=180;canvas.getContext('2d')!.fillStyle='#d6a667';canvas.getContext('2d')!.fillRect(0,0,320,180);const stream=canvas.captureStream(10);const chunks:BlobPart[]=[];const recorder=new MediaRecorder(stream);recorder.ondataavailable=e=>chunks.push(e.data);const done=new Promise<void>(resolve=>recorder.onstop=()=>resolve());recorder.start();await new Promise(r=>setTimeout(r,250));recorder.stop();await done;stream.getTracks().forEach(t=>t.stop());
+  const url=URL.createObjectURL(new Blob(chunks,{type:recorder.mimeType}));(window as any).editorSource=url;
+  (await import('/src/prototype/video-edit-review.ts')).openVideoEditReview({path:url,duration:1},async edit=>{(window as any).savedVideoEdit=edit;return true;});
+ });
+ const dialog=page.getByRole('dialog',{name:'Edit video',exact:true});
+ expect(await page.evaluate(async()=>{const {validateVideoEdit}=await import('/src/browser/video-edit.ts');try{validateVideoEdit({start:.901,end:1,rotation:0,crop:false},1);return false;}catch{return true;}})).toBe(true);
+ const handle=dialog.getByRole('slider',{name:endpoint==='start'?'Start seconds':'End seconds'});
+ await expect(handle).toBeEnabled();await handle.press(endpoint==='start'?'End':'Home');
+ await dialog.getByRole('button',{name:'Save video copy',exact:true}).click();
+ await expect(dialog).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).savedVideoEdit)).toMatchObject(endpoint==='start'?{start:.9,end:1}:{start:0,end:.1});
+});
