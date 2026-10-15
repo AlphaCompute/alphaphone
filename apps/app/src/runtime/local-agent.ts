@@ -187,7 +187,7 @@ export class LocalAgentProtocol {
       bounded.throwIfAborted();let audioBase64:string|undefined;
       if(input.kind==='asr'){if(!input.audio.byteLength||input.audio.byteLength>2*1024*1024)throw Error('Recording is too large.');let binary='';for(let i=0;i<input.audio.length;i+=8192)binary+=String.fromCharCode(...input.audio.subarray(i,i+8192));audioBase64=btoa(binary);}
       else if(!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
-      const response=await this.bridge.request({path:input.kind==='asr'?'/api/asr/cloud':'/api/tts/cloud',ownerId:session.ownerId,method:'POST',headers:{},requestId,timeoutMs:120000,...(audioBase64?{audioBase64}:{body:JSON.stringify({text:(input as {text:string}).text,modelId:'sonic-3'})})},bounded);
+      const response=await this.bridge.request({path:input.kind==='asr'?'/api/asr/cloud':'/api/tts/cloud',ownerId:session.ownerId,method:'POST',headers:{},requestId,timeoutMs:120000,...(audioBase64?{audioBase64}:{body:JSON.stringify({text:(input as {text:string}).text})})},bounded);
       bounded.throwIfAborted();if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
       if(response.status!==200)throw Object.assign(Error(`Cloud speech unavailable (HTTP ${response.status}).`),{code:'voice-http-'+response.status});
       const result=JSON.parse(response.body||'{}');

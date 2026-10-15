@@ -23,13 +23,14 @@ async function fixture(enabled=true){
   if(mode==='error')return Response.json({secret:'never-project-provider-error'},{status:402});
   const headers={'x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':'cloud'};
   if(path==='/api/asr/cloud')return Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers});
+  assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
   headers['content-type']=mode==='type'?'audio/wav':'audio/mpeg';return new Response(mode==='large'?new Uint8Array(8*1024*1024+1):new Uint8Array([73,68,51,1]),{headers});
  };
  const handler=createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile,request,cloudVoiceEnabled:enabled}),server=createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
  const call=async(input,signal)=>{const response=await fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({ownerId:owner,headers:{},...input}),signal});return {status:response.status,data:await response.json()};};
  return {call,calls,mode:value=>mode=value,signal:()=>signal,close:async()=>{handler.closeVoice();server.closeAllConnections();await new Promise(r=>server.close(r));await rm(directory,{recursive:true,force:true});}};
 }
-const tts=()=>({path:'/api/tts/cloud',method:'POST',requestId:randomUUID(),body:JSON.stringify({text:'Hello',modelId:'sonic-3'})});
+const tts=()=>({path:'/api/tts/cloud',method:'POST',requestId:randomUUID(),body:JSON.stringify({text:'Hello'})});
 const asr=()=>({path:'/api/asr/cloud',method:'POST',requestId:randomUUID(),audioBase64:Buffer.from('RIFF fixture WAV').toString('base64')});
 test('disabled Cloud speech never enrolls or calls the runtime',async()=>{const f=await fixture(false);try{assert.equal((await f.call(tts())).status,400);assert.equal(f.calls.length,0);}finally{await f.close();}});
 test('owner-bound Cloud ASR/TTS project only verified Cartesia speech, not keys or vendor fields',async()=>{const f=await fixture();try{for(const input of [asr(),tts()]){const result=await f.call(input);assert.equal(result.status,200);assert.equal(result.data.status,200);const body=JSON.parse(result.data.body);assert.equal(body.provider,'cartesia');assert.equal(body.route,'cloud');assert.equal(body.requestId,input.requestId);assert.equal(body.secret,undefined);if(input.audioBase64)assert.equal(body.text,'Heard exactly once');else {assert.equal(body.contentType,'audio/mpeg');assert.deepEqual(Buffer.from(body.audioBase64,'base64'),Buffer.from([73,68,51,1]));}assert(!JSON.stringify(result).includes(paired));}assert.equal(f.calls.filter(x=>x.path==='/api/tts/cloud').length,1);assert.equal(f.calls.filter(x=>x.path==='/api/asr/cloud').length,1);}finally{await f.close();}});

@@ -124,7 +124,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
         }else{
           if(!ttsAudio||typeof input.requestId!=='string'||!/^[0-9a-f-]{36}$/i.test(input.requestId)||typeof input.body!=='string'||input.body.length>(cloudTts?70000:8192)){fail(400,'Invalid speech text request');return;}
           let value;try{value=JSON.parse(input.body);}catch{fail(400,'Invalid speech text');return;}
-          if(!value||typeof value.text!=='string'||!value.text.trim()||value.text.length>(cloudTts?16000:500)||Object.keys(value).some(key=>key!=='text'&&!(cloudTts&&key==='modelId'))||(cloudTts&&value.modelId!=='sonic-3')){fail(400,'Invalid speech text');return;}
+          if(!value||typeof value.text!=='string'||!value.text.trim()||value.text.length>(cloudTts?16000:500)||Object.keys(value).some(key=>key!=='text')){fail(400,'Invalid speech text');return;}
         }
       }else if(input.audioBase64!==undefined||input.requestId!==undefined){fail(400,'Speech payload requires a speech route');return;}
       const streamPath=/^\/api\/conversations\/[A-Za-z0-9_-]+\/messages\/stream$/.test(input.path);
