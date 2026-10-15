@@ -69,7 +69,7 @@ test('renderer channel uses a single-use same-origin ticket and keeps the paired
  const f=await fixture();try{const clientId=randomUUID();
  const result=await f.call({path:'/api/views/voice-channel',method:'POST',body:JSON.stringify({clientId})});
  assert.equal(result.data.status,200);assert.ok(!JSON.stringify(result).includes(paired));
- const {wsUrl}=JSON.parse(result.data.body);assert.ok(wsUrl.includes('/__alpha-local-renderer/ws?'));
+ const {wsUrl,expiresAt}=JSON.parse(result.data.body);assert.ok(wsUrl.includes('/__alpha-local-renderer/ws?'));assert.ok(expiresAt>Date.now()&&expiresAt<=Date.now()+120000);
  assert.equal((await upgrade(wsUrl,'https://other.invalid')).status,403);
  const connected=await upgrade(wsUrl,f.origin);assert.equal(connected.status,101);
  assert.deepEqual(f.rendererHeaders,[{url:'/ws?clientId='+clientId,authorization:'Bearer '+paired}]);
@@ -81,4 +81,16 @@ test('canonical message-history pagination is allowed with bounded cursor fields
  const base='/api/conversations/'+randomUUID()+'/messages';
  for(const suffix of ['?limit=200','?before=1792101404606&beforeId='+randomUUID()+'&limit=200','?before=1792101404606&beforeId=1cba3bf9-56fd-086e-b8bf-c2711d9bcffb&limit=200'])assert.equal(localAgentPathAllowed(base+suffix),true);
  for(const suffix of ['?limit=201','?limit=1&limit=2','?token=secret','?before=123','?before=123&beforeId=not-a-uuid','?limit=-1','?limit=1%26token=secret'])assert.equal(localAgentPathAllowed(base+suffix),false);
+});
+
+test('renderer renewal issues a fresh single-use short ticket; expired and old-root replacements fail closed',async()=>{
+ const f=await fixture();const realNow=Date.now;
+ try{
+  const clientId=randomUUID(),issue=async()=>JSON.parse((await f.call({path:'/api/views/voice-channel',method:'POST',body:JSON.stringify({clientId})})).data.body);
+  const first=await issue(),second=await issue();assert.notEqual(first.wsUrl,second.wsUrl);assert.ok(first.expiresAt<=realNow()+120000&&second.expiresAt<=realNow()+120000);
+  const accepted=await upgrade(first.wsUrl,f.origin);assert.equal(accepted.status,101);
+  Date.now=()=>second.expiresAt+1;assert.equal((await upgrade(second.wsUrl,f.origin)).status,403);Date.now=realNow;
+  const replacement=await issue();await writeFile(f.tokenFile,'2'.repeat(64),{mode:0o600});assert.equal((await upgrade(replacement.wsUrl,f.origin)).status,403);
+  assert.ok(f.rendererHeaders.every(row=>row.authorization===`Bearer ${paired}`));accepted.socket.destroy();
+ }finally{Date.now=realNow;await f.close();}
 });
