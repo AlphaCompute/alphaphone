@@ -347,9 +347,12 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const commit=(chat?:string,onCommitted?:(value:import('../runtime/alpha-client').ContextEnvelope)=>void)=>new Promise<boolean>((resolve,reject)=>{
         try{check();if(!openInternalView(shell,view,chat)){resolve(false);return;}shell.setState({},()=>{try{context(shell);const switched=shell.live&&(shell.S().view||'home')===view;if(switched)onCommitted?.(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}
       });
-      return continuation?continuation.apply(view,check,commit):commit();
+      // Keep an open conversation at its current detent during typed navigation.
+      // Read at delivery time so closing it while a reply is pending stays respected.
+      const chat=shell.S().chat;
+      return continuation?continuation.apply(view,check,commit):commit(chat==='sheet'||chat==='full'?chat:undefined);
     });
-    if(delivered.status==='delivered'&&!continuation)shell.toast(`Opened ${delivered.label}.`);else if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
+    if(delivered.status==='unknown')shell.toast('Could not confirm the screen change. Check your screen.');
     return delivered.status==='delivered';
   }
   function context(shell: Shell) {

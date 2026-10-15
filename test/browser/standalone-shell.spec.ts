@@ -16,6 +16,8 @@ test('standalone preview hides simulated system controls and developer tools', a
 test('tools and launcher presentation require explicit development flags', async ({page}) => {
   await page.goto('/?tools=1&shell=launcher');
   await expect(page.getByRole('button',{name:'Device controls',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Home',exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Notes',exact:true}).click();
   await expect(page.getByRole('button',{name:'Home',exact:true})).toBeVisible();
 });
 
@@ -87,13 +89,12 @@ test('standalone Home scrolls to the screen edge without a simulated status-bar 
   await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
   const bounds=await home.boundingBox(),usable=await screen.boundingBox();
   expect(bounds!.y).toBeCloseTo(usable!.y,1);
-  // Home's scroll area starts at the screen edge and ends just above the floating composer (round 10:
-  // nothing on Home is drawn under it), not at a fixed distance from the top.
+  // The viewport fills the screen; inner padding lets its last row clear the dock.
   const composer=page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]');
-  await expect.poll(async()=>{const dock=await composer.boundingBox(),area=await home.boundingBox();return Math.round(dock!.y-(area!.y+area!.height));}).toBe(6);
-  expect((await home.boundingBox())!.height).toBeGreaterThan(usable!.height-140);
-  const tile=await home.getByRole('button').first().boundingBox();
-  expect(tile!.y-bounds!.y).toBeLessThan(16);
+  await expect.poll(async()=>{const area=await home.boundingBox();return Math.round(area!.y+area!.height-(usable!.y+usable!.height));}).toBe(0);
+  await home.evaluate(node=>{node.scrollTop=node.scrollHeight;});
+  const last=home.getByRole('button',{name:'All apps',exact:true});
+  await expect.poll(async()=>{const row=await last.boundingBox(),dock=await composer.boundingBox();return row!.y+row!.height<=dock!.y;}).toBe(true);
   await home.evaluate(node=>{node.scrollTop=80;});
   expect((await home.boundingBox())!.y).toBeCloseTo(usable!.y,1);
   await page.screenshot({path:testInfo.outputPath('home-scrolled-fullscreen.png')});
