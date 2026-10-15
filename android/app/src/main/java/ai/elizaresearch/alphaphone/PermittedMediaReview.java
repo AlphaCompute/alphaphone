@@ -20,9 +20,9 @@ final class PermittedMediaReview implements AutoCloseable {
  private final ActivityResultLauncher<IntentSenderRequest> launcher;
  private final AtomicReference<Request> pending=new AtomicReference<>();private volatile boolean closed;
  private static final class Request {
-  final PluginCall call;final List<String> ids,revisions;final boolean favorite,desired,batch;
+  final PluginCall call;final List<String> ids,revisions;final boolean favorite,desired,batch,permanent;
   final long until=SystemClock.elapsedRealtime()+120000;
-  Request(PluginCall call,List<String> ids,List<String> revisions,boolean favorite,boolean desired,boolean batch){this.call=call;this.ids=List.copyOf(ids);this.revisions=List.copyOf(revisions);this.favorite=favorite;this.desired=desired;this.batch=batch;}
+  Request(PluginCall call,List<String> ids,List<String> revisions,boolean favorite,boolean desired,boolean batch,boolean permanent){this.call=call;this.ids=List.copyOf(ids);this.revisions=List.copyOf(revisions);this.favorite=favorite;this.desired=desired;this.batch=batch;this.permanent=permanent;}
  }
  PermittedMediaReview(Bridge bridge,PermittedMediaCatalog catalog,Executor worker){
   this.bridge=bridge;this.catalog=catalog;this.worker=worker;
@@ -49,21 +49,25 @@ final class PermittedMediaReview implements AutoCloseable {
  }
  private void dispatch(Request request){try{worker.execute(()->apply(request));}catch(RuntimeException unavailable){request.call.reject("Photos closed before dispatch. Review the selection again.");}}
  void request(PluginCall call,List<String> ids,List<String> revisions,boolean favorite,boolean desired,boolean batch){
-  Request request=new Request(call,ids,revisions,favorite,desired,batch);
+  request(call,ids,revisions,favorite,desired,batch,false);
+ }
+ void deleteTrashed(PluginCall call,List<String> ids,List<String> revisions){request(call,ids,revisions,false,true,true,true);}
+ private void request(PluginCall call,List<String> ids,List<String> revisions,boolean favorite,boolean desired,boolean batch,boolean permanent){
+  Request request=new Request(call,ids,revisions,favorite,desired,batch,permanent);
   if(closed||Build.VERSION.SDK_INT<30||ids.isEmpty()||ids.size()>20||new HashSet<>(ids).size()!=ids.size()||ids.size()!=revisions.size()){call.reject("Select 1–20 distinct permitted items.");return;}
   if(!pending.compareAndSet(null,request)){call.reject("Finish the current photo review first.","LIBRARY_BUSY");return;}
   try{
    List<Uri> uris=new ArrayList<>();StringBuilder names=new StringBuilder();
-   for(int i=0;i<ids.size();i++){JSObject row=catalog.mutationSource(ids.get(i),revisions.get(i));if(favorite&&Boolean.TRUE.equals(row.getBoolean("trashed")))throw new IllegalStateException();uris.add(catalog.uri(MediaLibraryKey.parse(ids.get(i))));names.append(i+1).append(". ").append(row.getString("name").replaceAll("[\\p{Cntrl}]"," ")).append('\n');}
+   for(int i=0;i<ids.size();i++){JSObject row=catalog.mutationSource(ids.get(i),revisions.get(i));if(favorite&&Boolean.TRUE.equals(row.getBoolean("trashed"))||permanent&&!Boolean.TRUE.equals(row.getBoolean("trashed")))throw new IllegalStateException();uris.add(catalog.uri(MediaLibraryKey.parse(ids.get(i))));names.append(i+1).append(". ").append(row.getString("name").replaceAll("[\\p{Cntrl}]"," ")).append('\n');}
    android.app.PendingIntent grant=MediaStore.createWriteRequest(bridge.getContext().getContentResolver(),uris);
    bridge.getActivity().runOnUiThread(()->{
     if(closed||pending.get()!=request||!bridge.getActivity().hasWindowFocus()||request.until<SystemClock.elapsedRealtime()){cancel(request,"Return to Photos to review this change.",DECLINED);return;}
-    String action=favorite?(desired?"Favorite":"Unfavorite"):(desired?"Move to Recently deleted":"Restore");
+    String action=permanent?"Delete forever":favorite?(desired?"Favorite":"Unfavorite"):(desired?"Move to Recently deleted":"Restore");
     new AlertDialog.Builder(bridge.getActivity()).setTitle(action+" "+ids.size()+" item"+(ids.size()==1?"":"s")+"?")
-     .setMessage(names+"\nAndroid will ask for access. Only these selected revisions will be changed; items changed elsewhere will be skipped.")
+     .setMessage(names+(permanent?"\nThese items will be permanently deleted and cannot be recovered. Android will ask for access. Items restored or changed elsewhere will be skipped.":"\nAndroid will ask for access. Only these selected revisions will be changed; items changed elsewhere will be skipped."))
      .setNegativeButton("Cancel",(dialog,which)->cancel(request,"Photo change cancelled. No change was dispatched.",DECLINED))
      .setOnCancelListener(dialog->cancel(request,"Photo change cancelled. No change was dispatched.",DECLINED))
-     .setPositiveButton("Continue",(dialog,which)->{
+     .setPositiveButton(permanent?"Delete forever":"Continue",(dialog,which)->{
       if(closed||pending.get()!=request||request.until<SystemClock.elapsedRealtime()){cancel(request,"Photo review expired.",DECLINED);return;}
       if(!LateLaunch.ask(call,()->launcher.launch(new IntentSenderRequest.Builder(grant.getIntentSender()).build())))pending.compareAndSet(request,null);
      }).show();
@@ -79,7 +83,7 @@ final class PermittedMediaReview implements AutoCloseable {
    JSObject outcome=new JSObject();outcome.put("id",request.ids.get(i));
    try{
     if(closed||request.until<SystemClock.elapsedRealtime())throw new IllegalStateException("unverified");
-    JSObject row=catalog.changeFlag(request.ids.get(i),request.revisions.get(i),request.favorite,request.desired);outcome.put("status",row.getString("status"));outcome.put("item",row);verified++;
+    JSObject row=request.permanent?catalog.deleteTrashed(request.ids.get(i),request.revisions.get(i)):catalog.changeFlag(request.ids.get(i),request.revisions.get(i),request.favorite,request.desired);outcome.put("status",row.getString("status"));outcome.put("item",row);verified++;
    }catch(Exception failure){outcome.put("status","stale".equals(failure.getMessage())?"stale":"unverified");}
    outcomes.put(outcome);
   }

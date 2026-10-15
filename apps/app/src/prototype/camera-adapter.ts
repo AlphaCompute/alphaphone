@@ -71,6 +71,7 @@ const nativeLibrary = registerPlugin<{
   setTrashed(options: { id: string; revision: string; trashed: boolean }): Promise<SavedPhoto & {status:string}>;
   share(options: { id: string;revision?:string }): Promise<{ status: string; message?: string }>;
   setFavorite(options: {id:string;revision:string;favorite:boolean}): Promise<SavedPhoto>;
+  deletePermittedTrash(options:{items:{id:string;revision:string}[]}):Promise<{status:string;outcomes:{id:string;status:string}[]}>;
   changeMany(options:{operation:'favorite'|'trash'|'restore';items:{id:string;revision:string}[]}):Promise<{status:string;outcomes:{id:string;status:string;item?:SavedPhoto}[]}>;
   shareMany(options:{items:{id:string;revision:string}[]}): Promise<{status:string;count:number;message?:string}>;
   albums(): Promise<{items:OwnedAlbum[]}>;
@@ -248,7 +249,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const albumModal=createInlineModal(()=>{manager=undefined;photosApi?.set({sheet:null});},()=>albumTrigger);
   let selection: SavedPhoto[]|undefined;let holdTimer:number|undefined;let swallowedTap='';
   const endHold=()=>{if(holdTimer!==undefined)clearTimeout(holdTimer);holdTimer=undefined;};
-  let prepared: {confirmation:string;count:number} | undefined;
+  let prepared: {confirmation:string;count:number;items?:{id:string;revision:string}[]} | undefined;
   let trash: SavedPhoto[] = [], trashNext = '', trashLoaded = false, trashLoading = false, mutating = false, refreshAgain = false, trashRefreshAgain = false, trashEpoch = 0;
   const nativeId = (id: string) => id.replace(/^native-camera-/, '');
   const normalize = (photo: SavedPhoto): SavedPhoto => ({ ...photo, id: 'native-camera-' + photo.id });
@@ -389,16 +390,18 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   }
   function cancelPermanent(owner: Bag) {
     if(mutating)return;
-    const old=prepared;prepared=undefined;owner.set({sheet:null});if(old)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});
+    const old=prepared;prepared=undefined;owner.set({sheet:null});if(old?.confirmation)void library.cancelDeleteTrash({confirmation:old.confirmation}).catch(()=>{});
   }
   async function preparePermanent(owner: Bag,items?:SavedPhoto[]) {
     if(mutating||sharing||disposed)return;
     mutating=true;owner.set({nativePhotoMutation:Date.now()});
     try {
-      const result=await library.prepareDeleteTrash(items?{items:items.map(row=>({id:nativeId(row.id),revision:row.mutationRevision||''}))}:undefined);
-      if(disposed||!owner.isActive()||owner.get('photos').album!=='trash'){void library.cancelDeleteTrash({confirmation:result.confirmation}).catch(()=>{});return;}
+      const selected=items?.map(row=>({id:nativeId(row.id),revision:row.mutationRevision||''}));
+      if(permittedLibrary()&&(!selected?.length||selected.length>20)){owner.toast('Select up to 20 deleted items first.');return;}
+      const result=permittedLibrary()?{confirmation:'',count:selected!.length,items:selected}:await library.prepareDeleteTrash(selected?{items:selected}:undefined);
+      if(disposed||!owner.isActive()||owner.get('photos').album!=='trash'){if(result.confirmation)void library.cancelDeleteTrash({confirmation:result.confirmation}).catch(()=>{});return;}
       if(result.count===0){void library.cancelDeleteTrash({confirmation:result.confirmation}).catch(()=>{});owner.toast('Recently deleted is empty.');return;}
-      if(prepared)void library.cancelDeleteTrash({confirmation:prepared.confirmation}).catch(()=>{});
+      if(prepared?.confirmation)void library.cancelDeleteTrash({confirmation:prepared.confirmation}).catch(()=>{});
       prepared=result;owner.set({sheet:'empty',nativeTrashMutationStatus:''});
     } catch(error){if(!disposed)owner.toast(error instanceof Error?error.message:'Trash could not be prepared.');}
     finally{mutating=false;if(!disposed)owner.set({nativePhotoMutation:Date.now()});}
@@ -407,7 +410,9 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     if(mutating||disposed||!prepared)return;
     const snapshot=prepared;mutating=true;closeVideo();owner.set({nativePhotoMutation:Date.now()});
     try {
-      const result=await library.deletePreparedTrash({confirmation:snapshot.confirmation});
+      let result:{deletedIds:string[];skippedIds:string[];failedIds:string[]};
+      if(snapshot.items){const receipt=await nativeLibrary.deletePermittedTrash({items:snapshot.items});result={deletedIds:[],skippedIds:[],failedIds:[]};for(const item of snapshot.items){const outcome=receipt.outcomes.find(row=>row.id===item.id);if(outcome?.status==='deleted')result.deletedIds.push(item.id);else if(outcome?.status==='stale')result.skippedIds.push(item.id);else result.failedIds.push(item.id);}}
+      else result=await library.deletePreparedTrash({confirmation:snapshot.confirmation});
       if(disposed)return;
       ++libraryEpoch;++trashEpoch;const deleted=new Set(result.deletedIds.map(id=>'native-camera-'+id));trash=trash.filter(row=>!deleted.has(row.id));captures=captures.filter(row=>!deleted.has(row.id));preview=undefined;
       const remaining=result.skippedIds.length+result.failedIds.length;
@@ -787,7 +792,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       items:customAlbums.map(album=>({name:album.name,label:(album.memberIds.includes(nativeId(manager?.media?.id||''))?'Remove from ':'Add to ')+album.name,go:()=>{void mutateAlbum(currentApi,album.memberIds.includes(nativeId(selectedManager.media?.id||''))?'remove':'add',album);}})),
       create:()=>{if(manager){manager.creating=true;manager.name='';currentApi.set({nativeAlbumDraft:Date.now()});}},save:()=>{void mutateAlbum(currentApi,selectedManager.creating?'create':'rename');},askDelete:()=>{if(manager){manager.confirmDelete=true;currentApi.set({nativeAlbumDraft:Date.now()});}},delete:()=>{void mutateAlbum(currentApi,'delete');},close:()=>{manager=undefined;currentApi.set({sheet:null});}};}
     data.selStart=()=>{if(mutating||sharing)return;selection=[];swallowedTap='';endHold();currentApi.set({tab:'lib',sel:null,open:null,nativePhotoSelection:null,nativeMultiSelection:Date.now()});};
-    if(selection){data.hdr=false;data.selecting=true;data.selN=selection.length?String(selection.length):'Select';data.selNone=!selection.length;data.selDim=!selection.length||sharing||mutating?'opacity:.35;pointer-events:none':'';data.selCancel=()=>{selection=undefined;swallowedTap='';endHold();currentApi.set({nativeMultiSelection:Date.now()});};data.trashSelecting=st.album==='trash';data.normalSelecting=st.album!=='trash';data.trashCanDelete=!permittedLibrary();data.selRecover=()=>{void changeSelection(currentApi,'restore');};data.selDeleteForever=()=>{if(selection?.length)void preparePermanent(currentApi,selection);};data.selShare=()=>{void shareSelection(currentApi);};data.selFav=()=>{void changeSelection(currentApi,'favorite');};data.selDel=()=>{void changeSelection(currentApi,'trash');};}
+    if(selection){data.hdr=false;data.selecting=true;data.selN=selection.length?String(selection.length):'Select';data.selNone=!selection.length;data.selDim=!selection.length||sharing||mutating?'opacity:.35;pointer-events:none':'';data.selCancel=()=>{selection=undefined;swallowedTap='';endHold();currentApi.set({nativeMultiSelection:Date.now()});};data.trashSelecting=st.album==='trash';data.normalSelecting=st.album!=='trash';data.trashCanDelete=true;data.selRecover=()=>{void changeSelection(currentApi,'restore');};data.selDeleteForever=()=>{if(selection?.length)void preparePermanent(currentApi,selection);};data.selShare=()=>{void shareSelection(currentApi);};data.selFav=()=>{void changeSelection(currentApi,'favorite');};data.selDel=()=>{void changeSelection(currentApi,'trash');};}
     data.mutationBusy = mutating;
     data.emptyOpen = st.sheet==='empty' && !!prepared;
     data.trashCount = prepared ? `${prepared.count} app-owned ${prepared.count===1?'item':'items'} · This cannot be undone.` : '';
@@ -799,7 +804,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       data.album = true; data.viewing = false; data.viewEmpty = false;
       data.alb = { selectLabel:selection?'Cancel':'Select',select:()=>{selection=selection?undefined:[];currentApi.set({open:null,nativePhotoSelection:null,nativeMultiSelection:Date.now()});},selecting:!!selection,selectAll:()=>{selection=trash.slice(0,20);if(trash.length>20)currentApi.toast('Select up to 20 items at a time.');currentApi.set({nativeMultiSelection:Date.now()});},title: 'Recently deleted', isTrash: true, canEmpty: !permittedLibrary(), notTrash: false, count: data.trashN, empty: !trash.length,
         close: () => currentApi.set({ album: null }), emptyTrash: () => { void preparePermanent(currentApi); },
-        status: st.nativeTrashError || st.nativeTrashMutationStatus || (trashLoading ? 'Loading…' : permittedLibrary()?'Open an item to preview it. Android manages permanent expiration.':''), more: !!trashNext || !!st.nativeTrashError,
+        status: st.nativeTrashError || st.nativeTrashMutationStatus || (trashLoading ? 'Loading…' : permittedLibrary()?'Open to preview, or select items to recover or delete.':''), more: !!trashNext || !!st.nativeTrashError,
         moreLabel: st.nativeTrashError ? 'Retry' : trashLoading ? 'Loading…' : 'Load more', loadMore: () => { void loadTrash(currentApi, !st.nativeTrashError); },
         items: trash.map(row => ({ nativeMediaId: row.id, bg: row.image ? `url("${row.image}") center / cover no-repeat` : 'var(--s2)', tf: '', flt: '', vid: row.kind === 'video', dur: '', selecting:!!selection,on:!!selection?.some(item=>item.id===row.id),selCss:selection?.some(item=>item.id===row.id)?'background:var(--acc)':'background:#0006;box-shadow:inset 0 0 0 2px #fff',dim:mutating?'opacity:.35;pointer-events:none':'',
           alt: `Deleted ${row.kind === 'video' ? 'video' : 'photo'} ${new Date(row.date).toLocaleTimeString()}${row.expiresAt ? '; Android expiration ' + new Date(row.expiresAt).toLocaleDateString() : ''}`,
@@ -835,7 +840,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
         catch { currentApi.toast('This photo is no longer available for sharing.'); }
         finally { sharing=false; }
       }, fav: () => { void favorite(selected,currentApi); }, edit: () => {void beginEdit(selected,currentApi);}, del: () => { void changeTrash(selected, true, currentApi); }, info: (event:Event) => openAlbumManager(currentApi,selected,undefined,event.currentTarget as HTMLElement), ask: () => { askCapture(selected,currentApi); } };
-      data.v.isDeleted=!!selected.trashed;data.v.notDeleted=!selected.trashed;data.v.canDeleteForever=!!selected.trashed&&!permittedLibrary();data.v.recover=()=>void changeTrash(selected,false,currentApi);data.v.deleteForever=()=>void preparePermanent(currentApi,[selected]);if(selected.trashed){data.v.notSecure=false;data.v.day=selected.kind==='video'?'Deleted video':'Deleted photo';data.v.sub=selected.expiresAt?'Expires '+new Date(selected.expiresAt).toLocaleDateString():'Recently deleted';}
+      data.v.isDeleted=!!selected.trashed;data.v.notDeleted=!selected.trashed;data.v.canDeleteForever=!!selected.trashed;data.v.recover=()=>void changeTrash(selected,false,currentApi);data.v.deleteForever=()=>void preparePermanent(currentApi,[selected]);if(selected.trashed){data.v.notSecure=false;data.v.day=selected.kind==='video'?'Deleted video':'Deleted photo';data.v.sub=selected.expiresAt?'Expires '+new Date(selected.expiresAt).toLocaleDateString():'Recently deleted';}
       data.v.editLabel=selected.kind==='video'?'Edit video':'Edit photo';data.v.shareLabel=selected.kind==='video'?'Share video':'Share photo';data.v.infoLabel=selected.kind==='video'?'Video info':'Photo info';data.v.deleteLabel=selected.kind==='video'?'Delete video':'Delete photo';
       data.v.canEmail=!browserMode&&selected.kind!=='video'&&!selected.trashed&&nativeId(selected.id).startsWith('m:')&&!!selected.mutationRevision&&Capacitor.isPluginAvailable('AlphaMailAttachments')&&typeof views.inbox.fileEmailTarget==='function';
       data.v.email=()=>emailPhoto(selected,currentApi);

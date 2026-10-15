@@ -236,6 +236,10 @@ public class AlphaPhotosPlugin extends Plugin {
   try{Boolean desired=call.getBoolean(favorite?"favorite":"trashed");if(desired==null)throw new IllegalArgumentException();if(call.getString("id","").startsWith("m:")){mediaReview.request(call,java.util.List.of(call.getString("id")),java.util.List.of(call.getString("revision")),favorite,desired,false);return;}call.resolve(changeFlag(call.getString("id"),call.getString("revision"),favorite,desired));}
   catch(Exception failure){call.reject("This media changed or could not be verified. Refresh Photos before trying again.");}
  });}
+ @PluginMethod public void deletePermittedTrash(PluginCall call){submit(call,()->{
+  try{JSArray items=call.getArray("items");if(items==null||items.length()<1||items.length()>20)throw new IllegalArgumentException();java.util.List<String> ids=new java.util.ArrayList<>(),revisions=new java.util.ArrayList<>();for(int i=0;i<items.length();i++){org.json.JSONObject item=items.getJSONObject(i);String id=item.getString("id");MediaLibraryKey.parse(id);ids.add(id);revisions.add(item.getString("revision"));}mediaReview.deleteTrashed(call,ids,revisions);}
+  catch(Exception invalid){call.reject("Select 1–20 unchanged deleted items again.");}
+ });}
  /** A bounded partial operation, never an atomic all-or-nothing promise. */
  @PluginMethod public void changeMany(PluginCall call){submit(call,()->{
   try{
