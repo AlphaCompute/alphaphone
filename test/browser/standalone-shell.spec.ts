@@ -226,3 +226,8 @@ test('a completed grabber drag cannot activate the chat Home brand through a lat
  await handle.evaluate(element=>{const b=element.getBoundingClientRect(),point={bubbles:true,pointerId:97,pointerType:'mouse',button:0,isPrimary:true,clientX:b.x+b.width/2,clientY:b.y+b.height/2};element.dispatchEvent(new PointerEvent('pointerdown',point));element.dispatchEvent(new PointerEvent('pointermove',{...point,clientY:point.clientY-120}));element.dispatchEvent(new PointerEvent('pointerup',{...point,clientY:point.clientY-120}));document.querySelector<HTMLButtonElement>('[data-alpha-chat-home]')!.dispatchEvent(new MouseEvent('click',{bubbles:true,detail:1}));});
  await expect(page.locator('html')).toHaveAttribute('data-active-view','notes');await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();
 });
+test('a separate Expand tap immediately after Open is not swallowed as a duplicate gesture',async({page})=>{
+ await page.clock.setFixedTime(new Date('2026-10-15T12:00:00Z'));await page.goto('/');await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('button',{name:'Expand chat',exact:true}).click();
+ const app=page.locator('[data-alpha-layer="app"]');await expect(app).toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','true');await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Shrink chat',exact:true}).press('Enter');await expect(app).not.toHaveAttribute('inert','');await expect(app).toHaveAttribute('aria-hidden','false');
+});

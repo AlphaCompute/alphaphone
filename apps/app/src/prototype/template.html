@@ -4006,7 +4006,7 @@
     <button aria-label="Resize chat" onPointerDown="{{grabSw.down}}" onPointerMove="{{grabSw.move}}" onPointerUp="{{grabSw.up}}" onPointerCancel="{{grabSw.cancel}}" onLostPointerCapture="{{grabSw.lost}}" onClick="{{grabTap}}" style="width:44px;height:44px;min-height:44px;display:flex;align-items:flex-start;justify-content:center;padding:6px 2px 0;box-sizing:border-box;border-radius:12px;cursor:grab;touch-action:none"><span style="width:40px;height:4px;border-radius:2px;background:var(--mut);opacity:.45"></span></button>
     <div data-alpha-chat-controls style="display:flex;align-items:center;justify-content:flex-end;gap:2px;min-width:0">
       <sc-if value="{{canStopReply}}"><button class="tap" aria-label="Stop reply" onClick="{{stopReply}}" style="min-height:44px;padding:0 12px;color:var(--acct);font-weight:600">Stop</button></sc-if>
-      <button class="ib" aria-label="{{sizeLabel}}" onClick="{{grabTap}}"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{sizeIcon}}"></path></svg></button>
+      <button class="ib" data-alpha-chat-size aria-label="{{sizeLabel}}" onClick="{{grabTap}}"><svg class="i" viewBox="0 0 24 24" style="width:18px;height:18px"><path d="{{sizeIcon}}"></path></svg></button>
       <sc-if value="{{assistantSurface}}"><button class="ib" aria-label="Close assistant" onClick="{{closeAssistant}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.x}}"></path></svg></button></sc-if>
       <sc-if value="{{notAssistantSurface}}"><button class="ib" aria-label="Minimize chat" onClick="{{closeChat}}"><svg class="i" viewBox="0 0 24 24" style="width:20px;height:20px"><path d="{{ic.down}}"></path></svg></button></sc-if>
     </div>
