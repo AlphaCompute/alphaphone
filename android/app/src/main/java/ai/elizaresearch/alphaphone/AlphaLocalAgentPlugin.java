@@ -678,6 +678,36 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }catch(Exception error){synchronized(lifecycleLock){if(streams.get(id)==handle)notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream interrupted. Outcome unknown; check history before retrying.")));}}
   finally{synchronized(lifecycleLock){if(streams.get(id)==handle){streams.remove(id);streamInvalidators.remove(id);}handle.cancel();}}},()->{synchronized(lifecycleLock){streams.remove(id);streamInvalidators.remove(id);handle.cancel();}notifyListeners("alphaAgentStream",new JSObject().put("streamId",id).put("event",new JSObject().put("type","complete").put("error","Stream unavailable.")));});
  }
+ /** A single ephemeral voice-only feed per surface. Never expose the root credential or
+  * general agent events to the renderer. Uses its own bounded worker so an open feed cannot
+  * occupy a request worker needed by ASR or cancellation. Lifecycle invalidation owns its socket. */
+ @PluginMethod public void subscribeVoiceEvents(PluginCall call) {
+  String id=call.getString("subscriptionId",""),owner=call.getString("ownerId","");
+  if(!id.matches("[A-Za-z0-9-]{16,64}")||owner.isEmpty()){call.reject("Invalid voice subscription.");return;}
+  String key="voice-"+id;final long epoch;final var handle=new ElizaAgentService.LocalStreamHandle();
+  try{synchronized(lifecycleLock){epoch=admittedEpoch();if(streams.keySet().stream().anyMatch(value->value.startsWith("voice-")))throw new IllegalStateException();streams.put(key,handle);streamInvalidators.put(key,()->notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end")));}}
+  catch(Exception unavailable){call.reject("Voice subscription unavailable.");return;}
+  call.resolve(new JSObject().put("subscriptionId",id));
+  Thread worker=new Thread(()->{try{
+   enroll(epoch);
+   synchronized(lifecycleLock){requireCurrent(epoch);if(!owner.equals(ownerIdentity)||streams.get(key)!=handle)throw new Superseded();}
+   JSONObject input=new JSONObject().put("streams",new org.json.JSONArray().put("voice-transcript"));
+   ElizaAgentService.subscribeLocalAgentEvents(input.toString(),event->{synchronized(lifecycleLock){try{
+    requireCurrent(epoch);if(streams.get(key)!=handle)return;
+    if(!owner.equals(ownerIdentity)||expiresAt<=System.currentTimeMillis()){handle.cancel();return;}
+    JSONObject value=new JSONObject(event);
+    if("event".equals(value.optString("type"))){JSONObject envelope=value.optJSONObject("event");if(envelope==null||!"agent_event".equals(envelope.optString("type"))||!"voice-transcript".equals(envelope.optString("stream")))return;}
+    value.put("subscriptionId",id);notifyListeners("alphaVoiceEvent",new JSObject(value.toString()));
+   }catch(Exception ignored){handle.cancel();}}},handle);
+  }catch(Exception unavailable){/* Final HTTP transcripts remain available if the optional feed fails. */}
+  finally{synchronized(lifecycleLock){if(streams.get(key)==handle){streams.remove(key);streamInvalidators.remove(key);notifyListeners("alphaVoiceEvent",new JSObject().put("subscriptionId",id).put("type","end"));}handle.cancel();}}},"alpha-voice-events");
+  worker.setDaemon(true);worker.start();
+ }
+ @PluginMethod public void unsubscribeVoiceEvents(PluginCall call) {
+  String key="voice-"+call.getString("subscriptionId","");
+  synchronized(lifecycleLock){var handle=streams.remove(key);streamInvalidators.remove(key);if(handle!=null)handle.cancel();}
+  call.resolve(new JSObject().put("closed",true));
+ }
  /** Destroying one surface (for example closing the assistant) cancels only this instance's
   * calls and streams. The shared runtime, its epoch and the owner enrollment stay valid for
   * other surfaces. When the last surface goes away (the app is closed or recreated) the epoch
