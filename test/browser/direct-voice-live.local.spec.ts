@@ -35,7 +35,7 @@ test('real direct voice opens Notes through the actual renderer channel',async({
   if(long){await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.ready.length),{timeout:145000,intervals:[1000,5000]}).toBeGreaterThanOrEqual(2);await expect.poll(()=>Date.now()-started,{timeout:145000,intervals:[1000,5000]}).toBeGreaterThan(125000);await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();const proof=await page.evaluate(()=>(window as any).voiceLiveProof);expect(proof.rendererConnections).toBeGreaterThanOrEqual(2);expect(proof.maxConcurrentCaptures).toBe(1);receipt.rotationQualified=true;await page.screenshot({path:info.outputPath('after-125-seconds.png')});}
  }finally{
   receipt.visible=await page.locator('body').innerText();receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);const final=receipt.proof.transportEvents.find((event:any)=>event.type==='stt_final');receipt.firstAudioAfterTalkMs=receipt.proof.firstAudioAt?receipt.proof.firstAudioAt-started:null;receipt.firstAudioAfterFinalTranscriptMs=final&&receipt.proof.firstAudioAt?receipt.proof.firstAudioAt-final.at:null;
-  const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count())await stop.click();
+  const stop=page.getByRole('button',{name:'Stop voice conversation',exact:true});if(await stop.count()){await stop.click();await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeEnabled();await expect(stop).toHaveCount(0);receipt.stopPreservedChat=true;}
   await writeFile(info.outputPath('receipt.json'),JSON.stringify(receipt,null,2));
  }
 });
