@@ -1,3 +1,4 @@
+import {resolveCloudEnvironment} from '../apps/app/src/runtime/cloud-environment-selection.ts';
 // Non-product development controller + shared Cloud protocol over synthetic loopback HTTP. No live account.
 import assert from 'node:assert/strict';
 import http from 'node:http';
@@ -101,7 +102,7 @@ let clockRetirements=0,heldClockRetirement=null,clockRetirementStarted=null;
 const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.();if(heldClockRetirement)await heldClockRetirement;};
 // This controller fixture models a host whose transport reaches Eliza Cloud. The flag-off web page
 // has none and starts no Cloud route; test/browser/connection-boundaries.production.spec.ts covers it.
-const sandbox = { ...subscriptionEntitlement, ...cloudSignInModule, cloudSignIn:undefined, cloudSignInGoogle:false, AlphaClientError, browserLocalAgentEnabled:true, retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:true, devSurfacesEnabled:true, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
+const sandbox = { resolveCloudEnvironment,fixtureViteEnv:{DEV:true},...subscriptionEntitlement, ...cloudSignInModule, cloudSignIn:undefined, cloudSignInGoogle:false, AlphaClientError, browserLocalAgentEnabled:true, retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:true, devSurfacesEnabled:true, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
   PersonalProtocolError, personalIntent:async()=>null, savePersonalIntent:async(_owner,intent)=>intent, clearPersonalIntent:async()=>{},
   RemoteProtocol, remoteCredentialStore, nativeRemoteRequest, DeviceActions, presentDeviceRecordOperation, actionScope:async value=>Buffer.from(value).toString('base64url').slice(0,32), negotiateEnabledViews:async()=>'',
   Capacitor:{getPlatform:()=>'web'},aospImage:false,SMS_SEND_CAPABILITY:'sms.send.v1', setTimeout:(callback,ms)=>setTimeout(callback,ms===15000?20:ms), clearTimeout, Intl, Date, Buffer, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, DevelopmentCloudAgentProtocol, CloudProvisionAcceptedError, phoneContextMessage, findStoppedUserTurn, nativeCloudRequest,
@@ -117,7 +118,7 @@ const selectionSource = stripTypeScriptTypes(await readFile(new URL('../apps/app
 vm.runInNewContext(selectionSource + '\nglobalThis.selectionApi = { captureConversationChoice, selectConversation };', selectionSandbox);
 Object.assign(sandbox, selectionSandbox.selectionApi);
 let source = (await readFile(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8')).split('export function ConnectionChooser()')[0];
-source = source.replace(/^import .*;\n/gm, '').replace(/export /g, '');
+source = source.replace(/^import .*;\n/gm, '').replace(/export /g, '').replaceAll('import.meta.env','fixtureViteEnv');
 source += '\nglobalThis.controller = connectionController;';
 vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }), sandbox);
 const controller = sandbox.controller;
