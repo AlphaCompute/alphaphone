@@ -1,4 +1,6 @@
+import {localDraftRow} from './inbox-draft-navigation';
 import {test,expect} from '@playwright/test';
+test.beforeEach(async({context})=>{await context.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
 
 for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(const saved of [false,true])test(`Cancelling ${request} retains ${saved?'edited saved':'unsaved'} local mail`,async({page})=>{
  await page.goto('/');
@@ -40,7 +42,7 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  await page.evaluate(async()=>{(window as any).cancelMail.release();(window as any).cancelMail.hold=false;await new Promise(resolve=>setTimeout(resolve,0));});
  await expect(page.getByText('Must not appear',{exact:true})).toHaveCount(0);
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
- await page.getByRole('button',{name:'Continue draft',exact:true}).click();
+ await (await localDraftRow(page)).click();
  await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Retained subject');
  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Unsaved important text');
  await expect(page.getByRole('textbox',{name:'Cc',exact:true})).toHaveValue('copy@example.invalid');

@@ -1,3 +1,4 @@
+import {localDraftRow} from './inbox-draft-navigation';
 import {test,expect,type Page} from '@playwright/test';
 const dialog=(page:Page)=>page.getByRole('dialog',{name:'Use selected file in email',exact:true});
 async function setup(page:Page,reviewFile=true){
@@ -43,7 +44,7 @@ test('selected Files require explicit attachment review, retain exact bytes and 
  expect(await page.evaluate(()=>(window as any).fileEmail.writes)).toBe(0);
  const saved=()=>page.evaluate(async()=>{const {inboxLocalStore}=await import('/src/runtime/inbox-local-store.ts');return await inboxLocalStore.read<any>('inbox-drafts:v1:'+JSON.stringify(['production','file-owner','','file-grant']));});
  expect((await saved()).attachments).toEqual([{name:'selected.txt',mimeType:'text/plain',dataBase64:Buffer.from('Café\nExact bytes').toString('base64')}]);
- await setup(page,false);await page.getByRole('button',{name:'Restore local draft',exact:true}).click();
+ await setup(page,false);await (await localDraftRow(page)).click();
  await expect(page.getByRole('button',{name:'Remove selected.txt',exact:true})).toBeVisible();
  expect((await saved()).attachments[0].dataBase64).toBe(Buffer.from('Café\nExact bytes').toString('base64'));
  await page.getByRole('button',{name:'Remove selected.txt',exact:true}).click();await expect(page.getByRole('list',{name:'Attachments',exact:true})).toHaveCount(0);
