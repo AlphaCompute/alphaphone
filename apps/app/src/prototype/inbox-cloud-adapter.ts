@@ -1,3 +1,4 @@
+import {decodeMailPreview} from '../runtime/mail-preview';
 import {alphaClient} from '../runtime/alpha-client';
 import {reviewOwnNoticeQuestion} from './own-notice-question';
 import {configureGmailBackground,withdrawGmailBackground,releaseGmailQuestion,pendingGmailNotice,consumeGmailNotice,onGmailNotice} from '../runtime/gmail-background';
@@ -707,12 +708,12 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       // routes to the reviewed archive flow, any other swipe falls through to the shell.
       const swipe = current.sw?.((dx: number, dy: number) => { if (dx >= 0 || Math.abs(dx) < Math.abs(dy)) return false; void swipeArchive(m); return true; }) ?? { down: () => {}, up: () => {} };
       const name = sentView ? (m.to.length ? `To: ${m.to.join(', ')}` : 'To: (no recipients)') : m.from; return { name, ini: (sentView ? m.to[0] || '?' : m.from).slice(0, 1).toUpperCase(), subj: m.subject || '(no subject)',
-      snip: m.snippet, time: date(m.receivedAt), nameW: m.unread ? '700' : '500', subjCss: 'color:var(--fg)',
+      snip: decodeMailPreview(m.snippet), time: date(m.receivedAt), nameW: m.unread ? '700' : '500', subjCss: 'color:var(--fg)',
       dot: m.unread ? 'var(--acct)' : 'transparent', clip: !!m.hasAttachments, tx: 0, current: st.open === m.id ? 'true' : 'false',
       down: swipe.down, up: swipe.up,
       label: `${m.unread ? 'Unread, ' : ''}${name}, ${m.subject}${m.hasAttachments ? ', has attachments' : ''}`, open: () => void open(m) }; });
     if (draftsView()) rows.splice(0, rows.length, ...providerDrafts.map(d => { const name = d.to.length ? `Draft to ${d.to.join(', ')}` : 'Draft (no recipients)';
-      return { name, ini: 'D', subj: d.subject || '(no subject)', snip: d.snippet, time: date(d.updatedAt), nameW: '500', subjCss: 'color:var(--fg)', dot: 'transparent', clip: false, tx: 0, current: 'false',
+      return { name, ini: 'D', subj: d.subject || '(no subject)', snip: decodeMailPreview(d.snippet), time: date(d.updatedAt), nameW: '500', subjCss: 'color:var(--fg)', dot: 'transparent', clip: false, tx: 0, current: 'false',
         down: () => {}, up: () => {}, label: `Gmail draft, ${name}, ${d.subject || '(no subject)'}`, open: () => void openDraft(d) }; }));
     if(draftsView())rows.unshift(...localDrafts.map(action=>({name:'On this device',ini:'D',subj:action.recovery?action.label:action.subject,snip:action.label==='Earlier version of a sent email'?action.label:action.snippet,time:'Draft',nameW:'500',subjCss:'color:var(--fg)',dot:'transparent',clip:false,tx:0,current:'false',down:()=>{},up:()=>{},label:`Local draft, ${action.recovery?action.label:action.subject}`,open:action.pick})));
     const linkRows = (source: NonNullable<typeof body>) => { const cached = linkRowCache.get(source); if (cached) return cached; const seen = new Set<string>(), list: GmailLink[] = [];
