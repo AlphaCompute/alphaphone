@@ -18,6 +18,8 @@ async function fixture(){
   const u=new URL(url);calls.push(u);
   if(u.pathname==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:org}});
   if(u.pathname.endsWith('/accounts'))return Response.json(accounts());
+  if(u.pathname.endsWith('/calendars'))return Response.json([{calendarId:'primary',summary:'Owned calendar',primary:true,selected:true,accessRole:'owner'}]);
+  if(u.pathname.endsWith('/feed')){await afterRead();return Response.json({calendarId:'primary',events:[],syncedAt:message.receivedAt});}
   if(u.pathname.endsWith('/search')){const data=pages(u);await afterRead();return Response.json(data);}
   if(u.pathname.endsWith('/read')){await afterRead();return Response.json({message,bodyText:'Exact synthetic body'});}
   throw Error('Unexpected route');
@@ -39,4 +41,15 @@ test('multiple readable Gmail accounts refuse before any mailbox read',async()=>
 });
 test('paged Gmail reads reject a mailbox revision change',async()=>{
  const f=await fixture();try{f.setPages(u=>({messages:[message],syncedAt:message.receivedAt,mailboxHistoryId:u.searchParams.has('pageToken')?'2':'1',nextPageToken:u.searchParams.has('pageToken')?null:'next'}));await assert.rejects(f.reader.list({limit:25}),/mailbox changed/);}finally{await f.close();}
+});
+
+test('Calendar reads bind the current grant and refuse a revoked source before returning its feed',async()=>{
+ const f=await fixture();try{
+  f.setAccounts(()=>[{...account,label:'owned@example.invalid',grantedCapabilities:['google.calendar.read']}]);
+  const sources=await f.reader.calendarSources();assert.equal(sources[0].summary,'Owned calendar');assert.match(sources[0].grantId,/^alpha-google:[a-f0-9]{64}$/);
+  const input={grantId:sources[0].grantId,calendarId:'primary',timeMin:'2026-10-14T00:00:00Z',timeMax:'2026-10-16T00:00:00Z',timeZone:'UTC'};
+  assert.equal((await f.reader.calendarFeed(input)).state,'complete');
+  await assert.rejects(f.reader.calendarFeed({...input,grantId:'alpha-google:'+'f'.repeat(64)}),/current owner/);
+  f.setAfterRead(async()=>f.setAccounts(()=>[]));await assert.rejects(f.reader.calendarFeed(input),/permission changed/);
+ }finally{await f.close();}
 });

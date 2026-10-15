@@ -16,9 +16,16 @@ export function createGmailAgentDevBroker(options:{profile:string;tokenFile:stri
    if(provided.length!==expected.length||!timingSafeEqual(provided,expected)){send(401,{error:'Agent authentication required'});return;}
    const chunks:Buffer[]=[];let bytes=0;for await(const chunk of req){const part=Buffer.from(chunk);bytes+=part.length;if(bytes>8192)throw Error('Read request too large');chunks.push(part);}
    const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['limit','query','since','messageId'].includes(key))||input.query!==undefined&&(typeof input.query!=='string'||input.query.length>4096)||input.since!==undefined&&typeof input.since!=='string')throw Error('Invalid Gmail read request');
+   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['limit','query','since','messageId','calendar'].includes(key))||input.query!==undefined&&(typeof input.query!=='string'||input.query.length>4096)||input.since!==undefined&&typeof input.since!=='string')throw Error('Invalid Gmail read request');
    controller.signal.throwIfAborted();
-   let result:unknown;if(input.messageId!==undefined){if(typeof input.messageId!=='string'||Object.keys(input).length!==1)throw Error('Invalid exact-message read');result={message:await reader.message(input.messageId,controller.signal)};}else result={items:await reader.list(input,controller.signal)};
+   let result:unknown;
+   if(input.calendar!==undefined){
+    if(Object.keys(input).length!==1||!input.calendar||typeof input.calendar!=='object'||Array.isArray(input.calendar))throw Error('Invalid Calendar read');
+    const c=input.calendar;
+    if(c.operation==='sources'&&Object.keys(c).length===1)result={calendars:await reader.calendarSources(controller.signal)};
+    else if(c.operation==='feed'&&Object.keys(c).sort().join()===['operation','grantId','calendarId','timeMin','timeMax','timeZone'].sort().join()&&['grantId','calendarId','timeMin','timeMax','timeZone'].every(key=>typeof c[key]==='string'&&c[key].length<=1024))result={feed:await reader.calendarFeed(c,controller.signal)};
+    else throw Error('Unsupported Calendar operation');
+   }else if(input.messageId!==undefined){if(typeof input.messageId!=='string'||Object.keys(input).length!==1)throw Error('Invalid exact-message read');result={message:await reader.message(input.messageId,controller.signal)};}else result={items:await reader.list(input,controller.signal)};
    controller.signal.throwIfAborted();const body=JSON.stringify(result);if(Buffer.byteLength(body)>256*1024)throw Error('Gmail result too large');
    res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(body);
   }catch{if(!res.writableEnded&&!res.destroyed)send(409,{error:'Gmail read could not be verified. Check the current account and Google read permission.'});}

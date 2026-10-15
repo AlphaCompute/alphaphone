@@ -269,13 +269,15 @@ test('cancelling an in-flight email verification keeps the existing account and 
  }finally{release?.();await f.close();}
 });
 
-test('private agent Gmail port shares the current credential without allowing mail writes or other services',async()=>{
+test('private agent Google port shares the current credential without allowing writes or unrelated services',async()=>{
  const f=await fixture();try{
   const host=f.host(),credential=await host.agentCredential();assert.equal(credential.token,undefined);assert.equal(credential.credentialReference,reference);
   const read={url:'https://api.eliza.app/api/v1/user',method:'GET',credentialReference:reference,signal:new AbortController().signal};
   assert.equal((await host.agentRead(read)).data.data.id,owner);const count=f.calls.length;
-  for(const change of [{method:'POST',body:{}},{url:'https://api.eliza.app/api/v1/eliza/google/disconnect'},{url:'https://api.eliza.app/api/v1/eliza/google/calendar/calendars?side=owner&grantId='+credentialId},{url:'https://api.eliza.app/api/v1/billing/limits'},{url:'https://elsewhere.invalid/api/v1/user'},{credentialReference:'browser-cloud-reference:'+randomUUID()}])await assert.rejects(host.agentRead({...read,...change}));
+  for(const change of [{method:'POST',body:{}},{url:'https://api.eliza.app/api/v1/eliza/google/disconnect'},{url:'https://api.eliza.app/api/v1/eliza/google/calendar/events',method:'POST',body:'{}'},{url:'https://api.eliza.app/api/v1/billing/limits'},{url:'https://elsewhere.invalid/api/v1/user'},{credentialReference:'browser-cloud-reference:'+randomUUID()}])await assert.rejects(host.agentRead({...read,...change}));
   assert.equal(f.calls.length,count,'no refused read or mutation reached Cloud');
+  f.setResponse(async()=>Response.json([]));
+  const calendars=await host.agentRead({...read,url:'https://api.eliza.app/api/v1/eliza/google/calendar/calendars?side=owner&grantId='+credentialId});assert.deepEqual(calendars.data,[]);
  }finally{await f.close();}
 });
 test('a Cloud account change while the agent Gmail read is in flight drops the old result',async()=>{

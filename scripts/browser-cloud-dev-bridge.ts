@@ -238,7 +238,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   async agentCredential(){const c=(await load()).production;return c?publicCredential(c):null;},
   async agentRead(input:{url:string;method:string;body?:unknown;credentialReference?:string;signal:AbortSignal}){
    const url=new URL(input.url);
-   if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||input.method!=='GET'||input.body!==undefined||!(url.pathname==='/api/v1/user'&&!url.search||['/api/v1/eliza/google/accounts','/api/v1/eliza/google/gmail/search','/api/v1/eliza/google/gmail/read'].includes(url.pathname)&&managedGoogleRequest(url,'GET',undefined)))throw refusal(403,'agent-read-route-refused');
+   if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||input.method!=='GET'||input.body!==undefined||!(url.pathname==='/api/v1/user'&&!url.search||['/api/v1/eliza/google/accounts','/api/v1/eliza/google/gmail/search','/api/v1/eliza/google/gmail/read','/api/v1/eliza/google/calendar/calendars','/api/v1/eliza/google/calendar/feed'].includes(url.pathname)&&managedGoogleRequest(url,'GET',undefined)))throw refusal(403,'agent-read-route-refused');
    const c=await admitted('production',input.credentialReference);
    const response=await canonical('production',url.pathname+url.search,input.signal,{},c);
    const data=await boundedServiceJson(response);await current('production',c,input.signal);
