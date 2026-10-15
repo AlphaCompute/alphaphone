@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {VoiceActivity} from '../apps/app/src/prototype/voice-activity.tsx';
+import {tsImport} from 'tsx/esm/api';
+
+const {VoiceActivity}=await tsImport('../apps/app/src/prototype/voice-activity.tsx',import.meta.url);
 
 // Synthetic presentation only: no capture, recording, provider, or model requests.
 globalThis.matchMedia=()=>({matches:true});

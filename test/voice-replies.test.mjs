@@ -21,7 +21,7 @@ function fixture({native = true} = {}) {
     registerPlugin: () => ({}),
     localStorage: {getItem: k => f.store.has(k) ? f.store.get(k) : null, setItem: (k, v) => f.store.set(k, String(v)), removeItem: k => f.store.delete(k)},
     window: {dispatchEvent: event => { f.events.push(event.type); return true; }, addEventListener() {}, removeEventListener() {}},
-    document: {hidden: false, documentElement: {dataset: {}}, addEventListener() {}, removeEventListener() {}},
+    document: {hidden: false, documentElement: {dataset: {}}, querySelector: () => null, addEventListener() {}, removeEventListener() {}},
     // Recognition readiness (ready) and read-aloud readiness (playbackReady) are separate checks.
     createOnDeviceVoice: () => ({ready: async () => false, playbackReady: async () => true}),
     createCloudVoice: () => ({speak: async (text,signal,started) => box.speakLocalText(text,signal,started,false,{execution:'cloud'})}),
