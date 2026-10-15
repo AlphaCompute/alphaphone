@@ -1,6 +1,6 @@
 import {FEED_FILTERS,passesFilter,type FeedFilter} from '../../../../.eliza/client-features/packages/ui/src/utils/automation-feed-filter';
 import {AutomationsProtocol,AutomationOutcomeError,automationIssue,automationLocalDateInput,mergeAutomationRows,type AutomationRow,type AutomationIssue,type PromptDraft,type ReminderDraft,type AutomationRequest,type ScheduledVerb} from '../runtime/automations-protocol';
-import {connectionController,agentPendingText} from '../runtime/connection-ui';
+import {connectionController,agentPendingText,agentAvailabilityNotice} from '../runtime/connection-ui';
 import {DailyApps,type Reminder} from '../daily';
 import {WorkflowIntentStore,workflowIntentKey} from '../runtime/workflow-intents';
 import {presentHomeWorkflowFreshness} from './home-cards';
@@ -52,7 +52,7 @@ export function installAutomationsAdapter(Component:any,views:Bag){
    intentStore=store;if(pending.status==='rejected')failures.push({source:'automations',unavailable:false,message:'Pending requests could not be checked. Changes stay blocked until this agent’s request history is available.'});
    rows=mergeAutomationRows(next);issues=failures;state='ready';loadedSession=selected?.sessionId||'offline';
    homeCache={sessionId:loadedSession,rows:rows.map(row=>({name:row.title,status:rowStatus(row)})),total:rows.length,partial:failures.some(issue=>!issue.unavailable||issue.source==='device'),stale:false,error:false,loadedAt:Date.now()};
-   if(!selected)message=ownerContext?'Reminders on this phone stay available.':agentPendingText()+' Reminders on this phone stay available.';
+   if(!selected)message=ownerContext?'Reminders on this phone stay available.':[agentAvailabilityNotice(),'Reminders on this phone stay available.'].filter(Boolean).join(' ');
    if(detail)detail=rows.find(row=>row.key===detail!.key)||null;
   }catch{if(valid()){state='failed';if(homeCache)homeCache.error=true;message='Automations could not refresh. Retry to check their current state.';}}
   finally{if(ticket===epoch){controller=null;publish();}}

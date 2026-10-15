@@ -10,7 +10,7 @@ import { registerPlugin } from '../platform-plugins';
 import { broaderPageNotice, switchValue } from './native-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
-import { connectionController, agentPendingText } from '../runtime/connection-ui';
+import { connectionController, agentAvailabilityNotice } from '../runtime/connection-ui';
 import {googleConnectionController} from '../runtime/google-connection-ui';
 import {GOOGLE_ACCOUNTS_CHANGED,googleDisconnectConfirmation,googleDisconnectMessage} from '../runtime/google-accounts';
 import { browserLocalAgentEnabled } from '../runtime/local-agent';
@@ -179,7 +179,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
-    digests = workflow ? 'Checking agent support…' : agentPendingText();
+    digests = workflow ? 'Checking agent support…' : agentAvailabilityNotice();
     inferenceProvider = 'Not reported by agent';
     changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
