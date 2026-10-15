@@ -8,7 +8,7 @@ async function setup(page:Page){
  export const developmentCartesiaVoiceEnabled=true;
  export async function developmentCartesiaConversation(input){
   const f=window.voicePresentationFixture;let muted=false;
-  f.partial=text=>input.onTranscript(text);f.fail=()=>input.onError(Error('Synthetic voice unavailable'));
+  f.phase=phase=>input.onState(phase);f.partial=text=>input.onTranscript(text);f.fail=()=>input.onError(Error('Synthetic voice unavailable'));
   return {start:async()=>{f.starts++;if(f.startHold){input.onState('connecting');await new Promise(resolve=>f.releaseStart=resolve);}input.onState('listening');},stop:async()=>{f.stops++;if(f.stopHold)await new Promise(resolve=>f.releaseStop=resolve);if(f.stopFailure)throw Error('Synthetic retirement unconfirmed');},recheck:()=>{},resume:()=>false,
    get microphoneMuted(){return muted;},setMicrophoneMuted:value=>{muted=value;f.muted=value;},needsPlaybackUnlock:false,unlockPlayback:async()=>{}};
  }`}));
@@ -91,4 +91,27 @@ test('synthetic pending microphone startup is unconfirmed until the ready state'
  await setup(page);await page.evaluate(()=>(window as any).voicePresentationFixture.startHold=true);await page.getByRole('button',{name:'Talk',exact:true}).click();const controls=page.locator('.alpha-voice-composer');await expect(controls).toHaveAttribute('data-voice-state','starting');
  const mic=controls.getByRole('button',{name:'Microphone status unconfirmed',exact:true});await expect(mic).toBeDisabled();await expect(mic).toHaveAttribute('aria-pressed','mixed');
  await page.evaluate(()=>(window as any).voicePresentationFixture.releaseStart());await expect(controls.getByRole('button',{name:'Mute microphone',exact:true})).toBeEnabled();await controls.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(controls).toHaveCount(0);await noMediaOrSends(page);
+});
+
+
+test('realtime transcribing streams revised words into one pending bubble until the message is committed',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).voicePresentationFixture.shell.swallowed())).toBe(false);
+ await page.getByRole('button',{name:'Talk',exact:true}).click();
+ await page.evaluate(()=>{const f=(window as any).voicePresentationFixture;f.phase('transcribing');f.partial('hello');});
+ const pending=page.locator('[data-alpha-voice-interim]');
+ await expect(page.locator('.alpha-voice-composer')).toHaveAttribute('data-voice-state','transcribing');
+ await expect(pending).toHaveText('hello');
+ await expect(page.getByRole('button',{name:'Mute microphone',exact:true})).toBeEnabled();
+ await page.evaluate(()=>(window as any).voicePresentationFixture.partial('hello from Alpha'));
+ await expect(pending).toHaveCount(1);await expect(pending).toHaveText('hello from Alpha');
+ await page.evaluate(()=>(window as any).voicePresentationFixture.phase('thinking'));
+ await expect(pending).toHaveText('hello from Alpha');
+ await page.evaluate(()=>{const f=(window as any).voicePresentationFixture;f.shell.setState({msgs:[{id:'committed-voice',from:'user',text:'hello from Alpha'}]});});
+ await expect(pending).toHaveCount(0);
+ await page.evaluate(()=>{const f=(window as any).voicePresentationFixture;f.phase('listening');f.phase('transcribing');f.partial('hello from Alpha');});
+ await expect(pending).toHaveText('hello from Alpha');
+ await page.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
+ await expect(pending).toHaveCount(0);await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();
+ await noMediaOrSends(page);
 });
