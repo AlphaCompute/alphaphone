@@ -1,8 +1,8 @@
 # Fused speech: libelizainference on the device and on the local agent
 
 Alpha Phone has one local speech engine: **libelizainference**, the llama.cpp-based native
-library from the elizaOS llama.cpp fork (decision P-42). At the pin `fb6232523074` (llama.cpp
-gitlink `56e70ff2a0ca`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
+library from the elizaOS llama.cpp fork (decision P-42). At the pin `968348d792d3` (llama.cpp
+gitlink `3e5f73922ee8`, voice ABI 18, built with `LLAMA_BUILD_PARAKEET=ON`) it contains ggml, the
 **Parakeet-TDT** decoder that runs **Phonon-2** ASR in batch and streaming mode (P-55), mtmd (the
 Qwen3-ASR alternative, not shipped), the **Paradee-8M** speech graph on the shared kokoro layers
 (P-54), the native **misaki** English G2P, **eSpeak NG 1.52.0** (statically linked, used only for
@@ -107,7 +107,7 @@ recording a clip on the device:
    semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
    which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
    (local-speech research), not measurements or owner-set constants. **Clef is not in the pin**
-   (`fb6232523074`: no Clef model, loader or decision head; only the native EOT scorer for the
+   (`968348d792d3`: no Clef model, loader or decision head; only the native EOT scorer for the
    Eliza-1 text model), so no semantic port is wired and the documented VAD long-gap fallback
    decides alone. New speech before submission cancels both timers and continues the utterance.
 6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
@@ -178,9 +178,9 @@ claim that the current development build reproduces those bytes.
    (NDK 28.2; it converts the Paradee GGUF and misaki lexicon from pinned sources and checks them):
    `node scripts/build-pinned-voice.mjs --workspace <dir> --out <fresh-dir>`.
    This consumer wrapper verifies clean pinned Eliza/FFI sources before and after the upstream
-   builder, then records both revisions on its fresh output. The builder at `fb6232523074`
-   does not itself emit these fields; unrecorded engine staging still requires them and checks
-   the original record against every selected engine hash. No vendor source is edited.
+   builder, then verifies the shared builder's recorded revisions and every fresh output hash. At `968348d792d3` the upstream builder
+   emits both source fields; the wrapper rejects disagreement and unrecorded engine staging
+   checks the original record against every selected engine hash. No vendor source is edited.
    The bundle assets recorded today were built this way at eliza `c7a9a0d7e7` (llama.cpp
    `5df17a66`) on 2026-10-14; the engine bytes recorded for both ABIs come from
    `node scripts/prepare-embedding-host.mjs --build --remap-build-path` at the same source, so the

@@ -1416,3 +1416,24 @@ made by another surface during an attach does not make this surface stop the res
 Both runners bind the bytes upstream pins to the admitted hashes in `preflightVariant`, before
 any install, so a build that overwrites the archive after admission fails the run instead of
 being recorded under the admitted hashes. These are source checks only, as above.
+
+## Latest upstream pin integration (2026-10-15)
+
+The candidate source pin is `968348d792d3d36df129bc53bd85cebed47d0830`.
+It contains merged Eliza #36157 and #36292. Its llama.cpp gitlink is
+`3e5f73922ee804806a2e955b50843a5042e6e401`, fork main after upstream integration
+#72 and the native build repairs in #80. All existing native patch target
+hashes match this Eliza revision unchanged. The bounded secure-storage memory
+and reset-revocation tests also pass at this candidate pin (two tests).
+
+At this llama.cpp revision the local Release CPU speech library and architecture
+test target built. The ABI, Parakeet kernel and Kokoro layer-option tests passed.
+The full native build in the server-disabled configuration failed at test-chat
+because its server header requires mtmd.h. This is separate from the passing
+speech targets. Eliza #36292 passed all hosted checks and local `bun run verify`.
+
+New Android engine and full/voice-subset JNI libraries built for both ABIs.
+Their measured hashes are recorded in the unqualified voice-host manifest; ELF
+architecture, required exports and 16 KiB alignment checks passed. The separate
+resident-host qualification receipt remains historical and unchanged. A source pin or development library build does not establish
+emulator, AOSP boot, physical-device or distribution qualification.
