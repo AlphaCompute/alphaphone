@@ -156,8 +156,8 @@ export function installFilesTreeAdapter(views:Bag,accept:(module:string,result:N
   }
   out.locs=[...(out.locs||[]),{nativeTree:true,name:Capacitor.isNativePlatform()?'Choose folder':'App files',d:FOLDER,sub:Capacitor.isNativePlatform()?'Android folder access':'App files',go:()=>choose()}];
   if(!Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Import folder',d:FOLDER,sub:'Import copies into app files',go:()=>choose(true)});
-  if(!listing)out.locs.push({nativeTree:true,name:'Saved folder',d:FOLDER,sub:'Restore selected access',go:()=>{currentApi.set({folder:'__native_tree'});void load();}});
-  else out.locs.push({nativeTree:true,name:listing.folder?.name||'Selected folder',d:FOLDER,sub:'Browse selected folder',go:()=>{currentApi.set({folder:'__native_tree'});void load(listing?.folder?.id);}});
+  if(!listing&&Capacitor.isNativePlatform())out.locs.push({nativeTree:true,name:'Saved folder',d:FOLDER,sub:'Restore selected access',go:()=>{currentApi.set({folder:'__native_tree'});void load();}});
+  else if(listing&&(Capacitor.isNativePlatform()||listing.folder?.parentId))out.locs.push({nativeTree:true,name:listing.folder?.name||'Selected folder',d:FOLDER,sub:'Browse selected folder',go:()=>{currentApi.set({folder:'__native_tree'});void load(listing?.folder?.id);}});
   if(state.folder==='__native_tree'){
    const folder=listing?.folder,rows=listing?.entries||[];
    const mode:SortMode=state.sort==='name'?'name':'recent';
