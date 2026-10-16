@@ -194,6 +194,7 @@ export type SubscriptionView =
   | { kind: 'checking' }
   /** `source` 'billing-limits' is the unsigned billing snapshot used while the entitlement route is absent. */
   | { kind: 'active'; planName: string; status: 'active' | 'trialing' | 'past_due'; allowance: PlanAllowance | null; expiresAt: number; refreshFailed: boolean; source?: 'billing-limits' }
+  | { kind: 'credits'; source: 'billing-limits' }
   | { kind: 'inactive'; planName: string | null; status: 'canceled' | 'none'; source: 'entitlement' | 'billing-limits' }
   /** Billing status could not be read: an outage, no published plan source, or an invalid answer. */
   | { kind: 'unavailable'; reason: 'outage' | 'not-published' | 'invalid' }
@@ -234,6 +235,7 @@ export const CHOOSE_PLAN_LABEL = 'Choose a plan';
 export type PlanAdmission = 'admit' | 'admit-with-warning' | 'needs-plan' | 'unknown';
 export function planAdmission(view: SubscriptionView | null | undefined): PlanAdmission {
   if (!view || view.kind === 'checking') return 'unknown';
+  if (view.kind === 'credits') return 'admit';
   if (view.kind === 'active') return view.status === 'past_due' ? 'admit-with-warning' : 'admit';
   if (view.kind === 'inactive') return 'needs-plan';
   return 'unknown';
@@ -241,6 +243,7 @@ export function planAdmission(view: SubscriptionView | null | undefined): PlanAd
 export function describeSubscription(view: SubscriptionView | null | undefined): { headline: string; detail: string; manage: boolean; manageLabel: string } {
   if (!view || view.kind === 'checking') return { headline: 'Checking your plan…', detail: '', manage: false, manageLabel: MANAGE_PLAN_LABEL };
   switch (view.kind) {
+    case 'credits': return { headline: 'Eliza Cloud credits', detail: 'Uses your Eliza Cloud account balance.', manage: true, manageLabel: 'Manage billing in Eliza Cloud' };
     case 'active': return {
       headline: view.status === 'past_due' ? `${view.planName} · payment due` : view.status === 'trialing' ? `${view.planName} · trial` : view.planName,
       detail: [view.source === 'billing-limits' ? '' : allowanceText(view.allowance), view.status === 'past_due' ? 'Payment is past due. Update payment in Eliza Cloud to keep AI available.' : '', view.refreshFailed ? 'Plan status could not be refreshed; Eliza Cloud still decides each AI request.' : ''].filter(Boolean).join(' '),
@@ -264,19 +267,20 @@ export interface EntitlementSource {
 }
 export type EntitlementCheck = { view: SubscriptionView; entitlement: SubscriptionEntitlement | null };
 /** Plan state from the unsigned billing snapshot. Only known states are reported. */
-export interface FallbackPlan { status: PlanStatus; planName: string | null; periodEnd: number | null }
+export interface FallbackPlan { status: PlanStatus; planName: string | null; periodEnd: number | null; billingMode?: 'organization-credits' }
 /** Cloud billing subscription states (billing-subscriptions schema) mapped to the entitlement's plan status. */
 const BILLING_STATES: Readonly<Record<string, PlanStatus>> = { trialing: 'trialing', active: 'active', grace: 'past_due', past_due: 'past_due', unpaid: 'past_due', canceled: 'canceled', incomplete_expired: 'canceled' };
 const PLAN_NAMES: Readonly<Record<string, string>> = { plus_monthly: 'Plus', pro_monthly: 'Pro' };
 /**
  * Reads `data.v2.subscription` of GET /api/v1/billing/limits. `not_applicable` means the
- * organization has no subscription (plan none). Pending, incomplete, paused, unavailable or
+ * organization has no subscription. Its explicit no_organization_subscription reason selects
+ * organization-credit billing, not an active plan. Pending, incomplete, paused, unavailable or
  * malformed answers return null: plan state is unknown and the gate asks to check again.
  */
 export function fallbackPlanFromLimits(value: unknown): FallbackPlan | null {
   const subscription = bag(bag(bag(bag(value)?.data)?.v2)?.subscription);
   if (!subscription) return null;
-  if (subscription.status === 'not_applicable') return { status: 'none', planName: null, periodEnd: null };
+  if (subscription.status === 'not_applicable') return { status: 'none', planName: null, periodEnd: null, ...(subscription.reason === 'no_organization_subscription' ? { billingMode: 'organization-credits' as const } : {}) };
   const row = subscription.status === 'available' ? bag(subscription.value) : null;
   if (!row || typeof row.state !== 'string' || !Object.hasOwn(BILLING_STATES, row.state)) return null;
   const key = typeof row.planKey === 'string' ? row.planKey : '';
@@ -311,6 +315,7 @@ export async function checkEntitlement(source: EntitlementSource, expected: Omit
     try { plan = await source.fallbackPlan(signal); signal.throwIfAborted(); }
     catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
     if (!plan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
+    if (plan.billingMode === 'organization-credits') return { view: { kind: 'credits', source: 'billing-limits' }, entitlement: null };
     if (plan.status === 'canceled' || plan.status === 'none') return { view: { kind: 'inactive', planName: plan.status === 'none' ? null : plan.planName, status: plan.status, source: 'billing-limits' }, entitlement: null };
     return { view: { kind: 'active', planName: plan.planName ?? 'Eliza Cloud plan', status: plan.status, allowance: null, expiresAt: plan.periodEnd ?? 0, refreshFailed: false, source: 'billing-limits' }, entitlement: null };
   }
@@ -427,7 +432,7 @@ export class EntitlementRefresher {
       if (result.entitlement) { this.fallbackActive = false; this.entitlement = result.entitlement; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
       // An active billing snapshot needs periodic refresh too: the owner can cancel a plan
       // while Alpha stays foregrounded, or Cloud can deploy the signed entitlement route.
-      else if (result.view.kind === 'active') { this.fallbackActive = true; this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
+      else if (result.view.kind === 'active' || result.view.kind === 'credits') { this.fallbackActive = true; this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); }
       // No plan or no published source remains terminal until the next explicit check.
       else if (result.view.kind === 'inactive' || (result.view.kind === 'unavailable' && result.view.reason === 'not-published')) { this.fallbackActive = false; this.entitlement = null; this.lapsedPlanName = null; this.failures = 0; this.onView(result.view); return; }
       else {
