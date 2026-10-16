@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T03:49:31.355532+00:00",
+  "updatedAt": "2026-10-16T03:53:02.615996+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "8b3d1c3ae2bbb0cadf5c8b8dd0bc9f4a02596630",
   "agentSource": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
@@ -322,7 +322,7 @@
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "Preview composer passed; managed agent adapter currently supports new sends only. Agent threaded reply/forward is an explicit remaining gap."
     },
     {
       "id": "inbox-14",
@@ -370,7 +370,7 @@
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "Both UI and agent paths need separate provider proof; managed agent adapter currently declares manage:{}."
     },
     {
       "id": "inbox-18",
@@ -390,11 +390,13 @@
       "viewOrFlow": "Agent self-addressed send and delivery readback",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Latest real prompt failed before review; Cloud endpoint unavailable",
       "seeker": "Pending",
       "userApproval": "Pending",
-      "evidence": [],
-      "notes": ""
+      "evidence": [
+        "LATEST-GMAIL-PROMPT-RESULT.json"
+      ],
+      "notes": "MESSAGE_SEND_DRAFT actually invoked. Nothing sent. Backend release required."
     },
     {
       "id": "inbox-20",
@@ -642,11 +644,13 @@
       "viewOrFlow": "Uncertain deletion reconciliation without duplicate write",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Latest canonical read: original approval still executing",
       "seeker": "Pending",
       "userApproval": "Pending",
-      "evidence": [],
-      "notes": ""
+      "evidence": [
+        "LATEST-CALENDAR-APPROVAL-STATUS.json"
+      ],
+      "notes": "Do not retry or replace the original ambiguous deletion."
     },
     {
       "id": "calendar-18",
@@ -1991,6 +1995,152 @@
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
+    }
+  ],
+  "registeredViewInventory": [
+    {
+      "view": "phone",
+      "presets": [
+        "Phone",
+        "Keypad",
+        "Voicemail",
+        "In call",
+        "Incoming call"
+      ],
+      "scope": "AOSP only"
+    },
+    {
+      "view": "messages",
+      "presets": [
+        "Messages",
+        "Thread",
+        "New message"
+      ],
+      "scope": "AOSP only"
+    },
+    {
+      "view": "inbox",
+      "presets": [
+        "Inbox",
+        "Email",
+        "Compose"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "calendar",
+      "presets": [
+        "Calendar",
+        "Event",
+        "New event",
+        "Month",
+        "Invite",
+        "Add from app"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "browser",
+      "presets": [
+        "Browser",
+        "Booking page",
+        "Tabs",
+        "Agent booking"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "camera",
+      "presets": [
+        "Camera",
+        "Video",
+        "Scan"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "photos",
+      "presets": [
+        "Photos",
+        "Photo viewer",
+        "Albums",
+        "Photo search"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "maps",
+      "presets": [
+        "Maps",
+        "Search results",
+        "Place",
+        "Directions",
+        "Navigation"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "notes",
+      "presets": [
+        "Notes",
+        "Note editor",
+        "Recording",
+        "Voice note"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "contacts",
+      "presets": [
+        "Contacts",
+        "Contact",
+        "Edit contact"
+      ],
+      "scope": "AOSP only"
+    },
+    {
+      "view": "files",
+      "presets": [
+        "Files",
+        "Folder",
+        "File preview"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "wallet",
+      "presets": [
+        "Wallet",
+        "Card",
+        "Pay",
+        "Pay from lock",
+        "Add card",
+        "Boarding pass"
+      ],
+      "scope": "Excluded"
+    },
+    {
+      "view": "workflows",
+      "presets": [
+        "Workflows",
+        "Workflow",
+        "Run log",
+        "Failed run",
+        "Build workflow"
+      ],
+      "scope": "MVP"
+    },
+    {
+      "view": "settings",
+      "presets": [
+        "Settings",
+        "Character",
+        "Accounts",
+        "Add account",
+        "Privacy",
+        "Wi-Fi"
+      ],
+      "scope": "MVP"
     }
   ]
 }
