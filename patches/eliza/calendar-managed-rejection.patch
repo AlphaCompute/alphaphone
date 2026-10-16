@@ -1,13 +1,13 @@
 --- a/plugins/plugin-calendar/src/mutations/managed.ts
 +++ b/plugins/plugin-calendar/src/mutations/managed.ts
-@@ -10,6 +10,7 @@
+@@ -7,6 +7,7 @@
+   calendarMutationOperationKey,
+ } from "./ledger.js";
+ import {
++  CalendarMutationNotAcceptedError,
    type CalendarMutationPort,
    type CalendarMutationPreflight,
    CalendarMutationPreflightError,
-+  CalendarMutationNotAcceptedError,
- } from "./types.js";
- 
- type Payload = Extract<
 @@ -169,6 +170,23 @@
            },
          }),

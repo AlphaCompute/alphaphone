@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T03:53:02.615996+00:00",
+  "updatedAt": "2026-10-16T04:22:24.171574+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "8b3d1c3ae2bbb0cadf5c8b8dd0bc9f4a02596630",
-  "agentSource": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
+  "agentSource": "89cd411342f9fa3a48154e477f7d5e049686344a",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -370,7 +370,7 @@
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": "Both UI and agent paths need separate provider proof; managed agent adapter currently declares manage:{}."
+      "notes": "Archive/trash/read-state agent path is now implemented and locally tested. Real provider proof and native composition pending. Other operations require separate capability proof."
     },
     {
       "id": "inbox-18",
@@ -1995,6 +1995,47 @@
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
+    },
+    {
+      "id": "inbox-agent-mailbox",
+      "area": "Inbox",
+      "viewOrFlow": "Agent archive, trash and read-state changes",
+      "scope": "MVP",
+      "implementation": "Implemented and package/host tests passed",
+      "preview": "Wired on latest preview; live provider proof pending backend and modify consent",
+      "seeker": "Native owned-broker wiring and provider proof pending",
+      "userApproval": "Pending",
+      "evidence": [
+        "scripts/gmail-agent-mailbox-host.ts",
+        "test/gmail-agent-read-host.test.mjs"
+      ],
+      "notes": "Trusted caller; stable turn operation ID; exact revision/review/receipt/labels; no uncertain dispatch replay."
+    },
+    {
+      "id": "inbox-agent-threaded-send",
+      "area": "Inbox",
+      "viewOrFlow": "Agent threaded reply and forward",
+      "scope": "MVP",
+      "implementation": "Not implemented in managed host; existing composer UI is separate",
+      "preview": "Pending",
+      "seeker": "Pending",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "Retain as an explicit requirement; new-send support does not prove this flow."
+    },
+    {
+      "id": "platform-native-google-broker",
+      "area": "Platform and release",
+      "viewOrFlow": "Native managed Google broker and account binding",
+      "scope": "MVP",
+      "implementation": "Explicit managed broker environment is currently configured by browser development host only",
+      "preview": "Browser host wiring tested",
+      "seeker": "Inspect normal native connector path and qualify owned composition",
+      "userApproval": "Pending",
+      "evidence": [
+        "scripts/start-local-remote.mjs"
+      ],
+      "notes": "Do not transfer browser B4 credentials to phone A1 or treat browser prompt proof as resident-agent proof."
     }
   ],
   "registeredViewInventory": [

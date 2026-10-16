@@ -287,7 +287,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    const operation=/^\/api\/v1\/eliza\/google\/gmail\/inbox-v1\/operations(?:\/[A-Za-z0-9_-]{1,160}(?:\/dispatch)?)?$/.test(route);
    if(!operation)return agentRead(input);
    if(url.origin!==authorities.production||url.username||url.password||url.hash||url.port||!managedGoogleRequest(url,input.method,body))throw refusal(403,'agent-operation-route-refused');
-   if(input.method==='POST'&&JSON.parse(body!).proposal.kind!=='send')throw refusal(403,'agent-operation-kind-refused');
+   if(input.method==='POST'&&!['send','archive','trash','mark-read','mark-unread'].includes(JSON.parse(body!).proposal.kind))throw refusal(403,'agent-operation-kind-refused');
    const c=await admitted('production',input.credentialReference);
    const response=await canonical('production',route+url.search,input.signal,{method:input.method,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body})},c);
    const data=await boundedServiceJson(response);await current('production',c,input.signal);return {status:response.status,data};

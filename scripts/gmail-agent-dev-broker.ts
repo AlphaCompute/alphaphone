@@ -17,10 +17,13 @@ export function createGmailAgentDevBroker(options:{profile:string;tokenFile:stri
    if(provided.length!==expected.length||!timingSafeEqual(provided,expected)){send(401,{error:'Agent authentication required'});return;}
    const chunks:Buffer[]=[];let bytes=0;for await(const chunk of req){const part=Buffer.from(chunk);bytes+=part.length;if(bytes>256*1024)throw Error('Agent request too large');chunks.push(part);}
    const input=JSON.parse(Buffer.concat(chunks).toString('utf8'));
-   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['limit','query','since','messageId','calendar','send'].includes(key))||input.query!==undefined&&(typeof input.query!=='string'||input.query.length>4096)||input.since!==undefined&&typeof input.since!=='string'||input.send===undefined&&bytes>8192)throw Error('Invalid Google tool request');
+   if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(key=>!['limit','query','since','messageId','calendar','send','mailbox'].includes(key))||input.query!==undefined&&(typeof input.query!=='string'||input.query.length>4096)||input.since!==undefined&&typeof input.since!=='string'||input.send===undefined&&bytes>8192)throw Error('Invalid Google tool request');
    controller.signal.throwIfAborted();
    let result:unknown;
-   if(input.send!==undefined){
+   if(input.mailbox!==undefined){
+    if(Object.keys(input).length!==1||!input.mailbox||typeof input.mailbox!=='object'||Array.isArray(input.mailbox)||Object.keys(input.mailbox).sort().join()!=='kind,messageId,requestId'||['kind','messageId','requestId'].some(k=>typeof input.mailbox[k]!=='string'))throw Error('Invalid mailbox operation');
+    result={mailbox:await reader.mailbox(input.mailbox,controller.signal)};
+   }else if(input.send!==undefined){
     if(Object.keys(input).length!==1||!input.send||typeof input.send!=='object'||Array.isArray(input.send))throw Error('Invalid send operation');
     const s=input.send,keys=Object.keys(s).sort().join();
     if(s.operation==='prepare'&&keys==='bodyText,operation,requestId,subject,to')result={send:await reader.prepareSend(s,controller.signal)};

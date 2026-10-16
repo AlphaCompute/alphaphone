@@ -23,13 +23,13 @@ async function fixture(){
    const body=init.body?JSON.parse(init.body):null;
    if(init.method==='POST'&&u.pathname.endsWith('/operations')){
     const review={from:'owned@example.invalid',...body.proposal},reviewDigest=createHash('sha256').update(JSON.stringify(review)).digest('hex');
-    const receipt={requestId:body.requestId,kind:'send',state:'prepared',reviewDigest,providerResult:null,rejectionCode:null};sends.set(body.requestId,{receipt,proposal:body.proposal});return Response.json({version:1,providerExactlyOnce:false,receipt,review});
+    const receipt={requestId:body.requestId,kind:body.proposal.kind,state:'prepared',reviewDigest,providerResult:null,rejectionCode:null};sends.set(body.requestId,{receipt,proposal:body.proposal});return Response.json({version:1,providerExactlyOnce:false,receipt,review});
    }
    const id=u.pathname.split('/').at(init.method==='POST'?-2:-1),saved=sends.get(id);
-   if(!saved)throw Error('Unknown operation');
+   if(!saved)return Response.json({error:'Operation not found'},{status:404});
    if(init.method==='POST'){
     if(JSON.stringify(body.proposal)!==JSON.stringify(saved.proposal)||body.reviewDigest!==saved.receipt.reviewDigest)return Response.json({error:'Review changed'},{status:409});
-    saved.receipt={...saved.receipt,state:'succeeded',providerResult:{messageId:'accepted-mail'}};
+    saved.receipt={...saved.receipt,state:'succeeded',providerResult:saved.proposal.kind==='send'?{messageId:'accepted-mail'}:{messageId:saved.proposal.messageId,labelIds:saved.proposal.kind==='trash'?['TRASH']:saved.proposal.kind==='mark-unread'?['INBOX','UNREAD']:saved.proposal.kind==='mark-read'?['INBOX']:[],unread:saved.proposal.kind==='mark-unread',historyId:'h2'}};
     if(loseDispatch)throw Error('Lost dispatch response');
    }
    return Response.json({version:1,providerExactlyOnce:false,receipt:saved.receipt});
@@ -37,11 +37,11 @@ async function fixture(){
   if(u.pathname.endsWith('/calendars'))return Response.json([{calendarId:'primary',summary:'Owned calendar',primary:true,selected:true,accessRole:'owner'}]);
   if(u.pathname.endsWith('/feed')){await afterRead();return Response.json({calendarId:'primary',events:[],syncedAt:message.receivedAt});}
   if(u.pathname.endsWith('/search')){const data=pages(u);await afterRead();return Response.json(data);}
-  if(u.pathname.endsWith('/read')){await afterRead();return Response.json({message,bodyText:'Exact synthetic body'});}
+  if(u.pathname.endsWith('/read')){await afterRead();return Response.json({message:{...message,metadata:{historyId:'h1'}},bodyText:'Exact synthetic body'});}
   throw Error('Unexpected route');
  };
  let reader;try{reader=createGmailAgentReadHost(profile);}finally{globalThis.fetch=original;}
- return {reader,calls,credential,save,setAccounts:fn=>accounts=fn,setAfterRead:fn=>afterRead=fn,setPages:fn=>pages=fn,loseDispatch:()=>{loseDispatch=true;},close:()=>rm(profile,{recursive:true,force:true})};
+ return {reader,calls,credential,save,sends,setAccounts:fn=>accounts=fn,setAfterRead:fn=>afterRead=fn,setPages:fn=>pages=fn,loseDispatch:()=>{loseDispatch=true;},close:()=>rm(profile,{recursive:true,force:true})};
 }
 const sendAccount={...account,grantedCapabilities:['google.gmail.triage','google.gmail.send']};
 const email=()=>({requestId:randomUUID(),to:['self@example.invalid'],subject:'Synthetic QA',bodyText:'No real email is sent by this fixture.'});
@@ -91,5 +91,27 @@ test('Calendar reads bind the current grant and refuse a revoked source before r
   assert.equal((await f.reader.calendarFeed(input)).state,'complete');
   await assert.rejects(f.reader.calendarFeed({...input,grantId:'alpha-google:'+'f'.repeat(64)}),/current owner/);
   f.setAfterRead(async()=>f.setAccounts(()=>[]));await assert.rejects(f.reader.calendarFeed(input),/permission changed/);
+ }finally{await f.close();}
+});
+
+const mailboxAccount={...sendAccount,grantedCapabilities:[...sendAccount.grantedCapabilities,'google.gmail.mailbox']};
+test('agent mailbox changes use a durable turn ID, exact labels and one dispatch after a lost response',async()=>{
+ const f=await fixture();try{
+  f.setAccounts(()=>[mailboxAccount]);const messageId=(await f.reader.list({limit:1}))[0].id;
+  for(const kind of ['archive','trash','mark-read','mark-unread']){
+   const input={messageId,kind,requestId:randomUUID()};f.loseDispatch();
+   assert.equal((await f.reader.mailbox(input)).ok,true);assert.equal((await f.reader.mailbox(input)).ok,true);
+   assert.equal(f.calls.filter(u=>u.pathname.endsWith(input.requestId+'/dispatch')).length,1);
+  }
+ }finally{await f.close();}
+});
+test('agent mailbox changes refuse missing scope, foreign account, unknown receipts and account changes',async()=>{
+ const f=await fixture();try{
+  const messageId=(await f.reader.list({limit:1}))[0].id,input={messageId,kind:'archive',requestId:randomUUID()};
+  await assert.rejects(f.reader.mailbox(input),/mailbox changes need permission/);assert.equal(f.sends.size,0);
+  f.setAccounts(()=>[mailboxAccount]);await assert.rejects(f.reader.mailbox({...input,messageId:'alpha-gmail:'+'f'.repeat(64)+':mail1'}),/current Gmail owner/);assert.equal(f.sends.size,0);
+  f.sends.set(input.requestId,{receipt:{requestId:input.requestId,kind:'archive',state:'outcome-unknown',reviewDigest:'a'.repeat(64),providerResult:null,rejectionCode:null}});
+  assert.equal((await f.reader.mailbox(input)).ok,false);assert.equal(f.calls.some(u=>u.pathname.endsWith('/dispatch')),false);
+  f.setAfterRead(async()=>f.setAccounts(()=>[]));await assert.rejects(f.reader.mailbox({...input,requestId:randomUUID()}));assert.equal(f.calls.some(u=>u.pathname.endsWith('/dispatch')),false);
  }finally{await f.close();}
 });

@@ -1,3 +1,4 @@
+import {gmailAgentMailbox,type AgentMailboxChange} from './gmail-agent-mailbox-host.ts';
 import {calendarAgentWrite} from "./calendar-agent-write-host.ts";
 /** Owner-only Google tools. Provider credentials remain in the private Cloud
  * store; Gmail sends use the canonical prepared-review/dispatch/receipt flow. */
@@ -21,11 +22,12 @@ export function createGmailAgentReadHost(profile:string){
   const owner=await client.identity(signal);await current();
   if(owner.userId!==credential.userId||owner.organizationId!==credential.organizationId)throw Error('Cloud owner could not be verified for Gmail.');
   const accounts=(await client.gmailAccounts(signal)).filter(a=>a.connected&&a.connectionId&&a.grantedCapabilities.includes(capability));
-  await current();if(accounts.length!==1)throw Error(accounts.length?'More than one Gmail account is connected. Select an account before an agent read.':'No readable Gmail account is connected.');
+  await current();if(accounts.length!==1)throw Error(accounts.length?'More than one Gmail account is connected. Select an account before an agent read.':capability==='google.gmail.mailbox'?'Gmail mailbox changes need permission. Enable Gmail changes in Settings → Connections.':'No readable Gmail account is connected.');
   const grantId=accounts[0].connectionId!,scope=createHash('sha256').update(identity+':'+grantId).digest('hex'),value=await run(client,grantId,scope,signal);await current();
   const latest=await client.gmailAccounts(signal);if(!latest.some(a=>a.connectionId===grantId&&a.connected&&a.grantedCapabilities.includes(capability)))throw Error('Gmail permission changed.');await current();return value;
  }
  return {
+  async mailbox(input:AgentMailboxChange,parent?:AbortSignal){return verified((client,grantId,scope,signal)=>gmailAgentMailbox(client,grantId,scope,input,signal),parent,'google.gmail.mailbox',true);},
   async calendarWrite(input:Record<string,unknown>,parent?:AbortSignal){return verified((client,grantId,scope,signal)=>calendarAgentWrite(client,grantId,scope,input,signal),parent,'google.calendar.write','calendar');},
   async prepareSend(input:AgentSendContent&{requestId:string},parent?:AbortSignal){
    const proposal=sendProposal(input);if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId))throw Error('Invalid send request identity.');

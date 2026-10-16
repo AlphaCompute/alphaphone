@@ -3,14 +3,26 @@
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
   "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
+  "head": "89cd411342f9fa3a48154e477f7d5e049686344a",
   "recordedAt": "2026-10-15",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...9e7a1553f378a570be3fe74c021e71710a1c96eb",
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...89cd411342f9fa3a48154e477f7d5e049686344a",
   "status": "diverged",
-  "aheadBy": 39,
+  "aheadBy": 42,
   "behindBy": 398,
   "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
   "pinOnlyCommits": [
+    {
+      "sha": "89cd411342f9fa3a48154e477f7d5e049686344a",
+      "subject": "Fix Calendar lint gates without weakening managed grant checks"
+    },
+    {
+      "sha": "3073a046f57c1a97470b65059826a77a725a829b",
+      "subject": "test(assistant): return ordered native-read acknowledgment parts"
+    },
+    {
+      "sha": "52e2dd737ba77e9a830c6e864678c4bfb32d174f",
+      "subject": "Wire owner-scoped Gmail mailbox changes through managed hosts"
+    },
     {
       "sha": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
       "subject": "Merge Maps relay and allowance with Calendar transport and owner fixes"

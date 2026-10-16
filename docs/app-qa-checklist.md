@@ -1,12 +1,12 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Product `8b3d1c3a`; agent `9e7a1553`. Updated October 15, 2026 (Pacific).
+Live preview: <http://127.0.0.1:5209/>. Latest integration uses agent `89cd4113`; native build/execution receipts retain their actual earlier source `9e7a1553`. Updated October 15, 2026 (Pacific).
 
-This is the ongoing acceptance ledger for the full requested app scope. The JSON companion is the editable source of truth. A prior preview pass remains a prior pass until repeated on the latest build. Native testing and your approval are separate. No rows are marked human-approved by the agent.
+The JSON companion is the editable acceptance ledger. Implementation, preview testing, Seeker testing and your approval are separate. Prior preview results require a latest-build retest. The agent does not mark your approval.
 
-For every applicable row review light/dark theme, compact portrait, landscape, large text, keyboard and safe-area clearance, Back, reload/resume, and empty/loading/offline/error/denied states. Add newly discovered branches before declaring an area complete.
+For every applicable row review light/dark theme, compact portrait, landscape, large text, keyboard and safe-area clearance, Back, reload/resume, and empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
-Immediate order: latest preview → deployed backend operations and prompt proof → packaged native/Seeker → view-by-view human review. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
+Review order: latest preview → deployed backend operations and prompt proof → packaged native/Seeker → per-view human approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
 
 ## Shell and Home
 
@@ -48,11 +48,13 @@ Immediate order: latest preview → deployed backend operations and prompt proof
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Prior preview pass; latest retest pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Latest real prompt: Cloud endpoint unavailable; nothing sent | Pending | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Latest real prompt failed before review; Cloud endpoint unavailable | Pending | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
 | inbox-23 | Labels/categories | Outside current standalone QA | Not applicable | Scope recorded |
+| inbox-agent-mailbox | Agent archive, trash and read-state changes | Wired on latest preview; live provider proof pending backend and modify consent | Native owned-broker wiring and provider proof pending | Pending |
+| inbox-agent-threaded-send | Agent threaded reply and forward | Pending | Pending | Pending |
 
 ## Calendar
 
@@ -74,7 +76,7 @@ Immediate order: latest preview → deployed backend operations and prompt proof
 | calendar-14 | Agent Google event create and readback | Prior preview pass; latest retest pending | Pending | Pending |
 | calendar-15 | Agent Google event update and replay protection | Prior preview pass; latest retest pending | Pending | Pending |
 | calendar-16 | Agent Google event deletion and provider readback | Pending | Pending | Pending |
-| calendar-17 | Uncertain deletion reconciliation without duplicate write | Original approval still executing; no retry | Pending | Pending |
+| calendar-17 | Uncertain deletion reconciliation without duplicate write | Latest canonical read: original approval still executing | Pending | Pending |
 | calendar-18 | Native consent and CalendarProvider writes | Pending | Pending | Pending |
 | calendar-19 | Native linked sync, restart recovery and Undo | Pending | Pending | Pending |
 | calendar-20 | Account switch, expired consent and offline recovery | Pending | Pending | Pending |
@@ -232,11 +234,12 @@ Immediate order: latest preview → deployed backend operations and prompt proof
 | platform-and-release-14 | Hosted CI at published head | Pending | Pending | Pending |
 | platform-and-release-15 | Commits, upstream pins and PR reconciliation | Pending | Pending | Pending |
 | platform-and-release-16 | Human per-view approval and final acceptance | Pending | Pending | Pending |
+| platform-native-google-broker | Native managed Google broker and account binding | Browser host wiring tested | Inspect normal native connector path and qualify owned composition | Pending |
 
 ## Current integration gaps
 
-- Actual latest-agent send preparation failed at the unavailable Cloud operations endpoint; no email was sent.
-- The managed Gmail adapter advertises new sends and reads. Agent threaded replies/forwarding and mailbox changes remain explicit implementation/acceptance gaps, even though composer UI exists.
-- The original Calendar deletion remains executing/uncertain; reconcile its durable receipt before another effect.
-- Standalone Seeker JNI/BGE execution passed; the full installed Alpha app has not yet been upgraded or accepted.
-- The JSON also records all 14 registered view modules and their named preset entries; excluded and AOSP-only surfaces stay visible in the inventory.
+- Real new-email preparation reached MESSAGE_SEND_DRAFT but failed at the unavailable Cloud operations endpoint; no email was sent.
+- Agent archive/trash/read-state is implemented and locally tested; live modify consent, backend proof and native composition remain open. Agent threaded reply/forward is still missing.
+- Original Calendar deletion remains executing/uncertain. Reconcile its durable receipt before another effect.
+- ARM64 Seeker and x86 emulator standalone JNI/BGE probes passed at their recorded source. Full installed Alpha, speech and resident-agent acceptance remain pending.
+- JSON records all 14 registered view modules and named presets; excluded and AOSP-only surfaces remain visible.
