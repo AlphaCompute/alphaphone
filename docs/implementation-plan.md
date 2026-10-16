@@ -79,9 +79,10 @@ completed action receipts and reject obsolete callbacks. Spoken requests do not
 bypass separate approval of sends, deletes, calls or other external effects.
 
 Measure last input speech sample→first audible response, including endpointing.
-No account/billing lookup may block local STT/TTS. Use cached signed subscription
-entitlements refreshed asynchronously; Cloud enforces bounded quotas in its existing
-request path, with explicit expired/revoked/limited states and idempotent usage.
+No account/billing lookup may block local STT/TTS. Use signed subscription entitlements when published; while that route is absent,
+accept the authenticated snapshot's explicit organization-credit billing mode.
+Refresh asynchronously; Cloud enforces authentication, credits and bounded quotas in
+its existing request path, with explicit expired/revoked/limited states and idempotent usage.
 No per-turn balance preflight or automatic top-up. Never cache a perpetual entitlement
 or bypass server enforcement to meet latency.
 

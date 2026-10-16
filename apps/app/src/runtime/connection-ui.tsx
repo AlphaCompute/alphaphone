@@ -196,20 +196,20 @@ function residentBindable(): boolean { return isAndroid && residentEnvironment()
 /** Warn this long before this phone's Cloud sign-in key expires (CLI keys last 90 days). */
 export const CLOUD_KEY_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1000;
 /**
- * A plan verified on this phone within this window keeps its Eliza Cloud inference binding while
+ * A verified Cloud billing mode within this window keeps its inference binding while
  * Cloud is unreachable (the agent runs either way). An engineering bound for offline use, not a
- * billing decision: Cloud still refuses every AI request without a plan.
+ * billing decision: Cloud enforces authentication, credits and quota on every request.
  */
 export const OFFLINE_PLAN_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 const PLAN_ADMISSION = 'alpha.connection.plan-admission.v1';
 export const PLAN_RECHECK_INTERVAL_MS = 60_000;
 let lastPlanRecheck = -Infinity, lastRefusalRecheck = -Infinity;
 let planManagementReturn = false;
-type PlanAdmissionRecord = { version: 1; environment: CloudEnvironment; credentialId: string; userId: string; organizationId: string | null; status: 'active' | 'trialing' | 'past_due'; planName: string; verifiedAt: number; endsAt: number | null };
+type PlanAdmissionRecord = { version: 1; environment: CloudEnvironment; credentialId: string; userId: string; organizationId: string | null; status: 'active' | 'trialing' | 'past_due' | 'credit-funded'; planName: string; verifiedAt: number; endsAt: number | null };
 function readPlanAdmission(): PlanAdmissionRecord | null {
   try {
     const value = JSON.parse(localStorage.getItem(PLAN_ADMISSION) || 'null');
-    if (!value || value.version !== 1 || !cloudEnvironmentAllowed(value.environment) || typeof value.credentialId !== 'string' || typeof value.userId !== 'string' || !['active', 'trialing', 'past_due'].includes(value.status) || typeof value.planName !== 'string' || !Number.isFinite(value.verifiedAt)) return null;
+    if (!value || value.version !== 1 || !cloudEnvironmentAllowed(value.environment) || typeof value.credentialId !== 'string' || typeof value.userId !== 'string' || !['active', 'trialing', 'past_due', 'credit-funded'].includes(value.status) || typeof value.planName !== 'string' || !Number.isFinite(value.verifiedAt)) return null;
     return { version: 1, environment: value.environment, credentialId: value.credentialId, userId: value.userId, organizationId: typeof value.organizationId === 'string' ? value.organizationId : null, status: value.status, planName: value.planName, verifiedAt: value.verifiedAt, endsAt: Number.isFinite(value.endsAt) ? value.endsAt : null };
   } catch { return null; }
 }
@@ -735,7 +735,7 @@ async function admitCloudResident(signal:AbortSignal):Promise<ResidentAdmission>
   // A billing outage after a recent verified plan keeps the binding: Cloud still decides each AI request.
   if(decision==='unknown'&&view.kind==='unavailable'&&view.reason==='outage'&&recent)decision=recent.status==='past_due'?'admit-with-warning':'admit';
   // End of the plan window when Cloud reported one: the billing snapshot's period end, a redeemed grant's end, or the last known.
-  const endsAt=view.kind==='active'&&view.source==='billing-limits'&&view.expiresAt>0?view.expiresAt:recent?.endsAt??(state.cloudAccount?.credentialId===account.identity.credentialId?state.planEndsAt??null:null);
+  const endsAt=view.kind==='credits'?null:view.kind==='active'&&view.source==='billing-limits'&&view.expiresAt>0?view.expiresAt:recent?.endsAt??(state.cloudAccount?.credentialId===account.identity.credentialId?state.planEndsAt??null:null);
   if(decision==='needs-plan'||decision==='unknown'){
     // No admissible plan: the agent runs without Cloud inference; the plan notice offers Redeem
     // code / Choose a plan / Check plan again. Nothing is bound.
@@ -743,16 +743,16 @@ async function admitCloudResident(signal:AbortSignal):Promise<ResidentAdmission>
     update({residentSubscription:view,residentPlanNotice:'needs-plan',planEndsAt:null});
     return {binding:'unbound',account};
   }
-  if(view.kind==='active')writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:view.status,planName:view.planName,verifiedAt:Date.now(),endsAt});
+  if(view.kind==='active'||view.kind==='credits')writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:view.kind==='credits'?'credit-funded':view.status,planName:view.kind==='credits'?'Eliza Cloud credits':view.planName,verifiedAt:Date.now(),endsAt});
   update({residentSubscription:view,residentPlanNotice:null,planEndsAt:endsAt});
   // Background refresh: it updates what the owner sees, never interrupts a turn, and unbinds Cloud
   // inference (the agent keeps running) when Cloud reports the plan ended. Revocation is enforced
   // by Cloud immediately.
-  entitlementRefresher=new EntitlementRefresher({entitlement:checked.entitlement,fallbackActive:checked.view.kind==='active'&&checked.view.source==='billing-limits',retry:checked.view.kind==='unavailable'&&checked.view.reason!=='not-published',
+  entitlementRefresher=new EntitlementRefresher({entitlement:checked.entitlement,fallbackActive:checked.view.kind==='credits'||checked.view.kind==='active'&&checked.view.source==='billing-limits',retry:checked.view.kind==='unavailable'&&checked.view.reason!=='not-published',
     check:refreshSignal=>checkEntitlement(client.entitlementSource(),expected,refreshSignal),
-    onView:next=>{if(service!==account)return;update({residentSubscription:next});
+    onView:next=>{if(service!==account)return;update({residentSubscription:next,...(next.kind==='credits'?{planEndsAt:null}:{})});
       const nextDecision=planAdmission(next);
-      if(next.kind==='active'&&!next.refreshFailed)writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:next.status,planName:next.planName,verifiedAt:Date.now(),endsAt:state.planEndsAt??null});
+      if((next.kind==='active'&&!next.refreshFailed)||next.kind==='credits')writePlanAdmission({version:1,environment,credentialId:account.identity.credentialId,userId:account.identity.userId,organizationId:account.identity.organizationId??null,status:next.kind==='credits'?'credit-funded':next.status,planName:next.kind==='credits'?'Eliza Cloud credits':next.planName,verifiedAt:Date.now(),endsAt:next.kind==='credits'?null:(state.planEndsAt??null)});
       if(nextDecision==='needs-plan')residentPlanEnded(account,next);},
     onAuthFailure:error=>{if(service===account)residentRefreshRefused(account,error);}});
   return {binding:'cloud',credentialId:account.identity.credentialId,account};
@@ -2385,7 +2385,7 @@ export function ConnectionChooser() {
   const residentPlan=residentNeedsPlan&&residentPlanView?.kind==='unavailable'&&residentPlanView.reason!=='not-published'
     ?{...residentPlanDescribed,detail:'Eliza Cloud could not confirm a plan for this account right now. Check again, redeem a subscription code or choose a plan. Your data on this phone is kept.'}:residentPlanDescribed;
   const residentPlanRecheck=residentPlanUnchecked||residentPlanView.kind==='inactive'||residentPlanView.kind==='unavailable';
-  const residentAiOff=residentMustSignIn&&!snapshot.residentSavedCredential?'Alpha Phone needs an Eliza Cloud account with a plan. Your agent runs on this phone meanwhile, with AI off until you sign in.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud to use your plan for AI.';
+  const residentAiOff=residentMustSignIn&&!snapshot.residentSavedCredential?'Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud for AI.';
   const keyExpiresAt=snapshot.cloudAccount?.expiresAt;
   const keyExpiring=keyExpiresAt!==undefined&&keyExpiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS;
   const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -2394,19 +2394,19 @@ export function ConnectionChooser() {
     <button disabled={snapshot.busy}>Redeem code</button>
   </form>;
   if(residentCloudFlow())return <div className="alpha-connection-scrim"><div className="alpha-connection alpha-connection-native alpha-connection-resume" role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-busy={snapshot.residentStarting||undefined} tabIndex={-1} ref={panel}>
-    <header><h1 id="connection-title" className="serif">{planPanel&&snapshot.cloudAccount?'Eliza Cloud account & plan':'Your agent'}</h1>{!residentMustSignIn&&<button aria-label="Close connection settings" disabled={snapshot.busy&&!snapshot.residentStarting} onClick={()=>connectionController.close()}>×</button>}</header>
+    <header><h1 id="connection-title" className="serif">{planPanel&&snapshot.cloudAccount?(residentPlanView?.kind==='credits'?'Eliza Cloud account':'Eliza Cloud account & plan'):'Your agent'}</h1>{!residentMustSignIn&&<button aria-label="Close connection settings" disabled={snapshot.busy&&!snapshot.residentStarting} onClick={()=>connectionController.close()}>×</button>}</header>
     <section aria-label="Agent status"><p role="status"><strong>{residentStatus}</strong>{!snapshot.session&&snapshot.kind!=='recovering'?' · Your agent runs on this phone.':''}</p>
       {snapshot.kind==='recovering'&&!snapshot.session&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry</button></div>}
       {snapshot.session&&!planPanel&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
     </section>
-    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.cloudAccount&&!residentSignInRejected?'Your agent uses your Eliza Cloud plan for AI.':'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
+    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.cloudAccount&&!residentSignInRejected?'Your agent uses Eliza Cloud for AI.':'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
       {snapshot.cloudAccount&&!residentSignInRejected?<>
         {accountCreatedNotice}
         {(planPanel||residentNeedsPlan)&&<p>{snapshot.cloudAccount.email||`Account ${snapshot.cloudAccount.userId}`}</p>}
         <section aria-label="Eliza Cloud plan"><p><strong>{residentPlan.headline}</strong></p>{residentPlan.detail&&<p>{residentPlan.detail}</p>}{snapshot.planEndsAt&&!residentNeedsPlan?<p>Plan runs until {day(snapshot.planEndsAt)}.</p>:null}</section>
         {residentNeedsPlan&&<p role="status">{NEEDS_PLAN_NOTICE}</p>}
         {keyExpiring&&<section aria-label="Eliza Cloud sign-in"><p role="status">{keyExpiresAt<=Date.now()?'Your Eliza Cloud sign-in on this phone has expired.':`Your Eliza Cloud sign-in on this phone expires ${day(keyExpiresAt)}.`} Approve this phone again to keep AI available.</p><button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Approve this phone again</button></section>}
-        {(residentNeedsPlan||planPanel)&&redeemForm}
+        {residentPlanView?.kind!=='credits'&&(residentNeedsPlan||planPanel)&&redeemForm}
         {snapshot.redeemError&&<p id="alpha-redeem-error" role="alert" className="alpha-connection-error">{snapshot.redeemError}</p>}
         {snapshot.redeemNotice&&<p role="status">{snapshot.redeemNotice}</p>}
       </>:<p>{residentSignInRejected?(snapshot.error?'Sign in to Eliza Cloud again to turn AI back on.':'Your saved Cloud sign-in is no longer valid.'):residentAiOff}</p>}

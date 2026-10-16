@@ -288,7 +288,7 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
  });
 });
 
-test.describe('entitlement route unavailable: billing snapshot fallback, never credits',()=>{
+test.describe('entitlement route unavailable: authenticated billing mode fallback',()=>{
  for(const limits of ['active','past_due'] as const)test(`a ${limits} billing snapshot admits the agent`,async({page})=>{
   await boot(page,{route:'absent',limits});
   await admitted(page);await openAgent(page);
@@ -298,9 +298,21 @@ test.describe('entitlement route unavailable: billing snapshot fallback, never c
   expect(routes).not.toContain('/api/v1/credits/balance');
   await release(page);
  });
- for(const [limits,heading] of [['none','Choose a plan'],['canceled','Your plan has ended']] as const)test(`a billing snapshot with plan ${limits} needs a plan`,async({page})=>{
+ for(const [limits,heading] of [['canceled','Your plan has ended']] as const)test(`a billing snapshot with plan ${limits} needs a plan`,async({page})=>{
   await boot(page,{route:'absent',limits});void heading;
   await needsPlan(page);await started(page);expect(await configured(page)).toBe(0);
+ });
+ test('organization credits bind the verified account without inventing a subscription',async({page})=>{
+  await boot(page,{route:'absent',limits:'none'});await admitted(page);
+  await page.evaluate(()=>(window as any).planController.openPlan());
+  const panel=page.getByRole('dialog',{name:'Eliza Cloud account',exact:true});await expect(panel).toBeVisible();
+  await expect(panel.getByText('Eliza Cloud credits',{exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Manage billing in Eliza Cloud',exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Redeem code',exact:true})).toHaveCount(0);
+  const routes=(await calls(page)).filter(c=>c.method==='request').map(c=>c.path);expect(routes).not.toContain('/api/v1/credits/balance');
+  expect(await configured(page)).toBe(1);
+  const record=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.plan-admission.v1')||'null'));
+  expect(record.status).toBe('credit-funded');expect(record.userId).toBe(USER);await release(page);
  });
  test('no plan source at all is unknown: needs plan with a retry, never admitted',async({page})=>{
   await boot(page,{route:'absent',limits:'absent'});

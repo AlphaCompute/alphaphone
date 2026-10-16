@@ -1191,7 +1191,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:planCard??null,interrupted:true}]}));
           const limit=(e as {serviceLimit?:unknown}).serviceLimit;
           // A plan or billing refusal offers Cloud's plan page only; nothing is bought or upgraded here.
-          if((limit==='billing-refused'||limit==='subscription-required'||limit==='allowance-exhausted')&&connectionController.getSnapshot().kind==='resident')this.agentSay('Your Eliza Cloud plan needs attention before your agent can answer.',{type:'generic',icon:'info',title:'Manage plan in Eliza Cloud',sub:'Opens Eliza Cloud plan settings in your browser. Nothing is sent or purchased.',managePlan:true});
+          if((limit==='billing-refused'||limit==='subscription-required'||limit==='allowance-exhausted')&&connectionController.getSnapshot().kind==='resident')this.agentSay(limit==='subscription-required'?'Your Eliza Cloud plan needs attention before your agent can answer.':'Your Eliza Cloud billing needs attention before your agent can answer.',{type:'generic',icon:'info',title:limit==='subscription-required'?'Manage plan in Eliza Cloud':'Manage billing in Eliza Cloud',sub:'Opens Eliza Cloud billing in your browser. Nothing is sent or purchased.',managePlan:true});
         }
         else if(this.live&&reconciling){if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nStopped.`}:item)}));}
         else if (this.live) {
