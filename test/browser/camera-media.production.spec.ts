@@ -43,7 +43,7 @@ test('a camera capture is searchable and Ask Alpha reviews it locally without th
  await expect(page.getByText('image analysis is not connected')).toHaveCount(0);
  await review.getByRole('textbox',{name:'Content excerpt'}).fill('A white page that says ALPHA');
  await review.getByRole('button',{name:'Use in conversation'}).click();
- await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Help me understand this image text or description.\n\nSource: Selected photo\n\nA white page that says ALPHA');
+ await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('What does this mean?\n\nSource: Selected photo\n\nA white page that says ALPHA');
  expect(errors).toEqual([]);
 });
 

@@ -22,7 +22,7 @@ test('browser camera persists a real encoded frame, releases capture and restore
  expect(await page.evaluate(async()=>{const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');return (await browserPhotoLibrary.list()).items.length;})).toBe(0);
  await page.evaluate(()=>(window as any).restorePhotoWrites());
  await page.getByRole('button',{name:'Take photo',exact:true}).click();
- await expect(page.getByText('Photo saved in this app. Clearing app data removes saved photos.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Open last photo',exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('capture.png')});
  await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));
  await expect.poll(()=>page.evaluate(()=>(window as any).cameraTracks.getTracks().every((t:MediaStreamTrack)=>t.readyState==='ended'))).toBe(true);

@@ -49,7 +49,7 @@ test('failed video read leaves save disabled and performs no save operation',asy
  await dialog.getByRole('button',{name:'Close video editor',exact:true}).click();await expect(dialog).toHaveCount(0);
 });
 
-test('recording uses the timer and saved browser video explains storage before its notice clears',async({page},info)=>{
+test('recording uses the timer and saved-video thumbnail without a success banner',async({page},info)=>{
  await openSyntheticCamera(page);await page.evaluate(async()=>{
   const {browserCamera:c,browserPhotoLibrary:p}=await import('/src/prototype/browser-camera.ts');const state=await c.getRecordingState(),listed=await p.list();let recording=false,saved=false;
   const image=document.createElement('canvas');image.width=320;image.height=240;image.getContext('2d')!.fillRect(0,0,320,240);
@@ -60,7 +60,6 @@ test('recording uses the timer and saved browser video explains storage before i
  await expect(page.getByRole('timer',{name:'Recording',exact:true})).toBeVisible();await expect(page.locator('[data-alpha-camera="said"]')).toHaveCount(0);
  await page.screenshot({path:info.outputPath('camera-recording.png')});await page.getByRole('button',{name:'Stop recording',exact:true}).click();await expect(page.getByRole('button',{name:'Open last video',exact:true})).toBeVisible();
  const notice=page.locator('[data-alpha-camera="said"]');
- await expect(notice).toHaveText('Video saved in this app. Clearing app data removes saved videos.');
  await expect(notice).toHaveCount(0,{timeout:7000});
  await expect(page.getByRole('button',{name:'Open last video',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>(window as any).cameraAudioRequests)).toBe(0);

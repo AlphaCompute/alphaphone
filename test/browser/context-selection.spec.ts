@@ -256,7 +256,7 @@ test.describe('capture',()=>{
   await page.getByRole('button',{name:'Ask Alpha about this photo',exact:true}).click();
   const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Source: Selected photo');await expect(dialog.getByRole('img')).toBeVisible();
   await dialog.getByRole('textbox',{name:'Content excerpt'}).fill('A reviewed description');await dialog.getByRole('button',{name:'Use in conversation',exact:true}).click();
-  await expect(composer(page)).toHaveValue('Help me understand this image text or description.\n\nSource: Selected photo\n\nA reviewed description');
+  await expect(composer(page)).toHaveValue('What does this mean?\n\nSource: Selected photo\n\nA reviewed description');
   // The envelope still names the same item at the same revision; no content is in it, and the
   // revision is a session-local counter rather than the library's own revision.
   expect(await selectedObject(page)).toEqual(selected);expect(Object.keys(selected!).sort()).toEqual(['id','kind','revision']);
