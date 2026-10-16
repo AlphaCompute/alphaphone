@@ -5,11 +5,13 @@ export const calendarApprovalId=(value:unknown):value is string=>typeof value===
 export function calendarReviewText(text:string){
  const ids:string[]=[];
  const pattern=new RegExp('\\[CHOICE:approval-('+uuid+') id=\\1\\]\\s*\\r?\\n([\\s\\S]*?)\\r?\\n\\[/CHOICE\\]','gi');
- const displayText=text.replace(pattern,(whole,id,body)=>{
+ const rendered=text.replace(pattern,(whole,id,body)=>{
   const values=body.split(/\r?\n/).map((line:string)=>line.trim()).filter(Boolean).map((line:string)=>{const at=line.indexOf('=');return at>0&&line.slice(at+1).trim()?line.slice(0,at).trim():'';});
   if(values.length!==2||!values.includes('approve '+id)||!values.includes('reject '+id))return whole;
   if(!ids.includes(id))ids.push(id);return '';
- }).trim();
+ });
+ // Ordinary messages keep their exact text, including indentation and trailing paragraphs.
+ const displayText=ids.length?rendered.trim():rendered;
  return {displayText,ids};
 }
 export type CalendarApproval={id:string;ownerVerified:boolean;state:string;action:'schedule_event'|'modify_event'|'cancel_event';reason:string;expiresAt:string;payload:Record<string,unknown>;revision:string};

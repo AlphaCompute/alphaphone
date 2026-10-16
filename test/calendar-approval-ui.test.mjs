@@ -9,6 +9,8 @@ const dto=(extra={})=>({id,subjectUserId:'owner',state:'pending',action:'cancel_
 const row=(extra={})=>calendarApprovalFromList({approvals:[dto(extra)]},id,'owner');
 test('only complete, exact Calendar approval markup gets presentation metadata',()=>{
  assert.deepEqual(calendarReviewText('Please review.\n'+block),{displayText:'Please review.',ids:[id]});
+ const ordinary='  An indented reply.\n\n\tSecond paragraph.  \n';
+ assert.deepEqual(calendarReviewText(ordinary),{displayText:ordinary,ids:[]});
  for(const text of [block.replace('id='+id,'id=other'),block.replace('reject '+id+'=Deny','other=Other'),block.replace('approve '+id+'=Approve','approve '+id+'X'),block.replace('approval-','example-')])assert.deepEqual(calendarReviewText(text),{displayText:text,ids:[]});
 });
 test('foreign, duplicate, malformed and non-Calendar approvals do not authorize a review',()=>{
