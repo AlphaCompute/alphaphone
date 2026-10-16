@@ -325,7 +325,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static void applyUnboundEnvironment(java.util.Map<String,String> env){
   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
    "CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER",
-   "ELIZA_LOCAL_EMBEDDING_MODEL_PATH","ELIZA_LOCAL_EMBEDDING_DIMENSIONS"})env.remove(name);
+   "ELIZA_LOCAL_EMBEDDING_MODEL_PATH","ELIZA_LOCAL_EMBEDDING_DIMENSIONS","ELIZA_NATIVE_GOOGLE_HOST_MODULE","ELIZA_NATIVE_GOOGLE_BINDING_JSON",
+   "ELIZA_MANAGED_GMAIL_READ_BROKER","ELIZA_MANAGED_GMAIL_SEND_BROKER","ELIZA_MANAGED_GMAIL_OPERATION_BROKER","ELIZA_MANAGED_CALENDAR_READ_BROKER"})env.remove(name);
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","false");
   // No embedding download: the packaged on-device embedding model is enabled when present (configureLocalEmbeddings).
@@ -376,7 +377,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   final long epoch;
   synchronized(lifecycleLock){launchedGeneration=null;if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
+  for(String key:new String[]{"ELIZA_NATIVE_GOOGLE_HOST_MODULE","ELIZA_NATIVE_GOOGLE_BINDING_JSON","ELIZA_MANAGED_GMAIL_READ_BROKER","ELIZA_MANAGED_GMAIL_SEND_BROKER","ELIZA_MANAGED_GMAIL_OPERATION_BROKER","ELIZA_MANAGED_CALENDAR_READ_BROKER"})env.remove(key);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
+  java.io.File nativeHostResources=null;
   java.io.InputStream workerIndex=null;
   try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}
   catch(java.io.FileNotFoundException absent) { /* Older payloads do not contain a workflow worker. */ }
@@ -384,6 +387,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    String root=env.get("AGENT_ROOT");if(root==null){workerIndex.close();throw new java.io.IOException("Agent resource directory unavailable");}
    java.io.File worker=WorkflowWorkerAssets.install(new java.io.File(root),workerIndex,path->context.getAssets().open("agent/workflow-worker/"+path));
    WorkflowWorkerAssets.configureEnvironment(worker,env);
+   nativeHostResources=worker;
   }
   try {
   // Decision P-43: the resident always runs. With no provider slot it launches with no hosted
@@ -405,6 +409,16 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
   // No usable provider: every provider credential and selector is removed (applyUnboundEnvironment).
   if(provider==null)applyUnboundEnvironment(env);
+  if(provider!=null&&"elizacloud".equals(provider.optString("provider"))&&nativeHostResources!=null){
+   java.io.File google=new java.io.File(nativeHostResources,"google-host.mjs");
+   if(google.isFile()){
+    JSONObject binding=LocalAgentProviderAdmission.managedGoogleBinding(saved,cloudSaved,System.currentTimeMillis());
+    JSONObject current=new AlphaCredentialStore(context).providerAdmissionSnapshot();
+    if(!binding.getString("accountRef").equals(current.getString("accountRef"))||!binding.getString("sessionGeneration").equals(current.getString("sessionGeneration"))||!LocalAgentProviderAdmission.sameCloudCredential(cloudSaved,new AlphaCredentialStore(context).readCredentialSlot("cloud:production")))throw new SecurityException("Native Google provider changed");
+    env.put("ELIZA_NATIVE_GOOGLE_HOST_MODULE",google.getCanonicalPath());
+    env.put("ELIZA_NATIVE_GOOGLE_BINDING_JSON",binding.toString());
+   }
+  }
   if(provider==null||!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");

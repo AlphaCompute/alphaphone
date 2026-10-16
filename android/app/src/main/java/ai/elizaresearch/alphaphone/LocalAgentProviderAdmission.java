@@ -141,6 +141,21 @@ final class LocalAgentProviderAdmission {
   return binding;
  }
  private static final String GENERATION="admissionGeneration",FINGERPRINT="admissionFingerprint",CLOUD_IDENTITY="verifiedCloudIdentity";
+ /** Public identity of the native-verified Cloud selection; never the bearer. */
+ static JSONObject managedGoogleBinding(String saved,String cloudSaved,long now)throws Exception {
+  if(saved==null)throw new SecurityException("Cloud provider admission required");
+  JSONObject selected=new JSONObject(saved);
+  if(!"elizacloud".equals(selected.optString("provider")))throw new SecurityException("Cloud provider required");
+  String credentialId=selected.getString("credentialId");
+  cloudProviderToken(cloudSaved,credentialId,now);
+  String generation=currentGeneration(saved,cloudSaved);
+  if(generation==null)throw new SecurityException("Cloud provider admission changed");
+  String reference=cloudAccountRef(selected);JSONArray account=new JSONArray(reference);
+  if(account.length()!=4||!"cloud".equals(account.getString(0))||!"production".equals(account.getString(1)))throw new SecurityException("Cloud account admission invalid");
+  JSONObject result=new JSONObject().put("credentialId",credentialId).put("userId",account.getString(2)).put("organizationId",account.getString(3)).put("accountRef",reference).put("sessionGeneration",generation);
+  JSONObject credential=new JSONObject(cloudSaved);if(credential.has("expiresAt"))result.put("expiresAt",credential.get("expiresAt"));
+  return result;
+ }
  private static String uuid(Object value)throws Exception {
   if(!(value instanceof String))throw new IllegalArgumentException();
   String canonical=UUID.fromString((String)value).toString();

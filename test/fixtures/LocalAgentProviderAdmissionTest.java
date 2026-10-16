@@ -125,6 +125,16 @@ public final class LocalAgentProviderAdmissionTest {
   check(directSelection.equals(conflict.provider),"a newer selection is never replaced");
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(new Store(),ID,"cerebras/llama",()->NOW),"Cloud binding refuses other models");
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(store,OTHER,"cerebras/qwen-3.8-27b",()->NOW),"Cloud binding refuses another credential id");
+  String googleCloud=cloud(ID,NOW+60_000);
+  JSONObject googleIdentity=new JSONObject().put("userId","3b241101-e2bb-4255-8caf-4136c566a962").put("organizationId","6ba7b810-9dad-41d1-80b4-00c04fd430c8");
+  String googleSelected=LocalAgentProviderAdmission.admit(null,selected.toString(),googleCloud,googleIdentity);
+  JSONObject google=LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,googleCloud,NOW);
+  check(google.getString("accountRef").equals(LocalAgentProviderAdmission.cloudAccountRef(new JSONObject(googleSelected))),"Google account is native-admitted");
+  check(google.getString("sessionGeneration").equals(LocalAgentProviderAdmission.currentGeneration(googleSelected,googleCloud)),"Google launch uses exact admission generation");
+  check(!google.toString().contains(TOKEN)&&!google.has("token"),"Google binding contains no bearer");
+  refused(()->LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,cloud(OTHER,NOW+60_000),NOW),"Google refuses credential switch");
+  refused(()->LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,googleCloud,NOW+60_001),"Google refuses expired credential");
+  refused(()->LocalAgentProviderAdmission.managedGoogleBinding(directSelection,null,NOW),"Google refuses direct-provider selection");
   System.out.println("PASS local agent provider admission");
  }
 }
