@@ -1,10 +1,12 @@
+import type { ViewActionHandoff } from "@elizaos/core/protocol";
 import {developmentCloudRealtimeVoiceEnabled} from './development-cloud-voice';
 import {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 export {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 import {connectionController} from './connection-ui';
 import type {VoiceConversationBinding} from './alpha-client';
+export type RealtimeVoiceNavigation = Pick<ViewActionHandoff, "viewId" | "viewPath" | "subview" | "navigationPrepared" | "navigationBinding" | "completedActionHandoffId"> & {traceId:string};
 /** Canonical self-hosted voice owns the runtime turn; this adapter never sends its transcript twice. */
-export async function developmentCartesiaConversation(input:{binding:VoiceConversationBinding;assertCurrent:()=>void;onState:(phase:string)=>void;onTranscript:(text:string)=>void;onError:(error:Error)=>void;onPlaybackUnlockChange?:()=>void;getUiContext?:()=>import('@elizaos/host/protocol').VoiceUiContext;onNavigate?:(event:{viewId:string;viewPath?:string;subview?:string;traceId:string})=>Promise<void>}){
+export async function developmentCartesiaConversation(input:{binding:VoiceConversationBinding;assertCurrent:()=>void;onState:(phase:string)=>void;onTranscript:(text:string)=>void;onError:(error:Error)=>void;onPlaybackUnlockChange?:()=>void;getUiContext?:()=>import('@elizaos/host/protocol').VoiceUiContext;onNavigate?:(event:RealtimeVoiceNavigation)=>Promise<void>}){
  if(developmentCartesiaVoiceEnabled&&developmentCloudRealtimeVoiceEnabled)throw Error('Choose direct or Cloud realtime speech, not both.');
  if(!developmentCartesiaVoiceEnabled&&!developmentCloudRealtimeVoiceEnabled)throw Error('Developer realtime speech is disabled.');
  const agent=connectionController.getBrowserSpeechAgent();if(!agent)throw Error('Connect the local developer agent first.');
@@ -22,7 +24,7 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
  const submitted=new Set<string>(),navigated=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();let phase='idle';
  // OG's targeted renderer channel owns early delivery. The voice terminal
  // suppresses its duplicate once that transport has accepted the frame.
- const navigate=(event:{viewId:string;viewPath?:string;subview?:string;traceId:string})=>{
+ const navigate=(event:RealtimeVoiceNavigation)=>{
   if(currentTurn!==event.traceId||!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
   if(navigated.size>=64)navigated.delete(navigated.values().next().value!);navigated.add(event.traceId);
   navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
@@ -34,7 +36,8 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
    if(frame?.type!=='shell:navigate:view'||frame.source!=='agent'||frame.viewType!=='gui'||typeof frame.viewId!=='string'||frame.action||frame.payload!==undefined||frame.views||frame.layout||frame.placement||frame.alwaysOnTop||!currentTurn||!submitted.has(currentTurn))return;
    const id=frame.completedActionHandoffId;if(typeof id!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)||rendererHandoffs.has(id))return;
    if(rendererHandoffs.size>=64)rendererHandoffs.delete(rendererHandoffs.values().next().value!);rendererHandoffs.add(id);
-   navigate({viewId:frame.viewId,viewPath:frame.viewPath,subview:frame.subview,traceId:currentTurn});
+   const prepared=Object.hasOwn(frame,"navigationPrepared")||Object.hasOwn(frame,"navigationBinding");
+   navigate({viewId:frame.viewId,viewPath:frame.viewPath,subview:frame.subview,traceId:currentTurn,...(prepared?{navigationPrepared:frame.navigationPrepared,navigationBinding:frame.navigationBinding,completedActionHandoffId:id}:{})});
   }catch(error){if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));}
  };
  const client=createVoiceSessionClient({agentId:input.binding.session.agentId,conversationId:input.binding.conversationId,preLiveMaxReconnects:0,preLiveMaxAttempts:1,getUiContext:()=>{current();const uiClientId=connectionController.voiceRendererClientId();if(!uiClientId)throw Error('The voice renderer is not bound.');return {...input.getUiContext?.(),uiClientId};},

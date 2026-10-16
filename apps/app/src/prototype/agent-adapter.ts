@@ -1074,11 +1074,20 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   };
   // An authenticated voice socket carries only navigation targets, never record parameters.
   // Reuse the same shell projection and post-React context fence as completed chat actions.
-  p.applyRealtimeVoiceNavigation = async function(input:{viewId:string;viewPath?:string;subview?:string;binding:import('../runtime/alpha-client').VoiceConversationBinding;assertCurrent:()=>void;navigation:import('../runtime/alpha-client').VoiceNavigationContinuation}){
+  p.applyRealtimeVoiceNavigation = async function(input:import("../runtime/development-cartesia-conversation").RealtimeVoiceNavigation & {binding:import('../runtime/alpha-client').VoiceConversationBinding;assertCurrent:()=>void;navigation:import('../runtime/alpha-client').VoiceNavigationContinuation}){
     input.assertCurrent();const target=input.viewId==='chat'?'home':input.viewId==='automations'?'workflows':input.viewId==='reminders'?'calendar':input.viewId;
     if(input.subview||!['home','notifications'].includes(target)&&!isMvpView(target)||input.viewPath&&!['/'+input.viewId,'/apps/'+input.viewId,...(target==='home'?['/']:[])].includes(input.viewPath))throw Error('That voice screen is not available.');
     const current=()=>{input.assertCurrent();if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(input.binding))throw Error('The voice conversation changed.');};
-    let delivered=false;try{delivered=await input.navigation.apply(target,current,(chat,onCommitted)=>new Promise<boolean>((resolve,reject)=>{try{current();if(!openInternalView(this,target,chat)){resolve(false);return;}this.setState({},()=>{try{current();context(this);const switched=(this.S().view||'home')===target&&!alphaClient.getState().context.sensitive;if(switched)onCommitted(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}}));return delivered;}finally{input.navigation.finish(delivered);}
+    let delivered=false;try{
+      const prepared=Object.hasOwn(input,'navigationPrepared')||Object.hasOwn(input,'navigationBinding')||Object.hasOwn(input,'completedActionHandoffId');
+      if(prepared){
+        const capture=connectionController.captureViewNavigation(this.voiceConversationContext(input.binding));
+        const result={actionName:'VIEWS_SHOW',success:true,values:{mode:'show',viewId:input.viewId,...(input.viewPath?{viewPath:input.viewPath}:{}),...(input.subview?{subview:input.subview}:{}),navigationPrepared:input.navigationPrepared,navigationBinding:input.navigationBinding,completedActionHandoffId:input.completedActionHandoffId}};
+        delivered=await deliverChatNavigation(this,capture,[result],current,input.navigation);
+        if(!delivered)throw Error('The voice screen change could not be confirmed.');
+        return true;
+      }
+      delivered=await input.navigation.apply(target,current,(chat,onCommitted)=>new Promise<boolean>((resolve,reject)=>{try{current();if(!openInternalView(this,target,chat)){resolve(false);return;}this.setState({},()=>{try{current();context(this);const switched=(this.S().view||'home')===target&&!alphaClient.getState().context.sensitive;if(switched)onCommitted(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}}));return delivered;}finally{input.navigation.finish(delivered);}
   };
   p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void;navigation?:import('../runtime/alpha-client').VoiceNavigationContinuation}){
     const {text,turnId,signal,binding}=input;let acceptedContext=input.context;

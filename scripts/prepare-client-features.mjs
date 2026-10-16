@@ -117,6 +117,18 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   for(const [name,digest] of Object.entries(projectionInputs))if(sourceFiles[name]!==digest)throw Error('Review changed voice projection input: '+name);
   const project = (name, text) => source.set(name, {bytes:Buffer.from(text),mode:'100644',sha256:hash(Buffer.from(text))});
   const text = name => source.get(name).bytes.toString();
+  // Apply the reviewed shared voice delta before the existing injected-fetch projection.
+  // This carries the capture lease fix and prepared navigation protocol together.
+  const voicePatchRoot=path.join(root,'patches/eliza');
+  const voiceProjection=JSON.parse(fs.readFileSync(path.join(voicePatchRoot,'client-voice-prepared-navigation.json'),'utf8'));
+  const voicePatch=path.join(voicePatchRoot,'client-voice-prepared-navigation.patch');
+  if(voiceProjection.baseCommit!==upstream.pin||hash(fs.readFileSync(voicePatch))!==voiceProjection.patchSha256||voiceProjection.paths.length!==2||voiceProjection.paths.some(row=>!['packages/ui/src/voice/voice-session-client.ts','packages/ui/src/voice/voice-session-protocol.ts'].includes(row.path)||sourceFiles[row.path]!==row.beforeSha256))throw Error('Review changed shared voice navigation projection input');
+  const voiceStage=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-voice-navigation-projection-'));
+  try{
+    for(const row of voiceProjection.paths){const target=path.join(voiceStage,row.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,source.get(row.path).bytes);}
+    execFileSync('patch',['--batch','--fuzz=0','--forward','-p1','--input',voicePatch],{cwd:voiceStage,stdio:'pipe',timeout:30000});
+    for(const row of voiceProjection.paths){const bytes=fs.readFileSync(path.join(voiceStage,row.path));if(hash(bytes)!==row.afterSha256)throw Error('Shared voice navigation projection output changed');project(row.path,bytes.toString());}
+  }finally{fs.rmSync(voiceStage,{recursive:true,force:true});}
   // Preserve Alpha's existing explicit renderer claim/ack protocol through the
   // canonical browser voice parser. This chooses delivery, never authority.
   const voiceContextPath='packages/host/src/voice.ts';
@@ -134,7 +146,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   project('packages/ui/src/voice/voice-chat-types.ts',status+'\n');
   source.delete('packages/core/src/logger.ts');
   project('alpha-voice-core-types.ts',loggerTypes.slice(start,end));
-  project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\n');
+  project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\nexport {findViewActionHandoff, type ViewActionHandoff} from "./packages/core/src/views/view-action-handoff";\n');
   // Carry the previously qualified global renderer until it is restored in the upstream pin.
   // Authenticate both sides and project outside vendor; a changed pin must be reviewed again.
   const mapPatchRoot=path.join(root,'patches/eliza');
@@ -166,7 +178,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
 
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?3:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?4:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');
