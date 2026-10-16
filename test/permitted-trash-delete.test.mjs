@@ -15,6 +15,7 @@ test('permitted permanent deletion fences restored/changed items and requires ex
  const file=join(dir,'PermittedTrashFixture.java');
  writeFileSync(file,`import java.util.*;
  public class PermittedTrashFixture {
+  static class Build{static class VERSION{static int SDK_INT=30;}}
   static class JSObject extends HashMap<String,Object>{String getString(String key){return (String)get(key);}Boolean getBoolean(String key){return (Boolean)get(key);}}
   static class Bundle extends HashMap<String,Object>{Bundle(){}Bundle(Bundle before){super(before);}void putInt(String key,int value){put(key,value);}void putString(String key,String value){put(key,value);}void putStringArray(String key,String[] value){put(key,value);}}
   static class MediaStore{static final String QUERY_ARG_MATCH_TRASHED="trash";static final int MATCH_ONLY=1,MATCH_INCLUDE=2;}
@@ -37,6 +38,7 @@ test('permitted permanent deletion fences restored/changed items and requires ex
   static void require(boolean value){if(!value)throw new AssertionError();}
   static void refused(PermittedTrashFixture f,String revision)throws Exception{try{f.deleteTrashed("m:i:external:7",revision);throw new AssertionError("unexpected deletion success");}catch(IllegalStateException expected){}}
   public static void main(String[] args)throws Exception{
+   Build.VERSION.SDK_INT=29;PermittedTrashFixture old=new PermittedTrashFixture();try{old.deleteTrashed("m:i:external:7","r1");throw new AssertionError("unsupported API accepted");}catch(UnsupportedOperationException expected){}require(old.deletes==0&&old.reads==0&&old.exists);Build.VERSION.SDK_INT=30;
    PermittedTrashFixture ok=new PermittedTrashFixture();require(ok.deleteTrashed("m:i:external:7","r1").getString("status").equals("deleted"));require(!ok.exists&&ok.deletes==1&&ok.reads==2);
    PermittedTrashFixture restored=new PermittedTrashFixture();restored.trashed=false;refused(restored,"r1");require(restored.deletes==0&&restored.exists);
    PermittedTrashFixture stale=new PermittedTrashFixture();refused(stale,"old");require(stale.deletes==0&&stale.exists);

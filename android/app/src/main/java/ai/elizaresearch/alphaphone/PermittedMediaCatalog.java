@@ -247,6 +247,7 @@ final class PermittedMediaCatalog implements AutoCloseable {
  }
  /** Permanent removal is restricted to an explicitly reviewed deleted revision. */
  JSObject deleteTrashed(String id,String expected)throws Exception{
+  if(Build.VERSION.SDK_INT<30)throw new UnsupportedOperationException("Reviewed media removal requires Android 11 or later");
   JSObject before=mutationSource(id,expected);if(!Boolean.TRUE.equals(before.getBoolean("trashed")))throw new IllegalStateException("stale");
   MediaLibraryKey key=MediaLibraryKey.parse(id);Bundle query=new Bundle();query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);
   query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0 AND is_trashed=1");query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
