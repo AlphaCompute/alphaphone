@@ -21,9 +21,25 @@
     "reset": false,
     "existingFullPermissionRetained": true,
     "photosGridAccessControlsAbsent": true,
-    "settingsPageVisibleReadback": "pending; phone switched to another app during navigation; stopped interactions"
+    "settingsPageVisibleReadback": {
+      "verified": true,
+      "foregroundPackage": "ai.elizaresearch.alphaphone",
+      "screen": "Settings > Photos",
+      "visible": [
+        "Library access",
+        "All photos and videos",
+        "Choose photo access",
+        "Android photo permissions"
+      ],
+      "grantChanged": false
+    }
   },
   "permissionContract": "Settings offers explicit Android choice and system permission settings; denied Photos retains Choose photo access. No automatic grant.",
-  "browserFixtureUpdate": "Existing permitted-photos assertions follow Settings for selected access; typecheck passed, browser fixture not executed this turn.",
+  "browserFixtureUpdate": {
+    "passed": 4,
+    "failed": 0,
+    "scope": "Synthetic renderer: permitted search, selected access through Settings, denied explicit request, revocation",
+    "nativePermissionDialog": "Not re-requested on personal device; current full grant retained"
+  },
   "humanApproval": "pending"
 }

@@ -133,7 +133,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Passed574: explicit Recover restored the sole QA item; trashcount returned0. | Pending |
 | photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0. | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
-| photos-16 | Native permitted library and consent updates | Access controls moved to Settings > Photos; denied-access grid keeps Choose photo access. Full verification passed:1455 pass/2 skips/0 fail. | Installed9d86d051; grid controls removed and library permission retained. Settings-page readback pending: phone in another app | Pending |
+| photos-16 | Native permitted library and consent updates | Access controls moved to Settings > Photos; denied-access grid keeps Choose photo access. Full verification passed:1455 pass/2 skips/0 fail. | Installed9d86d051: Settings > Photos visibly verified; current full grant retained, explicit permission controls present. Permitted grid controls removed. | Pending |
 
 ## Maps
 
