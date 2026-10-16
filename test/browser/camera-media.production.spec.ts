@@ -24,7 +24,7 @@ test('a camera capture is searchable and Ask Alpha reviews it locally without th
  await expect(review.getByRole('button',{name:'Extract text locally'})).toBeEnabled();
  await review.getByRole('button',{name:'Cancel',exact:true}).click();await expect(review).toHaveCount(0);
  await page.getByRole('button',{name:'Take photo',exact:true}).click();
- await expect(page.getByRole('button',{name:/^Captured photo /})).toHaveCount(1);
+ await expect(page.getByRole('button',{name:'Open last photo',exact:true})).toBeVisible();
 
  await page.goto('/');await page.getByRole('button',{name:'Photos',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Captured photo /})).toHaveCount(1);
