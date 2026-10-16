@@ -1,6 +1,6 @@
 {
   "description": "Normalised `npm audit --json` for the package-lock.json with this SHA-256. Regenerate with: node scripts/dependency-audit.mjs --write. Dispositions live in docs/dependency-audit.dispositions.json.",
-  "auditedOn": "2026-10-14",
+  "auditedOn": "2026-10-16",
   "lockSha256": "afa65699304f6b0994fc12bd0a06ae12c0819fc0facd328ee8c3b1438f1dce37",
   "counts": {
     "info": 0,
@@ -103,11 +103,11 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "221a0bc4e0d501a670943d274f10d7818357ada4",
+    "upstreamCommit": "afd44a8544b4aed3bae7824be5d261270a69540e",
     "input": "vendor/eliza/bun.lock",
-    "auditedOn": "2026-10-15",
-    "inputSha256": "bcadc30aafbef10e1413c673bae3e8669536ac0525296053c159f8b212f684bd",
-    "packages": 3675,
+    "auditedOn": "2026-10-16",
+    "inputSha256": "e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e",
+    "packages": 3691,
     "counts": {
       "info": 0,
       "low": 14,
