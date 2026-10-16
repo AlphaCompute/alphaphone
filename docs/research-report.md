@@ -2,7 +2,7 @@
 
 # Alpha Phone — consolidated flow and platform research
 
-Research date: 2026-09-29. Product target correction: Pixel 10 or similar **phone**, not tablet; the closest installed Pixel 9 definition is the emulator test profile. Physical Pixel 10 acceptance remains separate. This report consolidates source inspection, flow requirements and native-platform research. It is not a claim that all requested integrations are built, tested or working. Test evidence must name the actual APK/commit, device and provider used.
+Research date: 2026-09-29. (Superseded by decision P-15: the hardware target is Pixel 10a, codename stallion, on Android 17.) Product target correction at the time: Pixel 10 or similar **phone**, not tablet; the closest installed Pixel 9 definition is the emulator test profile. Physical Pixel 10 acceptance remains separate. This report consolidates source inspection, flow requirements and native-platform research. It is not a claim that all requested integrations are built, tested or working. Test evidence must name the actual APK/commit, device and provider used.
 
 ## Findings
 

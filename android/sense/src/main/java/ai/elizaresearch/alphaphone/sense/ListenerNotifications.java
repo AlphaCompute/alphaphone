@@ -67,7 +67,12 @@ final class ListenerNotifications {
   Notification.Builder builder=new Notification.Builder(context,CHANNEL_ACTIVE)
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
-   .setContentText(ListenerPolicy.processesAudio(state)?"Say “Alpha” to ask. Audio stays on this phone and is not saved.":"The microphone is not being analysed.")
+   .setContentText(ListenerPolicy.processesAudio(state)?"Say “Alpha” to ask. Audio stays on this phone and is not saved."
+    :state==ListenerPolicy.State.PAUSED_DISPLAY_OFF?"Turn on Always-on display to keep listening with the screen off. Listening resumes when the indicator shows."
+    :state==ListenerPolicy.State.PAUSED_FULLSCREEN?"The Listening indicator is hidden by a fullscreen app. Listening resumes when the status bar shows again."
+    :state==ListenerPolicy.State.PAUSED_SHADE?"Listening resumes when the notification shade closes."
+    :state==ListenerPolicy.State.PAUSED_TRANSITION?"Listening resumes when the Listening indicator shows."
+    :"The microphone is not being analysed.")
    .setCategory(Notification.CATEGORY_SERVICE)
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOngoing(true)
@@ -99,6 +104,16 @@ final class ListenerNotifications {
   }catch(RuntimeException unavailable){return false;}
  }
 
+ /** AOSP Settings action for the lock-screen page, which holds Always-on display. */
+ static final String LOCK_SCREEN_SETTINGS="android.settings.LOCK_SCREEN_SETTINGS";
+ /** Settings.Secure.DOZE_ALWAYS_ON (hidden constant). Unreadable or unset counts as off; SystemUI's report decides capture. */
+ static final String DOZE_ALWAYS_ON="doze_always_on";
+
+ static boolean alwaysOnDisplayEnabled(Context context){
+  try{return Settings.Secure.getInt(context.getContentResolver(),DOZE_ALWAYS_ON,0)!=0;}
+  catch(RuntimeException unreadable){return false;}
+ }
+
  /** Settings.Secure.LOCK_SCREEN_SHOW_NOTIFICATIONS (hidden constant; default on). Unreadable counts as hidden. */
  static final String LOCK_SCREEN_SHOW_NOTIFICATIONS="lock_screen_show_notifications";
 
@@ -117,7 +132,9 @@ final class ListenerNotifications {
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
    .setContentText(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED?"Listening is off until its notification is allowed. Open listening settings."
-    :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone.":"The microphone is off. Open listening settings to turn it back on.")
+    :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone."
+    :state==ListenerPolicy.State.INDICATOR_UNAVAILABLE?"The microphone stays off until the system Listening indicator can be shown."
+    :state==ListenerPolicy.State.STOPPED_INDICATOR_LOST?"The system Listening indicator was not shown, so the microphone was turned off. Open listening settings to resume.":"The microphone is off. Open listening settings to turn it back on.")
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOnlyAlertOnce(true)
    .setContentIntent(settings(context));

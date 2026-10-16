@@ -29,10 +29,17 @@ public final class SenseApplication extends Application {
   changes.addAction(NotificationManager.ACTION_APP_BLOCK_STATE_CHANGED);
   changes.addAction(NotificationManager.ACTION_NOTIFICATION_CHANNEL_BLOCK_STATE_CHANGED);
   changes.addAction(Intent.ACTION_SHUTDOWN);
+  // The listener's own screen state resolves an unknown display state in SystemUI's lease report.
+  changes.addAction(Intent.ACTION_SCREEN_ON);
+  changes.addAction(Intent.ACTION_SCREEN_OFF);
+  android.os.PowerManager power=getSystemService(android.os.PowerManager.class);
+  Listener.screenInteractive=power==null||power.isInteractive();
   registerReceiver(new BroadcastReceiver(){
    @Override public void onReceive(Context context,Intent intent){
     // A clean shutdown is not a crash: close the open-session marker before the process is killed.
     if(Intent.ACTION_SHUTDOWN.equals(intent.getAction())){new ListenerStore(context).setSessionOpen(false);return;}
+    if(Intent.ACTION_SCREEN_ON.equals(intent.getAction()))Listener.screenInteractive=true;
+    else if(Intent.ACTION_SCREEN_OFF.equals(intent.getAction()))Listener.screenInteractive=false;
     Listener.refresh(context);
    }
   },changes,Context.RECEIVER_NOT_EXPORTED);

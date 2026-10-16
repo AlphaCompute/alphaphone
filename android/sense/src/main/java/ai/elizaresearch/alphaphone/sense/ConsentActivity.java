@@ -28,7 +28,8 @@ public final class ConsentActivity extends Activity {
   "When on, this phone's microphone stays open in the background, including while the phone is locked, so you can say “Alpha” instead of opening the app.\n\n"
   +"• Speech is detected and recognised on this phone. Audio is never uploaded and never saved.\n"
   +"• What you say is checked only for “Alpha”. Anything not addressed to Alpha is discarded. When you say “Alpha”, the Alpha app opens and handles your request as if you had opened it.\n"
-  +"• A notification shows whenever listening is on or paused, including on the lock screen; listening does not run without it. The system microphone indicator is also expected to show while the microphone is open.\n"
+  +"• A notification shows whenever listening is on or paused, including on the lock screen; listening does not run without it. The system microphone indicator is also expected to show while the microphone is open. Listening runs only while the system Listening indicator can be shown; if it stops being shown, listening turns off until you resume it.\n"
+  +"• With the screen off, listening continues only while Always-on display shows the Listening indicator. If Always-on display is off, listening pauses while the screen is off and resumes when the indicator shows again.\n"
   +"• Pause or turn off at any time from the notification, the Quick Settings tile, the microphone privacy toggle or by saying “Alpha, stop listening”.\n"
   +"• Listening pauses while the phone rings, during calls, while sound or speech is playing (wake word only), whenever another app uses the microphone and while another user is using the phone. Calls are never recorded.\n"
   +"• Saying “Alpha” while the phone is locked does nothing; unlock first.\n"
@@ -103,8 +104,10 @@ public final class ConsentActivity extends Activity {
    button(consented?"Turn on listening":"I understand — turn on listening",view->requestMicrophone());
   }
   if(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED)button("Allow the listening notification",view->openNotificationSettings());
-  if(state==ListenerPolicy.State.PAUSED_USER)button("Resume listening",view->{store.resume();changed();});
-  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL){
+  if(consented&&!ListenerNotifications.alwaysOnDisplayEnabled(this))text("Always-on display is off: listening pauses whenever the screen is off.",16);
+  button("Always-on display settings",view->openAlwaysOnDisplaySettings());
+  if(state==ListenerPolicy.State.PAUSED_USER||state==ListenerPolicy.State.STOPPED_INDICATOR_LOST)button("Resume listening",view->{store.resume();changed();});
+  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL||ListenerPolicy.indicatorPaused(state)){
    button("Pause for 15 minutes",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),15));changed();});
    button("Pause for 1 hour",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),60));changed();});
    button("Pause until I resume",view->{store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);changed();});
@@ -114,6 +117,13 @@ public final class ConsentActivity extends Activity {
  }
 
  private void changed(){Listener.refresh(this);render();}
+
+ /** Lock-screen settings hold Always-on display in AOSP Settings; display settings are the fallback. */
+ private void openAlwaysOnDisplaySettings(){
+  for(String action:new String[]{ListenerNotifications.LOCK_SCREEN_SETTINGS,Settings.ACTION_DISPLAY_SETTINGS}){
+   try{startActivity(new Intent(action));return;}catch(RuntimeException unavailable){}
+  }
+ }
 
  /** The listening channel or the app's notifications are blocked: the user re-enables them in system Settings. */
  private void openNotificationSettings(){

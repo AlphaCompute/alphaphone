@@ -31,6 +31,13 @@ public final class ListenerPolicy {
   /** Repeated unclean exits; capture stays stopped until the user turns it back on. */
   STOPPED_AFTER_ERRORS,
   /**
+   * The SystemUI indicator lease was lost while the microphone was held (SystemUI died, its
+   * Listening chip or surface was hidden, detached or not attributed, or the lease expired or was
+   * revoked). Capture stopped and stays stopped until the user resumes; a returning lease never
+   * resumes it.
+   */
+  STOPPED_INDICATOR_LOST,
+  /**
    * The primary user (the only user the listener is installed for) is not the foreground user, so
    * its notification is invisible to whoever is using the phone. Never captures.
    */
@@ -39,14 +46,34 @@ public final class ListenerPolicy {
   WAITING_FOR_UNLOCK,
   /** The local speech model could not be loaded. Never captures. */
   SPEECH_UNAVAILABLE,
+  /**
+   * No fresh SystemUI indicator lease (SystemUI has not yet acknowledged a visible Listening
+   * surface). Never captures; capture starts once a lease is fresh.
+   */
+  INDICATOR_UNAVAILABLE,
   PAUSED_USER,
   PAUSED_CALL,
   /** Another app is recording; the listener releases the microphone until it finishes. */
   PAUSED_MIC_IN_USE,
   /** The listener's own recording is silenced (microphone privacy toggle or audio policy). */
   PAUSED_MIC_UNAVAILABLE,
+  /**
+   * Explained indicator pauses ({@link IndicatorPause}): SystemUI reports why the Listening
+   * indicator is not shown. The microphone is released; capture resumes by itself only on a fresh
+   * acknowledgement of a visible surface. Display off, or AOD not showing the indicator.
+   */
+  PAUSED_DISPLAY_OFF,
+  /** An app hid the status bar (fullscreen/immersive) while the phone is unlocked. */
+  PAUSED_FULLSCREEN,
+  /** The notification shade is expanded and does not show the listening notification. */
+  PAUSED_SHADE,
+  /** Within SystemUI's debounce after a lock, unlock or screen-state change. */
+  PAUSED_TRANSITION,
   LISTENING
  }
+
+ /** Why SystemUI says the indicator is not shown, when it explains it. NONE: shown, or an unexplained loss. */
+ public enum IndicatorPause{NONE,DISPLAY_OFF,FULLSCREEN,SHADE,TRANSITION}
 
  /** Observed inputs. Defaults are the most restrictive values. */
  public static final class Inputs {
@@ -69,6 +96,12 @@ public final class ListenerPolicy {
   public boolean inCall;
   public boolean otherAppRecording;
   public boolean micSilenced;
+  /** A fresh SystemUI indicator lease permits capture ({@link IndicatorLease#permits}). */
+  public boolean indicatorLeaseValid;
+  /** The lease was lost while the microphone was held; cleared only by an explicit user resume or turn-on. */
+  public boolean indicatorLost;
+  /** An explained indicator pause reported by SystemUI (null counts as NONE). */
+  public IndicatorPause indicatorPause=IndicatorPause.NONE;
  }
 
  public static boolean consented(int storedVersion){return storedVersion==CONSENT_VERSION;}
@@ -78,12 +111,22 @@ public final class ListenerPolicy {
   if(!in.recordAudioGranted)return State.PERMISSION_REQUIRED;
   if(!in.notificationsVisible)return State.NOTIFICATIONS_REQUIRED;
   if(in.crashLoopTripped)return State.STOPPED_AFTER_ERRORS;
+  if(in.indicatorLost)return State.STOPPED_INDICATOR_LOST;
   if(!in.userForeground)return State.PAUSED_OTHER_USER;
   if(!in.userUnlocked)return State.WAITING_FOR_UNLOCK;
   if(in.speechUnavailable)return State.SPEECH_UNAVAILABLE;
   if(in.pausedUntilMs>nowMs)return State.PAUSED_USER;
   if(in.inCall)return State.PAUSED_CALL;
   if(in.otherAppRecording)return State.PAUSED_MIC_IN_USE;
+  // Every state below holds the microphone: none may run without SystemUI's independent indicator.
+  if(in.indicatorPause!=null)switch(in.indicatorPause){
+   case DISPLAY_OFF:return State.PAUSED_DISPLAY_OFF;
+   case FULLSCREEN:return State.PAUSED_FULLSCREEN;
+   case SHADE:return State.PAUSED_SHADE;
+   case TRANSITION:return State.PAUSED_TRANSITION;
+   default:break;
+  }
+  if(!in.indicatorLeaseValid)return State.INDICATOR_UNAVAILABLE;
   if(in.micSilenced)return State.PAUSED_MIC_UNAVAILABLE;
   return State.LISTENING;
  }
@@ -100,14 +143,16 @@ public final class ListenerPolicy {
   */
  public static boolean foreground(State state){
   switch(state){
-   case LISTENING:case PAUSED_USER:case PAUSED_CALL:case PAUSED_MIC_IN_USE:case PAUSED_MIC_UNAVAILABLE:return true;
+   case LISTENING:case PAUSED_USER:case PAUSED_CALL:case PAUSED_MIC_IN_USE:case PAUSED_MIC_UNAVAILABLE:
+   case PAUSED_DISPLAY_OFF:case PAUSED_FULLSCREEN:case PAUSED_SHADE:case PAUSED_TRANSITION:return true;
    default:return false;
   }
  }
 
  /** States the user should be told about although nothing is captured. */
  public static boolean needsAttention(State state){
-  return state==State.PERMISSION_REQUIRED||state==State.NOTIFICATIONS_REQUIRED||state==State.STOPPED_AFTER_ERRORS||state==State.WAITING_FOR_UNLOCK||state==State.SPEECH_UNAVAILABLE;
+  return state==State.PERMISSION_REQUIRED||state==State.NOTIFICATIONS_REQUIRED||state==State.STOPPED_AFTER_ERRORS||state==State.WAITING_FOR_UNLOCK||state==State.SPEECH_UNAVAILABLE
+   ||state==State.INDICATOR_UNAVAILABLE||state==State.STOPPED_INDICATOR_LOST;
  }
 
  /** Lock-screen-safe status text. Never contains captured content. */
@@ -118,14 +163,33 @@ public final class ListenerPolicy {
    case PAUSED_CALL:return "Paused during call";
    case PAUSED_MIC_IN_USE:return "Paused — another app is using the microphone";
    case PAUSED_MIC_UNAVAILABLE:return "Paused — microphone unavailable";
+   case PAUSED_DISPLAY_OFF:return "Paused — screen off without Always-on display";
+   case PAUSED_FULLSCREEN:return "Paused while an app is fullscreen";
+   case PAUSED_SHADE:return "Paused while the notification shade is open";
+   case PAUSED_TRANSITION:return "Paused while the screen changes";
    case WAITING_FOR_UNLOCK:return "Listening starts after unlock";
    case SPEECH_UNAVAILABLE:return "Listening unavailable — speech model not ready";
    case STOPPED_AFTER_ERRORS:return "Listening stopped after repeated errors";
+   case STOPPED_INDICATOR_LOST:return "Listening stopped — indicator not shown";
+   case INDICATOR_UNAVAILABLE:return "Listening waits for the system indicator";
    case PERMISSION_REQUIRED:return "Listening needs microphone permission";
    case NOTIFICATIONS_REQUIRED:return "Listening needs its notification";
    case PAUSED_OTHER_USER:return "Paused while another user is active";
    default:return "Listening off";
   }
+ }
+
+ /**
+  * Losing the lease while the microphone is held latches {@link State#STOPPED_INDICATOR_LOST}: a
+  * lease that later returns never restarts capture by itself. Losing it while nothing is captured
+  * only withholds the next start ({@link State#INDICATOR_UNAVAILABLE}). An explained hidden
+  * indicator (display off, AOD, fullscreen, shade, transition) is not a loss: it pauses.
+  */
+ public static boolean latchesIndicatorLoss(boolean microphoneHeld,boolean leaseValid,boolean explainedPause){return microphoneHeld&&!leaseValid&&!explainedPause;}
+
+ /** The paused state for an explained indicator pause (true for every PAUSED_* indicator state). */
+ public static boolean indicatorPaused(State state){
+  return state==State.PAUSED_DISPLAY_OFF||state==State.PAUSED_FULLSCREEN||state==State.PAUSED_SHADE||state==State.PAUSED_TRANSITION;
  }
 
  /** Pausing reduces capability, so it never needs unlock. Resuming or turning on does. */

@@ -95,4 +95,4 @@ The current host regression applies the real patch, checks all three mappings,
 and, when `ALPHA_SYSTEMUI_TEST_SOURCE` names the pinned source, verifies original
 and patched hashes and mutation rejection. These are source tests only.
 
-The separate [Listening chip source candidate](aosp-listening-chip.md) adds an optional `--chip` preparation bundle. Its independent monitor/views and Pause action do not complete G3: the visibility-health lease and image/device qualification remain blockers. The original two-file microphone-op bundle and its receipt retain their original scope.
+The separate [Listening chip source candidate](aosp-listening-chip.md) adds a `--chip` preparation bundle, required by every staged listener product (staging includes its overlay and records it in `listener/systemui/required-source-patches.json`). Its independent monitor/views, Pause action and indicator health lease (source and host tests only) do not complete G3: SystemUI compilation and image/device qualification remain blockers. The original two-file microphone-op bundle and its receipt retain their original scope.

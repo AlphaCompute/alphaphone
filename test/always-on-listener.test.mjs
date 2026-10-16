@@ -3,9 +3,9 @@
 // long-running acceptance are separate gates (docs/adr/0001-privileged-listener.md).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,readFileSync,readdirSync,rmSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {existsSync,mkdirSync,mkdtempSync,readFileSync,readdirSync,rmSync,writeFileSync} from 'node:fs';
+import {homedir,tmpdir} from 'node:os';
+import {dirname,join,resolve} from 'node:path';
 import {execFileSync} from 'node:child_process';
 
 const root=resolve(import.meta.dirname,'..');
@@ -24,8 +24,30 @@ test('listener policy, crash-loop breaker, speech gate and wake phrase run on th
  }finally{rmSync(temporary,{recursive:true,force:true});}
 });
 
+test('SystemUI indicator lease: renewal, expiry, binder death, hidden view, reboot before unlock and crash loop run on the JVM',()=>{
+ const temporary=mkdtempSync(join(tmpdir(),'listener-lease-'));
+ try{
+  execFileSync(binary('javac'),['--release','11','-d',temporary,...['ListenerPolicy','IndicatorLease','CrashLoopBreaker'].map(name=>join(source,`${name}.java`)),join(root,'test/fixtures/ListenerLeaseTest.java')],{timeout:60000});
+  assert.match(execFileSync(binary('java'),['-cp',temporary,'ai.elizaresearch.alphaphone.sense.ListenerLeaseTest'],{encoding:'utf8',timeout:60000}),/^PASS listener indicator lease/);
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+
+// Type-checks every listener source against the real Android 36 platform jar (stubs only for the
+// paradee-voice API and R). Host compilation only: not a Gradle/AGP build, APK, install or device run.
+const sdk=[process.env.ANDROID_HOME,process.env.ANDROID_SDK_ROOT,process.platform==='darwin'?join(homedir(),'Library/Android/sdk'):join(homedir(),'Android/Sdk')].filter(Boolean).map(dir=>join(dir,'platforms/android-36/android.jar')).find(file=>existsSync(file));
+test('every listener source compiles against the Android 36 platform jar',{skip:sdk?false:'Android SDK platform 36 not installed'},()=>{
+ const temporary=mkdtempSync(join(tmpdir(),'listener-android-jar-'));
+ try{
+  const stubs={'ai/eliza/voice/NativeAsr.java':'package ai.eliza.voice; public interface NativeAsr extends AutoCloseable { String transcribe(float[] pcm); void cancel(); @Override void close(); }',
+   'ai/eliza/voice/VoiceAssets.java':'package ai.eliza.voice; public final class VoiceAssets { public static VoiceAssets install(android.content.Context context){return new VoiceAssets();} public NativeAsr openAsr(){return null;} }',
+   'ai/elizaresearch/alphaphone/sense/R.java':'package ai.elizaresearch.alphaphone.sense; public final class R { public static final class drawable { public static final int ic_listening=1; } }'};
+  const files=Object.entries(stubs).map(([name,text])=>{const file=join(temporary,'stubs',name);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,text);return file;});
+  execFileSync(binary('javac'),['-source','21','-target','21','-Xlint:-options','-cp',sdk,'-d',join(temporary,'out'),...files,...readdirSync(source).filter(name=>name.endsWith('.java')).map(name=>join(source,name))],{timeout:120000});
+ }finally{rmSync(temporary,{recursive:true,force:true});}
+});
+
 test('the pure policy classes stay free of Android APIs so the JVM test exercises the shipped code',()=>{
- for(const name of ['ListenerPolicy','CrashLoopBreaker','SpeechGate','WakePhrase'])
+ for(const name of ['ListenerPolicy','CrashLoopBreaker','SpeechGate','WakePhrase','IndicatorLease'])
   assert.doesNotMatch(readFileSync(join(source,`${name}.java`),'utf8'),/import android\./,name);
 });
 
@@ -48,6 +70,38 @@ test('the listener manifest has no network access and only the reviewed privileg
  assert.match(manifest,/\.ListenerControlProvider" android:exported="true"[\s\S]*?android:permission="ai\.elizaresearch\.alphaphone\.sense\.permission\.LISTENER_CONTROL"/);
  assert.match(manifest,/LISTENER_CONTROL"\s+android:protectionLevel="signature"/);
  assert.match(manifest,/BIND_QUICK_SETTINGS_TILE/);
+ // SystemUI's indicator lease: platform signature permission only, a separate authority from Alpha's control provider.
+ assert.match(manifest,/\.IndicatorLeaseProvider" android:exported="true" android:directBootAware="true"\s+android:authorities="ai\.elizaresearch\.alphaphone\.sense\.indicator"\s+android:permission="android\.permission\.STATUS_BAR_SERVICE"/);
+});
+
+test('capture fails closed on the SystemUI indicator lease and a lost lease never resumes silently',()=>{
+ const provider=readFileSync(join(source,'IndicatorLeaseProvider.java'),'utf8');
+ assert.match(provider,/checkCallingPermission\(STATUS_BAR_SERVICE\)/);
+ assert.match(provider,/IndicatorLease\.admitsController\(holds,caller,owners,platform\)/);
+ assert.match(provider,/checkSignatures\("android",owners\[0\]\)/,'platform-signed caller');
+ assert.match(provider,/IBinder\.DeathRecipient recipient=\(\)->\{Listener\.lease\.binderDied\(generation\);Listener\.refresh\(context\);\};/,'SystemUI death stops capture at once');
+ assert.match(provider,/token\.linkToDeath\(recipient,0\)/);
+ assert.doesNotMatch(provider,/grantConsent|setEnabled|resume\(|store\.|startForegroundService/,'the lease can only withhold capture');
+ const listener=readFileSync(join(source,'Listener.java'),'utf8');
+ assert.match(listener,/in\.indicatorLeaseValid=observeIndicatorLease\(context,SystemClock\.elapsedRealtime\(\)\)/);
+ assert.match(listener,/if\(!asleep&&ListenerPolicy\.latchesIndicatorLoss\(held\|\|paused,valid,loss\.pause\(\)\)\)indicatorLost=true;/,'only unexplained losses latch');
+ assert.match(listener,/boolean asleep=IndicatorLease\.sleepLapse\(held,indicatorPause,loss\);/,'only a lapse during a display-off pause with the microphone released is excused');
+ assert.match(listener,/in\.indicatorPause=indicatorPause;/,'explained hidden states pause rather than stop');
+ assert.match(provider,/extras\.getString\(IndicatorLease\.KEY_DISPLAY\),extras\.getString\(IndicatorLease\.KEY_REASON\)/,'display state and reason come from SystemUI');
+ const app=readFileSync(join(source,'SenseApplication.java'),'utf8');
+ assert.match(app,/ACTION_SCREEN_OFF/,'the listener tracks the screen itself to resolve an unknown display state');
+ const consentScreen=readFileSync(join(source,'ConsentActivity.java'),'utf8');
+ assert.match(consentScreen,/Always-on display shows the Listening indicator/,'consent explains screen-off listening');
+ assert.match(consentScreen,/button\("Always-on display settings",view->openAlwaysOnDisplaySettings\(\)\)/,'consent links the AOD setting');
+ const service=readFileSync(join(source,'ListeningService.java'),'utf8');
+ assert.match(service,/main\.postDelayed\(leaseCheck,Listener\.lease\.nextCheckDelay/,'lease watchdog while the microphone is held');
+ assert.match(service,/if\(!Listener\.observeIndicatorLease\(ListeningService\.this,now\)\)apply\(\);/);
+ assert.match(service,/if\(filled==frame\.length&&leased&&analyse/,'no frame is analysed without a fresh lease');
+ assert.match(service,/if\(!Listener\.observeIndicatorLease\(this,SystemClock\.elapsedRealtime\(\)\)\)\{main\.post\(reapply\);return;\}\s*text=local\.transcribe/,'no recognition without a fresh lease');
+ assert.match(service,/Listener\.microphoneHeld=true;/);assert.match(service,/Listener\.microphoneHeld=false;/);
+ const store=readFileSync(join(source,'ListenerStore.java'),'utf8');
+ assert.match(store,/void resume\(\)\{[^\n]*Listener\.indicatorLost=false;\}/,'only an explicit resume or turn-on clears the latch');
+ assert.doesNotMatch(store.slice(store.indexOf('void pause('),store.indexOf('void resume(')),/indicatorLost/,'pausing never clears it');
 });
 
 test('audio and transcripts stay in RAM and invocation carries no content',()=>{
@@ -89,9 +143,9 @@ test('audio and transcripts stay in RAM and invocation carries no content',()=>{
  assert.match(service,/ListenerPolicy\.playbackSuppressesWake\(/,'speech-capable playback suppresses wake');
  assert.match(service,/ListenerPolicy\.mayInvokeAssistant\(keyguard==null\|\|keyguard\.isKeyguardLocked\(\)\)/,'never invokes behind the keyguard');
  // A channel lowered to silent/hidden sends no broadcast: the held microphone re-checks the indicator.
- assert.match(service,/holdsMicrophone\(state\)\)\{startCapture\(\);main\.postDelayed\(indicatorCheck,ListenerPolicy\.INDICATOR_RECHECK_MS\);\}/,'indicator re-checked while the microphone is held');
+ assert.match(service,/holdsMicrophone\(state\)\)\{startCapture\(\);main\.postDelayed\(indicatorCheck,ListenerPolicy\.INDICATOR_RECHECK_MS\);main\.postDelayed\(leaseCheck,/,'indicator re-checked while the microphone is held');
  assert.match(service,/if\(!ListenerNotifications\.indicatorVisible\(ListeningService\.this\)\)apply\(\);/,'a hidden indicator converges the service');
- assert.match(service,/if\(!ListenerNotifications\.indicatorVisible\(this\)\)\{main\.post\(reapply\);return;\}\s*text=local\.transcribe/,'no recognition while the indicator is hidden');
+ assert.match(service,/if\(!ListenerNotifications\.indicatorVisible\(this\)\)\{main\.post\(reapply\);return;\}\s*if\(!Listener\.observeIndicatorLease\(this,SystemClock\.elapsedRealtime\(\)\)\)\{main\.post\(reapply\);return;\}\s*text=local\.transcribe/,'no recognition while the indicator is hidden');
  assert.match(service,/registerContentObserver\(Settings\.Secure\.getUriFor\(ListenerNotifications\.LOCK_SCREEN_SHOW_NOTIFICATIONS\)/,'observes the device-wide lock-screen notification setting');
  assert.match(notifications,/lockScreenShowsNotifications\(context\)\);/,'the lock-screen notification setting is a visibility input');
 });
