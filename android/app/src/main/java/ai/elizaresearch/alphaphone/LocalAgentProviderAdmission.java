@@ -152,6 +152,8 @@ final class LocalAgentProviderAdmission {
   if(generation==null)throw new SecurityException("Cloud provider admission changed");
   String reference=cloudAccountRef(selected);JSONArray account=new JSONArray(reference);
   if(account.length()!=4||!"cloud".equals(account.getString(0))||!"production".equals(account.getString(1)))throw new SecurityException("Cloud account admission invalid");
+  // A valid Cloud inference account can exist before an organization/Google grant.
+  if(account.getString(3).isEmpty())return null;
   JSONObject result=new JSONObject().put("credentialId",credentialId).put("userId",account.getString(2)).put("organizationId",account.getString(3)).put("accountRef",reference).put("sessionGeneration",generation);
   JSONObject credential=new JSONObject(cloudSaved);if(credential.has("expiresAt"))result.put("expiresAt",credential.get("expiresAt"));
   return result;

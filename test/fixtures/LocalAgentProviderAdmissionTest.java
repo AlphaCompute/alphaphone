@@ -125,6 +125,7 @@ public final class LocalAgentProviderAdmissionTest {
   check(directSelection.equals(conflict.provider),"a newer selection is never replaced");
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(new Store(),ID,"cerebras/llama",()->NOW),"Cloud binding refuses other models");
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(store,OTHER,"cerebras/qwen-3.8-27b",()->NOW),"Cloud binding refuses another credential id");
+  check(LocalAgentProviderAdmission.managedGoogleBinding(bound,store.cloud,NOW)==null,"Cloud without an organization keeps inference but does not enable Google tools");
   String googleCloud=cloud(ID,NOW+60_000);
   JSONObject googleIdentity=new JSONObject().put("userId","3b241101-e2bb-4255-8caf-4136c566a962").put("organizationId","6ba7b810-9dad-41d1-80b4-00c04fd430c8");
   String googleSelected=LocalAgentProviderAdmission.admit(null,selected.toString(),googleCloud,googleIdentity);
