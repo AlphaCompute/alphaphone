@@ -9,7 +9,13 @@ package ai.elizaresearch.alphaphone.sense;
  * monotonic {@code SystemClock.elapsedRealtime}. A lease is generation-bound: acquiring starts a new
  * generation that is not fresh until SystemUI acknowledges a visible surface, an expired, revoked or
  * replaced generation can never be renewed again (SystemUI must acquire anew), and a lease from
- * another boot never counts. The lease carries visibility facts only: no audio, transcript,
+ * another boot never counts.
+ *
+ * SystemUI also reports the default display state. With the display fully off, or dozing (AOD)
+ * without a visible Listening surface, nothing can show the indicator: the verdict is
+ * {@link Loss#DISPLAY_OFF}, which pauses capture and resumes it when a visible surface is
+ * acknowledged again. Such acknowledgements still prove SystemUI is alive and extend the lease.
+ * A surface hidden while the display is on is a loss that stays stopped. The lease carries visibility facts only: no audio, transcript,
  * consent or resume command. It can only withhold capture; it never turns listening on.
  */
 public final class IndicatorLease {
@@ -17,7 +23,9 @@ public final class IndicatorLease {
  public static final String AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
  public static final String ACQUIRE="acquire",RENEW="renew",REVOKE="revoke";
  public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
-  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_RENEW_MS="renewMs";
+  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_RENEW_MS="renewMs",KEY_DISPLAY="display";
+ /** Default display as SystemUI reports it: on, dozing (AOD) or fully off. Unknown values count as off. */
+ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
  /** The only package admitted as the lease holder; it must also be platform-signed (see {@link #admitsController}). */
  public static final String SYSTEMUI_PACKAGE="com.android.systemui";
  /** SystemUI renews this often while a surface is visible. */
@@ -28,7 +36,9 @@ public final class IndicatorLease {
  public static final long ATTRIBUTION_GRACE_MS=2_500;
 
  /** Why the lease does not currently permit capture. {@link #NONE} means it does. */
- public enum Loss{NONE,NEVER_ACQUIRED,PENDING,EXPIRED,BINDER_DIED,REVOKED,REPLACED,OTHER_BOOT,SURFACE_HIDDEN,CHIP_HIDDEN,UNATTRIBUTED}
+ public enum Loss{NONE,NEVER_ACQUIRED,PENDING,EXPIRED,BINDER_DIED,REVOKED,REPLACED,OTHER_BOOT,SURFACE_HIDDEN,CHIP_HIDDEN,UNATTRIBUTED,
+  /** Display off, or AOD without a visible Listening surface: a pause that ends on a visible acknowledgement. */
+  DISPLAY_OFF}
 
  private long generation;
  private boolean live;
@@ -36,6 +46,7 @@ public final class IndicatorLease {
  private long expiresAt;
  private long boot=Long.MIN_VALUE;
  private boolean surfaceVisible,chipVisible,recordingObserved;
+ private String display=DISPLAY_ON;
  private Loss lastLoss=Loss.NEVER_ACQUIRED;
 
  /** Starts a new generation. Any previous generation is replaced and can never be renewed. */
@@ -43,7 +54,7 @@ public final class IndicatorLease {
   if(live)lastLoss=Loss.REPLACED;
   generation++;
   live=true;acknowledged=false;this.boot=boot;
-  surfaceVisible=chipVisible=recordingObserved=false;
+  surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;
   return generation;
  }
 
@@ -53,11 +64,18 @@ public final class IndicatorLease {
   * then acquire again. A refused or hidden acknowledgement never extends the lease.
   */
  public synchronized boolean renew(long gen,long now,long boot,boolean surface,boolean chip,boolean recording){
+  return renew(gen,now,boot,surface,chip,recording,DISPLAY_ON);
+ }
+
+ /** As above with SystemUI's display state ({@link #DISPLAY_ON}, {@link #DISPLAY_DOZE}, {@link #DISPLAY_OFF}). */
+ public synchronized boolean renew(long gen,long now,long boot,boolean surface,boolean chip,boolean recording,String displayState){
   if(!live||gen!=generation)return false;
   if(boot!=this.boot){end(Loss.OTHER_BOOT);return false;}
   if(acknowledged&&now>=expiresAt){end(Loss.EXPIRED);return false;}
   surfaceVisible=surface;chipVisible=chip;recordingObserved=recording;
-  if(surface){acknowledged=true;expiresAt=now+TTL_MS;}
+  display=DISPLAY_ON.equals(displayState)||DISPLAY_DOZE.equals(displayState)?displayState:DISPLAY_OFF;
+  // A visible surface, or a live SystemUI reporting the display off/dozing, keeps the lease alive.
+  if(surface||!DISPLAY_ON.equals(display)){acknowledged=true;expiresAt=now+TTL_MS;}
   return true;
  }
 
@@ -67,7 +85,7 @@ public final class IndicatorLease {
  /** SystemUI's token binder died: its process is gone and nothing it showed can be trusted. */
  public synchronized void binderDied(long gen){if(live&&gen==generation)end(Loss.BINDER_DIED);}
 
- private void end(Loss reason){live=false;acknowledged=false;lastLoss=reason;surfaceVisible=chipVisible=recordingObserved=false;}
+ private void end(Loss reason){live=false;acknowledged=false;lastLoss=reason;surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;}
 
  /**
   * Whether capture may run now. {@code requireAttribution}: the listener has been capturing
@@ -79,6 +97,7 @@ public final class IndicatorLease {
   if(boot!=this.boot){end(Loss.OTHER_BOOT);return lastLoss;}
   if(!acknowledged)return Loss.PENDING;
   if(now>=expiresAt){end(Loss.EXPIRED);return lastLoss;}
+  if(DISPLAY_OFF.equals(display)||DISPLAY_DOZE.equals(display)&&!surfaceVisible)return Loss.DISPLAY_OFF;
   if(!surfaceVisible)return Loss.SURFACE_HIDDEN;
   if(recordingObserved&&!chipVisible)return Loss.CHIP_HIDDEN;
   if(requireAttribution&&!(recordingObserved&&chipVisible))return Loss.UNATTRIBUTED;

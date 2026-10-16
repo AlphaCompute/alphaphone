@@ -11,5 +11,6 @@ public final class Bundle {
  public boolean getBoolean(String key,boolean fallback){Object v=values.get(key);return v instanceof Boolean?(Boolean)v:fallback;}
  public void putString(String key,String value){values.put(key,value);}
  public String getString(String key){Object v=values.get(key);return v instanceof String?(String)v:null;}
+ public String getString(String key,String fallback){String v=getString(key);return v==null?fallback:v;}
  public java.util.Set<String> keySet(){return values.keySet();}
 }

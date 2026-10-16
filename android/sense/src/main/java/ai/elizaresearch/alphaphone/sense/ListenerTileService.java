@@ -17,7 +17,7 @@ public final class ListenerTileService extends TileService {
  @Override public void onClick(){
   ListenerPolicy.State state=Listener.state(this);
   ListenerStore store=new ListenerStore(this);
-  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL){
+  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL||state==ListenerPolicy.State.PAUSED_DISPLAY_OFF){
    store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
    Listener.refresh(this);
    render();

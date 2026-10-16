@@ -33,6 +33,11 @@ test('staged source and exact patch stay bound; independent monitor does not tru
  assert.match(lease,/content:\/\/"\+AlphaListeningPolicy\.LEASE_AUTHORITY/);assert.match(lease,/new Binder\(\)/);assert.match(lease,/leaseTarget\(/);
  assert.doesNotMatch(lease.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm,''),/sense\.control|LISTENER_CONTROL|RECORD_AUDIO|pcm|transcript|resume|consent|turnOn|enable/i,'acknowledgements carry visibility only');
  const view=fs.readFileSync(`${bundle}/source/AlphaListeningChipView.java`,'utf8');
+ // The consumer's shade check matches the producer's indicator notification.
+ const producer=fs.readFileSync('android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/ListenerNotifications.java','utf8');
+ assert.match(producer,/CHANNEL_ACTIVE="listening-indicator"/);assert.match(producer,/ACTIVE_ID=1,/);assert.match(producer,/\.setOngoing\(true\)/);
+ const policy=fs.readFileSync(`${bundle}/source/AlphaListeningPolicy.java`,'utf8');
+ assert.match(policy,/notificationId==1&&"listening-indicator"\.equals\(channel\)&&ongoing/);
  for(const hook of [/onVisibilityAggregated/,/onWindowVisibilityChanged/,/onDetachedFromWindow\(\)\{AlphaListeningController\.detach/,/getGlobalVisibleRect/,/isShown\(\)/])assert.match(view,hook);
 });
 const java=name=>path.join(javaHome(),'bin',name);
@@ -45,8 +50,10 @@ test('prepared Java chip sources type-check against SystemUI stubs and the lease
   const sources=fs.readdirSync(`${bundle}/source`).filter(name=>name.endsWith('.java')).map(name=>`${bundle}/source/${name}`);
   assert.equal(sources.length,4);
   execFileSync(java('javac'),['--release','11','-Xlint:all','-Werror','-Xlint:-serial','-d',temp,...stubs('test/fixtures/systemui-chip-jvm'),...sources,
-   'android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/IndicatorLease.java','test/fixtures/SystemUiLeaseClientTest.java'],{timeout:60000});
+   'android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/IndicatorLease.java','test/fixtures/SystemUiLeaseClientTest.java','test/fixtures/SystemUiAcknowledgementTest.java'],{timeout:60000});
   assert.match(execFileSync(java('java'),['-cp',temp,'com.android.systemui.privacy.SystemUiLeaseClientTest'],{encoding:'utf8',timeout:60000}),/^PASS SystemUI lease client/);
+  // Lock screen/AOD keyguard chip, unlocked status bar, expanded shade, immersive mode and display state.
+  assert.match(execFileSync(java('java'),['-cp',temp,'com.android.systemui.privacy.SystemUiAcknowledgementTest'],{encoding:'utf8',timeout:60000}),/^PASS SystemUI acknowledgement/);
  }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
 test('the exact patch creates the staged chip sources byte for byte',()=>{

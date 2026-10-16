@@ -4,16 +4,24 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.*;
 import android.content.pm.*;
+import android.hardware.display.DisplayManager;
 import android.media.*;
 import android.os.*;
 import android.service.notification.StatusBarNotification;
+import android.view.Display;
+import android.view.WindowInsets;
+import com.android.internal.statusbar.LetterboxDetails;
+import com.android.internal.view.AppearanceRegion;
 import com.android.systemui.CoreStartable;
 import com.android.systemui.dagger.SysUISingleton;
 import com.android.systemui.dagger.qualifiers.Background;
 import com.android.systemui.dagger.qualifiers.Main;
+import com.android.systemui.plugins.statusbar.StatusBarStateController;
 import com.android.systemui.res.R;
 import com.android.systemui.settings.UserTracker;
+import com.android.systemui.statusbar.CommandQueue;
 import com.android.systemui.statusbar.NotificationListener;
+import com.android.systemui.statusbar.policy.KeyguardStateController;
 import java.security.MessageDigest;
 import java.util.*;
 import java.util.concurrent.Executor;
@@ -31,7 +39,37 @@ public final class AlphaListeningController implements CoreStartable {
  private final Context context;private final AudioManager audio;private final Handler main;
  private final UserTracker users;private final NotificationListener notifications;
  private final AlphaListeningLease lease;
+ private final StatusBarStateController statusBar;private final KeyguardStateController keyguard;
+ private final CommandQueue commands;private final DisplayManager displays;
  private int uid=-1;private boolean active;
+ /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
+ private int requestedVisibleTypes=~0;private boolean statusBarTransient;
+ private final StatusBarStateController.StateListener shadeAndDoze=new StatusBarStateController.StateListener(){
+  @Override public void onExpandedChanged(boolean expanded){surfaceChanged();}
+  @Override public void onDozingChanged(boolean dozing){surfaceChanged();}
+  @Override public void onStateChanged(int state){surfaceChanged();}
+ };
+ private final KeyguardStateController.Callback keyguardShowing=new KeyguardStateController.Callback(){
+  @Override public void onKeyguardShowingChanged(){surfaceChanged();}
+ };
+ private final DisplayManager.DisplayListener displayState=new DisplayManager.DisplayListener(){
+  @Override public void onDisplayAdded(int id){}
+  @Override public void onDisplayRemoved(int id){}
+  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)surfaceChanged();}
+ };
+ private final CommandQueue.Callbacks systemBars=new CommandQueue.Callbacks(){
+  @Override public void onSystemBarAttributesChanged(int displayId,int appearance,AppearanceRegion[] regions,boolean navbarColorManagedByIme,
+    int behavior,int requestedVisibleTypes,String packageName,LetterboxDetails[] letterboxDetails){
+   if(displayId!=Display.DEFAULT_DISPLAY)return;
+   AlphaListeningController.this.requestedVisibleTypes=requestedVisibleTypes;surfaceChanged();
+  }
+  @Override public void showTransient(int displayId,int types,boolean isGestureOnSystemBar){
+   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=true;surfaceChanged();}
+  }
+  @Override public void abortTransient(int displayId,int types){
+   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=false;surfaceChanged();}
+  }
+ };
  private final AudioManager.AudioRecordingCallback recording=new AudioManager.AudioRecordingCallback(){
   @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){refresh(configs);}
  };
@@ -40,7 +78,10 @@ public final class AlphaListeningController implements CoreStartable {
   @Override public void onUserChanged(int user,Context userContext){refreshCurrent();}
  };
  @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
-   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
+   UserTracker users,NotificationListener notifications,StatusBarStateController statusBar,KeyguardStateController keyguard,
+   CommandQueue commands,DisplayManager displays){
+  this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
+  this.statusBar=statusBar;this.keyguard=keyguard;this.commands=commands;this.displays=displays;
   lease=new AlphaListeningLease(context,main,background,this::acknowledgement);}
  @Override public void start(){
   instance=this;
@@ -49,17 +90,49 @@ public final class AlphaListeningController implements CoreStartable {
   IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
   context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refreshCurrent();}},filter,null,main,Context.RECEIVER_NOT_EXPORTED);
   refreshCurrent();
+  statusBar.addCallback(shadeAndDoze);
+  keyguard.addCallback(keyguardShowing);
+  displays.registerDisplayListener(displayState,main);
+  commands.addCallback(systemBars);
   lease.start();
  }
  static void attach(AlphaListeningChipView view){views.add(view);if(instance!=null)instance.refreshCurrent();else view.render(false);}
  static void detach(AlphaListeningChipView view){views.remove(view);surfaceChanged();}
  static void surfaceChanged(){if(instance!=null)instance.lease.now();}
- /** Main thread: what SystemUI itself measures. Unverified identity or user switching acknowledges nothing. */
+ /**
+  * Main thread: what SystemUI itself measures and reports. Unverified identity or user switching
+  * acknowledges nothing. Lock screen and AOD use the keyguard chip; the unlocked status bar uses
+  * the status-bar chip unless the shade covers it or an app hid the status bar; the expanded shade
+  * counts only through the listener's verified ongoing notification. The display state lets the
+  * listener pause (not stop) while nothing can be shown.
+  */
  private AlphaListeningLease.Acknowledgement acknowledgement(){
   boolean admitted=uid!=-1&&!users.isUserSwitching()&&users.getUserId()==0;
+  boolean locked=keyguard.isShowing(),shade=statusBar.isExpanded();
+  boolean hidden=AlphaListeningPolicy.statusBarHidden(requestedVisibleTypes,WindowInsets.Type.statusBars(),statusBarTransient);
   boolean surface=false,chip=false;
-  for(AlphaListeningChipView view:views){boolean shown=view.chipVisible();chip|=shown;surface|=shown||view.hostVisible();}
-  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active);
+  for(AlphaListeningChipView view:views){
+   boolean shown=view.chipVisible(),host=shown||view.hostVisible();
+   if(view.keyguardSurface()){chip|=AlphaListeningPolicy.keyguardCounts(shown,locked,shade);surface|=AlphaListeningPolicy.keyguardCounts(host,locked,shade);}
+   else{chip|=AlphaListeningPolicy.statusBarCounts(shown,locked,shade,hidden);surface|=AlphaListeningPolicy.statusBarCounts(host,locked,shade,hidden);}
+  }
+  if(AlphaListeningPolicy.shadeCounts(shade,shadeNotificationShown())){surface=true;chip=true;}
+  Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
+  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,
+   AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState()));
+ }
+
+ private boolean shadeNotificationShown(){
+  try{
+   StatusBarNotification[] entries=notifications.getActiveNotifications();
+   if(entries==null)return false;
+   for(StatusBarNotification entry:entries){
+    Notification notification=entry.getNotification();
+    if(AlphaListeningPolicy.shadeNotification(uid,entry.getUid(),entry.getPackageName(),entry.getId(),notification.getChannelId(),
+      (notification.flags&Notification.FLAG_ONGOING_EVENT)!=0))return true;
+   }
+  }catch(RuntimeException unavailable){}
+  return false;
  }
  private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);lease.now();}
  private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}

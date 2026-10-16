@@ -30,7 +30,8 @@ public final class SystemUiLeaseClientTest {
    Bundle out=new Bundle();
    if(IndicatorLease.ACQUIRE.equals(method)){token=extras.getBinder(IndicatorLease.KEY_TOKEN);check(token!=null,"token");generation=lease.acquire(BOOT);out.putLong(IndicatorLease.KEY_GENERATION,generation);}
    else if(IndicatorLease.RENEW.equals(method))out.putBoolean(IndicatorLease.KEY_ACCEPTED,lease.renew(extras.getLong(IndicatorLease.KEY_GENERATION,-1),clock.now,BOOT,
-    extras.getBoolean(IndicatorLease.KEY_SURFACE,false),extras.getBoolean(IndicatorLease.KEY_CHIP,false),extras.getBoolean(IndicatorLease.KEY_RECORDING,false)));
+    extras.getBoolean(IndicatorLease.KEY_SURFACE,false),extras.getBoolean(IndicatorLease.KEY_CHIP,false),extras.getBoolean(IndicatorLease.KEY_RECORDING,false),
+    extras.getString(IndicatorLease.KEY_DISPLAY,IndicatorLease.DISPLAY_OFF)));
    else if(IndicatorLease.REVOKE.equals(method))lease.revoke(extras.getLong(IndicatorLease.KEY_GENERATION,-1));
    else throw new IllegalArgumentException(method);
    return out;
@@ -40,7 +41,7 @@ public final class SystemUiLeaseClientTest {
   IndicatorLease.Loss verdict(boolean attribution){return lease.verdict(clock.now,BOOT,attribution);}
  }
 
- static int uid=UID;static boolean surface=true,chip=false,recording=false;
+ static int uid=UID;static boolean surface=true,chip=false,recording=false;static String display=AlphaListeningPolicy.DISPLAY_ON;
 
  static ProviderInfo provider(String pkg,int owner){ProviderInfo info=new ProviderInfo();info.packageName=pkg;info.applicationInfo=new ApplicationInfo();info.applicationInfo.uid=owner;return info;}
 
@@ -50,18 +51,20 @@ public final class SystemUiLeaseClientTest {
    &&AlphaListeningPolicy.KEY_TOKEN.equals(IndicatorLease.KEY_TOKEN)&&AlphaListeningPolicy.KEY_GENERATION.equals(IndicatorLease.KEY_GENERATION)
    &&AlphaListeningPolicy.KEY_ACCEPTED.equals(IndicatorLease.KEY_ACCEPTED)&&AlphaListeningPolicy.KEY_SURFACE.equals(IndicatorLease.KEY_SURFACE)
    &&AlphaListeningPolicy.KEY_CHIP.equals(IndicatorLease.KEY_CHIP)&&AlphaListeningPolicy.KEY_RECORDING.equals(IndicatorLease.KEY_RECORDING)
+   &&AlphaListeningPolicy.KEY_DISPLAY.equals(IndicatorLease.KEY_DISPLAY)&&AlphaListeningPolicy.DISPLAY_ON.equals(IndicatorLease.DISPLAY_ON)
+   &&AlphaListeningPolicy.DISPLAY_DOZE.equals(IndicatorLease.DISPLAY_DOZE)&&AlphaListeningPolicy.DISPLAY_OFF.equals(IndicatorLease.DISPLAY_OFF)
    &&AlphaListeningPolicy.LEASE_RENEW_MS==IndicatorLease.RENEW_MS&&AlphaListeningPolicy.LEASE_RENEW_MS*2<IndicatorLease.TTL_MS,"SystemUI and listener share one lease contract");
   Handler main=new Handler();main.now=1_000_000;
   Context context=new Context();Listener listener=new Listener(main);
   context.resolver.handler=(uri,method,arg,extras)->{check(("content://"+IndicatorLease.AUTHORITY).equals(uri.toString()),"only the lease authority");return listener.call(method,extras);};
   context.packages.provider=provider(AlphaListeningPolicy.PACKAGE,UID);
-  AlphaListeningLease client=new AlphaListeningLease(context,main,Runnable::run,()->new AlphaListeningLease.Acknowledgement(uid,surface,chip,recording));
+  AlphaListeningLease client=new AlphaListeningLease(context,main,Runnable::run,()->new AlphaListeningLease.Acknowledgement(uid,surface,chip,recording,display));
   client.now();main.advanceTo(main.now);
   check(listener.calls.isEmpty(),"nothing is sent before start");
   client.start();main.advanceTo(main.now);
   check(listener.calls.equals(List.of("acquire","renew")),"acquire then acknowledge: "+listener.calls);
   check(listener.keys.get(0).equals(Set.of(IndicatorLease.KEY_TOKEN)),"acquire carries only the death token");
-  check(listener.keys.get(1).equals(Set.of(IndicatorLease.KEY_GENERATION,IndicatorLease.KEY_SURFACE,IndicatorLease.KEY_CHIP,IndicatorLease.KEY_RECORDING)),"acknowledgements carry visibility facts only");
+  check(listener.keys.get(1).equals(Set.of(IndicatorLease.KEY_GENERATION,IndicatorLease.KEY_SURFACE,IndicatorLease.KEY_CHIP,IndicatorLease.KEY_RECORDING,IndicatorLease.KEY_DISPLAY)),"acknowledgements carry visibility facts only");
   check(listener.verdict(false)==IndicatorLease.Loss.NONE,"visible surface admits a start");
   // ---- renewal ----
   long start=main.now;main.advanceTo(start+30_000);
@@ -74,6 +77,15 @@ public final class SystemUiLeaseClientTest {
   check(listener.verdict(false)==IndicatorLease.Loss.CHIP_HIDDEN,"a hidden chip is reported at once, not at the next renewal");
   recording=false;chip=true;client.now();main.advanceTo(main.now);
   check(listener.verdict(true)==IndicatorLease.Loss.UNATTRIBUTED,"a visible chip without SystemUI's own recording observation is never acknowledged");
+  // ---- screen off: AOD keeps the lease, a dark display pauses and a visible surface resumes ----
+  recording=true;chip=true;display=AlphaListeningPolicy.display(3);client.now();main.advanceTo(main.now+10_000);
+  check(listener.verdict(true)==IndicatorLease.Loss.NONE,"AOD (doze) showing the chip keeps the lease");
+  display=AlphaListeningPolicy.display(1);surface=false;chip=false;client.now();main.advanceTo(main.now);
+  check(listener.verdict(false)==IndicatorLease.Loss.DISPLAY_OFF,"a dark display is reported at once as a pause, not a loss");
+  main.advanceTo(main.now+30_000);
+  check(listener.verdict(false)==IndicatorLease.Loss.DISPLAY_OFF,"SystemUI keeps the lease alive while the display is off");
+  display=AlphaListeningPolicy.display(2);surface=true;chip=true;client.now();main.advanceTo(main.now);
+  check(listener.verdict(true)==IndicatorLease.Loss.NONE,"the lock screen shown again resumes the lease");
   // ---- hidden/detached surface ----
   recording=true;chip=true;client.now();main.advanceTo(main.now);check(listener.verdict(true)==IndicatorLease.Loss.NONE,"restored");
   surface=false;chip=false;client.now();main.advanceTo(main.now);

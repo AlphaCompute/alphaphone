@@ -1,4 +1,4 @@
-# Independent Listening chip: development source candidate
+# Independent Listening chip: source candidate, required by staged listener images
 
 Issue #424 and ADR 0001 require an indicator independent of listener self-report
 and the normal AppOps privacy animation. This source candidate connects the
@@ -97,6 +97,33 @@ background executor:
 - `chipVisible`: the rendered chip itself passes the same test, and is sent as
   true only while SystemUI itself observes the listener's unsilenced recording.
 - `recordingObserved`: SystemUI's own `AudioRecordingCallback` attribution.
+- `display`: the default display state from `DisplayManager` (`Display.STATE_ON`
+  and `ON_SUSPEND` are `on`; `DOZE` and `DOZE_SUSPEND` are `doze`, i.e. AOD; `OFF`,
+  `VR`, unknown and anything else are `off`).
+
+Which views count depends on what SystemUI positively reports, not only on view
+measurement (`AlphaListeningPolicy.statusBarCounts`/`keyguardCounts`/`shadeCounts`):
+
+- **Lock screen and AOD.** The keyguard indication-area chip (created in code by
+  `DefaultIndicationAreaSection`) counts while `KeyguardStateController.isShowing()`
+  and the shade is collapsed. It is the surface on the lock screen and in doze;
+  in AOD it is measured like any other view. The keyguard status bar
+  (`KeyguardStatusBarView`) is not patched: that needs an exact preimage of
+  another pinned file, and the indication-area chip already covers keyguard and AOD.
+- **Unlocked status bar.** The status-bar chip (inflated from `status_bar.xml`)
+  counts only while the keyguard is not showing, the shade is collapsed and no app
+  has hidden the status bar. Immersive mode is read from
+  `CommandQueue.Callbacks.onSystemBarAttributesChanged` (`requestedVisibleTypes`
+  without `WindowInsets.Type.statusBars()` on the default display), with
+  `showTransient`/`abortTransient` for a swipe reveal. A hidden status bar counts
+  as not visible even though its views still measure visible.
+- **Expanded shade.** `StatusBarStateController.isExpanded()` covers both chips.
+  It counts only when SystemUI's `NotificationListener` holds the verified
+  listener's ongoing indicator notification (its UID and package, id 1, channel
+  `listening-indicator`), which the expanded shade shows. Otherwise it is hidden.
+
+Shade, doze, keyguard, display and system-bar callbacks trigger an immediate
+acknowledgement.
 
 It acknowledges nothing (and revokes) while the listener identity is unverified,
 the foreground user is not user 0 or a user switch is in progress, and it sends
@@ -123,7 +150,22 @@ the lease cannot be renewed through the existing control provider. The lease:
   acknowledgement was accepted; it carries no audio, transcript, consent, status
   or resume command, and it cannot start, resume or enable listening.
 
-`ListenerPolicy` adds two states. Without a fresh lease every microphone-holding
+**Display off and AOD.** With the display fully off, or dozing (AOD) without a
+visible Listening surface, nothing can show the indicator. The lease verdict is
+then `DISPLAY_OFF`. That is a pause, not a loss: the state is `PAUSED_DISPLAY_OFF`
+("Paused — screen off without Always-on display"). The notification asks the user
+to turn on Always-on display, the microphone is released, and the pause is not
+latched. SystemUI keeps renewing while the display is off, which proves it is
+alive. Capture resumes by itself as soon as SystemUI acknowledges a visible
+surface again: the AOD or lock-screen chip, or the status bar after unlock. With
+AOD showing the chip, listening simply continues with the screen off. A display
+state that is missing or unknown counts as off. A surface hidden while the display
+is on, an expiry, SystemUI death or a revoke stay sticky (below), including across
+later display changes. The consent screen explains this and links the
+Always-on display setting (the AOSP lock-screen settings page, display settings
+as fallback).
+
+`ListenerPolicy` adds three states (`PAUSED_DISPLAY_OFF` above). Without a fresh lease every microphone-holding
 state becomes `INDICATOR_UNAVAILABLE` (no capture; "Listening waits for the
 system indicator"). Losing the lease while an `AudioRecord` is open latches
 `STOPPED_INDICATOR_LOST`: capture stops and a returning lease does not restart
@@ -143,13 +185,21 @@ outlives a reboot or listener restart, which already require a fresh opt-in.
 **Consequence.** A listener on an image without this chip patch never receives a
 lease and never captures; it reports "Listening waits for the system indicator".
 This is intended: the independent indicator is a precondition, not an extra.
+Listener staging therefore includes the chip in every staged product, production
+included (see below).
 
-**Limits.** View-level measurement cannot see every occlusion. A window above the
-status bar or keyguard (for example an overlay or the expanded shade), surface-
-leash hiding of the status bar in immersive mode and display-off/doze behavior
-may not change the view facts SystemUI reads, and may conversely stop listening
-when the screen turns off. These need image tests and may require wiring
-SystemUI's status-bar mode and shade-expansion state into the acknowledgement.
+**Limits.** Measured: view attachment, window and aggregated visibility,
+ancestor visibility, effective alpha, the global visible rectangle, keyguard
+showing, shade expansion, the default display state and immersive status-bar
+requests. Not measured: an arbitrary third-party window drawn above the status
+bar or keyguard, partial shade drags short of `isExpanded()`, QS-only states,
+rotation/cutout overlap, and the time between a keyguard transition hiding the
+status-bar chip and the keyguard chip appearing. If that transition reports a
+hidden surface while the display is still on, it stops listening (sticky) rather
+than pausing. Immersive mode stops listening the same way, until the user resumes,
+because the indicator is hidden while the display is on. Whether real SystemUI
+delivers these callbacks in this order, and the exact callback signatures at the
+pinned revision, are unverified until SystemUI compiles and runs on an image.
 The lease also does not prove that a person can see the chip.
 
 **Host checks only.** `test/aosp-listening-chip.test.mjs` type-checks the four
@@ -157,7 +207,11 @@ Java chip sources (`-Werror`) against hand-written Android/SystemUI stubs in
 `test/fixtures/systemui-chip-jvm` (including hidden APIs SystemUI uses), runs the
 SystemUI lease client against the listener's real `IndicatorLease` rules (renewal,
 hidden chip/surface, hang, binder death, identity loss, provider substitution,
-unavailable provider), and checks that the exact patch creates the staged chip
+unavailable provider, display off/AOD pause and resume) and the controller's
+acknowledgement composition (`SystemUiAcknowledgementTest`: unlocked status bar,
+immersive with transient reveal, expanded shade with and without the verified
+notification, lock screen, AOD with and without the chip, display off and
+unknown). It also checks that the exact patch creates the staged chip
 sources byte for byte. These stubs mirror reviewed signatures; they are **not**
 the pinned SystemUI tree, so Dagger wiring (the new `@Background Executor`
 constructor argument), resources and the Kotlin binder are compiled only by a
@@ -167,12 +221,20 @@ the Android 36 platform jar. None of this executes Android, SystemUI or an image
 
 ## Exact source application
 
-The optional chip bundle is separate from the microphone-op patch in
+The chip bundle is separate from the microphone-op patch in
 [SystemUI source preparation](aosp-listener-systemui.md). Both target the same
-locked `frameworks/base` revision and touch disjoint files. Listener staging copies
-both bundles and generates the exact certificate resource overlay in the optional
-`listener/systemui/chip/overlay` directory. The ordinary listener makefile does not
-include it: this avoids introducing an unknown resource into unpatched SystemUI.
+locked `frameworks/base` revision and touch disjoint files. Listener staging
+(`stageListener`, used by `scripts/stage-aosp.mjs` in production and development)
+copies both bundles, generates the exact certificate resource overlay in
+`listener/systemui/chip/overlay`, appends an include of
+`listener/systemui/chip/chip.mk` to the staged `product.mk` **by default**, and
+writes `listener/systemui/required-source-patches.json`. That file records the
+chip bundle (project, revision, patch hash) as a required SystemUI source patch,
+with `sourcePatched: false` and `imageBuilt: false`. The overlay names a resource
+that only the patched SystemUI defines, so the image's SystemUI must be built with
+the chip patch. Staging never patches AOSP source. Only a development caller that
+explicitly passes `systemuiChip: false` to `stageListener` omits it; the record
+then says the listener will never capture. There is no command-line opt-out.
 
 First verify/stage the original complete source as documented there. Then prepare
 the chip overlay outside that source:
@@ -184,11 +246,10 @@ node scripts/aosp-listener-systemui.mjs --source /absolute/original-aosp --chip 
 Copy its manifest-listed files only into the separate disposable build copy,
 after checking that copy's preimages with `--source … --chip`. Verify the resulting
 files with `--source … --chip --after`. Prepare/copy/verify the separate op-list
-overlay as well. Only in that patched disposable development product, explicitly
-include `vendor/alphaphone/listener/systemui/chip/chip.mk` to activate the generated
-certificate overlay. Without this opt-in the empty resource refuses identity and
-the chip stays inactive. This is a development source experiment, not a release
-activation. Never replace the complete baseline receipt with either derived
+overlay as well. The staged product already includes
+`vendor/alphaphone/listener/systemui/chip/chip.mk`, which activates the generated
+certificate overlay. Without it the empty resource refuses identity, the chip stays
+inactive and the listener never captures. Never replace the complete baseline receipt with either derived
 receipt. The chip receipt verifies only its nine listed files; all other files
 in the build copy remain outside its verification scope. Newly added source files
 must be absent in the original input; collisions and changed bytes are refused.

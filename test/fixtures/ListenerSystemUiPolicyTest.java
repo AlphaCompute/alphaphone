@@ -42,6 +42,23 @@ public final class ListenerSystemUiPolicyTest {
   check(AlphaListeningPolicy.leaseTarget(10042,PKG,10042),"admitted listener provider");
   check(!AlphaListeningPolicy.leaseTarget(10042,"com.example",10042)&&!AlphaListeningPolicy.leaseTarget(10042,PKG,10043)&&!AlphaListeningPolicy.leaseTarget(-1,PKG,-1),"never another provider");
   check(AlphaListeningPolicy.chipAcknowledged(true,true)&&!AlphaListeningPolicy.chipAcknowledged(false,true)&&!AlphaListeningPolicy.chipAcknowledged(true,false),"chip acknowledged only with SystemUI's own recording observation");
-  System.out.println("PASS listener SystemUI policy: identity, recording, pause-only capability, lease visibility");
+  // ---- display, keyguard/AOD, shade and immersive ----
+  check(AlphaListeningPolicy.display(2).equals("on")&&AlphaListeningPolicy.display(6).equals("on"),"display on");
+  check(AlphaListeningPolicy.display(3).equals("doze")&&AlphaListeningPolicy.display(4).equals("doze"),"AOD");
+  for(int state:new int[]{0,1,5,7,-1})check(AlphaListeningPolicy.display(state).equals("off"),"off or unknown: "+state);
+  check(AlphaListeningPolicy.keyguardCounts(true,true,false),"lock screen / AOD chip");
+  check(!AlphaListeningPolicy.keyguardCounts(true,false,false),"keyguard chip after unlock does not count");
+  check(!AlphaListeningPolicy.keyguardCounts(true,true,true),"shade covers the lock-screen chip");
+  check(AlphaListeningPolicy.statusBarCounts(true,false,false,false),"unlocked status bar");
+  check(!AlphaListeningPolicy.statusBarCounts(true,true,false,false),"status-bar chip does not count on the keyguard");
+  check(!AlphaListeningPolicy.statusBarCounts(true,false,true,false),"expanded shade covers the status bar");
+  check(!AlphaListeningPolicy.statusBarCounts(true,false,false,true),"immersive app hid the status bar");
+  check(AlphaListeningPolicy.statusBarHidden(0,1,false)&&!AlphaListeningPolicy.statusBarHidden(0,1,true)&&!AlphaListeningPolicy.statusBarHidden(1,1,false),"immersive, transient reveal, normal");
+  check(AlphaListeningPolicy.shadeCounts(true,true)&&!AlphaListeningPolicy.shadeCounts(true,false)&&!AlphaListeningPolicy.shadeCounts(false,true),"shade counts only through the verified notification");
+  check(AlphaListeningPolicy.shadeNotification(10042,10042,PKG,1,"listening-indicator",true),"listener's ongoing indicator");
+  check(!AlphaListeningPolicy.shadeNotification(10042,10043,PKG,1,"listening-indicator",true)&&!AlphaListeningPolicy.shadeNotification(10042,10042,"x",1,"listening-indicator",true)
+   &&!AlphaListeningPolicy.shadeNotification(10042,10042,PKG,2,"listening-indicator",true)&&!AlphaListeningPolicy.shadeNotification(10042,10042,PKG,1,"listener-status",true)
+   &&!AlphaListeningPolicy.shadeNotification(10042,10042,PKG,1,"listening-indicator",false)&&!AlphaListeningPolicy.shadeNotification(-1,-1,PKG,1,"listening-indicator",true),"no other notification counts");
+  System.out.println("PASS listener SystemUI policy: identity, recording, pause-only capability, lease visibility, display/shade/immersive");
  }
 }

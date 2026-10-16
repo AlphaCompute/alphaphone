@@ -25,8 +25,42 @@ public final class AlphaListeningPolicy {
  public static final String LEASE_AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
  public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
  public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
-  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved";
+  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display";
+ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
  public static final long LEASE_RENEW_MS=1_000;
+ /**
+  * Default display state (android.view.Display.STATE_*): ON 2 and ON_SUSPEND 6 are on; DOZE 3 and
+  * DOZE_SUSPEND 4 are AOD; OFF 1, VR 5, UNKNOWN 0 and anything else count as off (capture pauses).
+  */
+ public static String display(int state){
+  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;default:return DISPLAY_OFF;}
+ }
+ /**
+  * The status-bar chip counts only while the keyguard is not showing, the shade is collapsed and
+  * no app has hidden the status bar (immersive) without a transient reveal. SystemUI positively
+  * reports each of those; a covered or hidden status bar is not visible.
+  */
+ public static boolean statusBarCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded,boolean statusBarHidden){
+  return measured&&!keyguardShowing&&!shadeExpanded&&!statusBarHidden;
+ }
+ /** The lock-screen/AOD chip (keyguard indication area) counts while the keyguard shows and the shade is collapsed. */
+ public static boolean keyguardCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded){
+  return measured&&keyguardShowing&&!shadeExpanded;
+ }
+ /**
+  * With the shade expanded the chips are covered; the indicator in the shade is the listener's
+  * own ongoing notification, which SystemUI verifies in its active notifications.
+  */
+ public static boolean shadeCounts(boolean shadeExpanded,boolean listenerNotificationShown){return shadeExpanded&&listenerNotificationShown;}
+ /** The verified listener's ongoing indicator notification (id 1, channel listening-indicator). */
+ public static boolean shadeNotification(int admittedUid,int notificationUid,String notificationPackage,int notificationId,String channel,boolean ongoing){
+  return admittedUid>=10000&&admittedUid<20000&&admittedUid==notificationUid&&PACKAGE.equals(notificationPackage)
+   &&notificationId==1&&"listening-indicator".equals(channel)&&ongoing;
+ }
+ /** An app requested the status bar hidden (WindowInsets.Type.statusBars() not requested visible) and it is not transiently shown. */
+ public static boolean statusBarHidden(int requestedVisibleTypes,int statusBarsType,boolean transientShown){
+  return statusBarsType!=0&&(requestedVisibleTypes&statusBarsType)==0&&!transientShown;
+ }
  /** Below this effective alpha or visible fraction a surface does not count as shown. */
  public static final float MIN_ALPHA=0.5f;
  public static final int MIN_VISIBLE_PERCENT=90;

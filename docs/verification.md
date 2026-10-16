@@ -61,7 +61,7 @@ record that claims qualification without passed gates and image/device evidence.
 
 | Check | Class | What it does not prove |
 | --- | --- | --- |
-| `node --test test/always-on-listener.test.mjs test/listener-store-failure.test.mjs test/aosp-listening-chip.test.mjs test/listener-qualification.test.mjs` | S | That the listener or SystemUI builds as an APK/image, or that any indicator is visible |
+| `node --test test/always-on-listener.test.mjs test/listener-store-failure.test.mjs test/aosp-listening-chip.test.mjs test/aosp-listener.test.mjs test/listener-qualification.test.mjs` | S | That the listener or SystemUI builds as an APK/image, or that any indicator is visible |
 | A `listener` row in `apk-manifest.json` | B | Privileges, the lease or capture on an image |
 | `node scripts/verify-aosp-listener.mjs --serial S --user 0` on a booted image | I | Indicator visibility, stop reliability, coexistence, battery |
 | Gates G3–G6 on a Pixel 10a | D | Other devices |

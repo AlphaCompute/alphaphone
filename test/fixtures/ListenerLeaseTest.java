@@ -23,10 +23,12 @@ public final class ListenerLeaseTest {
  static final class Sim {
   final IndicatorLease lease=new IndicatorLease();
   boolean held,lost;long since=-1;
+  Inputs paused(Inputs in){in.displayOffWithoutIndicator=true;return in;}
   State step(long now,Inputs base){
-   boolean valid=lease.permits(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now));
-   if(ListenerPolicy.latchesIndicatorLoss(held,valid))lost=true;
-   base.indicatorLeaseValid=valid;base.indicatorLost=lost;
+   Loss loss=lease.verdict(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now));
+   boolean valid=loss==Loss.NONE,off=loss==Loss.DISPLAY_OFF;
+   if(ListenerPolicy.latchesIndicatorLoss(held,valid,off))lost=true;
+   base.indicatorLeaseValid=valid;base.indicatorLost=lost;base.displayOffWithoutIndicator=off;
    State state=ListenerPolicy.decide(base,now);
    boolean hold=ListenerPolicy.holdsMicrophone(state);
    if(hold&&!held){held=true;since=now;}else if(!hold){held=false;since=-1;}
@@ -122,6 +124,47 @@ public final class ListenerLeaseTest {
   Inputs silenced=ready(false);silenced.micSilenced=true;
   check(ListenerPolicy.decide(silenced,t)==State.INDICATOR_UNAVAILABLE,"silenced capture needs the lease too");
 
+  // ---- screen off: AOD keeps listening, display fully off pauses and resumes ----
+  final String ON=IndicatorLease.DISPLAY_ON,DOZE=IndicatorLease.DISPLAY_DOZE,OFF=IndicatorLease.DISPLAY_OFF;
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);
+  check(sim.step(t,ready(false))==State.LISTENING,"listening with the screen on");
+  for(long now=t+1000;now<=t+60_000;now+=1000){
+   sim.lease.renew(g,now,BOOT,true,true,true,DOZE);
+   check(sim.step(now,ready(false))==State.LISTENING&&sim.held,"AOD showing the chip keeps listening with the lease: "+now);
+  }
+  long off=t+61_000;
+  sim.lease.renew(g,off,BOOT,false,false,true,OFF);
+  check(sim.step(off,ready(false))==State.PAUSED_DISPLAY_OFF&&!sim.held&&!sim.lost,"display fully off (no AOD) pauses and releases the microphone without latching");
+  check(ListenerPolicy.foreground(State.PAUSED_DISPLAY_OFF)&&!ListenerPolicy.holdsMicrophone(State.PAUSED_DISPLAY_OFF)&&!ListenerPolicy.needsAttention(State.PAUSED_DISPLAY_OFF),"the paused notification stays, the microphone does not");
+  for(long now=off+1000;now<=off+120_000;now+=1000){
+   check(sim.lease.renew(g,now,BOOT,false,false,false,OFF),"a live SystemUI keeps the lease while the screen is off");
+   check(sim.step(now,ready(false))==State.PAUSED_DISPLAY_OFF,"stays paused while the display is off: "+now);
+  }
+  long wake=off+121_000;
+  sim.lease.renew(g,wake,BOOT,true,false,false,ON);
+  check(sim.step(wake,ready(false))==State.LISTENING&&sim.held,"a fresh lease from a visible lock-screen surface resumes after a display-off pause");
+  sim.lease.renew(g,wake+1000,BOOT,true,true,true,ON);sim.step(wake+1000,ready(false));
+  sim.lease.renew(g,wake+2000,BOOT,false,false,true,DOZE);
+  check(sim.step(wake+2000,ready(false))==State.PAUSED_DISPLAY_OFF,"AOD that does not show the indicator pauses like a dark display");
+  sim.lease.renew(g,wake+3000,BOOT,true,true,true,DOZE);
+  check(sim.step(wake+3000,ready(false))==State.LISTENING,"and resumes when AOD shows it");
+  check(sim.step(wake+3000+IndicatorLease.TTL_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"SystemUI silence while dozing is still a loss");
+  // indicator lost while the display is on stays sticky across display changes
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  sim.lease.renew(g,t+500,BOOT,false,false,true,ON);
+  check(sim.step(t+500,ready(false))==State.STOPPED_INDICATOR_LOST,"surface hidden with the display on is a sticky loss");
+  sim.lease.renew(g,t+1500,BOOT,false,false,false,OFF);
+  check(sim.step(t+1500,ready(false))==State.STOPPED_INDICATOR_LOST,"turning the display off does not convert a loss into a pause");
+  sim.lease.renew(g,t+2500,BOOT,true,false,false,DOZE);
+  check(sim.step(t+2500,ready(false))==State.STOPPED_INDICATOR_LOST,"a visible AOD surface afterwards does not resume a loss");
+  // unknown or missing display state fails toward the pause, never toward capture
+  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true,"vr");
+  check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF,"unknown display state counts as off");
+  lease.renew(gen,t,BOOT,true,true,true,null);
+  check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF,"missing display state counts as off");
+  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,false,false,false,OFF);
+  check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF&&ListenerPolicy.decide(sim.paused(ready(false)),t)==State.PAUSED_DISPLAY_OFF,"opting in with the screen off waits paused, not capturing");
+
   // ---- reboot before unlock ----
   IndicatorLease boot=new IndicatorLease();long bg=boot.acquire(BOOT);boot.renew(bg,t,BOOT,true,false,false);
   Inputs locked=ready(true);locked.userUnlocked=false;
@@ -155,7 +198,7 @@ public final class ListenerLeaseTest {
   check(!IndicatorLease.admitsController(true,10_123,null,true),"unknown UID");
 
   // ---- labels ----
-  for(State state:new State[]{State.INDICATOR_UNAVAILABLE,State.STOPPED_INDICATOR_LOST}){String label=ListenerPolicy.label(state);check(label!=null&&label.length()<64,"label "+state);}
-  System.out.println("PASS listener indicator lease: renewal, expiry, binder death, hidden view, reboot, crash loop");
+  for(State state:new State[]{State.INDICATOR_UNAVAILABLE,State.STOPPED_INDICATOR_LOST,State.PAUSED_DISPLAY_OFF}){String label=ListenerPolicy.label(state);check(label!=null&&label.length()<64,"label "+state);}
+  System.out.println("PASS listener indicator lease: renewal, expiry, binder death, hidden view, display off/AOD, reboot, crash loop");
  }
 }

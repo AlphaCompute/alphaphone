@@ -84,7 +84,12 @@ test('capture fails closed on the SystemUI indicator lease and a lost lease neve
  assert.doesNotMatch(provider,/grantConsent|setEnabled|resume\(|store\.|startForegroundService/,'the lease can only withhold capture');
  const listener=readFileSync(join(source,'Listener.java'),'utf8');
  assert.match(listener,/in\.indicatorLeaseValid=observeIndicatorLease\(context,SystemClock\.elapsedRealtime\(\)\)/);
- assert.match(listener,/if\(ListenerPolicy\.latchesIndicatorLoss\(held,valid\)\)indicatorLost=true;/);
+ assert.match(listener,/if\(ListenerPolicy\.latchesIndicatorLoss\(held,valid,off\)\)indicatorLost=true;/);
+ assert.match(listener,/in\.displayOffWithoutIndicator=displayOff;/,'a dark display pauses rather than stops');
+ assert.match(provider,/extras\.getString\(IndicatorLease\.KEY_DISPLAY,IndicatorLease\.DISPLAY_OFF\)/,'a missing display state counts as off');
+ const consentScreen=readFileSync(join(source,'ConsentActivity.java'),'utf8');
+ assert.match(consentScreen,/Always-on display shows the Listening indicator/,'consent explains screen-off listening');
+ assert.match(consentScreen,/button\("Always-on display settings",view->openAlwaysOnDisplaySettings\(\)\)/,'consent links the AOD setting');
  const service=readFileSync(join(source,'ListeningService.java'),'utf8');
  assert.match(service,/main\.postDelayed\(leaseCheck,Listener\.lease\.nextCheckDelay/,'lease watchdog while the microphone is held');
  assert.match(service,/if\(!Listener\.observeIndicatorLease\(ListeningService\.this,now\)\)apply\(\);/);

@@ -67,7 +67,9 @@ final class ListenerNotifications {
   Notification.Builder builder=new Notification.Builder(context,CHANNEL_ACTIVE)
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
-   .setContentText(ListenerPolicy.processesAudio(state)?"Say “Alpha” to ask. Audio stays on this phone and is not saved.":"The microphone is not being analysed.")
+   .setContentText(ListenerPolicy.processesAudio(state)?"Say “Alpha” to ask. Audio stays on this phone and is not saved."
+    :state==ListenerPolicy.State.PAUSED_DISPLAY_OFF?"Turn on Always-on display to keep listening with the screen off. Listening resumes when the indicator shows."
+    :"The microphone is not being analysed.")
    .setCategory(Notification.CATEGORY_SERVICE)
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOngoing(true)
@@ -97,6 +99,16 @@ final class ListenerNotifications {
     manager.areNotificationsEnabled(),channel==null?NotificationManager.IMPORTANCE_NONE:channel.getImportance(),
     channel!=null&&channel.getLockscreenVisibility()==Notification.VISIBILITY_SECRET,lockScreenShowsNotifications(context));
   }catch(RuntimeException unavailable){return false;}
+ }
+
+ /** AOSP Settings action for the lock-screen page, which holds Always-on display. */
+ static final String LOCK_SCREEN_SETTINGS="android.settings.LOCK_SCREEN_SETTINGS";
+ /** Settings.Secure.DOZE_ALWAYS_ON (hidden constant). Unreadable or unset counts as off; SystemUI's report decides capture. */
+ static final String DOZE_ALWAYS_ON="doze_always_on";
+
+ static boolean alwaysOnDisplayEnabled(Context context){
+  try{return Settings.Secure.getInt(context.getContentResolver(),DOZE_ALWAYS_ON,0)!=0;}
+  catch(RuntimeException unreadable){return false;}
  }
 
  /** Settings.Secure.LOCK_SCREEN_SHOW_NOTIFICATIONS (hidden constant; default on). Unreadable counts as hidden. */

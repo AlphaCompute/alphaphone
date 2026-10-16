@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java
-@@ -0,0 +1,50 @@
+@@ -0,0 +1,84 @@
 +package com.android.systemui.privacy;
 +
 +/** Platform-derived facts only. No transcript, PCM, listener self-report or app-supplied UID. */
@@ -28,8 +28,42 @@
 + public static final String LEASE_AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
 + public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
 + public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
-+  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved";
++  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display";
++ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
 + public static final long LEASE_RENEW_MS=1_000;
++ /**
++  * Default display state (android.view.Display.STATE_*): ON 2 and ON_SUSPEND 6 are on; DOZE 3 and
++  * DOZE_SUSPEND 4 are AOD; OFF 1, VR 5, UNKNOWN 0 and anything else count as off (capture pauses).
++  */
++ public static String display(int state){
++  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;default:return DISPLAY_OFF;}
++ }
++ /**
++  * The status-bar chip counts only while the keyguard is not showing, the shade is collapsed and
++  * no app has hidden the status bar (immersive) without a transient reveal. SystemUI positively
++  * reports each of those; a covered or hidden status bar is not visible.
++  */
++ public static boolean statusBarCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded,boolean statusBarHidden){
++  return measured&&!keyguardShowing&&!shadeExpanded&&!statusBarHidden;
++ }
++ /** The lock-screen/AOD chip (keyguard indication area) counts while the keyguard shows and the shade is collapsed. */
++ public static boolean keyguardCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded){
++  return measured&&keyguardShowing&&!shadeExpanded;
++ }
++ /**
++  * With the shade expanded the chips are covered; the indicator in the shade is the listener's
++  * own ongoing notification, which SystemUI verifies in its active notifications.
++  */
++ public static boolean shadeCounts(boolean shadeExpanded,boolean listenerNotificationShown){return shadeExpanded&&listenerNotificationShown;}
++ /** The verified listener's ongoing indicator notification (id 1, channel listening-indicator). */
++ public static boolean shadeNotification(int admittedUid,int notificationUid,String notificationPackage,int notificationId,String channel,boolean ongoing){
++  return admittedUid>=10000&&admittedUid<20000&&admittedUid==notificationUid&&PACKAGE.equals(notificationPackage)
++   &&notificationId==1&&"listening-indicator".equals(channel)&&ongoing;
++ }
++ /** An app requested the status bar hidden (WindowInsets.Type.statusBars() not requested visible) and it is not transiently shown. */
++ public static boolean statusBarHidden(int requestedVisibleTypes,int statusBarsType,boolean transientShown){
++  return statusBarsType!=0&&(requestedVisibleTypes&statusBarsType)==0&&!transientShown;
++ }
 + /** Below this effective alpha or visible fraction a surface does not count as shown. */
 + public static final float MIN_ALPHA=0.5f;
 + public static final int MIN_VISIBLE_PERCENT=90;
@@ -53,23 +87,31 @@
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,180 @@
 +package com.android.systemui.privacy;
 +
 +import android.app.Notification;
 +import android.app.PendingIntent;
 +import android.content.*;
 +import android.content.pm.*;
++import android.hardware.display.DisplayManager;
 +import android.media.*;
 +import android.os.*;
 +import android.service.notification.StatusBarNotification;
++import android.view.Display;
++import android.view.WindowInsets;
++import com.android.internal.statusbar.LetterboxDetails;
++import com.android.internal.view.AppearanceRegion;
 +import com.android.systemui.CoreStartable;
 +import com.android.systemui.dagger.SysUISingleton;
 +import com.android.systemui.dagger.qualifiers.Background;
 +import com.android.systemui.dagger.qualifiers.Main;
++import com.android.systemui.plugins.statusbar.StatusBarStateController;
 +import com.android.systemui.res.R;
 +import com.android.systemui.settings.UserTracker;
++import com.android.systemui.statusbar.CommandQueue;
 +import com.android.systemui.statusbar.NotificationListener;
++import com.android.systemui.statusbar.policy.KeyguardStateController;
 +import java.security.MessageDigest;
 +import java.util.*;
 +import java.util.concurrent.Executor;
@@ -87,7 +129,37 @@
 + private final Context context;private final AudioManager audio;private final Handler main;
 + private final UserTracker users;private final NotificationListener notifications;
 + private final AlphaListeningLease lease;
++ private final StatusBarStateController statusBar;private final KeyguardStateController keyguard;
++ private final CommandQueue commands;private final DisplayManager displays;
 + private int uid=-1;private boolean active;
++ /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
++ private int requestedVisibleTypes=~0;private boolean statusBarTransient;
++ private final StatusBarStateController.StateListener shadeAndDoze=new StatusBarStateController.StateListener(){
++  @Override public void onExpandedChanged(boolean expanded){surfaceChanged();}
++  @Override public void onDozingChanged(boolean dozing){surfaceChanged();}
++  @Override public void onStateChanged(int state){surfaceChanged();}
++ };
++ private final KeyguardStateController.Callback keyguardShowing=new KeyguardStateController.Callback(){
++  @Override public void onKeyguardShowingChanged(){surfaceChanged();}
++ };
++ private final DisplayManager.DisplayListener displayState=new DisplayManager.DisplayListener(){
++  @Override public void onDisplayAdded(int id){}
++  @Override public void onDisplayRemoved(int id){}
++  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)surfaceChanged();}
++ };
++ private final CommandQueue.Callbacks systemBars=new CommandQueue.Callbacks(){
++  @Override public void onSystemBarAttributesChanged(int displayId,int appearance,AppearanceRegion[] regions,boolean navbarColorManagedByIme,
++    int behavior,int requestedVisibleTypes,String packageName,LetterboxDetails[] letterboxDetails){
++   if(displayId!=Display.DEFAULT_DISPLAY)return;
++   AlphaListeningController.this.requestedVisibleTypes=requestedVisibleTypes;surfaceChanged();
++  }
++  @Override public void showTransient(int displayId,int types,boolean isGestureOnSystemBar){
++   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=true;surfaceChanged();}
++  }
++  @Override public void abortTransient(int displayId,int types){
++   if(displayId==Display.DEFAULT_DISPLAY&&(types&WindowInsets.Type.statusBars())!=0){statusBarTransient=false;surfaceChanged();}
++  }
++ };
 + private final AudioManager.AudioRecordingCallback recording=new AudioManager.AudioRecordingCallback(){
 +  @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){refresh(configs);}
 + };
@@ -96,7 +168,10 @@
 +  @Override public void onUserChanged(int user,Context userContext){refreshCurrent();}
 + };
 + @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
-+   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
++   UserTracker users,NotificationListener notifications,StatusBarStateController statusBar,KeyguardStateController keyguard,
++   CommandQueue commands,DisplayManager displays){
++  this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
++  this.statusBar=statusBar;this.keyguard=keyguard;this.commands=commands;this.displays=displays;
 +  lease=new AlphaListeningLease(context,main,background,this::acknowledgement);}
 + @Override public void start(){
 +  instance=this;
@@ -105,17 +180,49 @@
 +  IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
 +  context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refreshCurrent();}},filter,null,main,Context.RECEIVER_NOT_EXPORTED);
 +  refreshCurrent();
++  statusBar.addCallback(shadeAndDoze);
++  keyguard.addCallback(keyguardShowing);
++  displays.registerDisplayListener(displayState,main);
++  commands.addCallback(systemBars);
 +  lease.start();
 + }
 + static void attach(AlphaListeningChipView view){views.add(view);if(instance!=null)instance.refreshCurrent();else view.render(false);}
 + static void detach(AlphaListeningChipView view){views.remove(view);surfaceChanged();}
 + static void surfaceChanged(){if(instance!=null)instance.lease.now();}
-+ /** Main thread: what SystemUI itself measures. Unverified identity or user switching acknowledges nothing. */
++ /**
++  * Main thread: what SystemUI itself measures and reports. Unverified identity or user switching
++  * acknowledges nothing. Lock screen and AOD use the keyguard chip; the unlocked status bar uses
++  * the status-bar chip unless the shade covers it or an app hid the status bar; the expanded shade
++  * counts only through the listener's verified ongoing notification. The display state lets the
++  * listener pause (not stop) while nothing can be shown.
++  */
 + private AlphaListeningLease.Acknowledgement acknowledgement(){
 +  boolean admitted=uid!=-1&&!users.isUserSwitching()&&users.getUserId()==0;
++  boolean locked=keyguard.isShowing(),shade=statusBar.isExpanded();
++  boolean hidden=AlphaListeningPolicy.statusBarHidden(requestedVisibleTypes,WindowInsets.Type.statusBars(),statusBarTransient);
 +  boolean surface=false,chip=false;
-+  for(AlphaListeningChipView view:views){boolean shown=view.chipVisible();chip|=shown;surface|=shown||view.hostVisible();}
-+  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active);
++  for(AlphaListeningChipView view:views){
++   boolean shown=view.chipVisible(),host=shown||view.hostVisible();
++   if(view.keyguardSurface()){chip|=AlphaListeningPolicy.keyguardCounts(shown,locked,shade);surface|=AlphaListeningPolicy.keyguardCounts(host,locked,shade);}
++   else{chip|=AlphaListeningPolicy.statusBarCounts(shown,locked,shade,hidden);surface|=AlphaListeningPolicy.statusBarCounts(host,locked,shade,hidden);}
++  }
++  if(AlphaListeningPolicy.shadeCounts(shade,shadeNotificationShown())){surface=true;chip=true;}
++  Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
++  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,
++   AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState()));
++ }
++
++ private boolean shadeNotificationShown(){
++  try{
++   StatusBarNotification[] entries=notifications.getActiveNotifications();
++   if(entries==null)return false;
++   for(StatusBarNotification entry:entries){
++    Notification notification=entry.getNotification();
++    if(AlphaListeningPolicy.shadeNotification(uid,entry.getUid(),entry.getPackageName(),entry.getId(),notification.getChannelId(),
++      (notification.flags&Notification.FLAG_ONGOING_EVENT)!=0))return true;
++   }
++  }catch(RuntimeException unavailable){}
++  return false;
 + }
 + private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);lease.now();}
 + private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}
@@ -163,7 +270,7 @@
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningLease.java
-@@ -0,0 +1,87 @@
+@@ -0,0 +1,90 @@
 +package com.android.systemui.privacy;
 +
 +import android.content.Context;
@@ -185,8 +292,10 @@
 +final class AlphaListeningLease {
 + /** One acknowledgement: the admitted listener UID (-1 for none) and SystemUI-measured facts. */
 + static final class Acknowledgement {
-+  final int uid;final boolean surface,chip,recording;
-+  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording){this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;}
++  final int uid;final boolean surface,chip,recording;final String display;
++  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display){
++   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;
++  }
 + }
 + interface Source{Acknowledgement read();}
 +
@@ -228,6 +337,7 @@
 +   renew.putBoolean(AlphaListeningPolicy.KEY_SURFACE,ack.surface);
 +   renew.putBoolean(AlphaListeningPolicy.KEY_CHIP,AlphaListeningPolicy.chipAcknowledged(ack.recording,ack.chip));
 +   renew.putBoolean(AlphaListeningPolicy.KEY_RECORDING,ack.recording);
++   renew.putString(AlphaListeningPolicy.KEY_DISPLAY,ack.display);
 +   Bundle out=call(AlphaListeningPolicy.LEASE_RENEW,renew);
 +   // A refused renewal (expired, revoked, replaced) is never retried on the same generation.
 +   if(out==null||!out.getBoolean(AlphaListeningPolicy.KEY_ACCEPTED,false))generation=-1;
@@ -253,7 +363,7 @@
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java
-@@ -0,0 +1,42 @@
+@@ -0,0 +1,48 @@
 +package com.android.systemui.privacy;
 +
 +import android.content.Context;
@@ -268,9 +378,12 @@
 +/** Independent fixed-text surface. Its measured visibility feeds the listener's health lease. */
 +public final class AlphaListeningChipView extends TextView {
 + private boolean aggregated; // main thread only
-+ public AlphaListeningChipView(Context context){this(context,null);}
-+ public AlphaListeningChipView(Context context,AttributeSet attrs){
-+  super(context,attrs);setGravity(Gravity.CENTER);setTextSize(12);setTextColor(0xffffffff);
++ /** Created in code by the keyguard indication-area section (lock screen and AOD); inflated in status_bar.xml otherwise. */
++ private final boolean keyguard;
++ public AlphaListeningChipView(Context context){this(context,null,true);}
++ public AlphaListeningChipView(Context context,AttributeSet attrs){this(context,attrs,false);}
++ private AlphaListeningChipView(Context context,AttributeSet attrs,boolean keyguard){
++  super(context,attrs);this.keyguard=keyguard;setGravity(Gravity.CENTER);setTextSize(12);setTextColor(0xffffffff);
 +  setBackgroundColor(0xff174e35);setPadding(8,2,8,2);setAccessibilityLiveRegion(ACCESSIBILITY_LIVE_REGION_POLITE);
 +  setOnClickListener(view->{if(!AlphaListeningController.pause())announceForAccessibility(getContext().getString(R.string.alpha_listening_pause_unavailable));});
 +  render(false);
@@ -280,6 +393,9 @@
 + @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);aggregated=visible;AlphaListeningController.surfaceChanged();}
 + @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);AlphaListeningController.surfaceChanged();}
 + void render(boolean active){setText(R.string.alpha_listening_pause);setContentDescription(getContext().getString(R.string.alpha_listening_pause));setVisibility(active?VISIBLE:GONE);setEnabled(active);AlphaListeningController.surfaceChanged();}
++
++ /** Lock-screen/AOD surface rather than the status bar. */
++ boolean keyguardSurface(){return keyguard;}
 +
 + /** The rendered chip itself is effectively on screen. */
 + boolean chipVisible(){return getVisibility()==VISIBLE&&measured(this,aggregated);}

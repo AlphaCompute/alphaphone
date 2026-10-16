@@ -40,6 +40,7 @@ final class Listener {
   in.micSilenced=micSilenced;
   in.indicatorLeaseValid=observeIndicatorLease(context,SystemClock.elapsedRealtime());
   in.indicatorLost=indicatorLost;
+  in.displayOffWithoutIndicator=displayOff;
   return in;
  }
 
@@ -53,6 +54,8 @@ final class Listener {
  static volatile long unsilencedSince=-1;
  /** Latched when the lease is lost while the microphone is held; only an explicit user resume or turn-on clears it. */
  static volatile boolean indicatorLost;
+ /** The last lease verdict was {@link IndicatorLease.Loss#DISPLAY_OFF}: a pause, never a latch. */
+ static volatile boolean displayOff;
 
  private static volatile long boot=Long.MIN_VALUE;
  /** The boot a lease belongs to, read once per process (the lease itself never outlives the process). */
@@ -66,8 +69,10 @@ final class Listener {
  static boolean observeIndicatorLease(Context context,long now){
   boolean held=microphoneHeld;
   long since=unsilencedSince;
-  boolean valid=lease.permits(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now));
-  if(ListenerPolicy.latchesIndicatorLoss(held,valid))indicatorLost=true;
+  IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now));
+  boolean valid=loss==IndicatorLease.Loss.NONE,off=loss==IndicatorLease.Loss.DISPLAY_OFF;
+  if(ListenerPolicy.latchesIndicatorLoss(held,valid,off))indicatorLost=true;
+  displayOff=off;
   return valid;
  }
 
