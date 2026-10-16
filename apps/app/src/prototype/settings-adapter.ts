@@ -27,6 +27,8 @@ import { listenerStatus, openListenerSettings, pauseListener, turnOffListener, t
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
+type PhotoAccess = {scope:'full'|'partial'|'selected'|'denied';images:string;videos:string};
+const photoLibrary = registerPlugin<{libraryAccess():Promise<PhotoAccess>;requestLibraryAccess():Promise<PhotoAccess>;openLibrarySettings():Promise<void>}>('AlphaPhotos');
 declare const __APP_VERSION__: string;
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Build version injected at build time from app.config.json or ELIZAOS_VERSION_NAME. */
@@ -152,7 +154,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
-  let passwordOpening=false,mailImagesSaving=false;
+  let passwordOpening=false,mailImagesSaving=false,photoAccessBusy=false;
+  let photoAccess:PhotoAccess|null=null;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
@@ -301,13 +304,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const instance = owner, token = ++generation;
     if (!instance) return;
     const native = Capacitor.isNativePlatform();
-    const [state, settings, noticeState, crossState, metadata, roleState, build, problems] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
+    const [state, settings, noticeState, crossState, metadata, roleState, build, problems, photos] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
       // Browsers have no Android roles: the web plugin rejects, so nothing is shown there.
-      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog()]);
+      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog(), native ? photoLibrary.libraryAccess() : Promise.resolve(null)]);
     if (owner !== instance || generation !== token) return;
     roles = roleState.status === 'fulfilled' ? readRoles(roleState.value) : null;
     if (build.status === 'fulfilled' && build.value) launcher = build.value.launcher === true;
     crashLog = problems.status === 'fulfilled' ? problems.value : null;
+    photoAccess = photos.status === 'fulfilled' ? photos.value : null;
     facts = state.status === 'fulfilled' ? state.value : {};
     controls = settings.status === 'fulfilled' ? settings.value : {};
     delivery = noticeState.status === 'fulfilled' ? noticeState.value : {};
@@ -450,6 +454,19 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
+        if(native){
+          const photoAction=(label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
+          page.groups.push(group([photoAction('Photos',()=>{api.set({page:'photos'});void refresh();})]));
+          if(state.page==='photos'){
+            const status=photoAccess?.scope==='full'?'All photos and videos':photoAccess?.scope==='selected'?'Selected photos and videos':photoAccess?.scope==='partial'?`Photos: ${photoAccess.images}; videos: ${photoAccess.videos}`:photoAccess?.scope==='denied'?'Only photos and videos saved by Alpha':'Access could not be checked';
+            const choose=async()=>{if(photoAccessBusy)return;photoAccessBusy=true;changed();const instance=owner;try{const access=await photoLibrary.requestLibraryAccess();if(owner===instance)photoAccess=access;}catch{if(owner===instance)api.toast('Photo access could not open. Review it in Android settings.');}finally{photoAccessBusy=false;if(owner===instance)changed();}};
+            out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Photos',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group([
+              info('Library access',status),
+              {...photoAction(photoAccessBusy?'Opening…':'Choose photo access',()=>void choose()),busy:photoAccessBusy},
+              photoAction('Android photo permissions',()=>void photoLibrary.openLibrarySettings().catch(()=>api.toast('Android app settings could not open.'))),
+            ])]});
+          }
+        }
         page.groups.push(group([{kNav:true,label:'Calendar',lbl:'Calendar',chev:true,noAB:true,go:()=>api.set({page:'calendar'})}]));
         if(state.page==='calendar'){
           const display=views.calendar.displaySources?.(),rows:Bag[]=[info('Display only','Agent access is reviewed separately')];

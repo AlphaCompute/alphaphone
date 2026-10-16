@@ -1725,7 +1725,7 @@
   </sc-if>
 
   <sc-if value="{{photos.isLib}}">
-    <sc-if value="{{photos.libraryAccessControl}}"><div style="padding:8px 20px;flex-shrink:0"><p role="status" style="margin:0 0 6px;font-size:14px">{{photos.libraryAccessLabel}}</p><sc-if value="{{photos.libraryAccessNeedsChoice}}"><button disabled="{{photos.libraryAccessBusy}}" onClick="{{photos.libraryAccessChoose}}" style="min-height:44px;padding:8px 14px;border-radius:20px;background:var(--s2);color:var(--fg)">{{photos.libraryAccessButton}}</button></sc-if><button onClick="{{photos.libraryAccessSettings}}" style="min-height:44px;padding:8px 14px;border-radius:20px;background:var(--s2);color:var(--fg)">Photo access settings</button></div></sc-if>
+    <sc-if value="{{photos.libraryAccessControl}}"><div style="padding:8px 20px;flex-shrink:0"><p role="status" style="margin:0 0 6px;font-size:14px">{{photos.libraryAccessLabel}}</p><sc-if value="{{photos.libraryAccessNeedsChoice}}"><button disabled="{{photos.libraryAccessBusy}}" onClick="{{photos.libraryAccessChoose}}" style="min-height:44px;padding:8px 14px;border-radius:20px;background:var(--s2);color:var(--fg)">{{photos.libraryAccessButton}}</button></sc-if></div></sc-if>
     <sc-if value="{{photos.hasFilter}}">
       <div style="display: flex; align-items: center; gap: 12px; padding: 2px 20px 12px; flex-shrink: 0">
         <button aria-label="Clear search {{photos.filterLabel}}" onClick="{{photos.clearFilter}}" style="height: 36px; max-width: 300px; border-radius: 18px; background: var(--acc); color: #ffffff; padding: 0 10px 0 16px; display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600">

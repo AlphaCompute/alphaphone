@@ -1137,12 +1137,12 @@
       "area": "Photos",
       "viewOrFlow": "Native permitted library and consent updates",
       "scope": "MVP",
-      "implementation": "Needs review against current source",
+      "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Typecheck passed; full verification and installed QA pending.",
       "preview": "Pending",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "2026-10-16 user request: remove ongoing photo access settings from Photos grid while preserving permission choice. No permission is granted automatically."
     },
     {
       "id": "maps-01",

@@ -133,7 +133,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Passed574: explicit Recover restored the sole QA item; trashcount returned0. | Pending |
 | photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0. | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
-| photos-16 | Native permitted library and consent updates | Pending | Pending | Pending |
+| photos-16 | Native permitted library and consent updates | Access controls moved to Settings > Photos; denied-access grid keeps Choose photo access. Typecheck passed; full verification pending. | Installed retest pending | Pending |
 
 ## Maps
 

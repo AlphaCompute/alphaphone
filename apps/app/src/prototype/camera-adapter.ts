@@ -770,11 +770,10 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     }
     if (!loaded && !loading) queueMicrotask(() => { void refresh(); });
     const data = photosRender(st, currentApi);data.normalSelecting=true;if(data.v)data.v.notDeleted=true;
-    data.libraryAccessControl=!browserMode&&!st.open&&!st.album&&!selection;
+    data.libraryAccessControl=!browserMode&&libraryAccess?.scope==='denied'&&!st.open&&!st.album&&!selection;
     data.libraryAccessLabel=libraryAccess?.scope==='full'?'All permitted photos and videos':libraryAccess?.scope==='selected'?'Selected photos and videos':libraryAccess?.scope==='partial'?`Photos: ${libraryAccess.images}; videos: ${libraryAccess.videos}`:'Only photos and videos saved by Alpha';
     data.libraryAccessBusy=requestingLibraryAccess;
     data.libraryAccessNeedsChoice=libraryAccess?.scope!=='full';data.libraryAccessButton='Choose photo access';
-    data.libraryAccessSettings=()=>void nativeLibrary.openLibrarySettings().catch(()=>currentApi.toast('Android app settings could not open.'));
     data.libraryAccessChoose=async()=>{if(requestingLibraryAccess)return;requestingLibraryAccess=true;currentApi.set({nativeLibraryAccessRevision:Date.now()});try{libraryAccess=await nativeLibrary.requestLibraryAccess();captures=[];preview=undefined;next='';loaded=false;cancelEdit();closeVideo();currentApi.set({open:null,nativePhotoSelection:null});await refresh();}catch{currentApi.toast('Photo access could not open. You can review it in Android settings.');}finally{requestingLibraryAccess=false;currentApi.set({nativeLibraryAccessRevision:Date.now()});}};
     data.searchPlaceholder=permittedLibrary()?'Filename in permitted library':'People, places, days';
     data.copyRecovery=browserMode&&!!st.nativeCopyRecovery;data.openCopyRecovery=()=>void openCopyRecovery(currentApi);
