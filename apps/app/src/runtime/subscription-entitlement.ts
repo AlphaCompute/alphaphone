@@ -518,7 +518,8 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
       const nested = visit(row[key], depth + 1, ownStatus);
       if (nested) {
         const own = retryFields(row, now, nested.kind !== 'rate-limited');
-        return { ...nested, retryAfterMs: nested.retryAfterMs ?? own.retryAfterMs, resetsAt: nested.resetsAt ?? own.resetsAt };
+        // An exhausted period allowance with a known reset date is never refilled with an outer countdown.
+        return { ...nested, retryAfterMs: nested.kind === 'allowance-exhausted' && nested.resetsAt != null ? nested.retryAfterMs : nested.retryAfterMs ?? own.retryAfterMs, resetsAt: nested.resetsAt ?? own.resetsAt };
       }
     }
     let limit: ServiceLimit['kind'] | null = null;

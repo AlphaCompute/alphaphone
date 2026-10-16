@@ -448,6 +448,15 @@ test('upstream terminalFailure.rateLimit scopes: period is the allowance with it
   assert.deepEqual(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {kind: 'rate_limited', message: 'm', transient: true}}, NOW), {kind: 'rate-limited', retryAfterMs: null, resetsAt: null});
 });
 
+test('an outer retry hint never turns an exhausted period allowance back into a countdown (#410)', () => {
+  const resetAt = new Date(NOW + 9 * 86400000).toISOString();
+  const reply = {failureKind: 'insufficient_credits', retryAfterSeconds: 3600,
+    terminalFailure: {kind: 'insufficient_credits', transient: false, rateLimit: {kind: 'rate_limited', retryAfterMs: 3600000, scope: 'period', resetAt, resetAfterSeconds: 9 * 86400}}};
+  const limit = readServiceLimit(reply, NOW);
+  assert.deepEqual(limit, {kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: NOW + 9 * 86400000});
+  assert.doesNotMatch(serviceLimitMessage(limit, NOW), /resets in/);
+});
+
 test('only admission and its background refresher read the entitlement; turns and local speech never do', () => {
   const ui = fs.readFileSync('apps/app/src/runtime/connection-ui.tsx', 'utf8');
   const admission = ui.slice(ui.indexOf('async function admitCloudResident'), ui.indexOf('async function connectResident'));
