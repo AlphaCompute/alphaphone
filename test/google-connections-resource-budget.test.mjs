@@ -1,0 +1,57 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {createRequire} from 'node:module';
+import vm from 'node:vm';
+import {transformSync} from 'esbuild';
+import {JSDOM} from 'jsdom';
+
+// Mount the actual panel. Only external account/Calendar I/O is replaced.
+test('display selection performs zero provider reads; explicit refresh and grant changes still revalidate',async()=>{
+ const dom=new JSDOM('<div id="root"></div>',{url:'https://alpha.invalid'});
+ const saved={window:globalThis.window,document:globalThis.document,HTMLElement:globalThis.HTMLElement,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
+ Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,IS_REACT_ACT_ENVIRONMENT:true});
+ const require=createRequire(import.meta.url),React=require('react'),{createRoot}=require('react-dom/client');
+ const counts={accounts:0,calendars:0};let selection=null;
+ const account={connectionId:'11111111-1111-4111-8111-111111111111',connected:true,label:'owner@example.invalid',grantedCapabilities:['google.calendar.read','google.calendar.write','google.gmail.read','google.gmail.send']};
+ const source={id:'calendar-fixture',connectionId:account.connectionId,providerCalendarId:'primary',name:'Personal',account:account.label};
+ const binding={client:{},sessionId:'fixture-session',credentialId:'fixture-credential'};
+ const snapshot={cloudAccount:{environment:'production',userId:'22222222-2222-4222-8222-222222222222',organizationId:'33333333-3333-4333-8333-333333333333'}};
+ const ACCOUNTS='alpha:test-google-accounts',SELECTION='alpha:test-google-selection';
+ const modules={
+  './gmail-background':{gmailBackgroundStatus:async()=>({}),gmailBackgroundMessage:()=>'',gmailNotificationSettings:async()=>{},GMAIL_BACKGROUND_CHANGED:'alpha:test-gmail-background'},
+  '../native':{isAndroid:true},
+  './gmail-grants':{gmailGrantTier:()=> 'send',googleAccountAccessLabel:()=> 'Read and send access'},
+  './modal-inert':{holdPhoneInert:()=>()=>{}},
+  './connection-ui':{connectionController:{subscribe:()=>()=>{},getSnapshot:()=>snapshot,getCloudClient:()=>binding,rejectCloudSession:()=>{throw Error('Unexpected rejection');}}},
+  './google-accounts':{GOOGLE_ACCOUNTS_CHANGED:ACCOUNTS,createGoogleAccounts:()=>({list:async()=>{counts.accounts++;return [account];}})},
+  './google-calendar':{GoogleCalendarReader:class {async listSources(){counts.calendars++;return {status:'ready',calendars:[source]};}invalidate(){}}},
+  './google-calendar-selection':{GOOGLE_CALENDAR_SELECTION_CHANGED:SELECTION,readGoogleCalendarSelection:()=>selection,saveGoogleCalendarSelection:(_key,next)=>{selection=next;dom.window.dispatchEvent(new dom.window.Event(SELECTION));return true;}},
+  './native-connection':{openConnectionBrowser:()=>{throw Error('Unexpected OAuth request');}},
+ };
+ const compiled=transformSync(readFileSync('apps/app/src/runtime/google-connection-ui.tsx','utf8'),{loader:'tsx',jsx:'automatic',format:'cjs',target:'es2022'}).code;
+ const module={exports:{}};
+ const context=vm.createContext({module,exports:module.exports,require:name=>name==='react'||name==='react/jsx-runtime'?require(name):modules[name]??(()=>{throw Error('Unexpected import '+name);})(),window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,AbortController,Event:dom.window.Event});
+ vm.runInContext(compiled,context);
+ const {GoogleConnectionsPanel,googleConnectionController}=module.exports;
+ const root=createRoot(dom.window.document.getElementById('root'));
+ const flush=()=>new Promise(resolve=>setTimeout(resolve,0));
+ try{
+  googleConnectionController.open();
+  await React.act(async()=>{root.render(React.createElement(GoogleConnectionsPanel));await flush();});
+  assert.deepEqual(counts,{accounts:1,calendars:1});
+  const choices=dom.window.document.querySelectorAll('input[type="radio"]');assert.equal(choices.length,2);
+  await React.act(async()=>{choices[1].click();await flush();});
+  assert.equal(selection.providerCalendarId,'primary');
+  assert.deepEqual(counts,{accounts:1,calendars:1},'A local display preference must not enumerate provider accounts/calendars again');
+  const refresh=[...dom.window.document.querySelectorAll('button')].find(button=>button.textContent==='Check Google connections');assert.ok(refresh);
+  await React.act(async()=>{refresh.click();await flush();});
+  assert.deepEqual(counts,{accounts:2,calendars:2});
+  await React.act(async()=>{dom.window.dispatchEvent(new dom.window.Event(ACCOUNTS));await flush();});
+  assert.deepEqual(counts,{accounts:3,calendars:3});
+  assert.equal(dom.window.document.querySelectorAll('input[type="radio"]')[1].checked,true);
+ }finally{
+  await React.act(async()=>root.unmount());dom.window.close();
+  for(const [key,value] of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}
+ }
+});
