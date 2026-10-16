@@ -18,6 +18,15 @@
   "signer": {
     "apkDescriptor": "android/release-signer.json",
     "platformCertificateSha256": "UNSET",
+    "releaseCertificates": {
+      "shared": "UNSET",
+      "media": "UNSET",
+      "networkstack": "UNSET",
+      "sdk_sandbox": "UNSET",
+      "bluetooth": "UNSET",
+      "nfc": "UNSET",
+      "apex": "UNSET"
+    },
     "decision": "A-06"
   },
   "avb": {

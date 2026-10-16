@@ -60,14 +60,19 @@ function keyDirectory(t) {
   return { keys, platform, releasekey, apex, avb: sha256(pkmd) };
 }
 
+/** Reviewed digests for every non-platform certificate; the fixture copies releasekey's certificate to each. */
+function releaseCertificates({ releasekey, apex }) {
+  return { ...Object.fromEntries(X509_KEYS.filter(name => !["platform", "releasekey"].includes(name)).map(name => [name, releasekey])), apex };
+}
+
 /** A repository copy whose production descriptors are complete for the given keys. */
-function completeRoot(t, { platform, releasekey, avb }) {
+function completeRoot(t, { platform, releasekey, apex, avb }) {
   const dir = temporary(t, "alpha-release-root-");
   const write = (rel, value) => { fs.mkdirSync(path.dirname(path.join(dir, rel)), { recursive: true }); fs.writeFileSync(path.join(dir, rel), typeof value === "string" ? value : JSON.stringify(value, null, 2)); };
   const lock = JSON.stringify({ schema: 1, target: "pixel10a", device: { codename: "stallion", androidRelease: "17" }, developmentOnly: false, releaseQualified: false });
   write("android/aosp/pixel10a-source.json", lock);
   const product = read(PIXEL10A_PRODUCT);
-  write(PIXEL10A_PRODUCT, { ...product, sourceLock: { ...product.sourceLock, sha256: sha256(lock) }, signer: { ...product.signer, platformCertificateSha256: platform }, avb: { ...product.avb, publicKeySha256: avb } });
+  write(PIXEL10A_PRODUCT, { ...product, sourceLock: { ...product.sourceLock, sha256: sha256(lock) }, signer: { ...product.signer, platformCertificateSha256: platform, releaseCertificates: releaseCertificates({ releasekey, apex }) }, avb: { ...product.avb, publicKeySha256: avb } });
   write(CHANNEL, { ...read(CHANNEL), otaCertificateSha256: releasekey, avbPublicKeySha256: avb });
   write("android/release-signer.json", { ...read("android/release-signer.json"), signerSha256: "d".repeat(64) });
   return { dir, write, product: read(PIXEL10A_PRODUCT) };
@@ -303,6 +308,10 @@ test("signing refuses unsafe keys, mismatched digests, changed inputs and unset 
   await refuse(({ key }) => { fs.writeFileSync(path.join(key.keys, "avb_pkmd.bin"), "other"); }, /avb_pkmd\.bin is not the product's avb\.publicKeySha256/);
   await refuse(({ key }) => { certificate(key.keys, "platform"); }, /platform\.x509\.pem is [0-9a-f]{64}, not the product's/);
   await refuse(({ key }) => { certificate(key.keys, "releasekey"); }, /not the channel's otaCertificateSha256/);
+  // A public AOSP test key (or any unreviewed certificate) under another release name is refused.
+  await refuse(({ key }) => { certificate(key.keys, "shared"); }, /shared\.x509\.pem is [0-9a-f]{64}, not the product's signer\.releaseCertificates\.shared/);
+  await refuse(({ key }) => { certificate(key.keys, "apex"); }, /apex\.x509\.pem is [0-9a-f]{64}, not the product's signer\.releaseCertificates\.apex/);
+  await refuse(({ repo }) => { const p = JSON.parse(fs.readFileSync(path.join(repo.dir, PIXEL10A_PRODUCT), "utf8")); repo.write(PIXEL10A_PRODUCT, { ...p, signer: { ...p.signer, releaseCertificates: { ...p.signer.releaseCertificates, media: "UNSET" } } }); }, /signer\.releaseCertificates\.media must be the reviewed certificate SHA-256/);
   await refuse(({ options }) => ({ ...options, targetFilesSha256: "0".repeat(64) }), /differs from --target-files-sha256/);
   await refuse(({ options }) => ({ ...options, keysDir: path.relative(process.cwd(), options.keysDir) }), /absolute path/);
   await refuse(({ options }) => { fs.mkdirSync(options.out); fs.chmodSync(options.out, 0o700); }, /already exists/);
@@ -365,6 +374,9 @@ test("APK certificates without a release key mapping are refused before signing;
   // Mapped to a key in the key directory, the same build signs, and Camera.apk carries that key.
   fixture = setup(t, {}, { apkcerts: [...APKCERTS, camera], files: { "PRODUCT/app/Camera/Camera.apk": { CERT: TEST_KEY_DIGEST } } });
   const cameraDigest = certificate(fixture.key.keys, "camera");
+  // A mapped certificate needs its own reviewed digest in the product descriptor.
+  const pinned = JSON.parse(fs.readFileSync(path.join(fixture.repo.dir, PIXEL10A_PRODUCT), "utf8"));
+  fixture.repo.write(PIXEL10A_PRODUCT, { ...pinned, signer: { ...pinned.signer, releaseCertificates: { ...pinned.signer.releaseCertificates, camera: cameraDigest } } });
   fs.writeFileSync(path.join(fixture.key.keys, "camera.pk8"), "TEST-ONLY-PRIVATE-MARKER");
   fs.chmodSync(path.join(fixture.key.keys, "camera.pk8"), 0o600);
   const options = { ...fixture.options, keyMap: { "vendor/google/certs/camera": "camera" } };

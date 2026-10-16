@@ -183,6 +183,16 @@ export function keyDirectoryProblems(keysDir, { product, channel, root = process
   const certs = keyCertificates(real, ["platform", "releasekey"]);
   if (certs.platform && certs.platform !== product?.signer?.platformCertificateSha256) problems.push(`platform.x509.pem is ${certs.platform}, not the product's signer.platformCertificateSha256`);
   if (certs.releasekey && certs.releasekey !== channel?.otaCertificateSha256) problems.push(`releasekey.x509.pem is ${certs.releasekey}, not the channel's otaCertificateSha256`);
+  // Every other certificate the job signs with is pinned too, so no public AOSP test key (shared,
+  // media, networkstack, ...) can be signed into the image under a release name.
+  const pinned = product?.signer?.releaseCertificates ?? {};
+  const others = [...new Set([...Object.values(DEFAULT_KEY_MAP), ...EXPLICIT_KEYS, ...Object.values(keyMap),
+    ...(inspection && signedApexes(inspection.apexkeys).length ? [APEX_KEYS.container] : [])])].filter(name => !["platform", "releasekey"].includes(name));
+  const other = keyCertificates(real, others);
+  for (const name of others) {
+    if (!/^[0-9a-f]{64}$/.test(pinned[name] ?? "")) problems.push(`${PIXEL10A_PRODUCT} signer.releaseCertificates.${name} must be the reviewed certificate SHA-256`);
+    else if (other[name] && other[name] !== pinned[name]) problems.push(`${name}.x509.pem is ${other[name]}, not the product's signer.releaseCertificates.${name}`);
+  }
   const pkmd = path.join(real, product?.avb?.publicKeyMetadata ?? "avb_pkmd.bin");
   if (fs.existsSync(pkmd) && !fs.lstatSync(pkmd).isSymbolicLink() && sha256(fs.readFileSync(pkmd)) !== product?.avb?.publicKeySha256) problems.push(`${path.basename(pkmd)} is not the product's avb.publicKeySha256`);
   return problems;

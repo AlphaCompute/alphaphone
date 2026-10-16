@@ -116,7 +116,12 @@ partition (every `avb_<partition>_key_path`, for example `boot`, `init_boot`, `v
 not map, a mapped partition the build does not chain, an APK certificate that no release key
 mapping covers (the `-d` defaults, `bluetooth`, `nfc`, or an explicit `--map-key SOURCE=NAME`
 for a key `NAME.pk8`/`NAME.x509.pem` in the key directory), externally signed APKs, and a
-partly presigned APEX. It then runs `sign_target_files_apks -o -d KEYS` with
+partly presigned APEX. Every certificate it signs with must match a reviewed digest:
+`platform` matches `signer.platformCertificateSha256`, `releasekey` matches the channel's
+`otaCertificateSha256`, and every other one (`shared`, `media`, `networkstack`, `sdk_sandbox`,
+`bluetooth`, `nfc`, `apex` when an APEX is re-signed, and each `--map-key` name) matches
+`signer.releaseCertificates.<name>`. All of these are `UNSET` until reviewed, so a key bundle
+carrying a public AOSP test key under a release name is refused. It then runs `sign_target_files_apks -o -d KEYS` with
 `-k build/make/target/product/security/bluetooth=KEYS/bluetooth` and the same for `nfc`, an
 `--extra_apex_payload_key NAME=KEYS/apex_payload.pem` and `--extra_apks NAME=KEYS/apex` for
 every APEX that is not presigned, and the `avb` key and algorithm for vbmeta and each chained
