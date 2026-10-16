@@ -491,9 +491,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Pending",
-      "seeker": "Pending",
+      "seeker": "Installedef36: disposable event saved to Alpha Phone local calendar; exact title/time/source provider readback verified.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-native-calendar-undo-20261016.json"
+      ],
       "notes": ""
     },
     {
@@ -515,9 +517,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Pending",
-      "seeker": "Pending",
+      "seeker": "Installedef36: native scoped deletion review, ten-second Undo and original-field readback passed. Separate QA cleanup absence confirmed after app resume. Stale native row refresh fixed in source; new APK retest pending.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-native-calendar-undo-20261016.json"
+      ],
       "notes": ""
     },
     {

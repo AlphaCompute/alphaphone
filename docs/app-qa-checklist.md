@@ -64,9 +64,9 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | calendar-01 | Agenda, day/week and month switching | Pending | Pending | Pending |
 | calendar-02 | Today, date picker and month header | Pending | Pending | Pending |
 | calendar-03 | Event detail and location links | Pending | Pending | Pending |
-| calendar-04 | Create local event | Pending | Pending | Pending |
+| calendar-04 | Create local event | Pending | Installedef36: disposable event saved to Alpha Phone local calendar; exact title/time/source provider readback verified. | Pending |
 | calendar-05 | Edit local event and recurrence | Pending | Pending | Pending |
-| calendar-06 | Delete local event and Undo | Pending | Pending | Pending |
+| calendar-06 | Delete local event and Undo | Pending | Installedef36: native scoped deletion review, ten-second Undo and original-field readback passed. Separate QA cleanup absence confirmed after app resume. Stale native row refresh fixed in source; new APK retest pending. | Pending |
 | calendar-07 | Reminders, alerts and notification delivery | Pending | Pending | Pending |
 | calendar-08 | Google accounts and permissions in Settings | Google connection manager retained; latest browser QA pending. | Native read/send and Calendar read/edit grants independently verified after approved Mac Chrome consent. | Pending |
 | calendar-09 | Google calendars list and selected source | Pending | Pending | Pending |
