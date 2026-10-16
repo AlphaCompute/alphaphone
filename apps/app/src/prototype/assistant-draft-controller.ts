@@ -7,19 +7,29 @@ type Held={binding:Binding;text:string;peer?:Binding};
 /** Product composer lifecycle. Queued writes keep their original conversation binding. */
 export class AssistantDraftController {
  private active?:Binding;
+ private opening?:Promise<void>;
  private held?:Held;
- state={message:'Opening local draft…',opening:true,conflict:false,savedText:'',consuming:false,error:false};
+ state={message:'',opening:true,conflict:false,savedText:'',consuming:false,error:false};
  constructor(private factory:(key:string)=>Promise<Store>,private text:()=>string,private restore:(text:string)=>void,private changed:()=>void){}
  private publish(patch:Partial<typeof this.state>){this.state={...this.state,...patch};this.changed();}
  recovery(){return this.active?.store?.recovery;}
- retire(notify=true){this.active=undefined;this.state={message:'Opening local draft…',opening:true,conflict:false,savedText:'',consuming:false,error:false};if(notify)this.changed();}
+ retire(notify=true){this.active=undefined;this.state={message:'',opening:true,conflict:false,savedText:'',consuming:false,error:false};if(notify)this.changed();}
  unavailable(){this.retire();this.publish({opening:false,conflict:false,consuming:false,error:true,message:'Local draft could not be opened. Your current text is retained.'});}
  async open(key:string){
-  if(this.active?.key===key)return;
+  if(this.active?.key===key)return this.opening;
+  const opening=this.load(key);this.opening=opening;return opening;
+ }
+ private async load(key:string){
   const initial=this.text(),b:Binding={key,record:null,last:initial,ready:false,failed:false,queue:Promise.resolve()};this.active=b;
-  this.publish({opening:true,conflict:false,consuming:false,error:false,message:'Opening local draft…'});
+  this.publish({opening:true,conflict:false,consuming:false,error:false,message:''});
   try{
-   b.store=await this.factory(key);b.record=await b.store.read();if(this.active!==b)return;
+   // Opening is read-only. Retry a transient storage-open failure without flashing
+   // an error or ever replaying a write; a retired conversation cannot restore text.
+   for(let attempt=0;;attempt++){
+    try{b.store=await this.factory(key);b.record=await b.store.read();break;}
+    catch(error){if(this.active!==b)return;if(attempt===2)throw error;await new Promise(resolve=>setTimeout(resolve,attempt===0?150:600));if(this.active!==b)return;}
+   }
+   if(this.active!==b)return;
    b.ready=true;
    if(this.text()!==initial||initial!==''){
     if(b.record&&b.record.text!==this.text()){b.failed=true;this.publish({opening:false,conflict:true,savedText:b.record.text,message:'A saved draft is available. Review both copies.'});return;}

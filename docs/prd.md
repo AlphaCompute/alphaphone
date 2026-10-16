@@ -10,7 +10,7 @@ retain prototype and upstream provenance.
 
 A personal agent phone with an independent Alpha Compute UI, locally resident
 orchestration, local speech and useful native tools. Eliza Cloud supplies managed
-inference, subscription, Gmail and Maps services; it never hosts Alpha's agent.
+inference, subscription, Gmail, optional Google Calendar and Maps services; it never hosts Alpha's agent.
 Keep prototype styling and identity separate from real data/capability claims.
 
 ## Users and primary journeys
@@ -34,7 +34,7 @@ Keep prototype styling and identity separate from real data/capability claims.
 | AP-06 | Always-local native STT/TTS; separate dictation and voice-assistant modes | P0; Clef semantic/long-gap endpoint, automatic conversation submission, barge-in; true last-input-to-first-audible latency; AOSP always-on listening and hardware invocation included |
 | AP-07 | Daily overview, agenda, attention and resident briefs | P1; actual sources, freshness/empty/error states; phone-powered-on schedules only |
 | AP-08 | Phone, SMS/MMS and Contacts only on Alpha AOSP | P0 AOSP; real native providers/roles, owned carrier endpoints, emergency system access; hidden and capability-gated elsewhere |
-| AP-09 | Gmail, Calendar and reviewed cross-app mail attachments | P1; incremental Gmail scopes, real delivery, availability semantics, durable deletion Undo and source/account isolation |
+| AP-09 | Gmail, Calendar and reviewed cross-app mail attachments | P1; incremental Gmail scopes, real delivery, optional Google Calendar connection and explicit local-first sync, availability semantics, durable deletion Undo and source/account isolation; [Cloud Calendar boundary](decisions.md#october-15-google-calendar-service-decision) |
 | AP-10 | Browser, camera, full permitted Photos, Cloud Maps, Notes and Files | P1; normal third-party cookies allowed, ephemeral private tabs, eligible autofill, native secure camera, agent Maps controls, local speech, Notes three-day Trash; no app-data import/export |
 | AP-11 | Resident workflows, approvals and run history | P1; bounded permissions, durable receipts, missed recovery, owner-return notices and no powered-off execution |
 | AP-12 | Settings, subscriptions, permissions, local voice, system shade and reset | P0; truthful state, responsive controls, no backup/import/export, confirmed private-data reset |

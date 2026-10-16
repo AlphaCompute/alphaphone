@@ -165,7 +165,30 @@ test('managed Google bridge admits combined consent and encoded owner reads with
   assert.equal(new URL(f.calls.at(-1).url).origin,'https://api-staging.eliza.app');
  }finally{await f.close();}
 });
-test('managed Google bridge refuses scope escalation, mutations, malformed query and stale or secret responses',async()=>{
+test('managed Google bridge preserves prepared Gmail review, digest dispatch, and receipt routes',async()=>{
+ const f=await fixture(),grant=randomUUID(),requestId=randomUUID(),reviewDigest='a'.repeat(64),root='/api/v1/eliza/google/gmail/inbox-v1/operations';try{
+  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
+  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
+  const proposal={kind:'send',mode:'compose',to:['self@example.invalid'],cc:[],bcc:[],subject:'Synthetic review',bodyText:'A'.repeat(5000),attachments:[]};
+  assert.deepEqual((await call(root,'POST',{grantId:grant,requestId,proposal})).data.data.forwarded,{grantId:grant,requestId,proposal});
+  assert.equal((await call(root+'/'+requestId+'/dispatch','POST',{grantId:grant,reviewDigest,proposal})).data.status,200);
+  assert.equal((await call(root+'/'+requestId+'?grantId='+grant)).data.status,200);
+  const attached={...proposal,attachments:[{name:'fixture.pdf',mimeType:'application/pdf',dataBase64:'A'.repeat(3*1024*1024)}]};
+  assert.equal((await call(root,'POST',{grantId:grant,requestId:randomUUID(),proposal:attached})).data.status,200,'normal attachment payloads pass the bounded outer JSON envelope');
+  const before=f.calls.length;
+  for(const [route,method,body] of [
+   [root,'POST',{grantId:grant,requestId,proposal,url:'https://elsewhere.invalid'}],
+   [root,'POST',{grantId:'bad',requestId,proposal}],
+   [root,'POST',{grantId:grant,requestId,proposal:{kind:'delete-all'}}],
+   [root+'/'+requestId+'/dispatch','POST',{grantId:grant,proposal}],
+   [root+'/'+requestId+'/dispatch','POST',{grantId:grant,reviewDigest:'bad',proposal}],
+   [root+'/'+requestId+'?grantId='+grant+'&side=agent','GET'],
+   [root+'/'+requestId+'/send','POST',{grantId:grant,reviewDigest,proposal}],
+  ])assert.equal((await call(route,method,body)).status,400);
+  assert.equal(f.calls.length,before,'invalid dispatches do not reach Cloud');
+ }finally{await f.close();}
+});
+test('managed Google bridge refuses scope escalation, unreviewed mutations, malformed query and stale or secret responses',async()=>{
  const f=await fixture(),grant=randomUUID();try{
   const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
   const before=f.calls.length;
@@ -269,13 +292,15 @@ test('cancelling an in-flight email verification keeps the existing account and 
  }finally{release?.();await f.close();}
 });
 
-test('private agent Gmail port shares the current credential without allowing mail writes or other services',async()=>{
+test('private agent Google port shares the current credential without allowing writes or unrelated services',async()=>{
  const f=await fixture();try{
   const host=f.host(),credential=await host.agentCredential();assert.equal(credential.token,undefined);assert.equal(credential.credentialReference,reference);
   const read={url:'https://api.eliza.app/api/v1/user',method:'GET',credentialReference:reference,signal:new AbortController().signal};
   assert.equal((await host.agentRead(read)).data.data.id,owner);const count=f.calls.length;
-  for(const change of [{method:'POST',body:{}},{url:'https://api.eliza.app/api/v1/eliza/google/disconnect'},{url:'https://api.eliza.app/api/v1/eliza/google/calendar/calendars?side=owner&grantId='+credentialId},{url:'https://api.eliza.app/api/v1/billing/limits'},{url:'https://elsewhere.invalid/api/v1/user'},{credentialReference:'browser-cloud-reference:'+randomUUID()}])await assert.rejects(host.agentRead({...read,...change}));
+  for(const change of [{method:'POST',body:{}},{url:'https://api.eliza.app/api/v1/eliza/google/disconnect'},{url:'https://api.eliza.app/api/v1/eliza/google/calendar/events',method:'POST',body:'{}'},{url:'https://api.eliza.app/api/v1/billing/limits'},{url:'https://elsewhere.invalid/api/v1/user'},{credentialReference:'browser-cloud-reference:'+randomUUID()}])await assert.rejects(host.agentRead({...read,...change}));
   assert.equal(f.calls.length,count,'no refused read or mutation reached Cloud');
+  f.setResponse(async()=>Response.json([]));
+  const calendars=await host.agentRead({...read,url:'https://api.eliza.app/api/v1/eliza/google/calendar/calendars?side=owner&grantId='+credentialId});assert.deepEqual(calendars.data,[]);
  }finally{await f.close();}
 });
 test('a Cloud account change while the agent Gmail read is in flight drops the old result',async()=>{
@@ -331,4 +356,29 @@ test('Maps data returning after a Cloud owner switch is discarded',async()=>{
   await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
   const result=await pending;assert.notEqual(result.status,200);assert.equal(JSON.stringify(result).includes('Previous owner result'),false);
  }finally{release?.();await f.close();}
+});
+
+test('Calendar sync bridge forwards only exact owner-bound versioned operations',async()=>{
+ const f=await fixture(),grant=randomUUID(),root='/api/v1/eliza/google/calendar/sync-v1/';try{
+  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
+  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+root+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
+  const selection={grantId:grant,calendarId:'primary',accountId:'google-user'},event={title:'Synthetic event'};
+  for(const [route,method,body] of [
+   ['capabilities?'+new URLSearchParams({grantId:grant,calendarId:'primary'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,idempotencyKey:'stable'}),'GET'],
+   ['event','POST',{...selection,idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'"1"'}),'DELETE'],
+  ])assert.equal((await call(route,method,body)).data.status,200,method+' '+route);
+  const before=f.calls.length;
+  for(const [route,method,body] of [
+   ['event','POST',{grantId:grant,calendarId:'primary',idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'*',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',idempotencyKey:'stable'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'*'}),'DELETE'],
+   ['event','PUT',{...selection,event}],
+   ['event/','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+  ])assert.ok([400,403].includes((await call(route,method,body)).status));
+  assert.equal(f.calls.length,before,'rejected routes never reach Cloud');
+ }finally{await f.close();}
 });

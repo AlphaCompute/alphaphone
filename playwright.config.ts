@@ -1,3 +1,6 @@
+import {randomUUID} from 'node:crypto';
+import {join} from 'node:path';
+import {tmpdir} from 'node:os';
 import { defineConfig, devices } from '@playwright/test';
 import { storageSpecPattern } from './scripts/storage-specs.mjs';
 const port=Number(process.env.ALPHA_BROWSER_TEST_PORT||5317);
@@ -23,10 +26,12 @@ const needsDevelopment=!selected.length||selected.some(name=>name!=='production'
 // here too. The production web server below clears it explicitly.
 if(needsDevelopment)process.env.ELIZA_DEV_ALLOW_TEST_MOCKS='1';
 
+// Tests must never inherit the human preview’s private Cloud account profile.
+const browserTestCloudProfile=join(tmpdir(),`alpha-browser-cloud-test-${randomUUID()}`);
 const development={
   // The development server explicitly opts into test mocks, fixtures and device controls.
   command: `npm run dev:ui -- --port ${port} --strictPort`, url: `http://127.0.0.1:${port}`, reuseExistingServer: false,
-  env: { ELIZA_DEV_ALLOW_TEST_MOCKS: '1' },
+  env: { ELIZA_DEV_ALLOW_TEST_MOCKS: '1', ALPHA_BROWSER_CLOUD_PROFILE: browserTestCloudProfile },
 };
 const production={
   // A flag-off production build served by vite preview: no mocks, fixtures or developer surfaces.
