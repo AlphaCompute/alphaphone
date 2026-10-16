@@ -4,15 +4,15 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { aggregateNativeVoice, nativeTimingFormat, rejection } from '../scripts/native-voice-latency.mjs';
+import { aggregateNativeVoice, nativeTimingFormat, legacyNativeTimingFormat, rejection } from '../scripts/native-voice-latency.mjs';
 import { aggregate, nativeTable } from '../scripts/aggregate-voice-latency.mjs';
 
 const identity = { sourceCommit: 'a'.repeat(40), sourceDirty: false, engineSha256: 'b'.repeat(64), modelSha256: 'c'.repeat(64), device: 'Google Pixel 10a', environment: 'device', abi: 'arm64-v8a', build: 'standalone-release' };
 function trial(index, duration = 5900) {
   return {
-    id: `trial-${index}`, pipeline: 'live-voice', clock: 'native-monotonic-ms', captureClock: 'audiorecord-timestamp', audibleClock: 'mediaplayer-timestamp',
+    id: `trial-${index}`, turnId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`, pipeline: 'live-voice', clock: 'native-monotonic-ms', captureClock: 'audiorecord-timestamp', audibleClock: 'audiotrack-timestamp',
     cold: index < 5, outcome: 'passed', network: 'wifi', thermal: 'none', identity: { ...identity },
-    marks: { 'last-user-audio': 1000, endpoint: 1550, 'tts-start': 3300, 'tts-ready': 4000, 'first-pcm': 4100, 'audible-playback': 1000 + duration },
+    marks: { 'last-user-audio': 1000, endpoint: 1550, 'asr-final': 1700, request: 1720, 'first-token': 2900, 'tts-start': 3300, 'tts-ready': 4000, 'first-pcm': 4100, 'audible-playback': 1000 + duration },
   };
 }
 const document = records => ({ format: nativeTimingFormat, records });
@@ -30,6 +30,9 @@ test('native latency is the full last-speech to audible interval, with cold/warm
   // Stage spans are reported and never summed into the result.
   assert.equal(cohort.stagesDiagnosticOnly.endpointDetection.p50, 550);
   assert.equal(cohort.stagesDiagnosticOnly.outputLatency.p50, 1000 + 5900 - 4100);
+  assert.equal(cohort.stagesDiagnosticOnly.requestToFirstToken.p50, 1180);
+  assert.equal(cohort.stagesDiagnosticOnly.transcriptToRequest.p50, 20);
+  assert.equal(cohort.linked, 50);
   assert.equal(aggregateNativeVoice([document(rows.slice(1))]).sufficient, false);
   assert.equal(aggregateNativeVoice([document(rows)], { warm: 46, cold: 5 }).sufficient, false);
   assert.equal(aggregateNativeVoice([document(rows.map((row, i) => trial(i, 7000)))]).withinBudget, false);
@@ -148,7 +151,15 @@ test('the Android collector times capture from AudioRecord and playback from the
   const probe = read('AlphaVoiceLatencyProbe.java'), capture = read('AlphaLiveVoiceCapture.java'), plugin = read('AlphaVoiceCloudPlugin.java');
   assert.match(probe, /getTimestamp\(scratch,AudioTimestamp\.TIMEBASE_MONOTONIC\)/);
   assert.match(probe, /getAnchorSystemNanoTime\(\)/);
-  assert.match(probe, /"alpha-native-voice-timing-v2"/);
+  assert.match(probe, /"alpha-native-voice-timing-v3"/);
+  assert.match(probe, /\.put\("turnId",trial\.turnId\)/);
+  // Streamed speech (#397): first-pcm at the first AudioTrack write, audible from AudioTrack.getTimestamp.
+  const output = read('AudioTrackSpeechOutput.java');
+  assert.match(output, /track\.getTimestamp\(stamp\)/);
+  assert.match(output, /MODE_STREAM/);
+  assert.match(plugin, /TRIALS\.firstPcm\(trial,nanos\)/);
+  assert.match(plugin, /TRIALS\.forTurn\(call\.getString\("voiceTurnId"\)\)/);
+  assert.match(plugin, /@PluginMethod public void markVoiceTurn\(PluginCall call\)\{\n  long at=System\.nanoTime\(\);/);
   assert.equal(probe.includes('Log.'), false, 'the collector logs nothing');
   assert.match(capture, /TRIALS\.speechEnded\(lastSpeechNs,System\.nanoTime\(\)/);
   assert.match(plugin, /p\.start\(\);if\(playbackLocalReply\)AlphaVoiceLatencyProbe\.playbackStarted\(/);
@@ -168,4 +179,28 @@ test('duplicate trial provenance changes cannot replace an accepted record', () 
   const rows = samples(); rows.forEach(row => { row.audibleClock = 'start-call'; });
   assert.equal(aggregateNativeVoice([document(rows)]).sufficient, false);
   assert.equal(rejection({ ...trial(0), pipeline: 'toString' }), 'pipeline');
+});
+
+test('v3 trials link one turn end to end; unlinked, legacy and fallback-clock trials stay diagnostic', () => {
+  assert.equal(aggregateNativeVoice([document(samples())]).sufficient, true);
+  for (const mutate of [row => delete row.marks.request, row => delete row.marks['first-token'], row => delete row.marks['asr-final'], row => (row.audibleClock = 'audiotrack-head-position')]) {
+    const rows = samples(); mutate(rows[7]);
+    const summary = aggregateNativeVoice([document(rows)]);
+    assert.equal(summary.invalid, 0);
+    assert.equal(summary.cohorts[0].class, 'diagnostic');
+    assert.equal(summary.sufficient, false);
+  }
+  for (const mutate of [row => delete row.turnId, row => (row.turnId = 'turn-1'), row => (row.marks.request = 1600)]) {
+    const rows = samples(); mutate(rows[0]);
+    assert.ok(rejection(rows[0]));
+    assert.equal(aggregateNativeVoice([document(rows)]).sufficient, false);
+  }
+  // Legacy v2 exports parse (without the new marks or turnId) but cannot be acceptance evidence.
+  const legacy = samples().map(row => { const { turnId, ...rest } = row; const marks = { ...rest.marks }; delete marks.request; delete marks['first-token']; return { ...rest, audibleClock: 'mediaplayer-timestamp', marks }; });
+  const old = aggregateNativeVoice([{ format: legacyNativeTimingFormat, records: legacy }]);
+  assert.equal(old.invalid, 0);
+  assert.equal(old.cohorts[0].class, 'diagnostic');
+  assert.equal(old.sufficient, false);
+  assert.ok(rejection({ ...legacy[0], marks: { ...legacy[0].marks, request: 1720 } }, legacyNativeTimingFormat), 'v2 has no request mark');
+  assert.throws(() => aggregateNativeVoice([{ format: 'alpha-native-voice-timing-v1', records: [] }]), /export/);
 });

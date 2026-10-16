@@ -15,10 +15,10 @@ async function setup(page:Page){
    }
    return emit(plugin,event,value);
   };
-  const f=w.nativeSpeech={ready:true,peak:0,starts:0,stops:0,transcripts:0,spoken:[] as string[],plays:0,cancels:[] as string[],stopped:0,forbidden:[] as string[],active:null as string|null,holdTranscript:false};
+  const f=w.nativeSpeech={ready:true,peak:0,starts:0,stops:0,transcripts:0,spoken:[] as string[],plays:0,cancels:[] as string[],stopped:0,forbidden:[] as string[],active:null as string|null,holdTranscript:false,stages:[] as string[],turns:[] as Array<string|undefined>};
   const events:Array<{event:string;callback:(value:any)=>void}>=[];
   const header=c.PluginHeaders.find((p:any)=>p.name==='AlphaVoiceCloud');
-  header.methods=[...['checkPermissions','localSpeechStatus','startRecording','stopRecording','getRecordingMetrics','cancelRecording','transcribeLocalRecording','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
+  header.methods=[...['checkPermissions','localSpeechStatus','startRecording','stopRecording','getRecordingMetrics','cancelRecording','transcribeLocalRecording','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech','markVoiceTurn'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
   const callback=c.nativeCallback;c.nativeCallback=(plugin:string,method:string,input:any,fn:any)=>{if(plugin==='AlphaVoiceCloud'&&method==='addListener'){events.push({event:input.eventName,callback:fn});return String(events.length);}return callback(plugin,method,input,fn);};
   c.nativePromise=async(plugin:string,method:string,input:any)=>{
    if(plugin!=='AlphaVoiceCloud')return prior(plugin,method,input);
@@ -29,7 +29,9 @@ async function setup(page:Page){
    if(method==='stopRecording'){f.stops++;const recordingId=f.active;f.active=null;return {recordingId,durationMs:1500};}
    if(method==='cancelRecording'){f.active=null;return {};}
    if(method==='transcribeLocalRecording'){f.transcripts++;if(f.holdTranscript)await new Promise(resolve=>f.releaseTranscript=resolve);return {text:'Local spoken request',local:true,execution:'device'};}
-   if(method==='synthesizeLocal'){f.spoken.push(input.text);return {playbackId:'play-'+f.spoken.length,execution:'device'};}
+   // Issue #395: the native collector binds renderer stages to one live turn id (ids only, no text).
+   if(method==='markVoiceTurn'){f.stages.push(input.stage+(input.voiceTurnId?':linked':''));return {marked:true,voiceTurnId:'7d3c1a52-6d5e-4e0f-9a43-5c1d2e3f4a5b'};}
+   if(method==='synthesizeLocal'){f.spoken.push(input.text);f.turns.push(input.voiceTurnId);return {playbackId:'play-'+f.spoken.length,execution:'device'};}
    if(method==='play'){f.plays++;return {};}
    if(method==='stopPlayback'){f.stopped++;return {};}
    if(method==='cancel'){f.cancels.push(input.requestId);return {};}
@@ -44,6 +46,9 @@ async function noCloud(page:Page,foreign:string[]){expect(await page.evaluate(()
 test('production chat captures locally, transcribes locally, plays local reply and cancels playback',async({page})=>{
  const foreign=await setup(page);await button(page,'Talk').click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');await expect(voice(page)).toContainText('transcribed on this device');await utterance(page);await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
  expect(await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {starts:f.starts,stops:f.stops,transcripts:f.transcripts,spoken:f.spoken,plays:f.plays,posts:(window as any).flagOff.posts.map((text:string)=>text.split('[USER MESSAGE]\n').at(-1))};})).toEqual({starts:1,stops:1,transcripts:1,spoken:['Resident reply 1'],plays:1,posts:['Local spoken request']});
+ // Issue #395: transcript, request and first token reach the native collector; later stages and the reply's synthesis carry its turn id.
+ const linked=await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {stages:f.stages,turns:f.turns};});
+ expect(linked.stages.slice(0,2)).toEqual(['asr-final','request:linked']);expect(linked.turns).toEqual(['7d3c1a52-6d5e-4e0f-9a43-5c1d2e3f4a5b']);
  await button(page,'Stop voice conversation').click();await expect(voice(page)).toHaveCount(0);await expect.poll(()=>page.evaluate(()=>(window as any).nativeSpeech.stopped)).toBeGreaterThan(0);await noCloud(page,foreign);
 });
 test('unavailable local speech offers keyboard without trying network speech',async({page})=>{
@@ -83,4 +88,23 @@ test('unavailable Transcribe retains keyboard and never starts a capture',async(
 });
 test('leaving foreground during Transcribe discards late output without changing the draft',async({page})=>{
  const foreign=await setup(page);await page.locator('textarea[data-alpha-composer]').fill('Original draft');await page.evaluate(()=>(window as any).nativeSpeech.holdTranscript=true);await button(page,'Transcribe').click();await expect(transcription(page)).toHaveAttribute('data-voice-state','recording');await button(page,'Stop recording').click();await expect(transcription(page)).toHaveAttribute('data-voice-state','transcribing');await page.evaluate(()=>window.dispatchEvent(new Event('pagehide')));await expect(transcription(page)).toHaveCount(0);await page.evaluate(()=>(window as any).nativeSpeech.releaseTranscript());await expect(page.locator('textarea[data-alpha-composer]')).toHaveValue('Original draft');expect(await page.evaluate(()=>(window as any).flagOff.posts)).toEqual([]);await noCloud(page,foreign);
+});
+
+// Offline: every request that would leave the device is aborted (fenceNetwork) and the renderer sees
+// navigator.onLine false. The preview server stays reachable only as the stand-in for the APK's
+// bundled assets, which a phone loads without a network. Speech capture, transcription and
+// read-aloud still run on this device; only the agent's network inference is refused, honestly,
+// and no Cloud speech route is tried.
+test('offline and fenced, speech still captures, transcribes and reads aloud on this device',async({page})=>{
+ await page.addInitScript(()=>{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get:()=>false});});
+ const foreign=await setup(page);await page.evaluate(()=>window.dispatchEvent(new Event('offline')));
+ expect(await page.evaluate(()=>navigator.onLine)).toBe(false);
+ await button(page,'Talk').click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');await expect(voice(page)).toContainText('transcribed on this device');await utterance(page);
+ await expect(voice(page)).toHaveAttribute('data-voice-state','error');await expect(voice(page)).toContainText('Local spoken request');
+ expect(await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {starts:f.starts,transcripts:f.transcripts,spoken:f.spoken,posts:(window as any).flagOff.posts.length};})).toEqual({starts:1,transcripts:1,spoken:[],posts:0});
+ await button(page,'Close voice conversation').click();await expect(voice(page)).toHaveCount(0);
+ await button(page,'Notes').click();await button(page,'New note').click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Offline');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Still speaks.');await button(page,'Read aloud').click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).nativeSpeech.spoken)).toEqual(['Offline. Still speaks.']);
+ expect(await page.evaluate(()=>(window as any).nativeSpeech.turns)).toEqual([undefined]);
+ await noCloud(page,foreign);
 });

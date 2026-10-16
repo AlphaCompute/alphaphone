@@ -1,15 +1,18 @@
 import {Capacitor} from '@capacitor/core';
 import {registerPlugin} from './platform-plugins';
 import {planLocalSpeech} from './runtime/local-speech-text';
+import {nativeVoiceTurnId} from './runtime/voice-timing';
 /** Preflight the complete native passage, then await every owned chunk. */
 export async function speakLocalText(text:string,signal:AbortSignal,onStarted?:()=>void,queue=false,requirements?:{execution?:'device'|'browser';assertCurrent:()=>void},strictDrain=false){
  signal.throwIfAborted();const native=Capacitor.isNativePlatform(),chunks=native?planLocalSpeech(text):[text],voice=registerPlugin<any>('AlphaVoiceCloud');
  const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
  const timer=setTimeout(()=>controller.abort(Error('Speech did not finish.')),20*60*1000);let started=false;
- try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue,requirements,undefined,strictDrain);}}
+ // Issue #395: a reply to a live conversation turn names its native latency turn (an id only).
+ const voiceTurnId=native?nativeVoiceTurnId():undefined;
+ try{for(const chunk of chunks){controller.signal.throwIfAborted();await speakChunk(voice,native,chunk,controller.signal,()=>{if(!started){started=true;onStarted?.();}},queue,requirements,undefined,strictDrain,voiceTurnId);}}
  finally{clearTimeout(timer);signal.removeEventListener('abort',cancel);}
 }
-async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean,requirements?:{execution?:'device'|'browser';assertCurrent:()=>void},prepare?:(requestId:string)=>Promise<{playbackId:string;execution?:string}>,strictDrain=false){
+async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSignal,onStarted:()=>void,queue:boolean,requirements?:{execution?:'device'|'browser';assertCurrent:()=>void},prepare?:(requestId:string)=>Promise<{playbackId:string;execution?:string}>,strictDrain=false,voiceTurnId?:string){
  const requestId=crypto.randomUUID();let playbackId:string|undefined,active=true,cleanup:Promise<void>|undefined,preparation:Promise<void>|undefined;
  const handles=new Set<{remove:()=>Promise<void>}>();
  const bounded=(run:()=>Promise<unknown>)=>new Promise<void>(resolve=>{const timer=setTimeout(resolve,500);Promise.resolve().then(run).catch(()=>{}).finally(()=>{clearTimeout(timer);resolve();});});
@@ -21,11 +24,11 @@ async function speakChunk(voice:any,native:boolean,text:string,signal:AbortSigna
  const wait=(prepared=false)=>Promise.race([new Promise<void>(resolve=>setTimeout(resolve,100)),interrupted,...(prepared?[finished.then(()=>{throw Error('Speech finished while waiting for playback.');})]:[])]);
  try{
   for(const event of ['playbackEnded','playbackFailed','playbackStopped']){
-   const pending=voice.addListener(event,(value:{playbackId:string;message?:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?'Speech was stopped before completion.':(!native&&typeof value.message==='string'?value.message:'Speech playback failed.')));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
+   const pending=voice.addListener(event,(value:{playbackId:string;message?:string;reason?:string})=>{if(!active||!playbackId||value.playbackId!==playbackId)return;if(event==='playbackEnded')ended();else failed(Error(event==='playbackStopped'?(value.reason==='call-active'?'Speech stopped for a phone call.':'Speech was stopped before completion.'):(!native&&typeof value.message==='string'?value.message:'Speech playback failed.')));}).then((handle:{remove:()=>Promise<void>})=>{if(active)handles.add(handle);else void bounded(()=>handle.remove());});
    await Promise.race([pending,interrupted]);signal.throwIfAborted();
   }
   for(;;){signal.throwIfAborted();requirements?.assertCurrent();try{
-   const pending:Promise<{playbackId:string;execution?:string}>=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{})})).then(async(result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)await media(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
+   const pending:Promise<{playbackId:string;execution?:string}>=(prepare?prepare(requestId):voice.synthesizeLocal({text,requestId,...(queue&&native?{replace:false}:{}),...(voiceTurnId?{voiceTurnId}:{})})).then(async(result:{playbackId:string;execution?:string})=>{if(!active&&result.playbackId)await media(()=>voice.stopPlayback({playbackId:result.playbackId,requestId}));return result;});
    // Native cancel is a request, not a synthesis-drained acknowledgement. A strict
    // consumer must also await the original operation and any late handle cleanup.
    preparation=pending.then(()=>{},error=>{if(error?.code==='speech-cleanup-unconfirmed')throw error;});void preparation.catch(()=>{});

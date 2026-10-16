@@ -81,6 +81,25 @@ public final class VoiceLatencyTrialsTest {
   check(!owned.mark(newer,"tts-ready",5*MS),"stage time cannot precede its predecessor");
   check(owned.firstPcm(newer,5*MS)==null,"playback cannot precede a known stage");
   owned.clear();check(owned.firstPcm(newer,7*MS)==null,"cleared trial cannot resume");
+  // Issue #395: renderer stages (bridge-stamped) and the turn id that links every stage of one turn.
+  check(VoiceLatencyTrials.rendererStage("asr-final")&&VoiceLatencyTrials.rendererStage("request")&&VoiceLatencyTrials.rendererStage("first-token"),"renderer stages");
+  check(!VoiceLatencyTrials.rendererStage("first-pcm")&&!VoiceLatencyTrials.rendererStage("tts-start")&&!VoiceLatencyTrials.rendererStage("endpoint"),"native-only marks are not renderer stages");
+  VoiceLatencyTrials linked=new VoiceLatencyTrials(()->0L);
+  VoiceLatencyTrials.Trial turn=linked.speechEnded(0,MS,"audiorecord-timestamp","live-voice");
+  check(turn.turnId.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"),"a random turn id");
+  check(linked.forTurn(turn.turnId)==turn&&linked.forTurn("00000000-0000-4000-8000-000000000000")==null&&linked.forTurn(null)==null,"only the open turn's id binds");
+  check(linked.mark(turn,"asr-final",2*MS)&&linked.mark(turn,"request",3*MS)&&linked.mark(turn,"first-token",4*MS)&&linked.mark(turn,"tts-start",5*MS)&&linked.mark(turn,"tts-ready",6*MS),"capture to synthesis stages in order");
+  check(!linked.mark(turn,"first-token",4*MS),"each stage once");
+  check(linked.firstPcm(turn,7*MS)==turn&&linked.audible(turn,8*MS,"audiotrack-timestamp")&&"passed".equals(turn.outcome),"one linked trial from capture to audible playback");
+  check(turn.marks[VoiceLatencyTrials.index("request")]==3*MS&&turn.marks[VoiceLatencyTrials.index("first-token")]==4*MS,"request and first-token are kept");
+  check(linked.forTurn(turn.turnId)==null,"a finished turn no longer binds");
+  VoiceLatencyTrials.Trial order=linked.speechEnded(10*MS,11*MS,"audiorecord-timestamp","live-voice");
+  check(linked.mark(order,"request",13*MS)&&!linked.mark(order,"asr-final",14*MS)&&!linked.mark(order,"first-token",12*MS),"stages cannot run backwards");
+  VoiceLatencyTrials.Trial later=linked.speechEnded(20*MS,21*MS,"audiorecord-timestamp","live-voice");
+  check(linked.forTurn(order.turnId)==null&&!order.turnId.equals(later.turnId),"a superseded turn's id no longer binds");
+  linked.stopped(later);check(linked.pending()==later,"a stop before first-pcm leaves the turn open (barge-in during synthesis)");
+  linked.mark(later,"tts-start",22*MS);linked.firstPcm(later,23*MS);linked.stopped(later);
+  check("failed".equals(later.outcome)&&"playback-stopped".equals(later.reason),"a stop after first-pcm fails the trial");
   System.out.println("PASS voice latency trials");
  }
 }

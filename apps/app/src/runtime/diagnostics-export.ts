@@ -7,7 +7,9 @@ import {sanitizeCrashEntries,type CrashEntry} from './crash-log.ts';
  * mail, addresses, provider keys, tokens, session and account identifiers, URLs and other
  * apps' package names cannot reach the export even if a caller passes them in. Voice latency
  * records keep their timing fields only (marks, and for a live turn the ASR mode, partial count
- * and three spans); no transcript, partial or reply text is ever copied.
+ * and three spans); no transcript, partial or reply text is ever copied. Native voice timing
+ * (issue #395, AlphaVoiceCloud.nativeVoiceTiming) keeps its monotonic marks, random turn ids, fixed
+ * labels and build/model hashes only; it never carries audio, transcripts or replies.
  */
 export const DIAGNOSTICS_FORMAT='alpha-diagnostics/v1';
 export const RUNTIME_ASSETS=['agent/alpha-source.json','agent/agent-bundle.js','agent/workflow-worker/manifest.json','agent/workflow-worker/files.sha256'] as const;
@@ -24,6 +26,14 @@ const version=/^[0-9A-Za-z][0-9A-Za-z.+_-]{0,63}$/;
 const pin=/^[0-9a-f]{40}$/;
 const sha256=/^[0-9a-f]{64}$/;
 const turnId=/^[0-9a-f-]{36}$/;
+// Native voice latency (alpha-native-voice-timing-v3, VoiceLatencyTrials): the aggregator's allowlists.
+export const NATIVE_VOICE_TIMING_FORMAT='alpha-native-voice-timing-v3';
+const NATIVE_MARKS=['last-user-audio','endpoint','asr-final','request','first-token','tts-start','tts-ready','first-pcm','audible-playback'] as const;
+const NATIVE_LIMIT=512;
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const nativeId=/^[0-9a-f]{0,40}-[0-9a-f]{1,16}-[0-9]{1,10}$/;
+const fixedLabel=/^[A-Za-z0-9+-]{1,80}$/;
+const deviceLabel=/^[A-Za-z0-9 ._()+-]{1,80}$/;
 
 export type DiagnosticsInput={
  generatedAt?:unknown;platform?:unknown;
@@ -33,9 +43,13 @@ export type DiagnosticsInput={
  connection?:{kind?:unknown;connected?:unknown};
  /** Parsed exportVoiceTiming() output. */
  voiceTiming?:unknown;
+ /** AlphaVoiceCloud.nativeVoiceTiming() output (alpha-native-voice-timing-v3). */
+ nativeVoiceTiming?:unknown;
 };
+export type NativeVoiceTimingIdentity={sourceCommit:string;sourceDirty:boolean;engineSha256:string;modelSha256:string;models?:Record<string,string>;device:string;environment:'device'|'emulator';abi:'arm64-v8a'|'x86_64';sdk?:number;build:string};
+export type NativeVoiceTimingRow={id:string;turnId:string;pipeline:string;clock:'native-monotonic-ms';captureClock:string;cold:boolean;coldReason?:string;outcome:string;reason?:string;audibleClock?:string;network?:string;thermal?:string;thermalHeadroom?:number;identity:NativeVoiceTimingIdentity;marks:Record<string,number>};
 export type VoiceTimingLiveRow={mode:'stream'|'batch'|'unknown';partials:number;firstPartialMs?:number;finalFromSpeechEndMs?:number;asrFinalFromSpeechEndMs?:number};
-export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;live?:VoiceTimingLiveRow;outcome?:'abandoned'};
+export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;live?:VoiceTimingLiveRow;nativeTurn?:string;outcome?:'abandoned'};
 export type DiagnosticsReport={
  format:typeof DIAGNOSTICS_FORMAT;generatedAt:string;platform:'android'|'web';
  app:{version:string|null;versionCode?:number;variant?:'launcher'|'standalone';buildType?:'debug'|'release';testMocks?:boolean};
@@ -48,6 +62,8 @@ export type DiagnosticsReport={
  crashes:{count:number;recent:CrashEntry[]};
  /** A complete alpha-voice-timing-v1 document, readable by scripts/aggregate-voice-latency.mjs. */
  voiceTiming:{format:typeof VOICE_TIMING_FORMAT;marks:string[];records:VoiceTimingRow[]};
+ /** A complete alpha-native-voice-timing-v3 document, readable by scripts/aggregate-voice-latency.mjs. */
+ nativeVoiceTiming:{format:typeof NATIVE_VOICE_TIMING_FORMAT;clock:'CLOCK_MONOTONIC';units:'ms';marks:string[];dropped:number;records:NativeVoiceTimingRow[]};
 };
 
 const text=(value:unknown,pattern:RegExp)=>typeof value==='string'&&pattern.test(value)?value:undefined;
@@ -79,10 +95,49 @@ function voiceTimingRows(input:unknown):VoiceTimingRow[]{
    for(const key of ['firstPartialMs','finalFromSpeechEndMs','asrFinalFromSpeechEndMs'] as const){const at=live[key];if(typeof at==='number'&&Number.isFinite(at)&&at>=0&&at<3_600_000)numbers[key]=Math.round(at);}
    out.live=numbers;
   }
+  const nativeTurn=text(row.nativeTurn,uuid);if(nativeTurn)out.nativeTurn=nativeTurn;
   if(row.outcome==='abandoned')out.outcome='abandoned';
   rows.push(out);
  }
  return rows;
+}
+
+function nativeIdentity(value:unknown):NativeVoiceTimingIdentity|undefined{
+ const id=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:null;if(!id)return undefined;
+ const sourceCommit=text(id.sourceCommit,pin),engineSha256=id.engineSha256==='unavailable'?'unavailable':text(id.engineSha256,sha256),modelSha256=text(id.modelSha256,sha256),device=text(id.device,deviceLabel);
+ const environment=one(id.environment,['device','emulator'] as const),abi=one(id.abi,['arm64-v8a','x86_64'] as const),build=text(id.build,/^(standalone|launcher)-(debug|release)$/);
+ if(!sourceCommit||typeof id.sourceDirty!=='boolean'||!engineSha256||!modelSha256||!device||!environment||!abi||!build)return undefined;
+ const out:NativeVoiceTimingIdentity={sourceCommit,sourceDirty:id.sourceDirty,engineSha256,modelSha256,device,environment,abi,build};
+ const models=id.models&&typeof id.models==='object'&&!Array.isArray(id.models)?id.models as Record<string,unknown>:null;
+ if(models){const kept:Record<string,string>={};for(const key of ['asr','vad','tts']){const hash=text(models[key],sha256);if(hash)kept[key]=hash;}out.models=kept;}
+ if(Number.isSafeInteger(id.sdk)&&(id.sdk as number)>0&&(id.sdk as number)<1000)out.sdk=id.sdk as number;
+ return out;
+}
+/** Copies the native trials' timing fields only: ids, fixed labels, hashes and monotonic marks. */
+function nativeVoiceRows(input:unknown):{dropped:number;records:NativeVoiceTimingRow[]}{
+ const document=input&&typeof input==='object'?input as Record<string,unknown>:{};
+ if(document.format!==NATIVE_VOICE_TIMING_FORMAT||!Array.isArray(document.records))return {dropped:0,records:[]};
+ const records:NativeVoiceTimingRow[]=[];
+ for(const value of document.records.slice(-NATIVE_LIMIT)){
+  if(!value||typeof value!=='object'||Array.isArray(value))continue;
+  const row=value as Record<string,unknown>,identity=nativeIdentity(row.identity);
+  const id=text(row.id,nativeId),turn=text(row.turnId,uuid),pipeline=one(row.pipeline,['live-voice','harness-no-inference'] as const);
+  const captureClock=one(row.captureClock,['audiorecord-timestamp','read-return','synthetic-feed'] as const),outcome=one(row.outcome,['passed','failed','abandoned'] as const);
+  if(!identity||!id||!turn||!pipeline||row.clock!=='native-monotonic-ms'||!captureClock||!outcome||typeof row.cold!=='boolean')continue;
+  const raw=row.marks&&typeof row.marks==='object'&&!Array.isArray(row.marks)?row.marks as Record<string,unknown>:null;if(!raw)continue;
+  const marks:Record<string,number>={};
+  for(const mark of NATIVE_MARKS){const at=raw[mark];if(typeof at==='number'&&Number.isFinite(at)&&at>=0&&at<1e12)marks[mark]=at;}
+  const out:NativeVoiceTimingRow={id,turnId:turn,pipeline,clock:'native-monotonic-ms',captureClock,cold:row.cold,outcome,identity,marks};
+  const coldReason=text(row.coldReason,fixedLabel);if(coldReason)out.coldReason=coldReason;
+  const reason=text(row.reason,fixedLabel);if(reason)out.reason=reason;
+  const audibleClock=one(row.audibleClock,['audiotrack-timestamp','audiotrack-head-position','mediaplayer-timestamp'] as const);if(audibleClock)out.audibleClock=audibleClock;
+  const network=one(row.network,['offline','wifi','cellular','ethernet','other','unknown'] as const);if(network)out.network=network;
+  const thermal=one(row.thermal,['none','light','moderate','severe','critical','emergency','shutdown','unknown'] as const);if(thermal)out.thermal=thermal;
+  if(typeof row.thermalHeadroom==='number'&&Number.isFinite(row.thermalHeadroom)&&row.thermalHeadroom>=0&&row.thermalHeadroom<100)out.thermalHeadroom=row.thermalHeadroom;
+  records.push(out);
+ }
+ const dropped=Number.isSafeInteger(document.dropped)&&(document.dropped as number)>=0?document.dropped as number:0;
+ return {dropped,records};
 }
 
 export function buildDiagnostics(input:DiagnosticsInput,now=Date.now()):DiagnosticsReport{
@@ -95,6 +150,7 @@ export function buildDiagnostics(input:DiagnosticsInput,now=Date.now()):Diagnost
   connection:{kind:one(input.connection?.kind,CONNECTIONS)??'starting',connected:input.connection?.connected===true},
   crashes:{count:0,recent:[]},
   voiceTiming:{format:VOICE_TIMING_FORMAT,marks:[...VOICE_MARKS],records:voiceTimingRows(input.voiceTiming)},
+  nativeVoiceTiming:{format:NATIVE_VOICE_TIMING_FORMAT,clock:'CLOCK_MONOTONIC',units:'ms',marks:[...NATIVE_MARKS],...nativeVoiceRows(input.nativeVoiceTiming)},
  };
  if(Number.isSafeInteger(app.versionCode)&&(app.versionCode as number)>=0)report.app.versionCode=app.versionCode as number;
  const variant=one(app.variant,['launcher','standalone'] as const);if(variant)report.app.variant=variant;
