@@ -12,7 +12,7 @@ export interface LauncherBridge {
   addListener?(event: 'appsChanged', listener: (change: Bag) => void): unknown;
 }
 /** Ordered favorite keys, kept on this device only. `write` throws when storage refuses. */
-export interface FavoritesStore { read(): string[] | null; write(keys: string[]): void; /** v1 only controlled installed shortcuts, not product Home apps. */ legacy?(): boolean }
+export interface FavoritesStore { read(): string[] | null; write(keys: string[]): void; /** v1 only controlled installed shortcuts, not product Home apps. */ legacy?(): boolean; /** Old v2 wrote every installed app as the default. */ legacyHomeDefaults?(): boolean }
 export type LauncherStatus = 'idle' | 'loading' | 'ready' | 'failed';
 export interface LauncherSnapshot {
   status: LauncherStatus;
@@ -103,10 +103,25 @@ const cleanKeys = (value: unknown): string[] => {
 };
 /** Favorites in this origin's localStorage. A missing setting is distinct from an explicitly empty list; malformed data preserves an empty choice. */
 export function localFavorites(storage: () => Storage = () => globalThis.localStorage): FavoritesStore {
+  const legacyDefaults = (): string[] | null => {
+    try {
+      const saved = JSON.parse(storage().getItem(FAVORITES_KEY) || 'null');
+      return saved?.version === 2 && Object.keys(saved).sort().join(',') === 'keys,version'
+        && Array.isArray(saved.keys) && saved.keys.length <= MAX_FAVORITES
+        && cleanKeys(saved.keys).length === saved.keys.length ? saved.keys : null;
+    } catch { return null; }
+  };
   return {
     read() { try { const raw = storage().getItem(FAVORITES_KEY); if (raw === null) return null; const saved = JSON.parse(raw); return (saved?.version === 1 || saved?.version === 2) ? cleanKeys(saved.keys) : []; } catch { return []; } },
     legacy() { try { return JSON.parse(storage().getItem(FAVORITES_KEY) || 'null')?.version === 1; } catch { return false; } },
-    write(keys) { storage().setItem(FAVORITES_KEY, JSON.stringify({version: 2, keys})); },
+    legacyHomeDefaults: () => legacyDefaults() !== null,
+    write(keys) {
+      const original = legacyDefaults();
+      let previousDefaults: string[] | null = null;
+      try { const saved = JSON.parse(storage().getItem(FAVORITES_KEY) || 'null'); if (Array.isArray(saved?.previousDefaults)) previousDefaults = cleanKeys(saved.previousDefaults); } catch { /* Keep the existing explicit write behavior. */ }
+      // Retain the old default's choices once; this is migration evidence, not a second live list.
+      storage().setItem(FAVORITES_KEY, JSON.stringify({version: 2, keys, defaultPolicy: 'alpha-apps', ...((previousDefaults || original) ? {previousDefaults: previousDefaults || original} : {})}));
+    },
   };
 }
 
@@ -118,6 +133,7 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
   const rawSaved = store ? store.read() : [];
   const saved = rawSaved === null ? null : cleanKeys(rawSaved.map(key => options.aliases?.[key] || key));
   let migrationPending = !!store?.legacy?.();
+  let legacyHomeDefaultsPending = !!store?.legacyHomeDefaults?.();
   let defaultsPending = saved === null;
   let builtins: InstalledApp[] = [];
   let state: LauncherSnapshot = {status: 'idle', apps: [], dial: null, launching: null, launchError: null, favorites: saved || []};
@@ -126,7 +142,7 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
   const message = (error: unknown) => error instanceof Error && error.message ? error.message : String(error || 'Unavailable');
   const saveFavorites = (favorites: string[]) => {
     if (!store) { update({launchError: 'Favorites cannot be saved on this device.'}); return; }
-    try { store.write(favorites); defaultsPending = false; migrationPending = false; update({favorites, launchError: null}); }
+    try { store.write(favorites); defaultsPending = false; migrationPending = false; legacyHomeDefaultsPending = false; update({favorites, launchError: null}); }
     catch { update({launchError: 'Favorites could not be saved. Nothing changed.'}); }
   };
   const installed = (key: string) => state.apps.some(app => appKey(app) === key);
@@ -141,12 +157,26 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
     if (current !== generation) return;
     const dialApp = dial.status === 'fulfilled' && dial.value && dial.value.available === true ? dial.value : null;
     // A failed read never leaves an older inventory on screen as if it were current.
-    if (listed.status === 'rejected' || !Array.isArray(listed.value?.apps)) { update({status: 'failed', apps: [], dial: dialApp}); return; }
+    if (listed.status === 'rejected' || !Array.isArray(listed.value?.apps)) { update({status: 'failed', apps: [...builtins], dial: dialApp}); return; }
     const seen = new Set<string>();
     const apps = [...builtins, ...listed.value.apps.filter(valid).filter(app => !options.aliases?.[appKey(app)])].filter(app => !seen.has(appKey(app)) && !!seen.add(appKey(app)));
-    if (defaultsPending || migrationPending) {
-      const favorites = defaultsPending ? apps.map(appKey) : state.favorites;
-      try { store?.write(favorites); defaultsPending = false; migrationPending = false; state = {...state, favorites}; }
+    if (defaultsPending || migrationPending || legacyHomeDefaultsPending) {
+      const liveSaved = store ? store.read() : [];
+      const unchanged = rawSaved === null ? liveSaved === null : liveSaved !== null && rawSaved.length === liveSaved.length && rawSaved.every((key, index) => key === liveSaved[index]);
+      if (!unchanged || (legacyHomeDefaultsPending && !store?.legacyHomeDefaults?.()) || (migrationPending && !store?.legacy?.())) {
+        // An explicit choice made while the inventory read was pending wins.
+        defaultsPending = migrationPending = legacyHomeDefaultsPending = false;
+        update({status: 'ready', apps, dial: dialApp, favorites: cleanKeys((liveSaved || []).map(key => options.aliases?.[key] || key))});
+        return;
+      }
+      let favorites = defaultsPending ? (builtins.length ? builtins : apps).map(appKey) : state.favorites;
+      if (legacyHomeDefaultsPending && builtins.length) {
+        const currentKeys = apps.map(appKey), current = new Set(currentKeys), product = new Set(builtins.map(appKey));
+        const visible = favorites.filter(key => current.has(key));
+        if (visible.length === currentKeys.length && visible.every((key, index) => key === currentKeys[index]))
+          favorites = favorites.filter(key => product.has(key) || !current.has(key));
+      }
+      try { store?.write(favorites); defaultsPending = false; migrationPending = false; legacyHomeDefaultsPending = false; state = {...state, favorites}; }
       catch { state = {...state, favorites, launchError: 'Favorites could not be saved.'}; }
     }
     update({status: 'ready', apps, dial: dialApp});
@@ -158,7 +188,7 @@ export function createLauncher(bridge: LauncherBridge, changed: () => void, opti
       const old = new Set(builtins.map(appKey));
       builtins = apps;
       state = {...state, apps: [...builtins, ...state.apps.filter(app => !old.has(appKey(app))) ]};
-      if (defaultsPending) state = {...state, favorites: state.apps.map(appKey)};
+      if (defaultsPending) state = {...state, favorites: (builtins.length ? builtins : state.apps).map(appKey)};
       else if (migrationPending) state = {...state, favorites: cleanKeys([...state.favorites, ...builtins.map(appKey)])};
     },
     load,
@@ -250,7 +280,9 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
     document.addEventListener('visibilitychange', visible); document.addEventListener('resume', refresh);
     try { subscription = options.follow !== false && bridge.addListener ? Promise.resolve(bridge.addListener('appsChanged', refresh)).catch(() => null) : null; } catch { subscription = null; }
     const result = mount?.apply(this, args);
-    void launcher.load();
+    // Alpha's built-ins need no package scan. Read native entries only for saved shortcuts;
+    // the drawer already performs its own current read when explicitly opened.
+    if (launcher.snapshot().favorites.some(key => !key.startsWith('alpha:'))) void launcher.load();
     return result;
   };
   p.componentWillUnmount = function (...args: any[]) {

@@ -84,6 +84,21 @@ async function openDrawer(page: Page) {
 }
 const names = (list: ReturnType<Page['locator']>) => list.evaluateAll(nodes => nodes.map(node => node.getAttribute('aria-label')));
 
+test('fresh Alpha Home shows core apps and loads installed apps only in All apps', async ({ page }) => {
+  await nativeStub(page, ALL);
+  await page.goto('/');
+  for (const name of ['Inbox', 'Calendar', 'Camera', 'Photos', 'Notes', 'Settings'])
+    await expect(page.getByRole('button', {name, exact: true})).toHaveCount(1);
+  await expect(page.getByRole('button', {name: 'Clock', exact: true})).toHaveCount(0);
+  expect(await calls(page, 'list')).toHaveLength(0);
+  const drawer = await openDrawer(page);
+  await expect(drawer.getByRole('button', {name: 'Open Clock', exact: true})).toHaveCount(1);
+  await expect(drawer.getByRole('button', {name: 'Open Settings (com.android.settings)', exact: true})).toHaveCount(1);
+  expect(await calls(page, 'list')).toHaveLength(1);
+  await drawer.getByRole('button', {name: 'Open Clock', exact: true}).click();
+  await expect.poll(() => calls(page, 'launch')).toEqual([{packageName: CLOCK.packageName, activityName: CLOCK.activityName}]);
+});
+
 test('same-label apps are separate entries and each opens exactly its own component and profile', async ({ page }, info) => {
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
   await nativeStub(page, ALL, { 'com.vendor.notes/com.vendor.notes.Launch#10': { message: 'Work apps are paused or locked. Turn on work apps in Android, then try again.', code: 'profile-locked' } });
