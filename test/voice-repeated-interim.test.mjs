@@ -11,3 +11,7 @@ for(const cloud of[false,true])test(`${cloud?'Cloud':'direct'} actual adapter di
  f.phase('speaking');f.phase('listening');f.phase('connecting');f.phase('listening');f.receive('Open');assert.equal(f.render(),'Open');f.receive('Open notes.');assert.equal(f.render(),'Open notes.','historical same text must not suppress current running transcript');f.messages.push({id:'second',from:'you',text:'Open notes.'});assert.equal(f.render(),'','only new final user message ends the inline duplicate');
 });
 test('actual transcript owner callback cannot update a superseded voice conversation',()=>{const f=fixture(true);f.replaceOwner();f.receive('Open notes.');assert.equal(f.render(),'');});
+
+for(const cloud of[false,true])for(const transition of['complete','interrupted'])test(`${cloud?'Cloud':'direct'} actual listening resets ${transition} interim and snapshots next turn`,()=>{
+ const f=fixture(cloud);f.receive('Open notes.');assert.equal(f.render(),'Open notes.');if(transition==='interrupted')f.messages.push({id:'interrupted-prior',from:'you',text:'Open notes.'});f.phase(transition);f.phase('listening');assert.equal(f.render(),'','listening must not keep stale text even without a persisted final');f.receive('Open');f.receive('Open notes.');assert.equal(f.render(),'Open notes.');f.messages.push({id:'new-final',from:'you',text:'Open notes.'});assert.equal(f.render(),'');
+});
