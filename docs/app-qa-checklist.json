@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "updatedAt": "2026-10-16T15:31:30.426488+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "12375764314efa008036a5f049c6fe9055b9a4ed",
-  "agentSource": "ebe70d3ebd04b5e046ae25279d8836ee78107bfa",
+  "productSource": "ff45ed28e3f3a6ada469f7861d97fae4c25035eb",
+  "agentSource": "0138310a39657783b6dd2eeb6309e4d8b1497554",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -389,8 +389,8 @@
       "area": "Inbox",
       "viewOrFlow": "Agent self-addressed send and delivery readback",
       "scope": "MVP",
-      "implementation": "Ordinary agent prompt now reaches MESSAGE_SEND_DRAFT preview on ebe70; requested subject was omitted, so no confirmation/send was issued. Shared2da fixes extraction and is under full qualification.",
-      "preview": "No actual Gmail send or delivery receipt yet.",
+      "implementation": "Exact ordinary draft preview passed on013. Plain Yes hit PLANNER_CONTEXT_RESTORE_INVALID. Canonical prepared receipt review hash matches the exact approved email; no dispatch or finish timestamp. No send/delivery acceptance.",
+      "preview": "Receipt correlation completed; planner context-restoration defect remains. Native prompt test pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [

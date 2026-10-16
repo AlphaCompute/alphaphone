@@ -70,13 +70,19 @@
     "owningPackageTests": "passed remote v5",
     "lint": true,
     "types": true,
-    "fullRepositoryVerification": "running remote v5; existing sharedQualification.fullVerify applies to ebe70 only"
+    "fullRepositoryVerification": {
+      "passed": true,
+      "sourceUnchanged": true,
+      "job": "gmail-draft-continuity-20261016-v5",
+      "focused": 135,
+      "assistantPackage": 2639
+    }
   },
   "confirmationFix": {
     "commit": "0138310a39657783b6dd2eeb6309e4d8b1497554",
     "localDurableConsentAndExtractionTests": 3,
     "lint": true,
-    "fullQualification": "pending after current immutable v5 source2da run; candidate preview QA only",
+    "fullQualification": "Running immutable remote v6 on013; candidate preview QA is separate from release acceptance.",
     "rule": "Only a whole affirmative user turn selects its same-actor, same-room, unexpired host draft reference; planner parameters cannot redirect it. Exact digest and one-time CAS still govern sending."
   }
 }
