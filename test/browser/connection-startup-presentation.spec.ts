@@ -20,3 +20,20 @@ test('saved development connection restores without flashing a chooser; explicit
  await page.getByRole('button',{name:'Agent connection',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Development connections',exact:true})).toBeVisible();
 });
+
+test('passive agent status stays quiet during startup while blocked actions retain an explanation',async({page})=>{
+ await page.goto('/?mode=dev');
+ const notices=await page.evaluate(async()=>{
+  const ui=await import('/src/runtime/connection-ui.tsx');
+  return {
+   startup:ui.agentAvailabilityNotice({kind:'starting'}),
+   recovery:ui.agentAvailabilityNotice({kind:'recovering'}),
+   refusal:ui.agentPendingText({kind:'starting'}),
+   offline:ui.agentAvailabilityNotice({kind:'offline'},'Agent connection required'),
+  };
+ });
+ expect(notices.startup).toBe('');
+ expect(notices.recovery).toContain('Retry in Settings');
+ expect(notices.refusal).toContain('starting');
+ expect(notices.offline).toBe('Agent connection required');
+});

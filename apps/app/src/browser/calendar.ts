@@ -1,4 +1,4 @@
-import {stageCalendarDeletion,settleCalendarDeletions,undoCalendarDeletion,calendarDeletionPending,type CalendarDeletion} from './calendar-deletions';
+import {stageCalendarDeletion,settleCalendarDeletions,undoCalendarDeletion,calendarDeletionPending} from './calendar-deletions';
 import {browserDeletionOwner,browserDeletionOwnerCurrent,browserDeletionOwnerVisible} from '../runtime/deletion-owner';
 import {browserDeletionClock,deletionWindow} from '../runtime/deletion-window';
 import {beginNoticeAction,noticeActionBlocked} from './notice-action';
@@ -12,11 +12,8 @@ import { calendarAgentReviewText, wholeUtcDates } from './calendar-agent-review'
 import { validateCalendarOperation, type CalendarFields, type CalendarResult } from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts';
 import { WebPlugin } from '@capacitor/core';
 import { revision } from './revision';
-import {calendarDocument} from './calendar-store';
+import {calendarDocument,initialCalendarState as initial,prepareCalendarSource,type BrowserCalendarState as State} from './calendar-store';
 type EventRow=CalendarRecord;
-type CreationReceipt={binding:string;result:{status:"saved";id:string;calendarId:string;creationId:string};acknowledged:boolean};
-type State={deletions?:Record<string,CalendarDeletion>;deleteClaims?:Record<string,string>;creations?:Record<string,CreationReceipt>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:EventRow[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
-const initial=():State=>({sourceRevision:revision(),events:[]});
 const source={id:'local',name:'App calendar',account:'Alpha Phone',local:true,writable:true};
 const matches=(row:EventRow,expected:Partial<EventRow>|undefined)=>!!expected&&(!expected.revision||expected.revision===row.revision)&&(['title','body','location','begin','end'] as const).every(k=>row[k]===expected[k]);
 export class BrowserCalendar extends WebPlugin {
@@ -169,7 +166,7 @@ export class BrowserCalendar extends WebPlugin {
     return {status:'ready',freshness:'local',events:rows.map(row=>({start:new Date(row.begin).toISOString(),end:new Date(row.end).toISOString(),allDay:!!row.allDay,availability:'busy'}))};
   }
   async list(input:{begin:number;end:number}) {const data=await calendarDocument.read(initial);return {status:'ready',calendars:[{...source,...(data.preferences??{visible:true,color:'acc'})}],...calendarRange(data.events,input)};}
-  async prepareAgentSource(){const raw=await calendarDocument.readRaw(),data:State=raw===null?await calendarDocument.edit(initial,data=>data):JSON.parse(raw);return {status:'ready',sourceId:'local',sourceRevision:data.sourceRevision};}
+  async prepareAgentSource(){return prepareCalendarSource();}
   async pendingCreations(){const data=await calendarDocument.read(initial);return {status:'ready',creations:Object.values(data.creations||{}).filter(row=>!row.acknowledged).map(row=>row.result)};}
   async acknowledgeCreation(input:{creationId:string}){return calendarDocument.edit(initial,data=>{const receipt=data.creations?.[input.creationId];if(!receipt)throw Error('Creation receipt unavailable');receipt.acknowledged=true;return {status:'acknowledged'};});}
   async save(input:Partial<EventRow>&{expected?:Partial<EventRow>;creationId?:string;separateCreation?:boolean}) {

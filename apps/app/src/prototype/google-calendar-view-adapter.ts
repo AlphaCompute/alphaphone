@@ -1,3 +1,4 @@
+import {calendarSyncHost,startCalendarSyncHost} from '../runtime/calendar-sync-host';
 import {connectionController} from '../runtime/connection-ui';
 import {GoogleCalendarReader,type GoogleCalendarRecord} from '../runtime/google-calendar';
 import {GOOGLE_ACCOUNTS_CHANGED} from '../runtime/google-accounts';
@@ -33,13 +34,13 @@ export function installGoogleCalendarViewAdapter(Component:any,views:Bag){
    client.selectSource(selected.sourceId);
    const result=await client.read({timeMin:new Date(dates.begin).toISOString(),timeMax:new Date(dates.end).toISOString(),timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},signal);if(!current())return;
    if(result.status!=='ready'){message=result.message;changed();return;}
-   rows=result.events.map(googleCalendarDisplayRecord);loaded=key;shell.googleCalendarRows=rows;message=`${selected.name} · ${selected.account} · Read only`;changed();
+   let linked=new Set<string>();try{linked=await calendarSyncHost.linkedProviderEvents();}catch{/* Keep both readable copies when link metadata cannot be verified. */}if(!current())return;rows=result.events.filter(event=>!linked.has(event.providerEventId)).map(googleCalendarDisplayRecord);loaded=key;shell.googleCalendarRows=rows;message=`${selected.name} · ${selected.account} · Read only`;changed();
   }catch(error){if(current()){message='Google Calendar could not be verified. Retry before relying on this schedule.';connectionController.rejectCloudSession(cloud.sessionId,error);changed();}}
   finally{if(token===epoch&&!current()){attempted='';reader?.invalidate();}}
  }
- p.componentDidMount=function(){mount.call(this);owner=this;let previous=bindingKey();const accountChanged=()=>{previous=bindingKey();reset();void refresh(true);};this.googleCalendarUnsubscribe=connectionController.subscribe(()=>{const next=bindingKey();if(next!==previous){previous=next;reset();void refresh();}});this.googleCalendarChanged=accountChanged;window.addEventListener(GOOGLE_ACCOUNTS_CHANGED,accountChanged);window.addEventListener(GOOGLE_CALENDAR_SELECTION_CHANGED,accountChanged);};
- p.componentDidUpdate=function(...args:any[]){update?.apply(this,args);void refresh();};
- p.componentWillUnmount=function(){this.googleCalendarUnsubscribe?.();window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED,this.googleCalendarChanged);window.removeEventListener(GOOGLE_CALENDAR_SELECTION_CHANGED,this.googleCalendarChanged);if(owner===this){const previous=owner;owner=null;reset();previous.googleCalendarRows=[];}unmount.call(this);};
+ p.componentDidMount=function(){mount.call(this);owner=this;this.calendarSyncDispose=startCalendarSyncHost();let previous=bindingKey();const accountChanged=()=>{previous=bindingKey();reset();void refresh(true);};this.googleCalendarUnsubscribe=connectionController.subscribe(()=>{const next=bindingKey();if(next!==previous){previous=next;reset();void refresh();}});this.googleCalendarChanged=accountChanged;window.addEventListener(GOOGLE_ACCOUNTS_CHANGED,accountChanged);window.addEventListener(GOOGLE_CALENDAR_SELECTION_CHANGED,accountChanged);};
+ p.componentDidUpdate=function(...args:any[]){update?.apply(this,args);if(this.S().view==='calendar'&&this.calendarSyncPreviousView!=='calendar')void calendarSyncHost.resume();this.calendarSyncPreviousView=this.S().view;void refresh();};
+ p.componentWillUnmount=function(){this.calendarSyncDispose?.();this.googleCalendarUnsubscribe?.();window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED,this.googleCalendarChanged);window.removeEventListener(GOOGLE_CALENDAR_SELECTION_CHANGED,this.googleCalendarChanged);if(owner===this){const previous=owner;owner=null;reset();previous.googleCalendarRows=[];}unmount.call(this);};
  views.calendar.render=(state:Bag,api:Bag)=>{
   const selected=selection(),dates=range(state),key=JSON.stringify([bindingKey(),dates]);const ready=!!selected&&loaded===key;
   const merged=ready?[...(state.events||[]),...rows]:state.events||[];

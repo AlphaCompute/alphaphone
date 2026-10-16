@@ -32,7 +32,7 @@ final class AlphaCredentialStore {
  static int slotLimit(String name){
   if("sms-send-ledger:v1:device".equals(name))return 1024*1024;
   if("gmail-background:v1".equals(name))return 2*1024*1024;
-  if("native-delete-journal:v1".equals(name))return 4*1024*1024;
+  if("native-delete-journal:v1".equals(name)||"native-calendar-sync:v1".equals(name))return 4*1024*1024;
   if("notes-audio-deletions:v1:device".equals(name))return 1024*1024;
   if(name!=null&&name.matches("note-audio-metadata:v1:[A-Za-z0-9_-]{1,100}"))return 512*1024;
   if(NOTES_RECORDS.equals(name))return 32*1024*1024;
@@ -44,6 +44,7 @@ final class AlphaCredentialStore {
   // 200 links of bounded ids and a hash stay well under this; a larger value is not a valid index.
   if(NOTE_ORIGINS.equals(name))return 512*1024;
   if(name!=null&&(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")))return 8*1024*1024;
+  if(name!=null&&name.matches("calendar-linked-sync:v1:[a-f0-9]{64}"))return 4*1024*1024;
   return 256*1024;
  }
  /** Notes Trash policy limit (30 MiB), now also its slot cap. */
