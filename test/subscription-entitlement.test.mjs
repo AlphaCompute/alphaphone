@@ -410,6 +410,44 @@ test('a resident turn failure may carry a structured period-allowance reset; abs
   assert.match(ui, /readServiceLimit\(\{ failureKind: 'failureKind' in reply \? reply\.failureKind : undefined, terminalFailure: 'terminalFailure' in reply \? reply\.terminalFailure : undefined, resetAt: timing\.resetAt, retryAfterSeconds: timing\.retryAfterSeconds \}\)/);
 });
 
+test('upstream terminalFailure.rateLimit scopes: period is the allowance with its reset, burst and sustained stay rate limits (elizaOS/eliza#36549)', () => {
+  // Realistic payloads in exactly the upstream ChatTerminalFailure shape (JSON reply and SSE terminal frame).
+  const resetAt = '2026-11-01T00:00:00.000Z';
+  const period = {kind: 'rate_limited', message: 'Your plan allowance for this billing period is used up.', transient: false,
+    rateLimit: {kind: 'rate_limited', retryAfterMs: 3600000, planId: 'pro', scope: 'period', resetAt, resetAfterSeconds: 1684800}};
+  for (const source of [{failureKind: 'rate_limited', terminalFailure: period}, {error: {terminalFailure: period}}]) {
+    const limit = readServiceLimit(source, NOW);
+    // (a) allowance-exhausted, with the real reset; the hour-capped retryAfterMs is not the reset.
+    assert.deepEqual(limit, {kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: Date.parse(resetAt)});
+    assert.match(serviceLimitMessage(limit, NOW), /^Your plan's AI allowance for this period is used up\. It resets [^.]+\. Nothing is purchased automatically\./);
+    assert.doesNotMatch(serviceLimitMessage(limit, NOW), /about 60 minutes|rate limit|credit|top.?up|upgrade|buy/i);
+  }
+  // (b) resetAfterSeconds alone carries the reset (not day-capped); retryAfterSeconds is still read.
+  const {resetAt: _omit, ...relative} = period.rateLimit;
+  assert.deepEqual(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...period, rateLimit: relative}}, NOW), {kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: NOW + 1684800000});
+  assert.equal(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...period, rateLimit: {...relative, resetAfterSeconds: '1684800'}}}, NOW).resetsAt, NOW + 1684800000);
+  assert.deepEqual(readServiceLimit({failureKind: 'insufficient_credits', terminalFailure: {kind: 'insufficient_credits', message: 'm', transient: false}, retryAfterSeconds: 3 * 86400}, NOW), {kind: 'billing-refused', retryAfterMs: null, resetsAt: NOW + 3 * 86400000});
+  // A period refusal with no reset fields says nothing about when it resets.
+  const {resetAt: _a, resetAfterSeconds: _b, ...bare} = period.rateLimit;
+  const unknown = readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...period, rateLimit: bare}}, NOW);
+  assert.deepEqual(unknown, {kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: null});
+  assert.equal(serviceLimitMessage(unknown, NOW), "Your plan's AI allowance for this period is used up. Nothing is purchased automatically. Local apps and on-device speech keep working.");
+  // (c) burst and sustained stay rate limits with the existing countdown rules.
+  for (const scope of ['burst', 'sustained']) {
+    const terminalFailure = {kind: 'rate_limited', message: 'Provider wait', transient: true, rateLimit: {kind: 'rate_limited', retryAfterMs: 2400, planId: 'pro', scope}};
+    const limit = readServiceLimit({failureKind: 'rate_limited', terminalFailure}, NOW);
+    assert.deepEqual(limit, {kind: 'rate-limited', retryAfterMs: 2400, resetsAt: null}, scope);
+    assert.match(serviceLimitMessage(limit, NOW), /rate limit was reached\. Try again in about 3 seconds\./);
+    assert.equal(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...terminalFailure, rateLimit: {...terminalFailure.rateLimit, retryAfterMs: 90000000}}}, NOW).retryAfterMs, null, scope);
+    const withReset = readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...terminalFailure, rateLimit: {...terminalFailure.rateLimit, resetAfterSeconds: 30}}}, NOW);
+    assert.equal(withReset.kind, 'rate-limited');
+    assert.match(serviceLimitMessage(withReset, NOW), /Try again in about 3 seconds\./, 'retryAfterMs still wins the countdown');
+  }
+  // (d) absent scope and reset fields: unchanged.
+  assert.deepEqual(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {kind: 'rate_limited', message: 'm', transient: true, rateLimit: {kind: 'rate_limited', retryAfterMs: 2400}}}, NOW), {kind: 'rate-limited', retryAfterMs: 2400, resetsAt: null});
+  assert.deepEqual(readServiceLimit({failureKind: 'rate_limited', terminalFailure: {kind: 'rate_limited', message: 'm', transient: true}}, NOW), {kind: 'rate-limited', retryAfterMs: null, resetsAt: null});
+});
+
 test('only admission and its background refresher read the entitlement; turns and local speech never do', () => {
   const ui = fs.readFileSync('apps/app/src/runtime/connection-ui.tsx', 'utf8');
   const admission = ui.slice(ui.indexOf('async function admitCloudResident'), ui.indexOf('async function connectResident'));

@@ -482,6 +482,10 @@ function retryFields(row: Bag, now: number, period = false): { retryAfterMs: num
   const at = instant(row.retryAt ?? row.retry_at ?? headerDate);
   if (retryAfterMs === null && at !== null) retryAfterMs = Math.max(0, at - now);
   let resetsAt = instant(row.resetsAt ?? row.resetAt ?? row.reset_at);
+  // `resetAfterSeconds` (elizaOS/eliza#36549 terminalFailure.rateLimit) is the relative form of the
+  // reset; an explicit reset instant wins. It is a reset, not a countdown, so it is not day-capped.
+  const resetSecs = finite(row.resetAfterSeconds);
+  if (resetsAt === null && resetSecs !== null && resetSecs * 1000 <= MAX_PERIOD_RESET_MS) resetsAt = now + resetSecs * 1000;
   // A retry hint longer than a day is not presented as a countdown; for a period allowance it is
   // the reset instant when Cloud gave no explicit one.
   if (retryAfterMs !== null && retryAfterMs > 86_400_000) {
@@ -496,8 +500,11 @@ function retryFields(row: Bag, now: number, period = false): { retryAfterMs: num
  * Retry times in the body win; `retryAfter` (the Retry-After header the transports return)
  * fills in when the body has none.
  *
- * Live resident replies carry the provider wait in terminalFailure.rateLimit. Upstream
- * omits that relative wait from idempotent replays and history; absent timing stays absent.
+ * Live resident replies carry the provider wait in terminalFailure.rateLimit
+ * ({kind, retryAfterMs, planId?, scope?: burst|sustained|period, resetAt?, resetAfterSeconds?},
+ * elizaOS/eliza#36549). Scope `period` is the plan allowance for the billing period and reads as
+ * allowance-exhausted with its reset date; burst and sustained stay rate limits with a countdown.
+ * Upstream omits the relative wait from idempotent replays and history; absent timing stays absent.
  */
 export function readServiceLimit(source: unknown, now: number = Date.now()): ServiceLimit | null {
   const visit = (value: unknown, depth: number, status: number | null): ServiceLimit | null => {
@@ -515,6 +522,10 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
       }
     }
     let limit: ServiceLimit['kind'] | null = null;
+    // elizaOS/eliza#36549: an exhausted billing-period allowance arrives as terminalFailure.rateLimit
+    // {kind:'rate_limited', scope:'period'}. Its retryAfterMs is capped at an hour and is not the
+    // reset, so only resetAt/resetAfterSeconds describe when the allowance returns.
+    if (has(RATE_KINDS) && row.scope === 'period') return { kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: retryFields(row, now, true).resetsAt };
     if (has(ALLOWANCE_KINDS)) limit = 'allowance-exhausted';
     else if (has(SUBSCRIPTION_KINDS)) limit = 'subscription-required';
     else if (has(RATE_KINDS)) limit = 'rate-limited';
