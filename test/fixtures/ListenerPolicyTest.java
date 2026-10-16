@@ -12,7 +12,7 @@ public final class ListenerPolicyTest {
  private static Inputs ready(){
   Inputs in=new Inputs();
   in.consentVersion=ListenerPolicy.CONSENT_VERSION;in.enabled=true;in.recordAudioGranted=true;in.userUnlocked=true;
-  in.notificationsVisible=true;in.userForeground=true;
+  in.notificationsVisible=true;in.userForeground=true;in.indicatorLeaseValid=true;
   return in;
  }
 

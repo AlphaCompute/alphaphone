@@ -139,10 +139,12 @@ delegation return path; the https delegation filter exists only in builds with
 
 ## Full AOSP product integration
 
-The selected validation target is Cuttlefish; the hardware build target is Pixel 10.
-Keep their source locks and evidence separate. A Cuttlefish pass does not establish
-Pixel radio/hardware or verified-boot/rollback behavior. Do not substitute a Pixel 11
-product or publish a Pixel 10 installer before its device inputs are admitted.
+The selected validation target is Cuttlefish; the hardware target is **Pixel 10a
+(stallion) on Android 17**, product `alpha_stallion_phone`. Other Pixels are not promised
+hardware. Keep their source locks and evidence separate. A Cuttlefish pass does not establish
+Pixel radio/hardware or verified-boot/rollback behavior. Do not publish a Pixel 10a installer
+before its production inputs are admitted and a release-signed image passes the device,
+update and recovery gates below.
 
 1. Allocate a Linux x86_64 AOSP builder with the storage/RAM required by the selected
    pinned source tree. macOS SDK builds are sufficient for APKs, not this image lane.
@@ -165,9 +167,12 @@ product or publish a Pixel 10 installer before its device inputs are admitted.
    HOME resolution after reboot, screen/IME/native bridge behavior and absence of crashes.
 8. Validate the same signed release on physical hardware: radios, audio/mic, touch,
    camera, suspend/resume, charging, keys, auth/agent reconnect, accessibility and
-   recovery. Record image/APK/source hashes. Signed OTA and rollback are a future gate: no OTA
-   manifest and no rollback path exist today, `scripts/pilot-update.mjs` refuses a lower
-   versionCode, and the design is blocked on A-06.
+   recovery. Record image/APK/source hashes. Image signing, the OTA package and its
+   version/hash compatibility record come from `scripts/sign-aosp-release.mjs` on the image
+   host ([Pixel 10a staging and release signing](pixel10a-staging.md)); the one update channel
+   is `android/aosp/pixel10a-ota-channel.json`. No release key, signed image, applied OTA,
+   interrupted-update, rollback or stock-recovery drill exists yet, and
+   `scripts/pilot-update.mjs` still refuses a lower APK versionCode.
 
 An SDK emulator with an installed launcher is useful HOME/app evidence, but is not
 proof that this product makefile built or booted in a custom AOSP image.
@@ -193,15 +198,17 @@ approvals, saved history and lifecycle recovery. Preserve build IDs, hashes and 
 The [Cuttlefish host instructions](https://source.android.com/docs/devices/cuttlefish/get-started)
 require KVM and a host package matching the image build.
 
-The approved physical target is **Pixel 10a (stallion), Android 17**, not Pixel 10
-or Pixel 11. The [Pixel 10a source contract](pixel10a-source-contract.md) records
-the exact AOSP manifest, device-tool revisions, factory archive, kernel and generated
-vendor inputs of the inspected development baseline. Licensed binaries stay outside
-Git. The older `android/aosp/pixel10.lock.json` remains an unadmitted historical
-placeholder and must not be relabeled as stallion. Cuttlefish, source-input verification,
-a development image boot, current-app acceptance, release signing and recovery are
-separate gates. The new source contract does not promote the older image to a
-current or distributable release.
+The approved physical target is **Pixel 10a (stallion), Android 17**. The
+[Pixel 10a source contract](pixel10a-source-contract.md) records the exact AOSP manifest,
+device-tool revisions, factory archive, kernel and generated vendor inputs of the inspected
+development baseline. Licensed binaries stay outside Git. The owner has built a development
+AOSP image for stallion from these inputs on the separate image host; that is development
+image evidence at an older app pin, not a release-signed or current-app image. The former
+all-UNSET Pixel 10 placeholder lock is retired. Production staging uses
+`android/aosp/pixel10a-product.json` and refuses while its release inputs are unset
+([Pixel 10a staging](pixel10a-staging.md)). Cuttlefish boot, source-input verification, a
+development image boot, physical device functions, release signing, signed update/recovery
+drills and user acceptance are separate gates; none of them proves another.
 
 ## Distribution boundaries
 

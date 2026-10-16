@@ -50,6 +50,12 @@
   <provider android:name=".ListenerControlProvider" android:exported="true" android:directBootAware="true"
       android:authorities="ai.elizaresearch.alphaphone.sense.control"
       android:permission="ai.elizaresearch.alphaphone.sense.permission.LISTENER_CONTROL" />
+  <!-- SystemUI's indicator health lease (docs/aosp-listening-chip.md). Platform signature permission only;
+       call() re-checks the SystemUI UID, package and platform signer. Visibility acknowledgements only:
+       it cannot start, resume or enable listening. -->
+  <provider android:name=".IndicatorLeaseProvider" android:exported="true" android:directBootAware="true"
+      android:authorities="ai.elizaresearch.alphaphone.sense.indicator"
+      android:permission="android.permission.STATUS_BAR_SERVICE" />
   <!-- Consent and settings. Exported so Alpha's Settings and the tile's long-press can open it; it only
        explains and records an explicit tap, and ignores touches while obscured. -->
   <activity android:name=".ConsentActivity" android:exported="true" android:excludeFromRecents="true"

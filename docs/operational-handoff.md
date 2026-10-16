@@ -32,7 +32,14 @@ the current source says so in its own document, and the gaps named below are ope
   [pilot acceptance runbook](pilot-acceptance-runbook.md). A provisioning rehearsal is not
   recorded at the current source.
 - AOSP staging and product locks: [`scripts/stage-aosp.mjs`](../scripts/stage-aosp.mjs),
-  [`android/aosp/`](../android/aosp/product.json). No image has been built or booted (A-01).
+  [`android/aosp/`](../android/aosp/product.json) (Cuttlefish) and
+  [`android/aosp/pixel10a-product.json`](../android/aosp/pixel10a-product.json) (Pixel 10a,
+  Android 17). A development Pixel 10a image was built on the separate image host; no
+  release-signed or current-app image has been built or booted.
+- Image signing, OTA and compatibility record:
+  [`scripts/sign-aosp-release.mjs`](../scripts/sign-aosp-release.mjs),
+  [`scripts/aosp-release-record.mjs`](../scripts/aosp-release-record.mjs)
+  ([Pixel 10a staging and release signing](pixel10a-staging.md)).
 
 ## Dependency and licence inventory
 
@@ -70,7 +77,10 @@ the current source says so in its own document, and the gaps named below are ope
 ## Release manifests
 
 - Release signer record: [`android/release-signer.json`](../android/release-signer.json)
-  (`signerSha256` is unset until A-06 is decided).
+  (`signerSha256` is unset until the release keys exist).
+- Update channel and recovery references:
+  [`android/aosp/pixel10a-ota-channel.json`](../android/aosp/pixel10a-ota-channel.json);
+  each signed release writes a `release-record.json` version/hash compatibility record.
 - APK verification and the distributable verdict:
   [`scripts/verify-apks.mjs`](../scripts/verify-apks.mjs); blockers that stop provisioning,
   update and AOSP staging: [`scripts/release-blockers.mjs`](../scripts/release-blockers.mjs).
@@ -91,5 +101,8 @@ that is an update check, not a user data export.
 ## Rollback
 
 Not offered. A lower versionCode cannot replace an install without removing its data, and
-`scripts/pilot-update.mjs` refuses it. Signed update and rollback authority is pending
-decision [A-06](decisions.md#existing-open-decisions-in-review-order); no rollback drill exists.
+`scripts/pilot-update.mjs` refuses it. Alpha Compute holds signing and update authority and the
+release owner is accountable for rollback (A-06). The update channel records
+`downgradeAllowed: false`, the stock factory image for recovery and a known-good release slot;
+the signed-update, interrupted-update, compatible-rollback and stock-recovery drills are all
+recorded as not run.

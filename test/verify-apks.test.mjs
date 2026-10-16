@@ -19,7 +19,6 @@ function completeAospLock(dir) {
   const lock = read(product.sourceLock.file);
   Object.assign(lock.profiles.cuttlefish.manifest, { tag: "android-17.0.0_r1", tagObject: "a".repeat(40), commit: "b".repeat(40) });
   write(product.sourceLock.file, lock);
-  write("android/aosp/pixel10.lock.json", read("android/aosp/pixel10.lock.json"));
   write("android/release-signer.json", { ...read("android/release-signer.json"), signerSha256: "d".repeat(64) });
 }
 function zip(file, entries) {
@@ -79,7 +78,8 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     assert.match(stage(["--apk", release, "--development"]).stderr, /not distributable/);
     assert.match(stage(["--apk", release, "--descriptor", "reviewed.json"]).stderr, /not distributable/);
     // Each recorded blocker is named, in development and production staging alike.
-    const full = { file: "artifacts/launcher-release-unsigned.apk", mode: "release", sha256, testMocks: false, bundleAudit: "passed", signed: true, runtime: "PACKAGED", runtimeNotices: true,
+    // Production staging re-judges the row against the committed signer, so the row records the signer it was signed with.
+    const full = { file: "artifacts/launcher-release-unsigned.apk", mode: "release", sha256, testMocks: false, bundleAudit: "passed", signed: true, signerSha256: "d".repeat(64), runtime: "PACKAGED", runtimeNotices: true,
       releaseAdmission: { failures: [], blockers: [], signerMatches: true }, voiceHost: { packaged: true, asr: true, differences: [], qualified: true }, licenceBlockers: [] };
     const record = row => fs.writeFileSync(path.join(dir, "artifacts/apk-manifest.json"), JSON.stringify({ testMocks: false, results: [{ ...full, ...row }] }));
     const font = "unresolved-font-licence: Denton typeface (assets/denton.woff2) has no recorded embedding licence";
@@ -98,6 +98,9 @@ test("AOSP staging refuses test-mocks and non-distributable inputs before any st
     // The recorded font item alone does not make staging cite a licence blocker.
     record({ distributable: true, licenceBlockers: [font] });
     assert.doesNotMatch(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /unresolved-font-licence|not distributable/);
+    // A recorded admission does not outlive the committed signer: another certificate is refused in production staging.
+    record({ distributable: true, signerSha256: "e".repeat(64) });
+    assert.match(stage(["--apk", release, "--descriptor", "reviewed.json", "--production"]).stderr, /not distributable[\s\S]*does not match android\/release-signer\.json/);
     // A release cannot be staged as a development input by hiding its row: relabelled "debug", recorded for
     // other bytes, or with the manifest pointed elsewhere. Only a debuggable build passes without a release row.
     const onlyDebugBuilds = /--development stages debug builds only/;
@@ -141,7 +144,7 @@ test("AOSP staging refuses --production without a descriptor, with --development
     zip(release, { "assets/public/build-flags.json": JSON.stringify({ testMocks: false }) });
     const sha256 = createHash("sha256").update(fs.readFileSync(release)).digest("hex");
     fs.writeFileSync(path.join(dir, "artifacts/apk-manifest.json"), JSON.stringify({ testMocks: false, results: [{ file: "artifacts/launcher-release.apk", mode: "release", sha256,
-      testMocks: false, bundleAudit: "passed", signed: true, runtime: "PACKAGED", runtimeNotices: true, distributable: true, licenceBlockers: [],
+      testMocks: false, bundleAudit: "passed", signed: true, signerSha256: "d".repeat(64), runtime: "PACKAGED", runtimeNotices: true, distributable: true, licenceBlockers: [],
       releaseAdmission: { failures: [], blockers: [], signerMatches: true }, voiceHost: { packaged: true, asr: true, differences: [], qualified: true } }] }));
     const identity = JSON.parse(fs.readFileSync(path.join(root, "app.config.json"), "utf8"));
     for (const [name, foreign] of [["package", { packageName: "ai.elizaos.app", moduleName: identity.moduleName }], ["module", { packageName: identity.appId, moduleName: "Eliza" }]]) {

@@ -71,6 +71,21 @@ public final class ListeningService extends Service {
    else main.postDelayed(this,ListenerPolicy.INDICATOR_RECHECK_MS);
   }
  };
+ /**
+  * SystemUI's indicator health lease (docs/aosp-listening-chip.md): while the microphone is held it
+  * is re-checked at least every {@link IndicatorLease#RENEW_MS} and no later than its expiry. A
+  * lease that is expired, revoked, hidden, unattributed or whose SystemUI binder died latches
+  * {@link ListenerPolicy.State#STOPPED_INDICATOR_LOST} through {@link #apply}, which closes the microphone.
+  */
+ private final Runnable leaseCheck=new Runnable(){
+  @Override public void run(){
+   if(destroyed)return;
+   long now=SystemClock.elapsedRealtime();
+   if(!Listener.observeIndicatorLease(ListeningService.this,now))apply();
+   else main.postDelayed(this,Listener.lease.nextCheckDelay(now));
+  }
+ };
+ private final AtomicBoolean leaseStopPosted=new AtomicBoolean();
  private final ContentObserver lockScreenSetting=new ContentObserver(main){
   @Override public void onChange(boolean selfChange){main.post(reapply);}
  };
@@ -100,6 +115,7 @@ public final class ListeningService extends Service {
   }
   if(other!=Listener.otherAppRecording||silenced!=Listener.micSilenced){
    Listener.otherAppRecording=other;
+   if(silenced!=Listener.micSilenced)Listener.unsilencedSince=silenced||current==null?-1:SystemClock.elapsedRealtime();
    Listener.micSilenced=silenced;
    main.post(reapply);
   }
@@ -131,6 +147,7 @@ public final class ListeningService extends Service {
   destroyed=true;
   main.removeCallbacks(reapply);
   main.removeCallbacks(indicatorCheck);
+  main.removeCallbacks(leaseCheck);
   try{getContentResolver().unregisterContentObserver(lockScreenSetting);}catch(RuntimeException ignored){}
   stopCapture();
   audio.removeOnModeChangedListener(modes);
@@ -151,6 +168,9 @@ public final class ListeningService extends Service {
   Listener.epoch.invalidate();
   main.removeCallbacks(reapply);
   main.removeCallbacks(indicatorCheck);
+  main.removeCallbacks(leaseCheck);
+  leaseStopPosted.set(false);
+  // Evaluated while any open AudioRecord is still marked held, so a lost lease latches before capture stops.
   ListenerPolicy.State state=Listener.state(this);
   if(!ListenerPolicy.foreground(state)){
    stopCapture();
@@ -168,7 +188,7 @@ public final class ListeningService extends Service {
   }
   ListenerNotifications.showStatus(this,state);
   analyse=ListenerPolicy.processesAudio(state);
-  if(ListenerPolicy.holdsMicrophone(state)){startCapture();main.postDelayed(indicatorCheck,ListenerPolicy.INDICATOR_RECHECK_MS);}
+  if(ListenerPolicy.holdsMicrophone(state)){startCapture();main.postDelayed(indicatorCheck,ListenerPolicy.INDICATOR_RECHECK_MS);main.postDelayed(leaseCheck,Listener.lease.nextCheckDelay(SystemClock.elapsedRealtime()));}
   else stopCapture();
   long until=new ListenerStore(this).pausedUntil(),now=SystemClock.elapsedRealtime();
   if(state==ListenerPolicy.State.PAUSED_USER&&until!=ListenerPolicy.PAUSE_UNTIL_RESUMED)main.postDelayed(reapply,Math.max(1000,until-now));
@@ -195,6 +215,8 @@ public final class ListeningService extends Service {
   if(opened.getState()!=AudioRecord.STATE_INITIALIZED){opened.release();Listener.micSilenced=true;main.postDelayed(reapply,30_000);return;}
   if (!new ListenerStore(this).setSessionOpen(true)) { opened.release(); main.post(reapply); return; }
   record=opened;
+  Listener.unsilencedSince=Listener.micSilenced?-1:SystemClock.elapsedRealtime();
+  Listener.microphoneHeld=true;
   Thread thread=new Thread(()->captureLoop(opened),"listener-capture");
   capture=thread;
   thread.start();
@@ -224,6 +246,8 @@ public final class ListeningService extends Service {
   if(thread!=null){try{thread.join(1000);}catch(InterruptedException ignored){Thread.currentThread().interrupt();}}
   if(current!=null)current.release();
   if(thread!=null)new ListenerStore(this).setSessionOpen(false);
+  Listener.microphoneHeld=false;
+  Listener.unsilencedSince=-1;
   Listener.micSilenced=false;
  }
 
@@ -243,7 +267,10 @@ public final class ListeningService extends Service {
      if(capture!=Thread.currentThread())break;
     }
     if(ticket!=frameTicket[0]){gate.reset();frameTicket[0]=ticket;}
-    if(filled==frame.length&&analyse&&Listener.epoch.current(ticket)&&SystemClock.elapsedRealtime()>=playbackQuietSince+ECHO_GUARD_MS)gate.accept(frame);else gate.reset();
+    // No frame is analysed without a fresh SystemUI lease; a loss is converged (and latched) on the main thread.
+    boolean leased=Listener.observeIndicatorLease(this,SystemClock.elapsedRealtime());
+    if(!leased&&leaseStopPosted.compareAndSet(false,true))main.post(reapply);
+    if(filled==frame.length&&leased&&analyse&&Listener.epoch.current(ticket)&&SystemClock.elapsedRealtime()>=playbackQuietSince+ECHO_GUARD_MS)gate.accept(frame);else gate.reset();
     Arrays.fill(frame,(short)0);
    }
   }catch(RuntimeException failed){
@@ -269,6 +296,7 @@ public final class ListeningService extends Service {
      if(local==null||!analyse||!Listener.epoch.current(ticket))return;
      // Never recognise speech while the listener's own indicator is hidden; converge on the main thread.
      if(!ListenerNotifications.indicatorVisible(this)){main.post(reapply);return;}
+     if(!Listener.observeIndicatorLease(this,SystemClock.elapsedRealtime())){main.post(reapply);return;}
      text=local.transcribe(samples);
      WakePhrase.Action action=WakePhrase.classify(text);
      text=null;

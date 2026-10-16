@@ -129,7 +129,7 @@ test('Workflows and Files lists keep a readable column instead of stretching', a
   await open(page, 'Workflows');
   const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
   await expect(refresh).toBeVisible();
-  const status = page.locator('[data-alpha-app-scroll="workflows"]').getByText(/Connect your remote agent/);
+  const status = page.locator('[data-alpha-app-scroll="workflows"]').getByText(/Your agent runs on your phone, not here/);
   for (const viewport of [TABLET_LANDSCAPE, LANDSCAPE, PORTRAIT]) {
     await resize(page, viewport);
     await expectColumn(page, status);
