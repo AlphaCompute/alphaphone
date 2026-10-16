@@ -144,20 +144,26 @@ export const RESIDENT_STARTING = 'Starting your agent…';
 /** Shown wherever a session is needed while the resident starts or recovers; nothing was sent. */
 export const RESIDENT_STARTING_NOTICE = 'Your agent is starting. Nothing was sent.';
 export const RESIDENT_RECOVERING_NOTICE = 'Your agent stopped. Retry in Settings › Agent connection. Nothing was sent.';
-/** Where no resident runs (flag-off web preview, test mocks): the remote agent is the only agent. */
-export const NO_REMOTE_SEND = 'Connect your remote agent in Settings to send a message.';
-export const NO_REMOTE_VOICE = 'Connect your remote agent in Settings to start a voice conversation.';
+/** Decision P-43: production has no remote-agent path. Where no resident runs in a production build
+ * (the flag-off web preview) the agent is the phone's own, so the copy says so and how to reach it.
+ * Remote-agent wording exists only in test-mocks builds (constant-folded out of production). */
+export const LOCAL_AGENT_ELSEWHERE = 'Your agent runs on your phone, not here. Open Alpha on your Android phone to use it.';
+const PENDING_FALLBACK = testMocksEnabled ? 'Connect your remote agent in Settings.' : LOCAL_AGENT_ELSEWHERE;
+const NO_SESSION_FALLBACK = testMocksEnabled ? 'Connect your remote agent first.' : LOCAL_AGENT_ELSEWHERE;
+export const NO_AGENT_SEND = testMocksEnabled ? 'Connect your remote agent in Settings to send a message.' : 'Your agent runs on your phone, not here. Nothing was sent.';
+export const NO_AGENT_VOICE = testMocksEnabled ? 'Connect your remote agent in Settings to start a voice conversation.' : 'Your agent runs on your phone, not here. Open Alpha on your Android phone to talk with it.';
 /** One wording for every surface that needs the agent and has no session yet. */
 export function residentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state): string {
   return snapshot.kind === 'recovering' ? 'Your agent stopped. Retry in Settings › Agent connection.' : 'Your agent is starting…';
 }
 /** Every surface that needs an agent and has no session: the resident state where the resident is
- * always present, otherwise (web preview, test mocks) the remote agent the owner can connect. */
-export function agentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = 'Connect your remote agent in Settings.'): string {
+ * always present, otherwise the production web preview's on-phone wording (test mocks: the remote
+ * development agent). */
+export function agentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = PENDING_FALLBACK): string {
   return residentAlwaysPresent || snapshot.kind === 'starting' || snapshot.kind === 'recovering' ? residentPendingText(snapshot) : remote;
 }
 /** Passive surfaces stay quiet during normal startup; attempted actions still explain refusals. */
-export function agentAvailabilityNotice(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = 'Connect your remote agent in Settings.'): string {
+export function agentAvailabilityNotice(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = PENDING_FALLBACK): string {
   return snapshot.kind === 'starting' ? '' : agentPendingText(snapshot, remote);
 }
 /** The send/voice refusal for a missing session: the resident state where it is always present. */
@@ -1157,7 +1163,7 @@ async function conversationList(selected: Active, signal: AbortSignal) {
 
 async function restoreConversationHistory(id:string,signal:AbortSignal,automatic:boolean,afterConnect=false) {
   const selected=active,session=state.session,generation=epoch;
-  if(!selected||!session)throw noSessionError('Connect your remote agent first.');
+  if(!selected||!session)throw noSessionError(NO_SESSION_FALLBACK);
   const account=selected.kind==='resident'&&residentCloudFlow()?service:null;
   // P-43: a signed-out resident still owns its history and actions; a bound Cloud account must stay the same one.
   const assertCurrent=()=>{signal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId||account&&(service!==account||state.cloudAccount?.sessionId!==account.identity.sessionId))throw Error('The agent or account changed.');};
@@ -1734,7 +1740,7 @@ export const connectionController = {
     if (sending) { update({ error: 'Wait for the current reply before starting a new conversation.' }); return; }
     await work('Starting a new conversation…', async signal => {
       const selected = active, session = state.session, generation = epoch;
-      if (!selected || !session) throw noSessionError('Connect your remote agent first.');
+      if (!selected || !session) throw noSessionError(NO_SESSION_FALLBACK);
       const assertCurrent = () => { signal.throwIfAborted(); if (generation !== epoch || selected !== active || state.session?.sessionId !== session.sessionId) throw Error('The agent changed.'); };
       const key = conversationKey(session), expected = await captureConversationChoice(key, signal); assertCurrent();
       const created = selected.kind === 'cloud' ? await selected.cloud.createConversation(selected.agentId, 'Alpha Phone', signal) : await selected.remote.createConversation('Alpha Phone', signal);
@@ -2047,7 +2053,7 @@ export const connectionController = {
     if (sending) { update({ error: 'Wait for the current reply before loading conversations.' }); return; }
     await work('Loading conversations from your selected agent…', async signal => {
       const selected = active, session = state.session, generation = epoch;
-      if (!selected || !session) throw noSessionError('Connect your remote agent first.');
+      if (!selected || !session) throw noSessionError(NO_SESSION_FALLBACK);
       const list = await conversationList(selected, signal); signal.throwIfAborted();
       if (generation !== epoch) throw new Error('The agent changed.');
       update({ conversations: list, message: list.length ? 'Choose a conversation to replace the visible chat. Your draft will be cleared.' : 'No saved conversations were returned.' });
@@ -2084,7 +2090,7 @@ export const connectionController = {
   async prepareVoiceConversation(signal:AbortSignal):Promise<VoiceConversationBinding>{
     if(operation||sending||state.open||state.busy||document.hidden)throw Error('Finish the current connection or conversation operation first.');
     const selected=active,session=state.session,generation=epoch;
-    if(!selected||!session)throw noSessionError(NO_REMOTE_VOICE);
+    if(!selected||!session)throw noSessionError(NO_AGENT_VOICE);
     if((selected.kind==='remote'||selected.kind==='local')&&(!selected.remote.session||selected.remote.session.expiresAt<=Date.now()))throw Error('Your session expired. Pair again before starting voice.');
     const controller=new AbortController(),cancel=()=>controller.abort(signal.reason);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();operation=controller;
     const current=()=>{controller.signal.throwIfAborted();if(document.hidden||state.open||generation!==epoch||selected!==active||JSON.stringify(state.session)!==JSON.stringify(session))throw Error('The voice conversation changed.');};
@@ -2099,7 +2105,7 @@ export const connectionController = {
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
     const selected = active, session = state.session, generation = epoch;
-    if (!selected || !session) throw noSessionError(NO_REMOTE_SEND);
+    if (!selected || !session) throw noSessionError(NO_AGENT_SEND);
     const controller = new AbortController();
     const cancel = () => controller.abort(signal.reason);
     signal.addEventListener('abort', cancel, { once: true });
@@ -2145,7 +2151,10 @@ export const connectionController = {
       if (failed) {
         // Cloud's own refusal (rate limit, used allowance, no active plan) carries its retry
         // information; the phone presents it and never retries, upgrades or buys anything.
-        responseFailure = replyFailure(failureKindOf(reply), selected, readServiceLimit({ failureKind: 'failureKind' in reply ? reply.failureKind : undefined, terminalFailure: 'terminalFailure' in reply ? reply.terminalFailure : undefined }));
+        // A structured period-allowance reset (`resetAt`, ISO 8601) or wait (`retryAfterSeconds`)
+        // on the failed turn is read like a direct HTTP refusal's; absent, nothing is invented.
+        const timing = reply as { resetAt?: unknown; retryAfterSeconds?: unknown };
+        responseFailure = replyFailure(failureKindOf(reply), selected, readServiceLimit({ failureKind: 'failureKind' in reply ? reply.failureKind : undefined, terminalFailure: 'terminalFailure' in reply ? reply.terminalFailure : undefined, resetAt: timing.resetAt, retryAfterSeconds: timing.retryAfterSeconds }));
         if ('failureKind' in responseFailure) retractReadiness();
       }
       for(const key of ['messageId','userMessageId'] as const)if(reply[key]!==undefined&&!validateUuid(reply[key]))throw Error('The agent returned an invalid message identity.');

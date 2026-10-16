@@ -34,7 +34,8 @@ export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'ses
   // P-43: no session means the resident is starting or recovering, never "no agent".
   if (connection.kind === 'recovering') return { big: 'Agent not running', sub: 'No hosted inference requests until your agent is running and AI is set up' };
   if (connection.kind === 'starting') return { big: 'Agent starting', sub: 'No hosted inference requests until your agent is running and AI is set up' };
-  return { big: 'Offline', sub: 'No remote agent connected; no hosted inference requests' };
+  // Only a build without the resident (the production web preview, test mocks) gets here.
+  return { big: 'Offline', sub: testMocksEnabled ? 'No remote agent connected; no hosted inference requests' : 'Your agent runs on your phone; no hosted inference requests from here' };
 }
 /** Only a verified resident session on Android reports its configured hosted model.
  * Exported for the Settings rows that show it (About and Models). */
@@ -380,7 +381,7 @@ export function installPrototypeNativeAdapters(
             ] : []),
         ];
         const groups: Bag[] = !connection.session
-          ? [{ rows: [...(connection.kind==='starting'?[]:[info(connection.kind === 'recovering' ? agentAvailabilityNotice(connection) : 'Connect your remote agent to see activity', '')]), nav('Your agent', () => connectionController.open())] }]
+          ? [{ rows: [...(connection.kind==='starting'?[]:[info(connection.kind === 'recovering' ? agentAvailabilityNotice(connection) : (testMocksEnabled ? 'Connect your remote agent to see activity' : 'Activity appears on the phone that runs your agent'), '')]), nav('Your agent', () => connectionController.open())] }]
           : !connection.phoneActionsAvailable
             ? [{ rows: [info('Phone action history', 'Not reported by agent')] }]
             : connection.actionHistory.length
