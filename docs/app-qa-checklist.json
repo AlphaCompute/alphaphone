@@ -3,7 +3,7 @@
   "updatedAt": "2026-10-16T07:00:07.323631+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "a09255d6ca69d42b7f98777a59862e6208267238",
-  "agentSource": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
+  "agentSource": "33a6d19c024a4ec130710f0808df25588266d542",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",

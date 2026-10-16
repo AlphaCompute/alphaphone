@@ -2,15 +2,31 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
-  "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
+  "baseCommit": "dd1e61c60dfc539f5bfa2359fcd314e0c083870f",
+  "head": "33a6d19c024a4ec130710f0808df25588266d542",
   "recordedAt": "2026-10-16",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
-  "status": "diverged",
-  "aheadBy": 48,
-  "behindBy": 398,
-  "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
+  "command": "git rev-list --left-right --count dd1e61c60dfc539f5bfa2359fcd314e0c083870f...33a6d19c024a4ec130710f0808df25588266d542",
+  "status": "ahead",
+  "aheadBy": 52,
+  "behindBy": 0,
+  "mergeBase": "dd1e61c60dfc539f5bfa2359fcd314e0c083870f",
   "pinOnlyCommits": [
+    {
+      "sha": "33a6d19c024a4ec130710f0808df25588266d542",
+      "subject": "Compose authenticated native Google hosts before runtime startup"
+    },
+    {
+      "sha": "a9e8131fd5a96e368296d5fccb3c3489c883f0eb",
+      "subject": "Require and install pinned Go for signed OTA publication proof"
+    },
+    {
+      "sha": "ac326329f0d00663ef0dc76e5a187607cbcdd7e8",
+      "subject": "Preserve canonical Calendar reconciliation exports after merge"
+    },
+    {
+      "sha": "bee108fe11df35dc992170027866f565c338eb71",
+      "subject": "Merge current develop and preserve owner-bound Alpha integrations"
+    },
     {
       "sha": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
       "subject": "Scope Calendar approval contracts to preserve legacy Life Ops compatibility"

@@ -69,11 +69,10 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd');assert.equal(stamp.projectionVersion,3);
- const mapProjection=JSON.parse(fs.readFileSync('patches/eliza/client-global-basemap.json'));
- assert.equal(stamp.sourceFiles[mapProjection.path],mapProjection.beforeSha256);
- assert.equal(stamp.files[mapProjection.path],mapProjection.afterSha256);
- assert.match(fs.readFileSync(path.join(source,mapProjection.path),'utf8'),/export interface GlobalBasemap/);
+ assert.equal(stamp.baseCommit,'33a6d19c024a4ec130710f0808df25588266d542');assert.equal(stamp.projectionVersion,4);
+ const mapPath='plugins/plugin-maps/src/client/map-plane.ts';
+ assert.equal(stamp.sourceFiles[mapPath],stamp.files[mapPath]);
+ assert.match(fs.readFileSync(path.join(source,mapPath),'utf8'),/export interface GlobalBasemap/);
  const calendarPath='packages/contracts/src/calendar-linked-sync.ts';
  assert.equal(stamp.sourceFiles[calendarPath],stamp.files[calendarPath]);
  const calendarBundle=buildSync({entryPoints:[path.join(source,calendarPath)],bundle:true,write:false,platform:'browser',format:'esm',metafile:true});

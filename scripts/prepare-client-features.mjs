@@ -1,6 +1,4 @@
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import os from 'node:os';
 import { upstreamNativeSource } from './upstream-native-source.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -108,7 +106,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== 'a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== '33a6d19c024a4ec130710f0808df25588266d542') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',
@@ -129,29 +127,12 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   source.delete('packages/core/src/logger.ts');
   project('alpha-voice-core-types.ts',loggerTypes.slice(start,end));
   project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\n');
-  // Carry the previously qualified global renderer until it is restored in the upstream pin.
-  // Authenticate both sides and project outside vendor; a changed pin must be reviewed again.
-  const mapPatchRoot=path.join(root,'patches/eliza');
-  const mapProjection=JSON.parse(fs.readFileSync(path.join(mapPatchRoot,'client-global-basemap.json'),'utf8'));
-  const mapPath='plugins/plugin-maps/src/client/map-plane.ts';
-  const mapPatch=path.join(mapPatchRoot,'client-global-basemap.patch');
-  if(mapProjection.baseCommit!==upstream.pin||mapProjection.path!==mapPath||
-     sourceFiles[mapPath]!==mapProjection.beforeSha256||hash(fs.readFileSync(mapPatch))!==mapProjection.patchSha256)
-    throw Error('Review changed global map projection input');
-  const mapStage=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-map-projection-'));
-  try{
-    const target=path.join(mapStage,mapPath);fs.mkdirSync(path.dirname(target),{recursive:true});
-    fs.writeFileSync(target,source.get(mapPath).bytes);
-    execFileSync('patch',['--batch','--fuzz=0','--forward','-p1','--input',mapPatch],{cwd:mapStage,stdio:'pipe',timeout:30000});
-    const projected=fs.readFileSync(target);
-    if(hash(projected)!==mapProjection.afterSha256)throw Error('Global map projection output changed');
-    project(mapPath,projected.toString());
-  }finally{fs.rmSync(mapStage,{recursive:true,force:true});}
+  // The pinned upstream global renderer is byte-identical to the carried projection.
 
 
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?3:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?4:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');
