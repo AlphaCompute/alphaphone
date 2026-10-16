@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T21:49:05.077166+00:00",
+  "updatedAt": "2026-10-16T22:29:29.994140+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -378,7 +378,7 @@
       "viewOrFlow": "Agent list/search/read full email",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending",
+      "preview": "Current agent MESSAGE_SEARCH_INBOX and MESSAGE_READ_MESSAGE succeeded against the delivered real QA email; exact full body verified.",
       "seeker": "Installeda569 ordinary read-only LinkedIn prompt failed before answering: runtime selected missing local chat bundle. Cloud credits UI is recognized; native text-provider wiring needs correction.",
       "userApproval": "Pending",
       "evidence": [
@@ -391,17 +391,14 @@
       "area": "Inbox",
       "viewOrFlow": "Agent self-addressed send and delivery readback",
       "scope": "MVP",
-      "implementation": "Source911 ordinary prompt produced exact reviewed draft; plain Yes reached MESSAGE_SEND_DRAFT and real backend dispatch. Receipt outcome remains unknown; send and delivery acceptance incomplete.",
-      "preview": "Canonical receipt9364 is outcome-unknown. Exact Message-ID search and ordinary inbox readback found no match; absence does not prove non-delivery.",
-      "seeker": "Pending",
+      "implementation": "Ordinary prompt, exact draft, plain Yes, real Gmail acceptance and exact inbox delivery/readback verified for a distinct new QA email. Original uncertain send stays fenced.",
+      "preview": "Verified on5209/Shared911: canonical succeeded, same provider message ID found in Inbox, exact body match, and agent searched/read it through prompts.",
+      "seeker": "Native inference route fix is built/tested in source; APK rebuild and live prompt proof pending.",
       "userApproval": "Pending",
       "evidence": [
-        "GMAIL-SEND-911-PREPARE-RESULT.json",
-        "GMAIL-SEND-911-CONFIRM-RESULT.json",
-        "GMAIL-SEND-911-CANONICAL-RECEIPT.json",
-        "GMAIL-911-READBACK-PROMPT-RESULT.json"
+        "docs/evidence/gmail-prompt-send-20261016.json"
       ],
-      "notes": "Preserve original receipt and unknown history. Do not repeat this send. Backend workerd redirect error reproduced before egress in a closed synthetic probe; serving fix and durable reconciliation still pending."
+      "notes": "The new test used a distinct subject/body and operation ID. The old9364 operation was not replayed or reset."
     },
     {
       "id": "inbox-20",
@@ -2283,7 +2280,7 @@
       "characterWake": 1,
       "photosShareScrim": 1
     },
-    "limits": "Focused browser checks do not prove native providers or native video export. Nativea569 packaging and same-signer Seeker update passed; native prompt failed on local text-provider routing. Shared911 repository verification and live integration acceptance remain open.",
+    "limits": "Browser send and delivery are now proven. Seeker integration remains pending the native Cloud routing fix. Native video export, Calendar deletion, target-device speech quality and human view approval remain open.",
     "nativeA569": {
       "fourVariantsPassed": true,
       "sameSignerUpdateInstalled": true,
