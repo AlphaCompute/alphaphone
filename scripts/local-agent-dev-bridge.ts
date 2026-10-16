@@ -20,6 +20,8 @@ const TTS_PATH='/api/tts/paradee';
 const VOICE_PATH='/api/v1/voice/session';
 const VOICE_AGENT_ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const VOICE_UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Owner diagnostics only: bounded list and exact trace detail, no configuration/export/write routes.
+const TRAJECTORY_READ=/^\/api\/trajectories(?:\?limit=(?:[1-9]|10)(?:&search=[A-Za-z0-9_-]{1,128})?|\/(?!(?:config|export|stats)$)[A-Za-z0-9_-]{1,128})$/i;
 function voiceControl(input:any):'health'|'consent'|'mint'|'revoke'|null {
  if(typeof input.path!=='string'||!input.path.startsWith(VOICE_PATH))return null;
  if(typeof input.ownerId!=='string'||!input.ownerId||input.stream||input.storage||input.audioBase64||input.requestId)return null;
@@ -50,6 +52,7 @@ export function localAgentPathAllowed(path:unknown):path is string {
   if(typeof path!=='string'||path.length>2048||/[\\#%\r\n]/.test(path)||path.includes('..'))return false;
   if(isAutomationsPath(path))return ['GET','POST','PUT','DELETE'].some(method=>automationsRouteAllowed(path,method));
   if(path===CALENDAR_APPROVAL_READ_PATH)return true;
+  if(TRAJECTORY_READ.test(path))return true;
   if(path===ASR_PATH||path===ASR_PATH+'/status'||path===TTS_PATH||path===TTS_PATH+'/status')return true;
   return /^\/api\/(auth\/me|agents|status|conversations(?:\/[A-Za-z0-9_-]+(?:\/messages(?:\/(?:stream|truncate))?)?)?|views\/interact-(claim|result)|client-devices\/[A-Za-z0-9_/-]+|workflow(?:\/[A-Za-z0-9_/?=&-]+)?)$/.test(path);
 }
@@ -103,6 +106,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       if(input.storage){const result=localAgentStorage(join(dirname(options.tokenFile),'browser-device'),input.storage);res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(result));return;}
       if((!voice&&!cloudSpeech&&!localAgentPathAllowed(input.path))||(isAutomationsPath(input.path)?!automationsRouteAllowed(input.path,input.method)||typeof input.ownerId!=='string'||!input.ownerId.trim():!['GET','POST'].includes(input.method))||
          (input.path===CALENDAR_APPROVAL_READ_PATH&&(input.method!=='GET'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
+         (TRAJECTORY_READ.test(input.path)&&(input.method!=='GET'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          ((input.path.startsWith('/api/views/')||input.path.endsWith('/messages/truncate'))&&(input.method!=='POST'||typeof input.ownerId!=='string'||!input.ownerId.trim()))||
          (input.body!==undefined&&typeof input.body!=='string')||
          (['GET','DELETE'].includes(input.method)&&input.body!==undefined)) {fail(400,'Unsupported local request');return;}
