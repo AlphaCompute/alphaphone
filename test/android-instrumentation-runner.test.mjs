@@ -5,6 +5,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { instrumentationClassResults, listedInstrumentationTests, writeInstrumentationRecord } from "../scripts/instrumentation-result.mjs";
 import { admitApks, admitHome, classIsolationCommands, CAMPAIGN_RUNNERS, CLASS_REGISTRY, DEFAULT_CLASSES, instrumentArgs, NOT_RUN_BY_A_RUNNER, parseInstrumentationArgs, PACKAGE, readHome, restoreHome, runLeased, selectAlphaHome } from "../scripts/android-instrumentation.mjs";
 import { cases as permissionCases } from "../scripts/test-native-permissions.mjs";
@@ -285,13 +286,23 @@ function apkDir() {
   fs.writeFileSync(path.join(dir, "apk-manifest.json"), JSON.stringify(manifest));
   return dir;
 }
+// Synthetic emulator evidence uses its own Git source, never the live checkout's
+// aliases or dirty state. Production sourceCommit admission remains unchanged.
+async function runFixture(dir, input) {
+  execFileSync("git", ["init", "--quiet", dir]);
+  execFileSync("git", ["-C", dir, "-c", "user.name=Runner fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "--quiet", "-m", "Synthetic runner source"]);
+  const previous = process.cwd();
+  process.chdir(dir);
+  try { return await runLeased(input); }
+  finally { process.chdir(previous); }
+}
 const timing = { sleep: () => {}, attempts: 2 };
 async function homeRun(mode, extra = []) {
   const dir = apkDir(), emulator = fakeEmulator({ mode });
   try {
     const options = parseInstrumentationArgs(["--owned-emulator", "--avd", "fixture-avd", "--serial", "emulator-5554", "--home-role", "--classes", "Shell,LauncherHome,SettingsRoles", "--apk-dir", dir, "--output", path.join(dir, "out"), ...extra]);
     let result, error;
-    try { result = await runLeased({ options, serial: "emulator-5554", adb: emulator.adb, timing }); } catch (failure) { error = failure; }
+    try { result = await runFixture(dir, { options, serial: "emulator-5554", adb: emulator.adb, timing }); } catch (failure) { error = failure; }
     const recovery = path.join(dir, "out/home-role-recovery.json");
     return { result, error, ...emulator, recovery: fs.existsSync(recovery) ? JSON.parse(fs.readFileSync(recovery, "utf8")) : null };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
@@ -419,7 +430,7 @@ test("classes that assert a secondary user run in a disposable user the runner c
     try {
       const options = parseInstrumentationArgs(["--owned-emulator", "--avd", "fixture-avd", "--serial", "emulator-5554", "--test-mocks", "--variants", "standalone", "--classes", classes, "--apk-dir", dir, "--output", path.join(dir, "out")]);
       let result, error;
-      try { result = await runLeased({ options, serial: "emulator-5554", adb: emulator.adb, timing, withSecondaryUser: lifecycle }); } catch (failure) { error = failure; }
+      try { result = await runFixture(dir, { options, serial: "emulator-5554", adb: emulator.adb, timing, withSecondaryUser: lifecycle }); } catch (failure) { error = failure; }
       return { result, error, commands: emulator.state.commands };
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   };
@@ -476,7 +487,7 @@ test("a class whose every method is skipped by its gate is recorded as skipped, 
   const dir = apkDir(), emulator = fakeEmulator({ mode: "all-skipped" });
   try {
     const options = parseInstrumentationArgs(["--owned-emulator", "--avd", "fixture-avd", "--serial", "emulator-5554", "--variants", "standalone", "--classes", "Shell,BrowserDownload", "--apk-dir", dir, "--output", path.join(dir, "out")]);
-    const result = await runLeased({ options, serial: "emulator-5554", adb: emulator.adb, timing });
+    const result = await runFixture(dir, { options, serial: "emulator-5554", adb: emulator.adb, timing });
     assert.deepEqual(result.classes.map(row => [row.class.split(".").at(-1), row.status]), [["ShellInstrumentedTest", "passed"], ["BrowserDownloadInstrumentedTest", "skipped"]]);
     assert.equal(result.passed, false, "a skipped class is not a pass");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }

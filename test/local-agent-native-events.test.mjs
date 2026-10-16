@@ -28,11 +28,12 @@ test('native admission rejection cleans up the listener without retry',async()=>
  await tick();assert.deepEqual({removed,subscribed,cancelled},{removed:1,subscribed:1,cancelled:1});
 });
 test('protocol session change and disconnect fence callbacks and detach feeds',async()=>{
- // Load the real protocol through tsx in a child, keeping this suite independent of loader flags.
+ // Load real browser source with production flags in an isolated Node child.
  const {execFileSync}=await import('node:child_process');
- execFileSync(process.execPath,['--import','tsx','--input-type=module','-e',`
+ execFileSync(process.execPath,['--input-type=module','-e',`
   import assert from 'node:assert/strict';
-  import {LocalAgentProtocol} from './apps/app/src/runtime/local-agent.ts';
+  import {loadBrowserModule} from './test/fixtures/browser-source.mjs';
+  const {LocalAgentProtocol}=await loadBrowserModule('apps/app/src/runtime/local-agent.ts');
   let callback,removed=0,seen=0;
   const client=new LocalAgentProtocol({start:async()=>{},request:async()=>({status:200}),subscribeVoiceEvents:(owner,listener)=>{assert.equal(owner,'owner');callback=listener;return ()=>removed++;}});
   client.session={ownerId:'owner',sessionId:'first'};
