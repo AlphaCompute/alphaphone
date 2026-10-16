@@ -1,6 +1,6 @@
 {
   "baseCommit": "33a6d19c024a4ec130710f0808df25588266d542",
-  "admittedCommit": "60f38e1d701f2c6a16a9fe4ac347b32b6faf2584",
+  "admittedCommit": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
   "changedPaths": [
     "plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts",
     "plugins/plugin-assistant/src/features/advanced-capabilities/index.ts",
@@ -108,5 +108,12 @@
     "lint": true,
     "fullQualification": "running v8; candidate preview QA only",
     "rule": "Only an explicit direct-send operation requires a locally registered send connector. The umbrella and reviewed-draft operations retain their own gates."
+  },
+  "draftParameterContractFix": {
+    "commit": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
+    "focusedTests": 153,
+    "lint": true,
+    "qualification": "Candidate preview QA; full v9 qualification pending after immutable v8.",
+    "rule": "Use the original sendDraftAction parameter contract, not unrelated parent messaging fields. Scope IDs must come from the selected adapter; a recipient email is not a world ID."
   }
 }
