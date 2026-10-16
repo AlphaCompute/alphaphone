@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,106 @@
 +package com.android.systemui.privacy;
 +
 +/** Platform-derived facts only. No transcript, PCM, listener self-report or app-supplied UID. */
@@ -28,15 +28,37 @@
 + public static final String LEASE_AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
 + public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
 + public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
-+  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display";
-+ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
++  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display",KEY_REASON="hiddenReason";
++ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off",DISPLAY_UNKNOWN="unknown";
++ /** Why the indicator is not shown, as SystemUI positively knows it. NONE: shown, or no known reason (unexplained). */
++ public static final String REASON_NONE="none",REASON_DISPLAY_OFF="display_off",REASON_AOD="aod",REASON_FULLSCREEN="fullscreen",
++  REASON_SHADE="shade",REASON_TRANSITION="transition";
++ /** A hidden report within this time of a reported keyguard, doze or display-state change is a transition. */
++ public static final long TRANSITION_DEBOUNCE_MS=1_000;
 + public static final long LEASE_RENEW_MS=1_000;
 + /**
 +  * Default display state (android.view.Display.STATE_*): ON 2 and ON_SUSPEND 6 are on; DOZE 3 and
-+  * DOZE_SUSPEND 4 are AOD; OFF 1, VR 5, UNKNOWN 0 and anything else count as off (capture pauses).
++  * DOZE_SUSPEND 4 are AOD; OFF 1 is off; UNKNOWN 0, VR 5 and anything else are unknown (the
++  * listener pauses only if it sees the screen off itself, otherwise it stops).
 +  */
 + public static String display(int state){
-+  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;default:return DISPLAY_OFF;}
++  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;case 1:return DISPLAY_OFF;default:return DISPLAY_UNKNOWN;}
++ }
++ /**
++  * The explanation SystemUI attaches when the indicator is not shown ({@code shown}: surface
++  * visible and, while recording, the chip too). In order: display off; AOD not showing it; a report
++  * within {@link #TRANSITION_DEBOUNCE_MS} of a keyguard/doze/display change; the expanded shade
++  * without the listening notification; an app hiding the unlocked status bar. Anything else (for
++  * example a detached or faded chip) has no reason and the listener treats it as a loss.
++  */
++ public static String hiddenReason(boolean shown,String display,long sinceTransitionMs,boolean shadeExpanded,boolean statusBarHidden,boolean keyguardShowing){
++  if(shown)return REASON_NONE;
++  if(DISPLAY_OFF.equals(display))return REASON_DISPLAY_OFF;
++  if(DISPLAY_DOZE.equals(display))return REASON_AOD;
++  if(sinceTransitionMs>=0&&sinceTransitionMs<TRANSITION_DEBOUNCE_MS)return REASON_TRANSITION;
++  if(shadeExpanded)return REASON_SHADE;
++  if(statusBarHidden&&!keyguardShowing)return REASON_FULLSCREEN;
++  return REASON_NONE;
 + }
 + /**
 +  * The status-bar chip counts only while the keyguard is not showing, the shade is collapsed and
@@ -87,7 +109,7 @@
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,185 @@
 +package com.android.systemui.privacy;
 +
 +import android.app.Notification;
@@ -134,18 +156,21 @@
 + private int uid=-1;private boolean active;
 + /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
 + private int requestedVisibleTypes=~0;private boolean statusBarTransient;
++ /** Uptime of the last reported keyguard, doze, shade-state or display-state change (main thread). */
++ private long transitionAt=-1;
++ private void transition(){transitionAt=SystemClock.uptimeMillis();surfaceChanged();}
 + private final StatusBarStateController.StateListener shadeAndDoze=new StatusBarStateController.StateListener(){
 +  @Override public void onExpandedChanged(boolean expanded){surfaceChanged();}
-+  @Override public void onDozingChanged(boolean dozing){surfaceChanged();}
-+  @Override public void onStateChanged(int state){surfaceChanged();}
++  @Override public void onDozingChanged(boolean dozing){transition();}
++  @Override public void onStateChanged(int state){transition();}
 + };
 + private final KeyguardStateController.Callback keyguardShowing=new KeyguardStateController.Callback(){
-+  @Override public void onKeyguardShowingChanged(){surfaceChanged();}
++  @Override public void onKeyguardShowingChanged(){transition();}
 + };
 + private final DisplayManager.DisplayListener displayState=new DisplayManager.DisplayListener(){
 +  @Override public void onDisplayAdded(int id){}
 +  @Override public void onDisplayRemoved(int id){}
-+  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)surfaceChanged();}
++  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)transition();}
 + };
 + private final CommandQueue.Callbacks systemBars=new CommandQueue.Callbacks(){
 +  @Override public void onSystemBarAttributesChanged(int displayId,int appearance,AppearanceRegion[] regions,boolean navbarColorManagedByIme,
@@ -208,8 +233,10 @@
 +  }
 +  if(AlphaListeningPolicy.shadeCounts(shade,shadeNotificationShown())){surface=true;chip=true;}
 +  Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
-+  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,
-+   AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState()));
++  String state=AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState());
++  boolean shown=surface&&(!active||chip);
++  String reason=AlphaListeningPolicy.hiddenReason(shown,state,transitionAt<0?-1:SystemClock.uptimeMillis()-transitionAt,shade,hidden,locked);
++  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,state,reason);
 + }
 +
 + private boolean shadeNotificationShown(){
@@ -270,7 +297,7 @@
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningLease.java
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,91 @@
 +package com.android.systemui.privacy;
 +
 +import android.content.Context;
@@ -292,9 +319,9 @@
 +final class AlphaListeningLease {
 + /** One acknowledgement: the admitted listener UID (-1 for none) and SystemUI-measured facts. */
 + static final class Acknowledgement {
-+  final int uid;final boolean surface,chip,recording;final String display;
-+  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display){
-+   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;
++  final int uid;final boolean surface,chip,recording;final String display,reason;
++  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display,String reason){
++   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;this.reason=reason;
 +  }
 + }
 + interface Source{Acknowledgement read();}
@@ -338,6 +365,7 @@
 +   renew.putBoolean(AlphaListeningPolicy.KEY_CHIP,AlphaListeningPolicy.chipAcknowledged(ack.recording,ack.chip));
 +   renew.putBoolean(AlphaListeningPolicy.KEY_RECORDING,ack.recording);
 +   renew.putString(AlphaListeningPolicy.KEY_DISPLAY,ack.display);
++   renew.putString(AlphaListeningPolicy.KEY_REASON,ack.reason);
 +   Bundle out=call(AlphaListeningPolicy.LEASE_RENEW,renew);
 +   // A refused renewal (expired, revoked, replaced) is never retried on the same generation.
 +   if(out==null||!out.getBoolean(AlphaListeningPolicy.KEY_ACCEPTED,false))generation=-1;

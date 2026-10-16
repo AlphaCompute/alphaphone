@@ -22,13 +22,14 @@ public final class ListenerLeaseTest {
  /** One listener-side capture step: what Listener.observeIndicatorLease and the policy do together. */
  static final class Sim {
   final IndicatorLease lease=new IndicatorLease();
-  boolean held,lost;long since=-1;
-  Inputs paused(Inputs in){in.displayOffWithoutIndicator=true;return in;}
+  boolean held,lost,interactive=true,pausedForIndicator;long since=-1;
+  Inputs paused(Inputs in){in.indicatorPause=ListenerPolicy.IndicatorPause.DISPLAY_OFF;return in;}
   State step(long now,Inputs base){
-   Loss loss=lease.verdict(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now));
-   boolean valid=loss==Loss.NONE,off=loss==Loss.DISPLAY_OFF;
-   if(ListenerPolicy.latchesIndicatorLoss(held,valid,off))lost=true;
-   base.indicatorLeaseValid=valid;base.indicatorLost=lost;base.displayOffWithoutIndicator=off;
+   Loss loss=lease.verdict(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now),interactive);
+   boolean valid=loss==Loss.NONE;
+   if(ListenerPolicy.latchesIndicatorLoss(held||pausedForIndicator,valid,loss.pause()))lost=true;
+   base.indicatorLeaseValid=valid;base.indicatorLost=lost;base.indicatorPause=IndicatorLease.pauseFor(loss);
+   pausedForIndicator=loss.pause();
    State state=ListenerPolicy.decide(base,now);
    boolean hold=ListenerPolicy.holdsMicrophone(state);
    if(hold&&!held){held=true;since=now;}else if(!hold){held=false;since=-1;}
@@ -157,11 +158,60 @@ public final class ListenerLeaseTest {
   check(sim.step(t+1500,ready(false))==State.STOPPED_INDICATOR_LOST,"turning the display off does not convert a loss into a pause");
   sim.lease.renew(g,t+2500,BOOT,true,false,false,DOZE);
   check(sim.step(t+2500,ready(false))==State.STOPPED_INDICATOR_LOST,"a visible AOD surface afterwards does not resume a loss");
-  // unknown or missing display state fails toward the pause, never toward capture
-  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true,"vr");
-  check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF,"unknown display state counts as off");
+  // unknown or missing display state: a pause only when the listener itself sees the screen off
+  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true,"unknown");
+  check(lease.verdict(t,BOOT,false,true)==Loss.UNKNOWN_STATE&&!Loss.UNKNOWN_STATE.pause(),"unknown display state with the screen on is unexplained");
+  check(lease.verdict(t,BOOT,false,false)==Loss.DISPLAY_OFF,"unknown display state with the screen off is a display-off pause");
   lease.renew(gen,t,BOOT,true,true,true,null);
-  check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF,"missing display state counts as off");
+  check(lease.verdict(t,BOOT,false,true)==Loss.UNKNOWN_STATE,"missing display state with the screen on is unexplained");
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  sim.lease.renew(g,t+500,BOOT,true,true,true,null);
+  check(sim.step(t+500,ready(false))==State.STOPPED_INDICATOR_LOST,"unknown state while the screen is on stops capture (sticky)");
+
+  // ---- explained hidden indicator: pause and resume; unexplained: sticky ----
+  final String FULL=IndicatorLease.REASON_FULLSCREEN,SHADE=IndicatorLease.REASON_SHADE,TRANS=IndicatorLease.REASON_TRANSITION,NONE=IndicatorLease.REASON_NONE;
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  sim.lease.renew(g,t+1000,BOOT,false,false,true,ON,FULL);
+  check(sim.step(t+1000,ready(false))==State.PAUSED_FULLSCREEN&&!sim.held&&!sim.lost,"immersive app hides the status bar: pause, microphone released, not latched");
+  for(long now=t+2000;now<=t+60_000;now+=1000){
+   check(sim.lease.renew(g,now,BOOT,false,false,false,ON,FULL)&&sim.step(now,ready(false))==State.PAUSED_FULLSCREEN&&!sim.held,"stays paused while fullscreen: "+now);
+  }
+  sim.lease.renew(g,t+61_000,BOOT,true,false,false,ON,NONE);
+  check(sim.step(t+61_000,ready(false))==State.LISTENING&&sim.held,"status bar shown again: resumes on a fresh visible lease");
+  sim.lease.renew(g,t+62_000,BOOT,false,false,true,ON,SHADE);
+  check(sim.step(t+62_000,ready(false))==State.PAUSED_SHADE&&!sim.held&&!sim.lost,"shade expanded without the listening notification: pause");
+  sim.lease.renew(g,t+63_000,BOOT,true,false,false,ON,NONE);
+  check(sim.step(t+63_000,ready(false))==State.LISTENING,"shade closed: resumes");
+  sim.lease.renew(g,t+64_000,BOOT,false,false,true,ON,TRANS);
+  check(sim.step(t+64_000,ready(false))==State.PAUSED_TRANSITION&&!sim.held&&!sim.lost,"hidden within the transition debounce: pause");
+  sim.lease.renew(g,t+64_500,BOOT,true,false,false,ON,NONE);
+  check(sim.step(t+64_500,ready(false))==State.LISTENING,"the lock screen chip after the transition resumes");
+  sim.lease.renew(g,t+65_000,BOOT,false,false,true,ON,FULL);sim.step(t+65_000,ready(false));
+  check(sim.step(t+65_000+IndicatorLease.TTL_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"expiry during an explained pause (SystemUI stopped reporting) is an unexplained loss");
+  // SystemUI death, unexplained hidden surface, detached chip and an unknown reason stay sticky
+  for(String why:new String[]{NONE,"detached","bogus",null}){
+   sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+   sim.lease.renew(g,t+500,BOOT,false,false,true,ON,why);
+   check(sim.step(t+500,ready(false))==State.STOPPED_INDICATOR_LOST,"hidden without an explained reason is sticky: "+why);
+   sim.lease.renew(g,t+1500,BOOT,true,true,true,ON,NONE);
+   check(sim.step(t+1500,ready(false))==State.STOPPED_INDICATOR_LOST,"and a visible lease afterwards does not resume it: "+why);
+  }
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  sim.lease.binderDied(g);
+  check(sim.step(t+1,ready(false))==State.STOPPED_INDICATOR_LOST,"SystemUI death is sticky");
+  g=sim.lease.acquire(BOOT);sim.lease.renew(g,t+2,BOOT,false,false,false,ON,FULL);
+  check(sim.step(t+2,ready(false))==State.STOPPED_INDICATOR_LOST,"a later explained report does not turn death into a pause");
+  sim.lease.renew(g,t+3,BOOT,true,true,true,ON,NONE);
+  check(sim.step(t+3,ready(false))==State.STOPPED_INDICATOR_LOST,"nor does a visible one");
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  sim.lease.revoke(g);
+  check(sim.step(t+1,ready(false))==State.STOPPED_INDICATOR_LOST,"explicit revoke (unverified identity) is sticky");
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
+  check(sim.step(t+IndicatorLease.TTL_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"expiry with no report is sticky");
+  // the explained pause states release everything and are foreground with their own text
+  for(State state:new State[]{State.PAUSED_FULLSCREEN,State.PAUSED_SHADE,State.PAUSED_TRANSITION,State.PAUSED_DISPLAY_OFF})
+   check(ListenerPolicy.indicatorPaused(state)&&ListenerPolicy.foreground(state)&&!ListenerPolicy.holdsMicrophone(state)&&!ListenerPolicy.processesAudio(state),"pause releases capture: "+state);
+  check(ListenerPolicy.label(State.PAUSED_FULLSCREEN).equals("Paused while an app is fullscreen"),"fullscreen status text");
   lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,false,false,false,OFF);
   check(lease.verdict(t,BOOT,false)==Loss.DISPLAY_OFF&&ListenerPolicy.decide(sim.paused(ready(false)),t)==State.PAUSED_DISPLAY_OFF,"opting in with the screen off waits paused, not capturing");
 
@@ -198,7 +248,7 @@ public final class ListenerLeaseTest {
   check(!IndicatorLease.admitsController(true,10_123,null,true),"unknown UID");
 
   // ---- labels ----
-  for(State state:new State[]{State.INDICATOR_UNAVAILABLE,State.STOPPED_INDICATOR_LOST,State.PAUSED_DISPLAY_OFF}){String label=ListenerPolicy.label(state);check(label!=null&&label.length()<64,"label "+state);}
-  System.out.println("PASS listener indicator lease: renewal, expiry, binder death, hidden view, display off/AOD, reboot, crash loop");
+  for(State state:new State[]{State.INDICATOR_UNAVAILABLE,State.STOPPED_INDICATOR_LOST,State.PAUSED_DISPLAY_OFF,State.PAUSED_FULLSCREEN,State.PAUSED_SHADE,State.PAUSED_TRANSITION}){String label=ListenerPolicy.label(state);check(label!=null&&label.length()<64,"label "+state);}
+  System.out.println("PASS listener indicator lease: renewal, expiry, binder death, hidden view, display off/AOD, explained pauses, reboot, crash loop");
  }
 }

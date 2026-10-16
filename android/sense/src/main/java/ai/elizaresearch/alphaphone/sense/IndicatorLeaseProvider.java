@@ -42,7 +42,7 @@ public final class IndicatorLeaseProvider extends ContentProvider {
    boolean platform=owners!=null&&owners.length==1&&packages.checkSignatures("android",owners[0])==PackageManager.SIGNATURE_MATCH;
    if(!IndicatorLease.admitsController(holds,caller,owners,platform))throw new SecurityException("Only SystemUI may hold the listening indicator lease");
    long boot=Listener.leaseBoot(context),now=SystemClock.elapsedRealtime();
-   IndicatorLease.Loss before=Listener.lease.verdict(now,boot,false);
+   IndicatorLease.Loss before=Listener.lease.verdict(now,boot,false,Listener.screenInteractive);
    Bundle out=new Bundle();
    if(IndicatorLease.ACQUIRE.equals(method)){
     IBinder token=extras==null?null:extras.getBinder(IndicatorLease.KEY_TOKEN);
@@ -61,14 +61,14 @@ public final class IndicatorLeaseProvider extends ContentProvider {
     if(extras==null)throw new IllegalArgumentException("Acknowledgement required");
     out.putBoolean(IndicatorLease.KEY_ACCEPTED,Listener.lease.renew(extras.getLong(IndicatorLease.KEY_GENERATION,-1),now,boot,
      extras.getBoolean(IndicatorLease.KEY_SURFACE,false),extras.getBoolean(IndicatorLease.KEY_CHIP,false),extras.getBoolean(IndicatorLease.KEY_RECORDING,false),
-     extras.getString(IndicatorLease.KEY_DISPLAY,IndicatorLease.DISPLAY_OFF)));
+     extras.getString(IndicatorLease.KEY_DISPLAY),extras.getString(IndicatorLease.KEY_REASON)));
    }else if(IndicatorLease.REVOKE.equals(method)){
     Listener.lease.revoke(extras==null?-1:extras.getLong(IndicatorLease.KEY_GENERATION,-1));
    }else throw new IllegalArgumentException("Unknown method");
    out.putLong(IndicatorLease.KEY_RENEW_MS,IndicatorLease.RENEW_MS);
    // Converge only on a change: a loss while capturing latches and stops; a first fresh lease admits a
    // start; the display turning off pauses and a visible surface after it resumes.
-   if(before!=Listener.lease.verdict(now,boot,false)||Listener.microphoneHeld&&!Listener.observeIndicatorLease(context,now))Listener.refresh(context);
+   if(before!=Listener.lease.verdict(now,boot,false,Listener.screenInteractive)||Listener.microphoneHeld&&!Listener.observeIndicatorLease(context,now))Listener.refresh(context);
    return out;
   }finally{Binder.restoreCallingIdentity(identity);}
  }

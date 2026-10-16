@@ -50,7 +50,7 @@ test('prepared Java chip sources type-check against SystemUI stubs and the lease
   const sources=fs.readdirSync(`${bundle}/source`).filter(name=>name.endsWith('.java')).map(name=>`${bundle}/source/${name}`);
   assert.equal(sources.length,4);
   execFileSync(java('javac'),['--release','11','-Xlint:all','-Werror','-Xlint:-serial','-d',temp,...stubs('test/fixtures/systemui-chip-jvm'),...sources,
-   'android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/IndicatorLease.java','test/fixtures/SystemUiLeaseClientTest.java','test/fixtures/SystemUiAcknowledgementTest.java'],{timeout:60000});
+   'android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/IndicatorLease.java','android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/ListenerPolicy.java','test/fixtures/SystemUiLeaseClientTest.java','test/fixtures/SystemUiAcknowledgementTest.java'],{timeout:60000});
   assert.match(execFileSync(java('java'),['-cp',temp,'com.android.systemui.privacy.SystemUiLeaseClientTest'],{encoding:'utf8',timeout:60000}),/^PASS SystemUI lease client/);
   // Lock screen/AOD keyguard chip, unlocked status bar, expanded shade, immersive mode and display state.
   assert.match(execFileSync(java('java'),['-cp',temp,'com.android.systemui.privacy.SystemUiAcknowledgementTest'],{encoding:'utf8',timeout:60000}),/^PASS SystemUI acknowledgement/);

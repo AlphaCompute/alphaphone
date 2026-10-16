@@ -11,11 +11,16 @@ package ai.elizaresearch.alphaphone.sense;
  * replaced generation can never be renewed again (SystemUI must acquire anew), and a lease from
  * another boot never counts.
  *
- * SystemUI also reports the default display state. With the display fully off, or dozing (AOD)
- * without a visible Listening surface, nothing can show the indicator: the verdict is
- * {@link Loss#DISPLAY_OFF}, which pauses capture and resumes it when a visible surface is
- * acknowledged again. Such acknowledgements still prove SystemUI is alive and extend the lease.
- * A surface hidden while the display is on is a loss that stays stopped. The lease carries visibility facts only: no audio, transcript,
+ * SystemUI also reports the default display state and, when the indicator is not shown, why.
+ * An explained hidden indicator is a pause: display fully off or AOD not showing the chip
+ * ({@link Loss#DISPLAY_OFF}), an app hiding the status bar ({@link Loss#FULLSCREEN}), the shade
+ * expanded without the listening notification ({@link Loss#SHADE}), or a report within
+ * SystemUI's debounce after a keyguard or screen-state change ({@link Loss#TRANSITION}). Capture
+ * is released and resumes only on a fresh acknowledgement of a visible surface; explained
+ * reports prove SystemUI is alive and extend the lease. Everything else is an unexplained loss
+ * that stays stopped: expiry without a report, SystemUI death, revoke, a hidden surface or chip
+ * without a reason, an unattributed recording, or an unknown display state while the listener
+ * itself sees the screen on. The lease carries visibility facts only: no audio, transcript,
  * consent or resume command. It can only withhold capture; it never turns listening on.
  */
 public final class IndicatorLease {
@@ -24,8 +29,11 @@ public final class IndicatorLease {
  public static final String ACQUIRE="acquire",RENEW="renew",REVOKE="revoke";
  public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
   KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_RENEW_MS="renewMs",KEY_DISPLAY="display";
- /** Default display as SystemUI reports it: on, dozing (AOD) or fully off. Unknown values count as off. */
+ /** Default display as SystemUI reports it: on, dozing (AOD) or fully off. Anything else is unknown. */
  public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
+ /** Why SystemUI does not show the indicator; mirrored by AlphaListeningPolicy. Anything else is unexplained. */
+ public static final String KEY_REASON="hiddenReason",REASON_NONE="none",REASON_DISPLAY_OFF="display_off",REASON_AOD="aod",
+  REASON_FULLSCREEN="fullscreen",REASON_SHADE="shade",REASON_TRANSITION="transition";
  /** The only package admitted as the lease holder; it must also be platform-signed (see {@link #admitsController}). */
  public static final String SYSTEMUI_PACKAGE="com.android.systemui";
  /** SystemUI renews this often while a surface is visible. */
@@ -37,8 +45,23 @@ public final class IndicatorLease {
 
  /** Why the lease does not currently permit capture. {@link #NONE} means it does. */
  public enum Loss{NONE,NEVER_ACQUIRED,PENDING,EXPIRED,BINDER_DIED,REVOKED,REPLACED,OTHER_BOOT,SURFACE_HIDDEN,CHIP_HIDDEN,UNATTRIBUTED,
-  /** Display off, or AOD without a visible Listening surface: a pause that ends on a visible acknowledgement. */
-  DISPLAY_OFF}
+  /** Display state unknown or missing while the listener sees the screen on: unexplained. */
+  UNKNOWN_STATE,
+  /** Explained pauses: they end on a fresh acknowledgement of a visible surface. */
+  DISPLAY_OFF,FULLSCREEN,SHADE,TRANSITION;
+  public boolean pause(){return this==DISPLAY_OFF||this==FULLSCREEN||this==SHADE||this==TRANSITION;}
+ }
+
+ /** The policy's pause reason for a verdict (NONE for capture or for an unexplained loss). */
+ public static ListenerPolicy.IndicatorPause pauseFor(Loss loss){
+  switch(loss){
+   case DISPLAY_OFF:return ListenerPolicy.IndicatorPause.DISPLAY_OFF;
+   case FULLSCREEN:return ListenerPolicy.IndicatorPause.FULLSCREEN;
+   case SHADE:return ListenerPolicy.IndicatorPause.SHADE;
+   case TRANSITION:return ListenerPolicy.IndicatorPause.TRANSITION;
+   default:return ListenerPolicy.IndicatorPause.NONE;
+  }
+ }
 
  private long generation;
  private boolean live;
@@ -46,7 +69,7 @@ public final class IndicatorLease {
  private long expiresAt;
  private long boot=Long.MIN_VALUE;
  private boolean surfaceVisible,chipVisible,recordingObserved;
- private String display=DISPLAY_ON;
+ private String display=DISPLAY_ON,reason=REASON_NONE;
  private Loss lastLoss=Loss.NEVER_ACQUIRED;
 
  /** Starts a new generation. Any previous generation is replaced and can never be renewed. */
@@ -54,7 +77,7 @@ public final class IndicatorLease {
   if(live)lastLoss=Loss.REPLACED;
   generation++;
   live=true;acknowledged=false;this.boot=boot;
-  surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;
+  surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;reason=REASON_NONE;
   return generation;
  }
 
@@ -64,18 +87,23 @@ public final class IndicatorLease {
   * then acquire again. A refused or hidden acknowledgement never extends the lease.
   */
  public synchronized boolean renew(long gen,long now,long boot,boolean surface,boolean chip,boolean recording){
-  return renew(gen,now,boot,surface,chip,recording,DISPLAY_ON);
+  return renew(gen,now,boot,surface,chip,recording,DISPLAY_ON,REASON_NONE);
  }
 
- /** As above with SystemUI's display state ({@link #DISPLAY_ON}, {@link #DISPLAY_DOZE}, {@link #DISPLAY_OFF}). */
  public synchronized boolean renew(long gen,long now,long boot,boolean surface,boolean chip,boolean recording,String displayState){
+  return renew(gen,now,boot,surface,chip,recording,displayState,REASON_NONE);
+ }
+
+ /** As above with SystemUI's display state and its reason ({@code REASON_*}) when the indicator is not shown. */
+ public synchronized boolean renew(long gen,long now,long boot,boolean surface,boolean chip,boolean recording,String displayState,String hiddenReason){
   if(!live||gen!=generation)return false;
   if(boot!=this.boot){end(Loss.OTHER_BOOT);return false;}
   if(acknowledged&&now>=expiresAt){end(Loss.EXPIRED);return false;}
   surfaceVisible=surface;chipVisible=chip;recordingObserved=recording;
-  display=DISPLAY_ON.equals(displayState)||DISPLAY_DOZE.equals(displayState)?displayState:DISPLAY_OFF;
-  // A visible surface, or a live SystemUI reporting the display off/dozing, keeps the lease alive.
-  if(surface||!DISPLAY_ON.equals(display)){acknowledged=true;expiresAt=now+TTL_MS;}
+  display=DISPLAY_ON.equals(displayState)||DISPLAY_DOZE.equals(displayState)||DISPLAY_OFF.equals(displayState)?displayState:null;
+  reason=hiddenReason==null?REASON_NONE:hiddenReason;
+  // A visible surface, or a live SystemUI explaining why nothing is shown, keeps the lease alive.
+  if(surface||display==null||explainedPause()!=null){acknowledged=true;expiresAt=now+TTL_MS;}
   return true;
  }
 
@@ -85,21 +113,47 @@ public final class IndicatorLease {
  /** SystemUI's token binder died: its process is gone and nothing it showed can be trusted. */
  public synchronized void binderDied(long gen){if(live&&gen==generation)end(Loss.BINDER_DIED);}
 
- private void end(Loss reason){live=false;acknowledged=false;lastLoss=reason;surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;}
+ private void end(Loss why){live=false;acknowledged=false;lastLoss=why;surfaceVisible=chipVisible=recordingObserved=false;display=DISPLAY_ON;reason=REASON_NONE;}
+
+ /**
+  * The pause SystemUI's report explains, or null. Display off always explains itself; AOD not
+  * showing the chip pauses like a dark display; with the display on only a recognised reason does.
+  */
+ private Loss explainedPause(){
+  if(display==null)return null;
+  if(DISPLAY_OFF.equals(display))return Loss.DISPLAY_OFF;
+  if(DISPLAY_DOZE.equals(display))return Loss.DISPLAY_OFF;
+  switch(reason){
+   case REASON_FULLSCREEN:return Loss.FULLSCREEN;
+   case REASON_SHADE:return Loss.SHADE;
+   case REASON_TRANSITION:return Loss.TRANSITION;
+   default:return null;
+  }
+ }
 
  /**
   * Whether capture may run now. {@code requireAttribution}: the listener has been capturing
   * unsilenced for longer than {@link #ATTRIBUTION_GRACE_MS}, so SystemUI must also report that it
   * observes the recording itself and shows the Listening chip.
   */
- public synchronized Loss verdict(long now,long boot,boolean requireAttribution){
+ public synchronized Loss verdict(long now,long boot,boolean requireAttribution){return verdict(now,boot,requireAttribution,true);}
+
+ /**
+  * {@code screenInteractive}: the listener's own view of the screen (PowerManager), used only to
+  * resolve an unknown or missing display state: screen off is a pause, screen on an unexplained loss.
+  */
+ public synchronized Loss verdict(long now,long boot,boolean requireAttribution,boolean screenInteractive){
   if(!live)return lastLoss;
   if(boot!=this.boot){end(Loss.OTHER_BOOT);return lastLoss;}
   if(!acknowledged)return Loss.PENDING;
   if(now>=expiresAt){end(Loss.EXPIRED);return lastLoss;}
-  if(DISPLAY_OFF.equals(display)||DISPLAY_DOZE.equals(display)&&!surfaceVisible)return Loss.DISPLAY_OFF;
-  if(!surfaceVisible)return Loss.SURFACE_HIDDEN;
-  if(recordingObserved&&!chipVisible)return Loss.CHIP_HIDDEN;
+  if(display==null)return screenInteractive?Loss.UNKNOWN_STATE:Loss.DISPLAY_OFF;
+  if(DISPLAY_OFF.equals(display))return Loss.DISPLAY_OFF;
+  if(!surfaceVisible||recordingObserved&&!chipVisible){
+   Loss pause=explainedPause();
+   if(pause!=null)return pause;
+   return surfaceVisible?Loss.CHIP_HIDDEN:Loss.SURFACE_HIDDEN;
+  }
   if(requireAttribution&&!(recordingObserved&&chipVisible))return Loss.UNATTRIBUTED;
   return Loss.NONE;
  }

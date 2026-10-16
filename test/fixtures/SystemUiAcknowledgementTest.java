@@ -35,6 +35,11 @@ public final class SystemUiAcknowledgementTest {
   view.stubParent=host;view.onVisibilityAggregated(true);return view;
  }
 
+ static com.android.systemui.statusbar.policy.KeyguardStateController.Callback keyguardCallback(AlphaListeningController controller)throws Exception{
+  Field f=AlphaListeningController.class.getDeclaredField("keyguardShowing");f.setAccessible(true);
+  return (com.android.systemui.statusbar.policy.KeyguardStateController.Callback)f.get(controller);
+ }
+
  public static void main(String[] args)throws Exception{
   Context context=new Context();
   Display display=new Display();
@@ -58,11 +63,11 @@ public final class SystemUiAcknowledgementTest {
   // Unlocked, status bar shown.
   show(statusHost,true);show(statusChip,true);show(lockHost,false);show(lockChip,false);
   AlphaListeningLease.Acknowledgement a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
-  check(a.uid==UID&&a.surface&&a.chip&&a.recording&&"on".equals(a.display),"unlocked status-bar chip");
+  check(a.uid==UID&&a.surface&&a.chip&&a.recording&&"on".equals(a.display)&&"none".equals(a.reason),"unlocked status-bar chip");
   // Immersive app hides the status bar; a transient swipe reveals it.
   systemBars.onSystemBarAttributesChanged(Display.DEFAULT_DISPLAY,0,null,false,0,0,"app",null);
   a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
-  check(!a.surface&&!a.chip,"immersive mode: the status bar is reported hidden even though its views still measure visible");
+  check(!a.surface&&!a.chip&&"fullscreen".equals(a.reason),"immersive mode: the status bar is reported hidden, explained as fullscreen");
   systemBars.showTransient(Display.DEFAULT_DISPLAY,android.view.WindowInsets.Type.statusBars(),true);
   check(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).surface,"transient reveal");
   systemBars.abortTransient(Display.DEFAULT_DISPLAY,android.view.WindowInsets.Type.statusBars());
@@ -72,7 +77,8 @@ public final class SystemUiAcknowledgementTest {
   check(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).surface,"status bar shown again");
   // Shade expanded: chips are covered; only the listener's verified ongoing notification counts.
   expanded=true;
-  check(!((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).surface,"expanded shade without the listener notification");
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check(!a.surface&&"shade".equals(a.reason),"expanded shade without the listener notification, explained as shade");
   android.app.Notification note=new android.app.Notification(){@Override public String getChannelId(){return "listening-indicator";}};note.flags=android.app.Notification.FLAG_ONGOING_EVENT;
   active=new android.service.notification.StatusBarNotification[]{new android.service.notification.StatusBarNotification(){
    @Override public android.app.Notification getNotification(){return note;} @Override public int getUid(){return UID;}
@@ -83,8 +89,16 @@ public final class SystemUiAcknowledgementTest {
   check(!((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).surface,"a non-ongoing notification does not count");
   expanded=false;
   // Lock screen and AOD use the keyguard chip; the status-bar chip does not count while locked.
-  locked=true;
-  check(!((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).surface,"locked with only the status-bar chip measured");
+  // A hidden report within the debounce after a reported keyguard change is a transition.
+  android.os.SystemClock.stubUptime=50_000;
+  locked=true;keyguardCallback(controller).onKeyguardShowingChanged();
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check(!a.surface&&"transition".equals(a.reason),"locking: the keyguard chip not yet shown is a transition");
+  android.os.SystemClock.stubUptime=50_999;
+  check("transition".equals(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).reason),"still inside the debounce");
+  android.os.SystemClock.stubUptime=51_000;
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check(!a.surface&&"none".equals(a.reason),"after the debounce a hidden keyguard chip is unexplained");
   show(lockHost,true);show(lockChip,true);
   a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
   check(a.surface&&a.chip&&"on".equals(a.display),"lock-screen chip");
@@ -93,13 +107,19 @@ public final class SystemUiAcknowledgementTest {
   check(a.surface&&a.chip&&"doze".equals(a.display),"AOD showing the keyguard chip");
   show(lockChip,false);show(lockHost,false);
   a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
-  check(!a.surface&&"doze".equals(a.display),"AOD not showing the chip");
+  check(!a.surface&&"doze".equals(a.display)&&"aod".equals(a.reason),"AOD not showing the chip");
   displayState=Display.STATE_OFF;
-  check("off".equals(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).display),"display fully off");
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check("off".equals(a.display)&&"display_off".equals(a.reason),"display fully off");
   displayState=Display.STATE_UNKNOWN;
-  check("off".equals(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).display),"unknown display state counts as off");
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check("unknown".equals(a.display)&&"none".equals(a.reason),"unknown display state is reported as unknown, with no reason");
+  displayState=Display.STATE_ON;locked=false;show(statusHost,true);show(statusChip,true);
+  AlphaListeningController.detach(statusChip);
+  a=(AlphaListeningLease.Acknowledgement)ack.invoke(controller);
+  check(!a.surface&&"none".equals(a.reason),"a detached chip without an explained reason");
   uid.setInt(controller,-1);
   check(((AlphaListeningLease.Acknowledgement)ack.invoke(controller)).uid==-1,"unverified listener acknowledges nothing");
-  System.out.println("PASS SystemUI acknowledgement: status bar, immersive, shade, lock screen, AOD, display off");
+  System.out.println("PASS SystemUI acknowledgement: status bar, immersive, shade, transition debounce, lock screen, AOD, display off, detach");
  }
 }

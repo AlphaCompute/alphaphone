@@ -44,18 +44,21 @@ public final class AlphaListeningController implements CoreStartable {
  private int uid=-1;private boolean active;
  /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
  private int requestedVisibleTypes=~0;private boolean statusBarTransient;
+ /** Uptime of the last reported keyguard, doze, shade-state or display-state change (main thread). */
+ private long transitionAt=-1;
+ private void transition(){transitionAt=SystemClock.uptimeMillis();surfaceChanged();}
  private final StatusBarStateController.StateListener shadeAndDoze=new StatusBarStateController.StateListener(){
   @Override public void onExpandedChanged(boolean expanded){surfaceChanged();}
-  @Override public void onDozingChanged(boolean dozing){surfaceChanged();}
-  @Override public void onStateChanged(int state){surfaceChanged();}
+  @Override public void onDozingChanged(boolean dozing){transition();}
+  @Override public void onStateChanged(int state){transition();}
  };
  private final KeyguardStateController.Callback keyguardShowing=new KeyguardStateController.Callback(){
-  @Override public void onKeyguardShowingChanged(){surfaceChanged();}
+  @Override public void onKeyguardShowingChanged(){transition();}
  };
  private final DisplayManager.DisplayListener displayState=new DisplayManager.DisplayListener(){
   @Override public void onDisplayAdded(int id){}
   @Override public void onDisplayRemoved(int id){}
-  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)surfaceChanged();}
+  @Override public void onDisplayChanged(int id){if(id==Display.DEFAULT_DISPLAY)transition();}
  };
  private final CommandQueue.Callbacks systemBars=new CommandQueue.Callbacks(){
   @Override public void onSystemBarAttributesChanged(int displayId,int appearance,AppearanceRegion[] regions,boolean navbarColorManagedByIme,
@@ -118,8 +121,10 @@ public final class AlphaListeningController implements CoreStartable {
   }
   if(AlphaListeningPolicy.shadeCounts(shade,shadeNotificationShown())){surface=true;chip=true;}
   Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
-  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,
-   AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState()));
+  String state=AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState());
+  boolean shown=surface&&(!active||chip);
+  String reason=AlphaListeningPolicy.hiddenReason(shown,state,transitionAt<0?-1:SystemClock.uptimeMillis()-transitionAt,shade,hidden,locked);
+  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,state,reason);
  }
 
  private boolean shadeNotificationShown(){

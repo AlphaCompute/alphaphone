@@ -25,15 +25,37 @@ public final class AlphaListeningPolicy {
  public static final String LEASE_AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
  public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
  public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
-  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display";
- public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off";
+  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved",KEY_DISPLAY="display",KEY_REASON="hiddenReason";
+ public static final String DISPLAY_ON="on",DISPLAY_DOZE="doze",DISPLAY_OFF="off",DISPLAY_UNKNOWN="unknown";
+ /** Why the indicator is not shown, as SystemUI positively knows it. NONE: shown, or no known reason (unexplained). */
+ public static final String REASON_NONE="none",REASON_DISPLAY_OFF="display_off",REASON_AOD="aod",REASON_FULLSCREEN="fullscreen",
+  REASON_SHADE="shade",REASON_TRANSITION="transition";
+ /** A hidden report within this time of a reported keyguard, doze or display-state change is a transition. */
+ public static final long TRANSITION_DEBOUNCE_MS=1_000;
  public static final long LEASE_RENEW_MS=1_000;
  /**
   * Default display state (android.view.Display.STATE_*): ON 2 and ON_SUSPEND 6 are on; DOZE 3 and
-  * DOZE_SUSPEND 4 are AOD; OFF 1, VR 5, UNKNOWN 0 and anything else count as off (capture pauses).
+  * DOZE_SUSPEND 4 are AOD; OFF 1 is off; UNKNOWN 0, VR 5 and anything else are unknown (the
+  * listener pauses only if it sees the screen off itself, otherwise it stops).
   */
  public static String display(int state){
-  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;default:return DISPLAY_OFF;}
+  switch(state){case 2:case 6:return DISPLAY_ON;case 3:case 4:return DISPLAY_DOZE;case 1:return DISPLAY_OFF;default:return DISPLAY_UNKNOWN;}
+ }
+ /**
+  * The explanation SystemUI attaches when the indicator is not shown ({@code shown}: surface
+  * visible and, while recording, the chip too). In order: display off; AOD not showing it; a report
+  * within {@link #TRANSITION_DEBOUNCE_MS} of a keyguard/doze/display change; the expanded shade
+  * without the listening notification; an app hiding the unlocked status bar. Anything else (for
+  * example a detached or faded chip) has no reason and the listener treats it as a loss.
+  */
+ public static String hiddenReason(boolean shown,String display,long sinceTransitionMs,boolean shadeExpanded,boolean statusBarHidden,boolean keyguardShowing){
+  if(shown)return REASON_NONE;
+  if(DISPLAY_OFF.equals(display))return REASON_DISPLAY_OFF;
+  if(DISPLAY_DOZE.equals(display))return REASON_AOD;
+  if(sinceTransitionMs>=0&&sinceTransitionMs<TRANSITION_DEBOUNCE_MS)return REASON_TRANSITION;
+  if(shadeExpanded)return REASON_SHADE;
+  if(statusBarHidden&&!keyguardShowing)return REASON_FULLSCREEN;
+  return REASON_NONE;
  }
  /**
   * The status-bar chip counts only while the keyguard is not showing, the shade is collapsed and

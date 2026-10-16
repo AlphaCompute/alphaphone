@@ -69,6 +69,9 @@ final class ListenerNotifications {
    .setContentTitle(ListenerPolicy.label(state))
    .setContentText(ListenerPolicy.processesAudio(state)?"Say “Alpha” to ask. Audio stays on this phone and is not saved."
     :state==ListenerPolicy.State.PAUSED_DISPLAY_OFF?"Turn on Always-on display to keep listening with the screen off. Listening resumes when the indicator shows."
+    :state==ListenerPolicy.State.PAUSED_FULLSCREEN?"The Listening indicator is hidden by a fullscreen app. Listening resumes when the status bar shows again."
+    :state==ListenerPolicy.State.PAUSED_SHADE?"Listening resumes when the notification shade closes."
+    :state==ListenerPolicy.State.PAUSED_TRANSITION?"Listening resumes when the Listening indicator shows."
     :"The microphone is not being analysed.")
    .setCategory(Notification.CATEGORY_SERVICE)
    .setVisibility(Notification.VISIBILITY_PUBLIC)

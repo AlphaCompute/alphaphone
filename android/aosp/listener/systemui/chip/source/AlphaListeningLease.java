@@ -19,9 +19,9 @@ import java.util.concurrent.Executor;
 final class AlphaListeningLease {
  /** One acknowledgement: the admitted listener UID (-1 for none) and SystemUI-measured facts. */
  static final class Acknowledgement {
-  final int uid;final boolean surface,chip,recording;final String display;
-  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display){
-   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;
+  final int uid;final boolean surface,chip,recording;final String display,reason;
+  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording,String display,String reason){
+   this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;this.display=display;this.reason=reason;
   }
  }
  interface Source{Acknowledgement read();}
@@ -65,6 +65,7 @@ final class AlphaListeningLease {
    renew.putBoolean(AlphaListeningPolicy.KEY_CHIP,AlphaListeningPolicy.chipAcknowledged(ack.recording,ack.chip));
    renew.putBoolean(AlphaListeningPolicy.KEY_RECORDING,ack.recording);
    renew.putString(AlphaListeningPolicy.KEY_DISPLAY,ack.display);
+   renew.putString(AlphaListeningPolicy.KEY_REASON,ack.reason);
    Bundle out=call(AlphaListeningPolicy.LEASE_RENEW,renew);
    // A refused renewal (expired, revoked, replaced) is never retried on the same generation.
    if(out==null||!out.getBoolean(AlphaListeningPolicy.KEY_ACCEPTED,false))generation=-1;

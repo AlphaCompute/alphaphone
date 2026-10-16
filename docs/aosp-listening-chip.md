@@ -98,8 +98,9 @@ background executor:
   true only while SystemUI itself observes the listener's unsilenced recording.
 - `recordingObserved`: SystemUI's own `AudioRecordingCallback` attribution.
 - `display`: the default display state from `DisplayManager` (`Display.STATE_ON`
-  and `ON_SUSPEND` are `on`; `DOZE` and `DOZE_SUSPEND` are `doze`, i.e. AOD; `OFF`,
-  `VR`, unknown and anything else are `off`).
+  and `ON_SUSPEND` are `on`; `DOZE` and `DOZE_SUSPEND` are `doze`, i.e. AOD; `OFF` is
+  `off`; `UNKNOWN`, `VR` and anything else are `unknown`).
+- `hiddenReason`: why the indicator is not shown (below), or `none`.
 
 Which views count depends on what SystemUI positively reports, not only on view
 measurement (`AlphaListeningPolicy.statusBarCounts`/`keyguardCounts`/`shadeCounts`):
@@ -150,22 +151,45 @@ the lease cannot be renewed through the existing control provider. The lease:
   acknowledgement was accepted; it carries no audio, transcript, consent, status
   or resume command, and it cannot start, resume or enable listening.
 
-**Display off and AOD.** With the display fully off, or dozing (AOD) without a
-visible Listening surface, nothing can show the indicator. The lease verdict is
-then `DISPLAY_OFF`. That is a pause, not a loss: the state is `PAUSED_DISPLAY_OFF`
-("Paused — screen off without Always-on display"). The notification asks the user
-to turn on Always-on display, the microphone is released, and the pause is not
-latched. SystemUI keeps renewing while the display is off, which proves it is
-alive. Capture resumes by itself as soon as SystemUI acknowledges a visible
-surface again: the AOD or lock-screen chip, or the status bar after unlock. With
-AOD showing the chip, listening simply continues with the screen off. A display
-state that is missing or unknown counts as off. A surface hidden while the display
-is on, an expiry, SystemUI death or a revoke stay sticky (below), including across
-later display changes. The consent screen explains this and links the
-Always-on display setting (the AOSP lock-screen settings page, display settings
-as fallback).
+**Explained pauses and unexplained losses.** When the indicator is not shown,
+SystemUI attaches `hiddenReason` (`AlphaListeningPolicy.hiddenReason`), saying why
+from what it positively knows. The reasons, in order:
 
-`ListenerPolicy` adds three states (`PAUSED_DISPLAY_OFF` above). Without a fresh lease every microphone-holding
+| SystemUI report | Listener state | Status text |
+| --- | --- | --- |
+| Display fully off (`display_off`) | `PAUSED_DISPLAY_OFF` | "Paused — screen off without Always-on display" |
+| Dozing, AOD not showing the chip (`aod`) | `PAUSED_DISPLAY_OFF` | same; the notification asks for Always-on display |
+| Hidden within 1 s (`TRANSITION_DEBOUNCE_MS`) of a reported keyguard, doze, status-bar-state or display change (`transition`) | `PAUSED_TRANSITION` | "Paused while the screen changes" |
+| Shade expanded without the listening notification (`shade`) | `PAUSED_SHADE` | "Paused while the notification shade is open" |
+| An app hid the unlocked status bar (`fullscreen`) | `PAUSED_FULLSCREEN` | "Paused while an app is fullscreen" |
+
+Any explained pause releases the microphone (`AudioRecord` stopped and released;
+no frame or utterance is analysed). It is not latched. Explained reports prove
+SystemUI is alive and extend the lease. Capture resumes by itself only on a fresh
+acknowledgement of a visible surface: the AOD or lock-screen chip, the status bar,
+or the shade showing the listening notification. With AOD showing the chip,
+listening simply continues with the screen off.
+
+**Unexplained losses** latch `STOPPED_INDICATOR_LOST`, both while capturing and
+during an explained pause. They are:
+
+- expiry with no report;
+- SystemUI or binder death;
+- an explicit revoke, which is what SystemUI sends when listener identity is
+  unverified or during a user switch;
+- an unattributed recording;
+- a hidden surface or chip with no or an unknown reason, for example a detached
+  chip or a hidden lock-screen chip more than 1 s after the transition;
+- an unknown or missing display state while the listener itself sees the screen
+  on. The listener tracks the screen through `ACTION_SCREEN_ON`/`OFF` and
+  `PowerManager.isInteractive`. With the screen off, an unknown display state is a
+  display-off pause.
+
+A later explained or visible report does not turn such a loss into a pause. The
+consent screen explains screen-off listening and links the Always-on display
+setting (the AOSP lock-screen settings page, with display settings as fallback).
+
+`ListenerPolicy` adds the four pause states above, `INDICATOR_UNAVAILABLE` and `STOPPED_INDICATOR_LOST`. Without a fresh lease every microphone-holding
 state becomes `INDICATOR_UNAVAILABLE` (no capture; "Listening waits for the
 system indicator"). Losing the lease while an `AudioRecord` is open latches
 `STOPPED_INDICATOR_LOST`: capture stops and a returning lease does not restart
@@ -190,16 +214,15 @@ included (see below).
 
 **Limits.** Measured: view attachment, window and aggregated visibility,
 ancestor visibility, effective alpha, the global visible rectangle, keyguard
-showing, shade expansion, the default display state and immersive status-bar
-requests. Not measured: an arbitrary third-party window drawn above the status
-bar or keyguard, partial shade drags short of `isExpanded()`, QS-only states,
-rotation/cutout overlap, and the time between a keyguard transition hiding the
-status-bar chip and the keyguard chip appearing. If that transition reports a
-hidden surface while the display is still on, it stops listening (sticky) rather
-than pausing. Immersive mode stops listening the same way, until the user resumes,
-because the indicator is hidden while the display is on. Whether real SystemUI
-delivers these callbacks in this order, and the exact callback signatures at the
-pinned revision, are unverified until SystemUI compiles and runs on an image.
+showing, shade expansion, status-bar state, doze, the default display state,
+immersive status-bar requests and the time since the last such change. Not
+measured: an arbitrary third-party window drawn above the status bar or keyguard,
+partial shade drags short of `isExpanded()`, QS-only states and rotation/cutout
+overlap. These look visible and keep capture running. A keyguard or screen
+transition whose chip stays hidden for longer than the 1 s debounce becomes an
+unexplained loss and stops listening until the user resumes. Whether real SystemUI
+delivers these callbacks in time, the 1 s value, and the exact callback signatures
+at the pinned revision are unverified until SystemUI compiles and runs on an image.
 The lease also does not prove that a person can see the chip.
 
 **Host checks only.** `test/aosp-listening-chip.test.mjs` type-checks the four
@@ -207,11 +230,12 @@ Java chip sources (`-Werror`) against hand-written Android/SystemUI stubs in
 `test/fixtures/systemui-chip-jvm` (including hidden APIs SystemUI uses), runs the
 SystemUI lease client against the listener's real `IndicatorLease` rules (renewal,
 hidden chip/surface, hang, binder death, identity loss, provider substitution,
-unavailable provider, display off/AOD pause and resume) and the controller's
+unavailable provider, display off/AOD, fullscreen and shade pause and resume) and the controller's
 acknowledgement composition (`SystemUiAcknowledgementTest`: unlocked status bar,
 immersive with transient reveal, expanded shade with and without the verified
-notification, lock screen, AOD with and without the chip, display off and
-unknown). It also checks that the exact patch creates the staged chip
+notification, lock-screen transition debounce, lock screen, AOD with and without
+the chip, display off, unknown state, detached chip, and the reason each report
+carries). It also checks that the exact patch creates the staged chip
 sources byte for byte. These stubs mirror reviewed signatures; they are **not**
 the pinned SystemUI tree, so Dagger wiring (the new `@Background Executor`
 constructor argument), resources and the Kotlin binder are compiled only by a

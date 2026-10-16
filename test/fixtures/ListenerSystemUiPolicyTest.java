@@ -45,7 +45,17 @@ public final class ListenerSystemUiPolicyTest {
   // ---- display, keyguard/AOD, shade and immersive ----
   check(AlphaListeningPolicy.display(2).equals("on")&&AlphaListeningPolicy.display(6).equals("on"),"display on");
   check(AlphaListeningPolicy.display(3).equals("doze")&&AlphaListeningPolicy.display(4).equals("doze"),"AOD");
-  for(int state:new int[]{0,1,5,7,-1})check(AlphaListeningPolicy.display(state).equals("off"),"off or unknown: "+state);
+  check(AlphaListeningPolicy.display(1).equals("off"),"display off");
+  for(int state:new int[]{0,5,7,-1})check(AlphaListeningPolicy.display(state).equals("unknown"),"unknown: "+state);
+  check(AlphaListeningPolicy.hiddenReason(true,"on",-1,true,true,false).equals("none"),"shown needs no reason");
+  check(AlphaListeningPolicy.hiddenReason(false,"off",-1,false,false,false).equals("display_off"),"display off");
+  check(AlphaListeningPolicy.hiddenReason(false,"doze",-1,false,false,true).equals("aod"),"AOD not showing the chip");
+  check(AlphaListeningPolicy.hiddenReason(false,"on",999,true,true,false).equals("transition"),"within the debounce");
+  check(AlphaListeningPolicy.hiddenReason(false,"on",1000,false,false,false).equals("none"),"after the debounce nothing explains it");
+  check(AlphaListeningPolicy.hiddenReason(false,"on",-1,true,false,false).equals("shade"),"shade");
+  check(AlphaListeningPolicy.hiddenReason(false,"on",-1,false,true,false).equals("fullscreen"),"immersive");
+  check(AlphaListeningPolicy.hiddenReason(false,"on",-1,false,true,true).equals("none"),"immersive does not explain a hidden lock screen");
+  check(AlphaListeningPolicy.hiddenReason(false,"unknown",-1,false,false,false).equals("none"),"unknown display has no reason");
   check(AlphaListeningPolicy.keyguardCounts(true,true,false),"lock screen / AOD chip");
   check(!AlphaListeningPolicy.keyguardCounts(true,false,false),"keyguard chip after unlock does not count");
   check(!AlphaListeningPolicy.keyguardCounts(true,true,true),"shade covers the lock-screen chip");

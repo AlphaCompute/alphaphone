@@ -107,7 +107,7 @@ public final class ConsentActivity extends Activity {
   if(consented&&!ListenerNotifications.alwaysOnDisplayEnabled(this))text("Always-on display is off: listening pauses whenever the screen is off.",16);
   button("Always-on display settings",view->openAlwaysOnDisplaySettings());
   if(state==ListenerPolicy.State.PAUSED_USER||state==ListenerPolicy.State.STOPPED_INDICATOR_LOST)button("Resume listening",view->{store.resume();changed();});
-  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL||state==ListenerPolicy.State.PAUSED_DISPLAY_OFF){
+  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL||ListenerPolicy.indicatorPaused(state)){
    button("Pause for 15 minutes",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),15));changed();});
    button("Pause for 1 hour",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),60));changed();});
    button("Pause until I resume",view->{store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);changed();});

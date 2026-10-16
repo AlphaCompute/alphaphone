@@ -84,9 +84,11 @@ test('capture fails closed on the SystemUI indicator lease and a lost lease neve
  assert.doesNotMatch(provider,/grantConsent|setEnabled|resume\(|store\.|startForegroundService/,'the lease can only withhold capture');
  const listener=readFileSync(join(source,'Listener.java'),'utf8');
  assert.match(listener,/in\.indicatorLeaseValid=observeIndicatorLease\(context,SystemClock\.elapsedRealtime\(\)\)/);
- assert.match(listener,/if\(ListenerPolicy\.latchesIndicatorLoss\(held,valid,off\)\)indicatorLost=true;/);
- assert.match(listener,/in\.displayOffWithoutIndicator=displayOff;/,'a dark display pauses rather than stops');
- assert.match(provider,/extras\.getString\(IndicatorLease\.KEY_DISPLAY,IndicatorLease\.DISPLAY_OFF\)/,'a missing display state counts as off');
+ assert.match(listener,/if\(ListenerPolicy\.latchesIndicatorLoss\(held\|\|paused,valid,loss\.pause\(\)\)\)indicatorLost=true;/,'only unexplained losses latch');
+ assert.match(listener,/in\.indicatorPause=indicatorPause;/,'explained hidden states pause rather than stop');
+ assert.match(provider,/extras\.getString\(IndicatorLease\.KEY_DISPLAY\),extras\.getString\(IndicatorLease\.KEY_REASON\)/,'display state and reason come from SystemUI');
+ const app=readFileSync(join(source,'SenseApplication.java'),'utf8');
+ assert.match(app,/ACTION_SCREEN_OFF/,'the listener tracks the screen itself to resolve an unknown display state');
  const consentScreen=readFileSync(join(source,'ConsentActivity.java'),'utf8');
  assert.match(consentScreen,/Always-on display shows the Listening indicator/,'consent explains screen-off listening');
  assert.match(consentScreen,/button\("Always-on display settings",view->openAlwaysOnDisplaySettings\(\)\)/,'consent links the AOD setting');

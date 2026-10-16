@@ -40,7 +40,7 @@ final class Listener {
   in.micSilenced=micSilenced;
   in.indicatorLeaseValid=observeIndicatorLease(context,SystemClock.elapsedRealtime());
   in.indicatorLost=indicatorLost;
-  in.displayOffWithoutIndicator=displayOff;
+  in.indicatorPause=indicatorPause;
   return in;
  }
 
@@ -54,8 +54,10 @@ final class Listener {
  static volatile long unsilencedSince=-1;
  /** Latched when the lease is lost while the microphone is held; only an explicit user resume or turn-on clears it. */
  static volatile boolean indicatorLost;
- /** The last lease verdict was {@link IndicatorLease.Loss#DISPLAY_OFF}: a pause, never a latch. */
- static volatile boolean displayOff;
+ /** The last lease verdict's explained pause (display off, AOD, fullscreen, shade, transition): never a latch. */
+ static volatile ListenerPolicy.IndicatorPause indicatorPause=ListenerPolicy.IndicatorPause.NONE;
+ /** The listener's own screen state (ACTION_SCREEN_ON/OFF, PowerManager); resolves an unknown display report. Unknown counts as on. */
+ static volatile boolean screenInteractive=true;
 
  private static volatile long boot=Long.MIN_VALUE;
  /** The boot a lease belongs to, read once per process (the lease itself never outlives the process). */
@@ -69,10 +71,12 @@ final class Listener {
  static boolean observeIndicatorLease(Context context,long now){
   boolean held=microphoneHeld;
   long since=unsilencedSince;
-  IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now));
-  boolean valid=loss==IndicatorLease.Loss.NONE,off=loss==IndicatorLease.Loss.DISPLAY_OFF;
-  if(ListenerPolicy.latchesIndicatorLoss(held,valid,off))indicatorLost=true;
-  displayOff=off;
+  IndicatorLease.Loss loss=lease.verdict(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now),screenInteractive);
+  boolean valid=loss==IndicatorLease.Loss.NONE;
+  // An unexplained loss while capturing, or during an explained pause, latches; an explained one pauses.
+  boolean paused=indicatorPause!=ListenerPolicy.IndicatorPause.NONE;
+  if(ListenerPolicy.latchesIndicatorLoss(held||paused,valid,loss.pause()))indicatorLost=true;
+  indicatorPause=IndicatorLease.pauseFor(loss);
   return valid;
  }
 
