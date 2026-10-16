@@ -2,13 +2,13 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "8a6e9d020044ea2a8e4cc9a8575e665e380dd6a3",
-  "head": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
+  "baseCommit": "68f9c74b134d0f063c140eb64704d4342c4b8ce9",
+  "head": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
   "recordedAt": "2026-10-16",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...9116ba8696afc3a17d58aa565a66fec504e4cca5",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...9365c9bb0d1771f17eedafcb5b3240ae129b276a",
   "status": "diverged",
-  "aheadBy": 60,
-  "behindBy": 22,
+  "aheadBy": 62,
+  "behindBy": 24,
   "mergeBase": "dd1e61c60dfc539f5bfa2359fcd314e0c083870f",
   "pinOnlyCommits": [
     {
@@ -242,6 +242,14 @@
     {
       "sha": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
       "subject": "fix(messaging): expose the exact reviewed-draft parameter contract"
+    },
+    {
+      "sha": "3d83b3c40136ca16854a370cb3c6690a54f9fa3d",
+      "subject": "Start managed Google host before Android bridge runtime"
+    },
+    {
+      "sha": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+      "subject": "Keep native Google host alive with the resident process"
     }
   ],
   "pullRequests": [
