@@ -1075,6 +1075,8 @@ registerView("inbox", {
       searching: searching, notSearching: !searching, q: st.q || "", hasQ: !!sq,
       openSearch: function () { api.set({ q: "" }); },
       closeSearch: function () { api.set({ q: null }); },
+      clearSearch: function () { api.set({ q: "" }); },
+      submitSearch: function (event) { event.preventDefault(); },
       onQ: function (e) { api.set({ q: e.target.value }); },
       askQ: function () { var q0 = (api.get("inbox").q || "").trim(); api.set({ q: null }); api.send(/mail|inbox/i.test(q0) ? q0 : "Find emails about " + q0); },
       addAcct: function () { api.open("settings", { page: "accounts", adding: true }); },

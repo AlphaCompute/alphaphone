@@ -111,7 +111,14 @@ test.describe('200% text keeps the way out on screen', () => {
       await page.getByRole('button', { name: open, exact: true }).click();
       await setTextScale(page, 2);
       await reachable(page, page.getByRole('textbox', { name: field, exact: true }).or(page.getByRole('searchbox', { name: field, exact: true })));
-      const close = page.getByRole('button', { name: 'Close search', exact: true });
+      // Inbox uses the back arrow to leave search; its clear button keeps the search open.
+      const close = page.getByRole('button', { name: start === 'inbox' ? 'Back to inbox' : 'Close search', exact: true });
+      if (start === 'inbox') {
+        const field = page.getByRole('searchbox', { name: 'Search mail', exact: true });
+        await field.fill('synthetic query');
+        const clear = page.getByRole('button', { name: 'Clear search', exact: true });
+        await reachable(page, clear); await clear.click(); await expect(field).toHaveValue('');
+      }
       await reachable(page, close);
       await close.click();
       await expect(close).toHaveCount(0);
