@@ -1,0 +1,29 @@
+{
+  "at": "2026-10-16T16:15:13.033455+00:00",
+  "source": "9d86d051310b6fac6ec7a1d5b6b14d2474d21f04",
+  "fullVerification": {
+    "passed": 1455,
+    "skipped": 2,
+    "failed": 0,
+    "types": true,
+    "productionBuild": true,
+    "productionAudit": true
+  },
+  "nativeBuild": {
+    "variants": 4,
+    "passed": true,
+    "sourceUnchanged": true,
+    "inputCommit": "c4f7869081c866c2800f1103cb766d007bc04722"
+  },
+  "seeker": {
+    "installedSha256": "3aa0fea469150aa9684a4cc276aff45afb352e94efa3c8f9bdb5ad08b7bec455",
+    "originalInstallIdentityRetained": true,
+    "reset": false,
+    "existingFullPermissionRetained": true,
+    "photosGridAccessControlsAbsent": true,
+    "settingsPageVisibleReadback": "pending; phone switched to another app during navigation; stopped interactions"
+  },
+  "permissionContract": "Settings offers explicit Android choice and system permission settings; denied Photos retains Choose photo access. No automatic grant.",
+  "browserFixtureUpdate": "Existing permitted-photos assertions follow Settings for selected access; typecheck passed, browser fixture not executed this turn.",
+  "humanApproval": "pending"
+}

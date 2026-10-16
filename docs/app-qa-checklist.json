@@ -1137,11 +1137,13 @@
       "area": "Photos",
       "viewOrFlow": "Native permitted library and consent updates",
       "scope": "MVP",
-      "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verify passed:1455 pass/2 skips/0 fail; native build and installed QA pending.",
+      "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
       "preview": "Pending",
-      "seeker": "Pending",
+      "seeker": "Installed9d86d051; exact signed APK hash verified. Existing full permission retained; Photos grid no longer shows access controls. Settings-page readback pending because phone switched to another app during navigation.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/photo-access-settings-native-20261016.json"
+      ],
       "notes": "2026-10-16 user request: remove ongoing photo access settings from Photos grid while preserving permission choice. No permission is granted automatically."
     },
     {
