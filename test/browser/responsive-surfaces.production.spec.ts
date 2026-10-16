@@ -212,7 +212,7 @@ test('Camera keeps one capture session and an undistorted preview through rotati
   }
   expect(await page.evaluate(() => (window as any).cameraOpens)).toBe(1);
   await shutter.click();
-  await expect(page.getByText('Photo saved in this app. Clearing app data removes saved photos.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Captured photo / })).toHaveCount(1);
 
   await page.goto('/');
   await page.getByRole('button', { name: 'Photos', exact: true }).click();

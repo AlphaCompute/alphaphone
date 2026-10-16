@@ -53,6 +53,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   catch(error){if(token===epoch)toast(error instanceof Error?error.message:'The draft could not be saved. Your edits remain here.');return false;}finally{if(token===epoch){busy=false;publish();}}
  }
  async function newEmail(reply?:GmailMessage,mode:'reply'|'reply-all'|'forward'='reply',forwardedBody='',extra:{body?:string;forward?:ForwardSource|null}={}){
+  if(!owner){toast('Connect a Gmail account first.');return false;}
   if(!ready||busy){toast(status||'Wait for drafts to load.');return false;}
   if(reply&&mode!=='forward'&&draft?.reply?.messageId===reply.id&&draft.reply.threadId===reply.threadId&&(draft.mode||'reply')===mode)return begin();
   const token=epoch,target=reply?structuredClone(reply):undefined,options=structuredClone(extra);
