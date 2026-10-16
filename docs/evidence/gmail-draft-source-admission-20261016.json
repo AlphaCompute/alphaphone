@@ -1,6 +1,6 @@
 {
   "baseCommit": "33a6d19c024a4ec130710f0808df25588266d542",
-  "admittedCommit": "ebe70d3ebd04b5e046ae25279d8836ee78107bfa",
+  "admittedCommit": "2da814d0c2459377f881c2547db727851e1e0a94",
   "changedPaths": [
     "plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts",
     "plugins/plugin-assistant/src/features/advanced-capabilities/index.ts",
@@ -55,8 +55,21 @@
     "lint": true,
     "types": true,
     "fullVerify": true,
-    "proof": "Remote Gmail v3 focused qualification and v4 full verification, immutable source ebe70; no provider effects"
+    "proof": "Remote Gmail v3 focused qualification and v4 full verification, immutable source ebe70; no provider effects",
+    "source": "ebe70d3ebd04b5e046ae25279d8836ee78107bfa"
   },
   "upstreamPR": "https://github.com/elizaOS/eliza/pull/36598",
-  "qualificationBoundary": "Source equivalence and shared checks only. Existing embedding receipt retains its original pin. Voice reference builds retain their actual source pins. Full Alpha build and native prompt acceptance remain required."
+  "qualificationBoundary": "Source equivalence and shared checks only. Existing embedding receipt retains its original pin. Voice reference builds retain their actual source pins. Full Alpha build and native prompt acceptance remain required.",
+  "subjectFix": {
+    "commit": "2da814d0c2459377f881c2547db727851e1e0a94",
+    "changedPaths": [
+      "plugins/plugin-assistant/src/features/messaging/triage/actions/send-consent.persistence.test.ts",
+      "plugins/plugin-assistant/src/features/messaging/triage/actions/sendDraft.ts"
+    ],
+    "focusedTests": "passed remote v5; local 3 durable consent/extraction cases passed",
+    "owningPackageTests": "passed remote v5",
+    "lint": true,
+    "types": true,
+    "fullRepositoryVerification": "running remote v5; existing sharedQualification.fullVerify applies to ebe70 only"
+  }
 }

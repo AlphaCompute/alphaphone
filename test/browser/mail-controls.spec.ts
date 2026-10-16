@@ -9,7 +9,7 @@ test('compact and expanded assistant controls expose one voice mic without a dup
  await expect(page.getByRole('button',{name:'Talk',exact:true})).toHaveCount(1);
  await expect(page.locator('textarea[data-alpha-composer]')).toBeVisible();
 });
-test('More has a consistent chevron and Drafts is available without provider drafts',async({page})=>{
+test('Folder menu supports keyboard and native Back; local Drafts needs no provider drafts',async({page})=>{
  await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');
  await page.evaluate(async()=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');
@@ -23,5 +23,5 @@ test('More has a consistent chevron and Drafts is available without provider dra
  expect(metrics.height).toBeCloseTo(44,4);
  expect(await folders.evaluate(el=>el.getBoundingClientRect().right<=document.querySelector('[data-screen]')!.getBoundingClientRect().right-8)).toBe(true);
  await folders.press('ArrowDown');await expect(page.getByRole('menuitemradio',{name:'Starred',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(folders).toBeFocused();
- await folders.click();await expect(page.getByRole('menu',{name:'Mail folders',exact:true})).toBeVisible();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();await expect(page.getByRole('heading',{name:'Drafts',exact:true})).toBeVisible();await expect(page.getByText('Drafts on this device',{exact:true})).toBeVisible();
+ await folders.click();await expect(page.getByRole('menu',{name:'Mail folders',exact:true})).toBeVisible();await page.evaluate(()=>window.dispatchEvent(new Event('alpha-back',{cancelable:true})));await expect(page.getByRole('menu',{name:'Mail folders',exact:true})).toBeHidden();await expect(page.locator('html')).toHaveAttribute('data-active-view','inbox');await expect(folders).toBeFocused();await folders.click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();await expect(page.getByRole('heading',{name:'Drafts',exact:true})).toBeVisible();await expect(page.getByText('Drafts on this device',{exact:true})).toBeVisible();
 });
