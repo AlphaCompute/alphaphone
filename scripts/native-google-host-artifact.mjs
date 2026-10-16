@@ -27,7 +27,7 @@ export function addNativeGoogleHostArtifact(root,directory){
  try{
   const meta=path.join(temporary,'meta.json'),file=path.join(directory,'google-host.mjs');
   execFileSync(bun,['build','backend/native-google-agent-host.ts','--target=bun','--format=esm','--minify-syntax','--define','import.meta.env={"VITE_ELIZA_DEV_ALLOW_TEST_MOCKS":"0"}',`--outfile=${file}`,`--metafile=${meta}`],{cwd:root,stdio:'pipe'});
-  const metadata=JSON.parse(fs.readFileSync(meta,'utf8')),names=new Set([...Object.keys(metadata.inputs),'package.json','tsconfig.json','upstream.lock.json']);
+  const metadata=JSON.parse(fs.readFileSync(meta,'utf8')),names=new Set([...Object.keys(metadata.inputs),'package.json','tsconfig.json','upstream.lock.json','scripts/native-google-host-artifact.mjs','scripts/prepare-client-features.mjs']);
   const inputs={};for(const name of [...names].sort()){
    if(!safe(name))throw Error('Native Google build input escaped product source');
    const source=path.join(root,name),stat=fs.lstatSync(source);if(!stat.isFile()||stat.isSymbolicLink())throw Error('Native Google build input is not regular');
