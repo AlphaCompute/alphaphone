@@ -75,6 +75,7 @@ export function installChatOverlayMotion(Component: Shell) {
 		shell.chatMotion = undefined;
 		if (!drag) return;
 		if (drag.moved) {
+			shell.chatDraggedAt = Date.now();
 			shell.swallow = Date.now();
 			// Cancellation can precede React's first preview commit; restore direct
 			// paints explicitly instead of relying on an unchanged virtual style diff.
@@ -405,7 +406,10 @@ export function installChatOverlayMotion(Component: Shell) {
 		}
 		const grabTap = out.grabTap;
 		out.grabTap = (event: MouseEvent) => {
-			if (event.detail === 0) {
+			// A new toolbar tap must not be swallowed by the preceding Open tap.
+			// Retain suppression for a compatibility click produced by a real drag.
+			const toolbar=event.currentTarget instanceof HTMLElement&&event.currentTarget.hasAttribute('data-alpha-chat-size');
+			if (event.detail === 0 || toolbar&&Date.now()-(shell.chatDraggedAt||0)>350) {
 				retire(shell, false);
 				shell.setState({ chat: shell.S().chat === "full" ? "sheet" : "full" });
 			} else grabTap(event);

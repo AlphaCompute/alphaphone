@@ -156,6 +156,10 @@ export function residentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> =
 export function agentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = 'Connect your remote agent in Settings.'): string {
   return residentAlwaysPresent || snapshot.kind === 'starting' || snapshot.kind === 'recovering' ? residentPendingText(snapshot) : remote;
 }
+/** Passive surfaces stay quiet during normal startup; attempted actions still explain refusals. */
+export function agentAvailabilityNotice(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = 'Connect your remote agent in Settings.'): string {
+  return snapshot.kind === 'starting' ? '' : agentPendingText(snapshot, remote);
+}
 /** The send/voice refusal for a missing session: the resident state where it is always present. */
 function noSessionError(fallback: string): Error {
   return new Error(residentAlwaysPresent || state.kind === 'starting' || state.kind === 'recovering' ? (state.kind === 'recovering' ? RESIDENT_RECOVERING_NOTICE : RESIDENT_STARTING_NOTICE) : fallback);

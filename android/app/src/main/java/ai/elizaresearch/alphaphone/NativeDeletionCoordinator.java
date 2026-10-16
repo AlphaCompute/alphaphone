@@ -35,6 +35,15 @@ final class NativeDeletionCoordinator {
   JSONObject time=clock();JSONArray rows="calendar".equals(kind)?calendar.list(time.getString("continuity"),time.getLong("elapsed")):AlphaReminders.engine(context).pendingDeletions();
   for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(id.equals(row.getString("id")))return row;}return null;
  }
+ /** A pending Undo window is not a deleted event and cannot be overwritten by sync. */
+ synchronized boolean calendarPending(long source,long event)throws Exception{
+  JSONObject time=clock();JSONArray rows=calendar.list(time.getString("continuity"),time.getLong("elapsed"));
+  for(int i=0;i<rows.length();i++){JSONObject row=rows.getJSONObject(i);if(!pendingPhase(row))continue;JSONObject target=row.getJSONObject("target");if(!Long.toString(source).equals(target.optString("sourceId")))continue;
+   if(target.optInt("version")==3){if(Long.toString(event).equals(target.optString("eventId")))return true;}
+   else{CalendarDeletionIdentity id=CalendarDeletionIdentity.parse(target.getString("eventId"));if(id.eventId==event)return true;}
+  }
+  return false;
+ }
  JSONArray pending()throws Exception{
   java.util.Set<String> acknowledged=calendar.acknowledgements();
   JSONObject time=clock();JSONArray result=new JSONArray(),events=calendar.list(time.getString("continuity"),time.getLong("elapsed"));
@@ -125,7 +134,7 @@ final class NativeDeletionCoordinator {
     JSONArray events=calendar.list(continuity,elapsed);
     for(int i=0;i<events.length();i++){try{JSONObject row=events.getJSONObject(i);if(!"queued".equals(row.getString("phase")))continue;
      if("open".equals(row.getString("window")))next[0]=Math.min(next[0],row.getJSONObject("deadline").getLong("expiresElapsed")-elapsed);
-     else if("expired".equals(row.getString("window")))calendar.expire(row.getString("id"),continuity,elapsed,(owner,target)->admitted(owner,agent)?null:"owner-changed",target->target.optInt("version")==2?CalendarScopedDeletionReview.dispatch(context,target):ai.eliza.plugins.calendar.CalendarPlugin.deleteReviewedExact(context,AlphaCalendarPlugin.CONFIGURATION,target));
+     else if("expired".equals(row.getString("window")))calendar.expire(row.getString("id"),continuity,elapsed,(owner,target)->admitted(owner,agent)?target.optInt("version")==3?CalendarSyncBridge.deletionRefusal(context,owner,target):null:"owner-changed",target->target.optInt("version")==3?CalendarSyncBridge.dispatchDeletion(context,target):target.optInt("version")==2?CalendarScopedDeletionReview.dispatch(context,target):ai.eliza.plugins.calendar.CalendarPlugin.deleteReviewedExact(context,AlphaCalendarPlugin.CONFIGURATION,target));
     }catch(Exception rowFailed){failed=true;}}
     JSONArray reminders=AlphaReminders.engine(context).pendingDeletions();
     for(int i=0;i<reminders.length();i++){try{JSONObject row=reminders.getJSONObject(i);String phase=row.getString("phase");

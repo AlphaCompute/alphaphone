@@ -71,7 +71,7 @@ test('Reconnect Gmail opens Google accounts; each authorization hands off once a
  expect((await f()).reads).toBe(1);
  await reconnect.click();
  await expect(panel).toBeVisible();
- await expect(panel.getByText(/Connected · Gmail: Read access/)).toBeVisible();
+ await expect(panel.getByText(/Connected · Gmail: Read and send access/)).toBeVisible();
  // Opening the panel lists connections only: nothing was authorized, opened or read.
  let state=await f();
  expect(state.initiates).toEqual([]);expect(state.opened).toEqual([]);expect(state.reads).toBe(1);

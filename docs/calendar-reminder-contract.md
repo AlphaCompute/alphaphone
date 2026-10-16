@@ -167,3 +167,52 @@ establish exactly-once delivery. APK builds, emulator flows, HOME-role boot,
 locked-boot/Doze/OEM behavior, live provider integration, a user seeing/hearing an
 alert, and physical-device acceptance require distinct evidence. Record current
 source and artifact identities; historical runs do not qualify newer APKs.
+
+## Native Google sync completion contract
+
+The browser controller does not qualify Android CalendarProvider sync. The native port must use a dedicated, owner-bound bridge capability; the existing manual `CalendarEventGuard.direct` restriction must remain intact. That writer deliberately refuses alarms, guests, all-day events and recurring/exception metadata.
+
+The native implementation must meet these boundaries before Settings enables it:
+
+- Review the exact Google account/calendar and Alpha-owned local calendar, then bind opt-in to the established native owner/agent, service-account generation, source identity and foreground lifetime. Keep inference availability distinct from owner authority. An unverifiable or changed context pauses sync.
+- Read an exact event ID from its verified owned source. A null provider cursor, revoked permission or changed source is an error. Absence from the existing 370-day/2,000-instance view is never evidence of deletion.
+- Return a complete event/source revision covering the fields and child rows that a write depends on. Keep source generation distinct from display changes so a rename cannot generate duplicate Google creates. Never reuse another source or agent's checkpoint.
+- Preserve raw recurrence/exclusion/exception metadata, all-day civil dates, timezone/duration, attendee identity/optional/response fields and reminders. Apply only semantics the native model can represent; preserve and report unsupported data instead of flattening it.
+- Apply Google changes with native source/event/child-row compare-and-swap assertions and provider readback. Preserve unedited fields and local alerts. Stage deletions through Alpha's existing authenticated-owner Undo coordinator; do not call an immediate-delete path.
+- Retain the shared reconciliation journal, stable create key, exact Google ETag, uncertain-outcome readback and explicit conflict handling. No automatic retry of a provider write and no approval inferred from a successful read.
+
+Qualify the real bridge through the normal native producer and an authorized disposable fixture first. Source/JVM tests, four APK builds, installed source identity, Google write/readback and physical-device acceptance are separate receipts. The retained Seeker publication/install hold is not waived by a browser test or USB connection. No audio, account reset, unlock or phone install is implied by this contract.
+
+The native source now implements this boundary in `CalendarSyncBridge`,
+`CalendarSyncSnapshot` and `CalendarSyncMutation`, with the shared renderer
+controller wired through `native-calendar-sync.ts`. The native confirmation reads
+Cloud identity and Google capabilities itself. Its grant/dispatch journal is an
+encrypted native-only namespace; renderer storage cannot enable it. Only the
+verified Alpha-owned LOCAL calendar is eligible. Its source generation is set at
+native opt-in using a source-asserted, account-scoped CalendarProvider operation;
+ordinary event changes keep the normal application permission path. Exact reads
+and transaction assertions include recurrence families, attendees, reminders and
+extended properties. Unsupported fields are refused, not reconstructed.
+
+Google-origin deletions use the existing ten-second Undo coordinator. Pausing
+sync prevents queued sync deletions from dispatching. An observed Undo keeps the
+event and pauses that event's retained Google link, avoiding an automatic second
+deletion. Unknown native writes retain their dispatch claim and are not repeated.
+Only acknowledged, definite receipts can be retired from bounded native history.
+
+Host-JVM snapshot/mutation/owner/slot checks, native-port tests and renderer
+Settings tests exercise synthetic boundaries. `CalendarSyncProviderInstrumentedTest`
+is the disposable real-CalendarProvider follow-up; adding it does not run it.
+Normal native producer/build qualification, installed identity, actual owner
+consent, Google write/readback, Undo/restart and physical acceptance remain
+separate gates. Do not mark those complete from browser tests or source compilation.
+
+The native journal uses encrypted-slot compare-and-exchange across Activity
+instances. Pause revokes the grant immediately, independently of a pending
+network read, and retains reserved storage capacity for revocation. Queued calls
+from a retired view are refused before new reads. Historical write receipts stay
+bound to stable owner/device/source identity; a credential generation still
+requires fresh write admission. After an interrupted update, an exact native
+read can confirm the intended semantic result and settle/acknowledge its receipt
+without applying the update again. Definite acknowledged response bodies are
+compacted; uncertain claims remain retained.

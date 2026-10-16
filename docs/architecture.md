@@ -10,7 +10,7 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 [Owner decisions](decisions.md#october-12-owner-decisions) and the
 [implementation plan](implementation-plan.md) govern pending changes. Only a local
 resident agent is allowed; no hosted-agent connection, creation, pairing or fallback.
-Eliza Cloud supplies text inference, subscriptions, Gmail and shared Maps services.
+Eliza Cloud supplies text inference, subscriptions, Gmail, optional owner-scoped Google Calendar OAuth/API access and shared Maps services. See the [October 15 decision](decisions.md#october-15-google-calendar-service-decision); native Calendar permissions and local agent execution remain separate.
 All STT/TTS is on-device through native Eliza inference/llama.cpp integration;
 Cloud speech is retired policy and its current code must be migrated, not claimed local.
 

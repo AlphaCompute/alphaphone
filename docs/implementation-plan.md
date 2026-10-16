@@ -13,7 +13,7 @@ Approval is not implementation or acceptance. [Verification](verification.md) an
   No hosted agents, dedicated-agent purchases, pairing or remote fallback.
   Schedules only run while the phone is powered on; Doze is a separate constraint.
 - Eliza Cloud supplies authenticated text inference, subscription entitlements,
-  Gmail integration and shared Maps APIs. Cloud services do not host the agent.
+  Gmail integration, optional Google Calendar APIs and shared Maps APIs. Cloud services do not host the agent.
 - STT/TTS always run on device through the Android bridge to Eliza's native
   inference/llama.cpp build. Dictation inserts editable text on Stop; voice
   assistant auto-submits at semantic/long-gap endpoints and supports barge-in.
@@ -105,7 +105,7 @@ Visual checks include the system shade and always-on listening lock/AOD indicato
 
 Eliza/fork owns inference C ABI, JNI engine bindings, model loaders, generic voice
 turn/cancellation support, native media/Calendar/notification adapters and reusable
-agent Maps tools. Eliza Cloud owns subscription/quotas and hosted Maps/Gmail services.
+agent Maps tools. Eliza Cloud owns subscription/quotas, hosted Maps/Gmail services and the owner-scoped Google Calendar OAuth/API broker.
 Alpha owns renderer, policy/capability gates, source pins, image admission, UI design
 and per-product acceptance. Cloud Maps/inference are services used by the local agent,
 not permission to move orchestration off the phone.
@@ -175,3 +175,9 @@ on a valid production credential at use time. Cloud sign-out still revokes the s
 removes its local token and restarts the on-device agent. A retained offline binding is
 shown as unconfirmed until its state is established. Synthetic browser coverage
 exercises these failures; this is not device or live Cloud acceptance.
+
+## October 15 Google Calendar integration
+
+The owner approved optional Google Calendar connection, Calendar-event write consent, local-first sync and tests through the local agent during Alpha QA (AP-09; [decision](decisions.md#october-15-google-calendar-service-decision)). Cloud holds Google OAuth credentials and brokers account-scoped reads and conditional writes. It does not host the agent or replace the native Calendar adapter.
+
+Local events stay local until the owner enables sync for an exact Google account/calendar in Settings. That opt-in covers later linked-event edits and deletions; agent-requested changes retain the normal review path. Source/agent/account/revision checks, stable create recovery, provider readback and device Calendar permissions remain required. Browser contracts, a compatible backend release and native-phone acceptance are distinct gates. Custom Gmail labels/categories remain deferred.

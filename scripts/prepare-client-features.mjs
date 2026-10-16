@@ -32,6 +32,7 @@ function matches(actual, expected) {
     Object.entries(expected).every(([file, digest]) => actual[file] === digest);
 }
 export const CLIENT_FEATURE_PATHS = [
+  'packages/contracts/src/calendar-linked-sync.ts',
   'packages/ui/src/voice/batch-conversation.ts',
   'packages/ui/src/voice/voice-session-client.ts',
   'packages/ui/src/voice/voice-session-protocol.ts',
@@ -126,9 +127,10 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   source.delete('packages/core/src/logger.ts');
   project('alpha-voice-core-types.ts',loggerTypes.slice(start,end));
   project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\n');
+
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?1:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?3:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');

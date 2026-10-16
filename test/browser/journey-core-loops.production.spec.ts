@@ -30,6 +30,8 @@ async function fenceNetwork(page: Page, allowed: string[] = []) {
   const foreign: string[] = [];
   await page.route('**/*', route => {
     const url = new URL(route.request().url());
+    // Closed public-imagery fixture: never allow a real external request or coordinate leak.
+    if(route.request().method()==='GET'&&url.href==='https://tiles.openfreemap.org/styles/bright')return route.fulfill({json:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#e7ebed'}}]}});
     if (url.hostname === '127.0.0.1' || ['data:', 'blob:'].includes(url.protocol) || allowed.includes(url.hostname)) return route.fallback();
     foreign.push(`${route.request().method()} ${url.origin}${url.pathname}`); return route.abort();
   });
