@@ -1,7 +1,7 @@
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
-Current source pin: `968348d792d3` (2026-10-14, PR #531), llama.cpp `3e5f73922ee8`.
-Native source/provenance changed; voice remains unqualified and the prior embedding-host
+Current source pin: `221a0bc4e0d5` (2026-10-15, separate Maps allowance), llama.cpp `3e5f73922ee8`.
+The relay preserves native source from `968348d792d3` (PR #531). Voice remains unqualified and the prior embedding-host
 receipt remains refused pending requalification. Historical evidence below is not promoted.
 
 The 53 stable inventory IDs remain for traceability. The owner has resolved the

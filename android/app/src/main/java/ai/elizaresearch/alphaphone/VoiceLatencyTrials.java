@@ -95,26 +95,29 @@ final class VoiceLatencyTrials {
  }
  /** The open turn, or null. */
  synchronized Trial pending(){expire();return pending;}
- /** Stamps a stage mark of the open turn once; later or out-of-order stamps are ignored. */
- synchronized boolean mark(String name,long at){
+ /** Stamps a stage mark on its admitted turn once; stale owners and out-of-order stamps are ignored. */
+ synchronized boolean mark(Trial owner,String name,long at){
   expire();int index=index(name);
-  if(pending==null||index<=ENDPOINT||index>=FIRST_PCM||pending.marks[index]!=UNSET||at<pending.marks[ENDPOINT])return false;
+  if(owner==null||owner!=pending||index<=ENDPOINT||index>=FIRST_PCM||pending.marks[index]!=UNSET||at<pending.marks[ENDPOINT])return false;
+  for(int i=0;i<MARKS.length;i++)if(pending.marks[i]!=UNSET&&((i<index&&pending.marks[i]>at)||(i>index&&pending.marks[i]<at)))return false;
   pending.marks[index]=at;return true;
  }
  /** A speech engine had to load during this turn: it is a cold trial. */
- synchronized void engineLoaded(String reason){
-  expire();if(pending==null)return;
+ synchronized void engineLoaded(Trial owner,String reason){
+  expire();if(owner==null||owner!=pending)return;
   pending.cold=true;
   if(pending.coldReason==null)pending.coldReason=reason;else if(!pending.coldReason.contains(reason))pending.coldReason+="+"+reason;
  }
- /** Response PCM handed to the player. Returns the trial it belongs to, or null when no turn is open. */
- synchronized Trial firstPcm(long at){
+ /** Response PCM handed to the player. The owner must still be the open turn. */
+ synchronized Trial firstPcm(Trial owner,long at){
   expire();
-  if(pending==null||pending.marks[FIRST_PCM]!=UNSET||at<pending.marks[ENDPOINT])return null;
+  if(owner==null||owner!=pending||pending.marks[FIRST_PCM]!=UNSET||at<pending.marks[ENDPOINT])return null;
+  for(int i=0;i<FIRST_PCM;i++)if(pending.marks[i]!=UNSET&&pending.marks[i]>at)return null;
   pending.marks[FIRST_PCM]=at;return pending;
  }
  /** The first non-silent response sample is presented at {@code at}. Completes the trial. */
  synchronized boolean audible(Trial trial,long at,String source){
+  expire();
   if(trial==null||trial!=pending||trial.marks[FIRST_PCM]==UNSET||at<trial.marks[FIRST_PCM])return false;
   trial.marks[AUDIBLE]=at;trial.audibleClock=source;
   if(trial.overlapped)finish(trial,"failed","overlapping-reply");else finish(trial,"passed",null);

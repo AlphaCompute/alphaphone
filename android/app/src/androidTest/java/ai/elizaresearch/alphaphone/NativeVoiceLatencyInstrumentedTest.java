@@ -171,23 +171,23 @@ public final class NativeVoiceLatencyInstrumentedTest {
    if(!closing){if(++batches%PARTIAL_EVERY==0)stream.partial();return;}
    VoiceLatencyTrials.Trial trial=AlphaVoiceLatencyProbe.TRIALS.pending();
    String text=stream.finish();stream.close();stream=null;
-   AlphaVoiceLatencyProbe.TRIALS.mark("asr-final",System.nanoTime());
+   AlphaVoiceLatencyProbe.TRIALS.mark(trial,"asr-final",System.nanoTime());
    if(trial==null){busy.set(false);return;}
-   if(coldNext){AlphaVoiceLatencyProbe.TRIALS.engineLoaded("asr-reload");coldNext=false;}
+   if(coldNext){AlphaVoiceLatencyProbe.TRIALS.engineLoaded(trial,"asr-reload");coldNext=false;}
    // Transcripts of injected synthetic speech help check the harness; real speech is never written.
    JSONObject log=new JSONObject().put("sequence",trial.sequence).put("transcribed",text!=null&&!text.trim().isEmpty());
    if(AlphaVoiceLatencyProbe.emulator())log.put("transcript",text==null?"":text.trim());
    if(text==null||text.trim().isEmpty()){AlphaVoiceLatencyProbe.TRIALS.failed(trial,"no-transcript");endTurn(log,trial,coldEvery);return;}
    String reply=REPLIES[turns%REPLIES.length];log.put("reply",reply);
-   AlphaVoiceLatencyProbe.TRIALS.mark("tts-start",System.nanoTime());
-   if(voice==null){AlphaVoiceLatencyProbe.TRIALS.engineLoaded("tts-load");voice=bundle.openVoice();}
+   AlphaVoiceLatencyProbe.TRIALS.mark(trial,"tts-start",System.nanoTime());
+   if(voice==null){AlphaVoiceLatencyProbe.TRIALS.engineLoaded(trial,"tts-load");voice=bundle.openVoice();}
    ParadeeVoice.Audio audio=voice.synthesize(reply,1f);
-   AlphaVoiceLatencyProbe.TRIALS.mark("tts-ready",System.nanoTime());
+   AlphaVoiceLatencyProbe.TRIALS.mark(trial,"tts-ready",System.nanoTime());
    int lead=AlphaVoiceLatencyProbe.leadInFrames(audio.samples),total=audio.samples.length,rate=audio.sampleRate;
    File wav=File.createTempFile("alpha-latency-",".wav",app.getCacheDir());
    try{
     try(OutputStream out=new FileOutputStream(wav)){out.write(new AlphaLocalSpeechEngine.Audio(audio.samples,rate).wav());}
-    play(wav,lead,total,rate);
+    play(trial,wav,lead,total,rate);
    }finally{wav.delete();}
    endTurn(log,trial,coldEvery);
   }catch(Exception|Error failure){
@@ -210,14 +210,14 @@ public final class NativeVoiceLatencyInstrumentedTest {
  }
 
  /** MediaPlayer exactly as AlphaVoiceCloudPlugin.play, with the same collector call; waits for completion. */
- private void play(File wav,int lead,int total,int rate)throws Exception{
+ private void play(VoiceLatencyTrials.Trial trial,File wav,int lead,int total,int rate)throws Exception{
   CountDownLatch done=new CountDownLatch(1);
   AtomicReference<MediaPlayer> current=new AtomicReference<>();
   playback.post(()->{
    MediaPlayer player=new MediaPlayer();current.set(player);
    try{
     player.setDataSource(wav.getAbsolutePath());
-    player.setOnPreparedListener(p->{p.start();AlphaVoiceLatencyProbe.playbackStarted(app,p,playback,lead,total,rate,()->current.get()==p);});
+    player.setOnPreparedListener(p->{p.start();AlphaVoiceLatencyProbe.playbackStarted(trial,app,p,playback,lead,total,rate,()->current.get()==p);});
     player.setOnCompletionListener(p->{current.set(null);p.release();done.countDown();});
     player.setOnErrorListener((p,what,extra)->{current.set(null);p.release();done.countDown();return true;});
     player.prepareAsync();
