@@ -17,7 +17,8 @@
       "homeListCalls": 0,
       "drawerListCalls": 1,
       "exactNativeClockLaunch": true
-    }
+    },
+    "allHomeAppLibraryBrowserTests": 6
   },
   "migration": "Only pristine v2 defaults matching the complete current inventory order migrate; old keys retained once, custom choices preserved, concurrent preference wins. No package mutation.",
   "nativeInstalledProof": "pending next integrated build",
