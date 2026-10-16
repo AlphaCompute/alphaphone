@@ -1,3 +1,4 @@
+import {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {markTtsPlaybackStarted,markTtsPlaybackEnded} from '../../../../.eliza/client-features/packages/ui/src/voice/tts-playback-activity.ts';
 import { playOwnedSpeech } from '../local-speech-playback';
@@ -17,7 +18,7 @@ export function cloudVoiceFailure(error: unknown): string | null {
 export type VoiceClip = { recordingId: string; durationMs: number };
 const native = registerPlugin<{
   transcribeDevelopmentCloudRecording(input:{recordingId:string;requestId:string}):Promise<{text:string;local:false}>;
-  synthesizeDevelopmentCloud(input:{text:string;requestId:string;replace?:boolean}):Promise<{playbackId:string}>;
+  synthesizeDevelopmentCloud(input:{text:string;requestId:string;replace?:boolean;route?:'cloud'|'direct'}):Promise<{playbackId:string}>;
   startRecording(): Promise<{ recordingId: string; maxDurationMs: number }>;
   stopRecording(): Promise<VoiceClip>;
   getRecordingMetrics(input:{recordingId:string}):Promise<{recordingId:string;peak:number;rms?:number}>;
@@ -33,15 +34,18 @@ const native = registerPlugin<{
 
 /** Binds all audio to the explicitly selected account. Native code owns the
  * private recording, bearer credential, upload and decoded playback file. */
-export function createCloudVoice() {
+export function createCloudVoice(readAloudRoute:'cloud'|'direct'='cloud') {
+  const directReadAloud=readAloudRoute==='direct'&&developmentCartesiaVoiceEnabled;
+  if(readAloudRoute==='direct'&&!directReadAloud)throw Error('Developer direct speech is disabled.');
+  const developerSpeech=developmentCloudVoiceEnabled||directReadAloud;
   const environment = connectionController.getCloudEnvironment();
   const binding = connectionController.getCloudClient();
   const sessionId = binding?.sessionId, credentialId = binding?.credentialId;
-  const agent=developmentCloudVoiceEnabled?connectionController.getBrowserSpeechAgent():null,agentSession=agent?.session;
-  if(developmentCloudVoiceEnabled&&!agentSession)throw Error('Connect the developer agent first.');
-  if (!developmentCloudVoiceEnabled&&(!environment || !sessionId || !credentialId)) throw new Error('Sign in to Eliza Cloud to use Cloud voice.');
+  const agent=developerSpeech?connectionController.getBrowserSpeechAgent():null,agentSession=agent?.session;
+  if(developerSpeech&&!agentSession)throw Error('Connect the developer agent first.');
+  if (!developerSpeech&&(!environment || !sessionId || !credentialId)) throw new Error('Sign in to Eliza Cloud to use Cloud voice.');
   const check = () => {
-    if(developmentCloudVoiceEnabled){if(agent!==connectionController.getBrowserSpeechAgent()||agent?.session!==agentSession)throw new DOMException('Voice agent changed','AbortError');return;}
+    if(developerSpeech){if(agent!==connectionController.getBrowserSpeechAgent()||agent?.session!==agentSession)throw new DOMException('Voice agent changed','AbortError');return;}
     if (environment !== connectionController.getCloudEnvironment() || sessionId !== connectionController.getCloudClient()?.sessionId || credentialId !== connectionController.getCloudClient()?.credentialId) throw new DOMException('Voice account changed', 'AbortError');
   };
   return {
@@ -66,7 +70,7 @@ export function createCloudVoice() {
       const changed=()=>{try{current();}catch(error){owned.abort(error);}};
       const unsubscribe=connectionController.subscribe(changed);document.addEventListener('visibilitychange',changed);signal.addEventListener('abort',cancel,{once:true});if(signal.aborted)cancel();
       let marked=false;
-      try{await playOwnedSpeech(native,owned.signal,requestId=>developmentCloudVoiceEnabled?native.synthesizeDevelopmentCloud({text,requestId,...(queue?{replace:false}:{})}):native.synthesize({text,requestId,environment:environment!,credentialId:credentialId!,...(queue?{replace:false}:{})}),current,()=>{current();if(onStarted)onStarted();else{marked=true;markTtsPlaybackStarted();}},true,queue);}
+      try{await playOwnedSpeech(native,owned.signal,requestId=>developerSpeech?native.synthesizeDevelopmentCloud({text,requestId,...(directReadAloud?{route:'direct' as const}:{}),...(queue?{replace:false}:{})}):native.synthesize({text,requestId,environment:environment!,credentialId:credentialId!,...(queue?{replace:false}:{})}),current,()=>{current();if(onStarted)onStarted();else{marked=true;markTtsPlaybackStarted();}},true,queue);}
       finally{if(marked)markTtsPlaybackEnded();unsubscribe();document.removeEventListener('visibilitychange',changed);signal.removeEventListener('abort',cancel);}
     },
   };

@@ -9,7 +9,7 @@ import {spawnSync} from 'node:child_process';
 if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:30000});process.exit(child.status??1);}
 const {createLocalAgentDevHandler}=await import('../scripts/local-agent-dev-bridge.ts');
 const owner=randomUUID(),root='1'.repeat(64),paired='fixture-private-owner';
-async function fixture(enabled=true,moderation){
+async function fixture(enabled=true,moderation,direct=false){
  const directory=await mkdtemp(join(tmpdir(),'alpha-cloud-speech-')),tokenFile=join(directory,'token');await writeFile(tokenFile,root,{mode:0o600});
  let mode='ok',signal;const calls=[];
  const request=async(url,input)=>{const path=new URL(url).pathname;calls.push({path,input});
@@ -21,13 +21,13 @@ async function fixture(enabled=true,moderation){
   signal=input.signal;if(mode==='wait')return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
   if(mode==='rotate')await writeFile(tokenFile,'2'.repeat(64),{mode:0o600});
   if(mode==='error')return Response.json({secret:'never-project-provider-error'},{status:402});
-  const headers={'server-timing':mode==='timing'?'auth;dur=911, admission;dur=1497, synthesis;dur=195, private;desc=never-project-secret':'','x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':'cloud'};
+  const headers={'server-timing':mode==='timing'?'auth;dur=911, admission;dur=1497, synthesis;dur=195, private;desc=never-project-secret':'','x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':mode==='route'?'other':direct?'direct':'cloud'};
   const receipt=response=>{if(moderation!==undefined){const get=response.headers.get.bind(response.headers);response.headers.get=name=>name.toLowerCase()==='x-eliza-tts-moderation'?moderation:get(name);}return response;};
   if(path==='/api/asr/cloud')return receipt(Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers}));
   assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
-  headers['content-type']=mode==='type'?'audio/wav':'audio/mpeg';return receipt(new Response(mode==='large'?new Uint8Array(8*1024*1024+1):new Uint8Array([73,68,51,1]),{headers}));
+  headers['content-type']=mode==='type'?(direct?'audio/mpeg':'audio/wav'):direct?'audio/wav':'audio/mpeg';if(direct)headers['x-request-id']=input.headers['X-Request-Id'];const wav=Buffer.alloc(48);wav.write('RIFF',0);wav.writeUInt32LE(40,4);wav.write('WAVE',8);return receipt(new Response(mode==='large'?new Uint8Array(8*1024*1024+1):direct?wav:new Uint8Array([73,68,51,1]),{headers}));
  };
- const handler=createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile,request,cloudVoiceEnabled:enabled}),server=createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
+ const handler=createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile,request,cloudVoiceEnabled:enabled&&!direct,cartesiaEnabled:enabled&&direct}),server=createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
  const call=async(input,signal)=>{const response=await fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},body:JSON.stringify({ownerId:owner,headers:{},...input}),signal});return {status:response.status,data:await response.json()};};
  return {call,calls,mode:value=>mode=value,signal:()=>signal,close:async()=>{handler.closeVoice();server.closeAllConnections();await new Promise(r=>server.close(r));await rm(directory,{recursive:true,force:true});}};
 }
@@ -46,7 +46,7 @@ test('actual Cloud driver uses explicit paired gateway with no renderer Cloud ac
  const source=(await readFile(new URL('../apps/app/src/runtime/cloud-voice.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,'').replaceAll('export async function','async function').replaceAll('export function','function').replaceAll('export type','type');
  let agent={session:{ownerId:'fixture-owner',sessionId:'fixture-session'}},uploads=0,synthesis=0,legacy=0,sends=0,release;
  const native={transcribeDevelopmentCloudRecording:async()=>{uploads++;if(release===true)await new Promise(r=>release=r);return {text:'hello',local:false};},synthesizeDevelopmentCloud:async input=>{synthesis++;assert.deepEqual(Object.keys(input).sort(),['requestId','text']);return {playbackId:'owned'};},transcribeRecording:async()=>{legacy++;},synthesize:async()=>{legacy++;}};
- const box={developmentCloudVoiceEnabled:true,registerPlugin:()=>native,connectionController:{getCloudEnvironment:()=>null,getCloudClient:()=>null,getBrowserSpeechAgent:()=>agent,getSnapshot:()=>({open:false}),subscribe:()=>()=>{},send:()=>sends++},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},AbortController,DOMException,markTtsPlaybackStarted(){},markTtsPlaybackEnded(){},playOwnedSpeech:async(_native,signal,prepare,current,started,strict)=>{assert.equal(strict,true);signal.throwIfAborted();current();await prepare('request');current();started();}};
+ const box={developmentCartesiaVoiceEnabled:false,developmentCloudVoiceEnabled:true,registerPlugin:()=>native,connectionController:{getCloudEnvironment:()=>null,getCloudClient:()=>null,getBrowserSpeechAgent:()=>agent,getSnapshot:()=>({open:false}),subscribe:()=>()=>{},send:()=>sends++},document:{hidden:false,addEventListener(){},removeEventListener(){}},window:{addEventListener(){},removeEventListener(){}},AbortController,DOMException,markTtsPlaybackStarted(){},markTtsPlaybackEnded(){},playOwnedSpeech:async(_native,signal,prepare,current,started,strict)=>{assert.equal(strict,true);signal.throwIfAborted();current();await prepare('request');current();started();}};
  vm.runInNewContext('{'+stripTypeScriptTypes(source,{mode:'transform'})+';globalThis.create=createCloudVoice;}',box);
  const driver=box.create();assert.deepEqual(JSON.parse(JSON.stringify(await driver.transcribeRecording({recordingId:'clip',requestId:'request'}))),{text:'hello',local:false});await driver.speak('reply',new AbortController().signal);assert.equal(uploads,1);assert.equal(synthesis,1);assert.equal(legacy,0);assert.equal(sends,0);
  release=true;const stale=driver.transcribeRecording({recordingId:'clip',requestId:'request'});while(typeof release!=='function')await Promise.resolve();agent={session:{ownerId:'other',sessionId:'other'}};release();await assert.rejects(stale,/Voice agent changed/);
@@ -61,3 +61,12 @@ test('Cloud bridge projects only exact reviewed/approved-hit TTS receipts and ne
 test('Cloud bridge drops invalid oversized and injected moderation evidence without exposing its bytes',async()=>{
  for(const value of ['hit','APPROVED-HIT','approved-hit, reviewed','approved-hit'.repeat(500),'reviewed\r\nX-Secret: never-project-secret']){const f=await fixture(true,value);try{const result=await f.call(tts());assert.equal(result.data.status,200);assert.equal(result.data.moderationCache,undefined);assert.ok(!JSON.stringify(result).includes('never-project-secret'));}finally{await f.close();}}
 });
+
+const directTts=()=>({...tts(),path:'/api/v1/voice/session/read-aloud'});
+test('direct DEV read-aloud uses exact owner-authenticated runtime endpoint and verified Cartesia WAV',async()=>{const f=await fixture(true,undefined,true);try{const result=await f.call(directTts());assert.equal(result.status,200);assert.equal(result.data.status,200);const value=JSON.parse(result.data.body);assert.equal(value.provider,'cartesia');assert.equal(value.route,'direct');assert.equal(value.contentType,'audio/wav');assert.equal(Buffer.from(value.audioBase64,'base64').toString('ascii',0,4),'RIFF');assert.equal(f.calls.filter(x=>x.path==='/api/v1/voice/session/read-aloud').length,1);assert.equal((await f.call(tts())).status,400);assert(!JSON.stringify(result).includes(paired));}finally{await f.close();}});
+test('direct DEV route rejects disabled mode, wrong owner, provider, route and MIME without Cloud fallback',async()=>{
+ {const f=await fixture(false,undefined,true);try{assert.equal((await f.call(directTts())).status,400);assert.equal(f.calls.length,0);}finally{await f.close();}}
+ for(const mode of ['wrong','route','type','rotate']){const f=await fixture(true,undefined,true);try{f.mode(mode);assert.notEqual((await f.call(directTts())).status,200);}finally{await f.close();}}
+ {const f=await fixture(true,undefined,true);try{assert.equal((await f.call({...directTts(),ownerId:'other'})).status,409);assert.equal(f.calls.filter(x=>x.path==='/api/v1/voice/session/read-aloud').length,0);}finally{await f.close();}}
+});
+test('direct DEV Stop aborts the owned runtime synthesis without retry',async()=>{const f=await fixture(true,undefined,true);try{f.mode('wait');const c=new AbortController(),p=f.call(directTts(),c.signal);while(!f.signal())await new Promise(r=>setTimeout(r,5));c.abort();await assert.rejects(p);for(let i=0;i<50&&!f.signal().aborted;i++)await new Promise(r=>setTimeout(r,5));assert.equal(f.signal().aborted,true);assert.equal(f.calls.filter(x=>x.path==='/api/v1/voice/session/read-aloud').length,1);}finally{await f.close();}});

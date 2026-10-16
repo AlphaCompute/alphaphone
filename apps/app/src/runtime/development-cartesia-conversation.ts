@@ -1,9 +1,8 @@
 import {developmentCloudRealtimeVoiceEnabled} from './development-cloud-voice';
-import {Capacitor} from '@capacitor/core';
-import {devSurfacesEnabled} from '../build-flags';
+import {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
+export {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 import {connectionController} from './connection-ui';
 import type {VoiceConversationBinding} from './alpha-client';
-export const developmentCartesiaVoiceEnabled=import.meta.env.DEV===true&&devSurfacesEnabled&&!Capacitor.isNativePlatform()&&import.meta.env.VITE_ALPHA_DEV_CARTESIA==='1';
 /** Canonical self-hosted voice owns the runtime turn; this adapter never sends its transcript twice. */
 export async function developmentCartesiaConversation(input:{binding:VoiceConversationBinding;assertCurrent:()=>void;onState:(phase:string)=>void;onTranscript:(text:string)=>void;onError:(error:Error)=>void;onPlaybackUnlockChange?:()=>void;getUiContext?:()=>import('@elizaos/host/protocol').VoiceUiContext;onNavigate?:(event:{viewId:string;viewPath?:string;subview?:string;traceId:string})=>Promise<void>}){
  if(developmentCartesiaVoiceEnabled&&developmentCloudRealtimeVoiceEnabled)throw Error('Choose direct or Cloud realtime speech, not both.');

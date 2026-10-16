@@ -1,3 +1,4 @@
+import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-flag';
 import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import { Capacitor } from '@capacitor/core';
 import { speakLocalText } from '../local-speech-playback';
@@ -144,7 +145,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
     const knownUsers=new Set((shell.S().msgs||[]).filter((row:Shell)=>row.from==='user').map((row:Shell)=>row.id));
     const previousSpeech=stopLocalSpeechPlayback();stop(shell);
     const retiring=shell.stopVoiceConversation?.();
-    const cloud = selectVoiceRoute() === 'cloud';
+    const directReadAloud=developmentCartesiaVoiceEnabled;
+    const cloud = selectVoiceRoute() === 'cloud'||directReadAloud;
     const controller = new AbortController(), state: Reading = { id, text, controller, message: 'Waiting for the previous audio to stop…' };
     const current=()=>!(shell.S().msgs||[]).some((row:Shell)=>row.from==='user'&&!knownUsers.has(row.id))&&states.get(shell)===state&&!controller.signal.aborted&&shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open&&selection()===binding&&shell.S().view===view&&['sheet','full'].includes(shell.S().chat)&&(shell.S().msgs||[]).some((row:Shell)=>row.id===id&&row.text===text&&JSON.stringify(row.messageBinding)===messageBinding);
     state.current=current;states.set(shell,state);cancelOwner=shell;cancelCurrent=()=>{stop(shell);refresh(shell);return state.pending;};refresh(shell);
@@ -152,8 +154,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if(retiring){await retiring;if(!current())return;}
       if(previousSpeech){await previousSpeech;if(!current())return;}
       if(!current())return;
-      if (cloud && !developmentCloudVoiceEnabled && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
-      const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
+      if (cloud && !developmentCloudVoiceEnabled && !directReadAloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
+      const voice = cloud ? createCloudVoice(directReadAloud?'direct':'cloud') : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
       state.message=cloud?'Preparing audio…':'Preparing audio on this phone…';refresh(shell);
       if ('playbackReady' in voice) {
         planLocalSpeech(text);
@@ -162,7 +164,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if (!current()) return;
       state.message = 'Reading aloud…'; refresh(shell);
       if(!current())return;
-      const pending=state.pending=(cloud ? createCloudVoice().speak(text, controller.signal, onStarted) : speakOnDevice(text, controller.signal, onStarted));await pending;
+      const pending=state.pending=(cloud ? createCloudVoice(directReadAloud?'direct':'cloud').speak(text, controller.signal, onStarted) : speakOnDevice(text, controller.signal, onStarted));await pending;
       if (current()) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
     } catch (error) {
       if((error as {code?:string})?.code==='speech-cleanup-unconfirmed'&&state.pending)retainSpeechRetirement(state.pending);
@@ -203,7 +205,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
   }
   p.renderVals = function () {
     const out = original.call(this), source = this.S().msgs || [], state = states.get(this);
-    const cloud = selectVoiceRoute() === 'cloud';
+    const directReadAloud=developmentCartesiaVoiceEnabled;
+    const cloud = selectVoiceRoute() === 'cloud'||directReadAloud;
     const available = cloud || createOnDeviceVoice() !== null;
     out.msgs = (out.msgs || []).map((message: Shell, index: number) => {
       const entry = source[index];
