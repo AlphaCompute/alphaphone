@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T21:18:04.926097+00:00",
+  "updatedAt": "2026-10-16T21:31:05.575504+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "8f1fa9ae",
+  "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -2253,5 +2253,34 @@
     "dataReset": false,
     "residentRunning": true,
     "allViewsAccepted": false
+  },
+  "qualification": {
+    "productVerify": {
+      "source": "bc5b4f40 plus test-only edits before completion",
+      "passed": 1462,
+      "skipped": 2,
+      "failed": 0,
+      "bundleAudit": "404 files; flag off; passed"
+    },
+    "productionBrowser": {
+      "source": "bc5b4f40",
+      "passed": 271
+    },
+    "currentFocused": {
+      "media": 45,
+      "photosFocusContrast": 10,
+      "search200percent": 4,
+      "photosStoredMediaMatrix": 11,
+      "photosInfoFocus": 1,
+      "accessibilityCoverage": 6,
+      "auditRules": 10,
+      "connectedInboxLargeText": 2,
+      "draftAdapter": 1,
+      "contextVoice": 5,
+      "developmentFilesInbox": 11,
+      "characterWake": 1,
+      "photosShareScrim": 1
+    },
+    "limits": "Focused synthetic browser checks do not prove native providers, native video export, target-device voice quality, or human acceptance. Native APK packaging and Shared911 repository verification remain active."
   }
 }
