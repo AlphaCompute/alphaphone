@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T22:29:29.994140+00:00",
+  "updatedAt": "2026-10-16T22:52:44.383076+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -633,14 +633,14 @@
       "area": "Calendar",
       "viewOrFlow": "Agent Google event deletion and provider readback",
       "scope": "MVP",
-      "implementation": "Needs review against current source",
-      "preview": "Original event remains present at same expected ETag after fresh GET-only SDK read at21:16UTC Oct16. Original attempt remains ambiguous; no retry.",
-      "seeker": "Pending",
+      "implementation": "Fresh disposable Google event creation and deletion verified through ordinary prompts and saved owner approvals. Independent provider read proves absence; original uncertain deletion remains fenced.",
+      "preview": "Verified on5209/Shared911: CALENDAR_REVIEW provider acceptance for create/delete, exact created-event readback, provider GET event:null, and agent read-only absence confirmation.",
+      "seeker": "Native Cloud route fix APK rebuild and prompt retest pending.",
       "userApproval": "Pending",
       "evidence": [
-        "CALENDAR-ATTEMPT-DIAGNOSTIC-RESULT.json"
+        "docs/evidence/calendar-prompt-lifecycle-20261016.json"
       ],
-      "notes": "Backend trace reconciliation requested for the original seven-second window; provider deletion acceptance still unproven."
+      "notes": "No guests or attendee notifications. Only the newly created disposable event was cancelled; originala048 untouched."
     },
     {
       "id": "calendar-17",
@@ -2280,7 +2280,7 @@
       "characterWake": 1,
       "photosShareScrim": 1
     },
-    "limits": "Browser send and delivery are now proven. Seeker integration remains pending the native Cloud routing fix. Native video export, Calendar deletion, target-device speech quality and human view approval remain open.",
+    "limits": "Gmail send/delivery and fresh Google Calendar create/delete are proven through web agent prompts. Seeker integration remains pending the native Cloud routing fix. Original uncertain-operation reconciliation, native video export, speech quality and human view approval remain open.",
     "nativeA569": {
       "fourVariantsPassed": true,
       "sameSignerUpdateInstalled": true,

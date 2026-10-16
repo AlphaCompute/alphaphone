@@ -76,7 +76,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | calendar-13 | Agent calendar sources and agenda read | Prior preview pass; latest retest pending | Pending | Pending |
 | calendar-14 | Agent Google event create and readback | Prior preview pass; latest retest pending | Pending | Pending |
 | calendar-15 | Agent Google event update and replay protection | Prior preview pass; latest retest pending | Pending | Pending |
-| calendar-16 | Agent Google event deletion and provider readback | Pending | Pending | Pending |
+| calendar-16 | Agent Google event deletion and provider readback | Verified: disposable create/read → saved delete review → approve → provider accepted → exact event absent → agent read-only confirmation. Original uncertain deletion untouched. | Native routing-fix APK and prompt retest pending | Pending |
 | calendar-17 | Uncertain deletion reconciliation without duplicate write | Latest canonical read: original approval still executing | Pending | Pending |
 | calendar-18 | Native consent and CalendarProvider writes | Native consent bridge and current-main write guard implemented. | Device access already allowed; exact native consent guard tests passed. Live write/Undo acceptance pending. | Pending |
 | calendar-19 | Native linked sync, restart recovery and Undo | Pending | Pending | Pending |
