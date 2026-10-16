@@ -6,9 +6,10 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {pixel10aOptions, writePixel10aProduct} from '../scripts/aosp-pixel10a.mjs';
 
-test('physical target requires explicit development and exact source/factory inputs', () => {
+test('physical target requires explicit development or production and exact source/factory inputs', () => {
   const options = {target:'pixel10a', development:true, source:'/source', factory:'/factory'};
   assert.equal(pixel10aOptions(options), true);
+  assert.equal(pixel10aOptions({...options, development:false, production:true}), true);
   assert.equal(pixel10aOptions({development:true, target:null}), false);
   assert.equal(pixel10aOptions({production:true}), false);
   for (const change of [{target:'stallion'}, {development:false}, {production:true}, {source:null}, {factory:null}]) assert.throws(() => pixel10aOptions({...options, ...change}));
@@ -32,6 +33,25 @@ test('physical overlay installs ARM64 JNI and development product without boot c
   const report = JSON.parse(fs.readFileSync(path.join(output, 'physical-product.json')));
   assert.equal(report.developmentOnly, true);
   for (const key of ['imageBuilt','releaseQualified','deviceAcceptanceVerified']) assert.equal(report[key], false);
+});
+
+test('production physical overlay sets no board AVB variables and records no build, signing or acceptance', t => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-pixel-production-'));
+  t.after(() => fs.rmSync(temporary, {recursive:true, force:true}));
+  const apk = path.join(temporary, 'input.apk'), output = path.join(temporary, 'overlay');
+  fs.mkdirSync(output);
+  execFileSync('python3', ['-c', "import zipfile,sys; z=zipfile.ZipFile(sys.argv[1],'w'); z.writestr('lib/arm64-v8a/libcamera.so',b'\\x7fELF\\x02\\x01'+bytes(12)+b'\\xb7\\x00'+bytes(44)); z.close()", apk]);
+  fs.writeFileSync(path.join(output, 'Android.bp'), '// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "AlphaPhone",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n');
+  fs.writeFileSync(path.join(output, 'product.mk'), '# existing\n');
+  writePixel10aProduct({root:process.cwd(), output, apk, identity:{moduleName:'AlphaPhone'}, sourceEvidence:{fixture:true}, production:true});
+  const productMk = fs.readFileSync(path.join(output, 'product.mk'), 'utf8');
+  assert.doesNotMatch(productMk, /BOARD_AVB_|release-avb/);
+  assert.equal(fs.existsSync(path.join(output, 'stallion/release-avb.mk')), false);
+  const report = JSON.parse(fs.readFileSync(path.join(output, 'physical-product.json')));
+  assert.equal(report.production, true);
+  assert.equal(report.lunch, 'alpha_stallion_phone-cp2a-user');
+  assert.equal(report.productDescriptor.file, 'android/aosp/pixel10a-product.json');
+  for (const key of ['imageBuilt','imageSigned','releaseQualified','deviceAcceptanceVerified']) assert.equal(report[key], false, key);
 });
 
 test('native admission fixtures cover corrupt provenance, policy, ELF and overlay inputs', () => {

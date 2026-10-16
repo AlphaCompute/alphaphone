@@ -40,12 +40,14 @@ function inventory(root, relative) {
 async function git(root, args) {
   return (await exec('git', ['-C', root, ...args], {maxBuffer:64 * 1024 * 1024, env:{...process.env, GIT_OPTIONAL_LOCKS:'0'}})).stdout;
 }
-/** Verify the recorded development inputs. Does not modify source, admit an APK,
- * certify build outputs, or authorize a flash. Ignored build outputs are not inputs. */
+/** Verify the recorded source inputs. Does not modify source, admit an APK,
+ * certify build outputs, or authorize a flash. Ignored build outputs are not inputs.
+ * `developmentOnly` is reported from the lock; production staging separately requires it
+ * to be false (pixel10aProductProblems). */
 export async function verifyPixel10aSource({source, factory, lock = defaultLockPath}) {
   if (!source || !factory) throw Error('Pixel 10a staging requires --aosp-source and --factory-image');
   const root = fs.realpathSync(source), bytes = fs.readFileSync(lock), contract = JSON.parse(bytes);
-  if (contract.schema !== 1 || contract.target !== 'pixel10a' || contract.device?.codename !== 'stallion' || contract.device?.androidRelease !== '17' || contract.developmentOnly !== true || contract.releaseQualified !== false) throw Error('Not the Pixel 10a Android 17 development source contract');
+  if (contract.schema !== 1 || contract.target !== 'pixel10a' || contract.device?.codename !== 'stallion' || contract.device?.androidRelease !== '17' || typeof contract.developmentOnly !== 'boolean' || contract.releaseQualified !== false) throw Error('Not the Pixel 10a Android 17 source contract');
   if (!contract.projects?.length || !contract.generated?.files?.length) throw Error('Incomplete Pixel 10a source inventory');
   const expectedFactory = contract.factory;
   if (!fs.statSync(factory).isFile() || fs.statSync(factory).size !== expectedFactory.sizeBytes || await fileHash(factory) !== expectedFactory.sha256) throw Error('Pixel 10a factory archive differs from the source lock');
@@ -103,5 +105,5 @@ export async function verifyPixel10aSource({source, factory, lock = defaultLockP
   if (new Set(expectedNames).size !== files.length || files.some(entry => !entry.path.startsWith(`${contract.generated.root}/`))) throw Error('Invalid generated vendor inventory');
   if (JSON.stringify(inventory(root, contract.generated.root)) !== JSON.stringify(expectedNames)) throw Error('Generated vendor inventory differs');
   for (const entry of files) await checkFile(root, entry);
-  return {schema:1, target:'pixel10a', codename:'stallion', sourceLockSha256:digest(bytes), manifestCommit:contract.manifest.commit, factorySha256:expectedFactory.sha256, projectsChecked:seen.size, overridesChecked:overrides.size, generatedFilesChecked:files.length, developmentOnly:true, imageBuilt:false, releaseQualified:false, deviceAcceptanceVerified:false};
+  return {schema:1, target:'pixel10a', codename:'stallion', sourceLockSha256:digest(bytes), manifestCommit:contract.manifest.commit, factorySha256:expectedFactory.sha256, projectsChecked:seen.size, overridesChecked:overrides.size, generatedFilesChecked:files.length, developmentOnly:contract.developmentOnly, imageBuilt:false, releaseQualified:false, deviceAcceptanceVerified:false};
 }

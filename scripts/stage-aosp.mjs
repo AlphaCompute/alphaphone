@@ -1,5 +1,6 @@
 import { verifyPixel10aSource, defaultLockPath } from './pixel10a-source-contract.mjs';
-import { pixel10aOptions, writePixel10aProduct } from './aosp-pixel10a.mjs';
+import { pixel10aOptions, pixel10aProductProblems, writePixel10aProduct, PIXEL10A_PRODUCT } from './aosp-pixel10a.mjs';
+import { readReleaseSigner } from './build-android.mjs';
 import fs from "node:fs";
 import { writeAospCapabilityOverlay } from "./aosp-capability-overlay.mjs";
 import path from "node:path";
@@ -60,7 +61,7 @@ export function aospProductLockProblems(root = process.cwd()) {
   // Source lock through the pinned upstream loader (manifest url, tag and full object IDs).
   const lockFile = product.sourceLock?.file, profileName = product.sourceLock?.profile;
   if (typeof lockFile !== "string" || !lockFile.startsWith("android/aosp/") || !fs.existsSync(at(lockFile))) problems.push(`${PRODUCT_DESCRIPTOR}: sourceLock.file must name an existing lock under android/aosp/`);
-  else if (Object.values(product.notAdmitted ?? {}).includes(lockFile)) problems.push(`${lockFile} is a separate lock that is not admitted`);
+  else if (Object.values(product.separateLocks ?? {}).includes(lockFile)) problems.push(`${lockFile} is a separate product's lock; it is not admitted for the Cuttlefish product`);
   else {
     const lock = read(lockFile);
     if (lock.admitted === false) problems.push(`${lockFile} is not admitted`);
@@ -90,7 +91,7 @@ import { VOICE_HOST_RECORD, checkListenerDescriptor, checkListenerSpeechBundle, 
  * and releases verify-apks recorded as non-distributable. Production staging
  * additionally requires a verified distributable release from apk-manifest.json.
  */
-function admitApk({ apk, hash, development, manifestFile }) {
+function admitApk({ apk, hash, development, manifestFile, platformCertificateSha256 }) {
   const testMocksDir = path.resolve("artifacts/test-mocks");
   const real = fs.realpathSync(apk);
   for (const candidate of [path.resolve(apk), real]) {
@@ -113,8 +114,11 @@ function admitApk({ apk, hash, development, manifestFile }) {
   // Every unresolved blocker verify-apks recorded for a release (signing, runtime, speech,
   // the proprietary-font check, test mocks) is named; a release is never staged while one remains.
   // Open-source licence flags (licenceFlags) are a record, never a blocker (decision P-09).
+  // Production judges the row against the committed release signer now, not only the admission
+  // verify-apks recorded, and requires the reviewed image platform certificate.
+  const current = development ? {} : { releaseSigner: readReleaseSigner(), image: { platformCertificateSha256 } };
   const blockers = entry?.mode === "release" || entry?.distributable !== undefined
-    ? releaseBlockers(entry, { manifestTestMocks: manifest.testMocks }) : [];
+    ? releaseBlockers(entry, { manifestTestMocks: manifest.testMocks, ...current }) : [];
   if (entry && (entry.distributable === false || (entry.mode === "release" && blockers.length)))
     throw new Error(`Refusing ${apk}: ${manifestFile} records this release as not distributable (runtime ${entry.runtime ?? "unknown"}, ${entry.signed ? "signed" : "unsigned"}). Unresolved blockers:\n${blockers.map(item => `  - ${item}`).join("\n")}`);
   if (!development && !(entry && entry.mode === "release" && entry.distributable === true && blockers.length === 0))
@@ -146,7 +150,7 @@ for (let i = 0; i < args.length; i++) {
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--target pixel10a --factory-image FILE --development] [--listener-apk FILE [--listener-descriptor FILE]]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--target pixel10a --factory-image FILE (--development | --production --descriptor FILE)] [--listener-apk FILE [--listener-descriptor FILE]]",
     );
   i++;
 }
@@ -156,8 +160,18 @@ const development = args.includes("--development");
 // refused until a signed, PACKAGED, qualified release APK exists.
 const production = args.includes("--production");
 const physical = pixel10aOptions({target:get('--target'), development, production, source:get('--aosp-source'), factory:get('--factory-image')});
-const physicalSource = physical ? await verifyPixel10aSource({source:get('--aosp-source'), factory:get('--factory-image')}) : null;
 if (production && development) throw new Error("--production and --development are exclusive");
+// The product lock is checked before any source or APK is read: production never stages into an
+// unset product. Pixel 10a has its own production descriptor; the Cuttlefish product its own lock.
+if (production) {
+  const problems = physical ? pixel10aProductProblems(process.cwd()) : aospProductLockProblems(process.cwd());
+  const name = physical ? `Pixel 10a production product (${PIXEL10A_PRODUCT})` : "Alpha AOSP product lock";
+  if (problems.length) throw new Error(`Refusing production staging: the ${name} is incomplete.\n${problems.map(item => `  - ${item}`).join("\n")}`);
+}
+const platformCertificateSha256 = production ? JSON.parse(fs.readFileSync(physical ? PIXEL10A_PRODUCT : PRODUCT_DESCRIPTOR, "utf8")).signer?.platformCertificateSha256 : undefined;
+const physicalSource = physical ? await verifyPixel10aSource({source:get('--aosp-source'), factory:get('--factory-image')}) : null;
+if (physical && production && physicalSource.sourceLockSha256 !== JSON.parse(fs.readFileSync(PIXEL10A_PRODUCT, "utf8")).sourceLock?.sha256)
+  throw new Error(`Refusing production staging: the verified source lock is not the one pinned in ${PIXEL10A_PRODUCT}.`);
 // The always-on listener is part of the AOSP MVP (issue #424): production images must include it.
 const listenerApk = get("--listener-apk");
 const listenerDescriptor = get("--listener-descriptor");
@@ -171,17 +185,13 @@ if (!apk)
     ? "Development staging: supply --apk PATH to a flag-off debug launcher APK."
     : "Production staging: supply --apk PATH to the signed launcher release APK that verify-apks recorded as distributable.");
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
-// The product lock is checked before any APK is read: production never stages into an unset product.
-if (production) {
-  const problems = aospProductLockProblems(process.cwd());
-  if (problems.length) throw new Error(`Refusing production staging: the Alpha AOSP product lock is incomplete.\n${problems.map(item => `  - ${item}`).join("\n")}`);
-}
 const hash = createHash("sha256").update(fs.readFileSync(apk)).digest("hex");
 admitApk({
   apk,
   hash,
   development,
   manifestFile: get("--apk-manifest") || "artifacts/apk-manifest.json",
+  platformCertificateSha256,
 });
 if (descriptor) {
   const supplied = JSON.parse(fs.readFileSync(descriptor));
@@ -312,7 +322,7 @@ if (listenerApk) {
   console.log(`Always-on listener staged: ${identity.appId}.sense (privileged, no network). Grants, indicator and invocation are image-boot evidence, not staging evidence.`);
 }
 if (physical) {
-  writePixel10aProduct({root:process.cwd(), output, apk, identity, sourceEvidence:physicalSource});
+  writePixel10aProduct({root:process.cwd(), output, apk, identity, sourceEvidence:physicalSource, production});
   if (fs.existsSync(destination)) throw Error('Output appeared during staging: ' + destination);
   fs.renameSync(output, destination);
 }

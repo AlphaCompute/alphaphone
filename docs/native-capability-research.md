@@ -73,7 +73,7 @@ Agent integration contract: agent can identify that a login is needed and reques
 
 | Unknown | Working decision | Evidence needed to close |
 | --- | --- | --- |
-| Exact AOSP target, GMS presence and device SKU | Test the Pixel 9 phone AVD as the closest installed Pixel 10 approximation; no GMS-only requirement in core flows | Boot manifest, WebView/provider versions, hardware/peripheral matrix |
+| Exact AOSP target, GMS presence and device SKU | Test the Pixel 9 phone AVD as the closest installed approximation to the Pixel 10a (Android 17) target; no GMS-only requirement in core flows | Boot manifest, WebView/provider versions, hardware/peripheral matrix |
 | Production agent endpoint/account provisioning | Approved fixed origin, existing owner-scoped pairing; never arbitrary user URL | Actual test account, callback and transport contract, expired/revoked tests |
 | Browser host identity and signing | Upstream consumer-configurable identity with existing checks intact | Reviewed patch/commit, signed browser + Alpha install, real bridge exchange |
 | Browser update authority | Independent patch cadence and signed OTA compatibility | Named owner, reproducible browser build, update/rollback drill |

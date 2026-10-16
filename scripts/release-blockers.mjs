@@ -14,18 +14,29 @@
  * while UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION (scripts/licence-policy.mjs) is true.
  *
  * @param {Record<string, any>} row one `results[]` entry with mode "release"
- * @param {{manifestTestMocks?: unknown, admission?: {failures: string[], blockers: string[], signerMatches?: boolean}, fontLicenceBlocks?: boolean}} [options]
- *   admission defaults to the row's recorded releaseAdmission; pass a freshly computed one to
- *   judge the row against the current android/release-signer.json. fontLicenceBlocks defaults
- *   to the policy constant.
+ * @param {{manifestTestMocks?: unknown, admission?: {failures: string[], blockers: string[], signerMatches?: boolean}, releaseSigner?: Record<string, any>, image?: {platformCertificateSha256?: unknown}, fontLicenceBlocks?: boolean}} [options]
+ *   admission defaults to the row's recorded releaseAdmission; pass a freshly computed one, or
+ *   the current android/release-signer.json as releaseSigner (which recomputes it), to judge the
+ *   row against the committed signer: an unset signer then always blocks, whatever was recorded.
+ *   image, for a build that goes into an AOSP image, requires its reviewed platform certificate
+ *   SHA-256; an unset or placeholder certificate blocks. fontLicenceBlocks defaults to the policy
+ *   constant.
  * @returns {string[]}
  */
 import { UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION } from "./licence-policy.mjs";
+import { releaseAdmission } from "./build-android.mjs";
 
 const FONT_CHECK = /^(unresolved-font-licence: |font licence check failed: )/;
+const HEX64 = /^[0-9a-f]{64}$/;
 
-export function releaseBlockers(row, { manifestTestMocks = false, admission = row?.releaseAdmission, fontLicenceBlocks = UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION } = {}) {
+export function releaseBlockers(row, { manifestTestMocks = false, admission = row?.releaseAdmission, releaseSigner, image, fontLicenceBlocks = UNRESOLVED_FONT_LICENCE_BLOCKS_DISTRIBUTION } = {}) {
   const blockers = [];
+  if (releaseSigner !== undefined) {
+    try { admission = releaseAdmission(row, releaseSigner); }
+    catch (error) { admission = { failures: [error.message], blockers: [], signerMatches: false }; }
+  }
+  if (image !== undefined && !HEX64.test(image?.platformCertificateSha256 ?? ""))
+    blockers.push(`image platform certificate is ${JSON.stringify(image?.platformCertificateSha256 ?? null)}, not a reviewed release certificate`);
   if (manifestTestMocks !== false || row.testMocks !== false) blockers.push("test-mocks build");
   if (row.bundleAudit !== "passed") blockers.push("release did not pass the flag-off bundle audit");
   if (row.signed !== true) blockers.push("unsigned release");

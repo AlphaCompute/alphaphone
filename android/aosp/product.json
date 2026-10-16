@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "description": "Alpha Phone AOSP product descriptor for the Cuttlefish validation target. scripts/stage-aosp.mjs --production refuses to stage while any field here, in the brand config or in the selected source-lock profile is UNSET or a placeholder. Values are reviewed source and artifact identities only; no key material belongs here.",
+  "description": "Alpha Phone AOSP product descriptor for the Cuttlefish validation target. The Pixel 10a (stallion) Android 17 hardware product has its own descriptor (physicalProduct) and source lock; the Cuttlefish product never stages against a separate lock. scripts/stage-aosp.mjs --production refuses to stage while any field here, in the brand config or in the selected source-lock profile is UNSET or a placeholder. Values are reviewed source and artifact identities only; no key material belongs here.",
   "product": "alphaphone_cf_x86_64_phone",
   "target": "cuttlefish_x86_64",
   "brandConfig": "android/aosp/brand.alphaphone.json",
@@ -17,7 +17,8 @@
     "platformCertificateSha256": "UNSET",
     "decision": "A-06"
   },
-  "notAdmitted": {
-    "pixel10": "android/aosp/pixel10.lock.json"
-  }
+  "separateLocks": {
+    "pixel10a": "android/aosp/pixel10a-source.json"
+  },
+  "physicalProduct": "android/aosp/pixel10a-product.json"
 }
