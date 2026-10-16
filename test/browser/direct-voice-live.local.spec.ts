@@ -32,6 +32,8 @@ test('real voice opens Notes through the actual renderer channel',async({page},i
   receipt.proof=await page.evaluate(()=>(window as any).voiceLiveProof);
   await page.screenshot({path:info.outputPath('actual-notes-open.png')});
   await expect(page.getByRole('heading',{name:'Notes',exact:true})).toHaveCount(0,{timeout:25000});receipt.timings.push({event:'home-after-spoken-request',ms:Date.now()-started});
+  await expect.poll(()=>page.evaluate(()=>(window as any).voiceLiveProof.transportEvents.filter((event:any)=>event.type==='speaking_start').length),{timeout:30000}).toBeGreaterThanOrEqual(2);
+  await expect(page.locator('[data-alpha-chat-recorder] [data-alpha-voice-animation]')).toHaveAttribute('data-phase','listening',{timeout:30000});receipt.bothSpokenRepliesCompletedBeforeStop=true;
   await expect(page.getByRole('button',{name:'Stop voice conversation',exact:true})).toBeVisible();
   const mute=page.getByRole('button',{name:'Mute microphone',exact:true});await expect(mute).toBeEnabled({timeout:10000});await mute.click();await expect(page.getByRole('button',{name:'Unmute microphone',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Unmute microphone',exact:true}).click();
   await page.screenshot({path:info.outputPath('actual-home-return.png')});
