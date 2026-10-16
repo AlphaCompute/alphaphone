@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T21:12:22.352004+00:00",
+  "updatedAt": "2026-10-16T21:18:04.926097+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "a569f79cc03ea881365743247c069bf2169ca252",
+  "productSource": "8f1fa9ae",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -198,7 +198,7 @@
       "viewOrFlow": "Search on Enter and mobile keyboard",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Search implementation retained; latest browser visual QA pending.",
+      "preview": "Current search controls pass at200% text; Back exits search and Clear removes the query without leaving. Real provider/native Enter search retest remains separate.",
       "seeker": "Enter returned10 matching Coinbase rows at4d; no separate Search Gmail button.",
       "userApproval": "Pending",
       "evidence": [],
@@ -635,7 +635,7 @@
       "viewOrFlow": "Agent Google event deletion and provider readback",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Original attempta048 remains ambiguous. Read-only agent DATABASE_QUERY returned one row: attempted21:14:24.587UTC Oct15, updated21:14:31.346UTC, attemptCount1, no completedAt. No retry.",
+      "preview": "Original event remains present at same expected ETag after fresh GET-only SDK read at21:16UTC Oct16. Original attempt remains ambiguous; no retry.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [
@@ -1143,7 +1143,7 @@
       "viewOrFlow": "Native permitted library and consent updates",
       "scope": "MVP",
       "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
-      "preview": "Four permitted/selected/denied/revoked browser flows passed on currenta569 source; explicit permission request remains when denied.",
+      "preview": "Four permission-state browser flows pass; ten light/dark compact Photos focus/contrast flows pass. Broader45-test media suite passes; native export qualification remains separate.",
       "seeker": "Installed9d86d051: Settings > Photos visibly verified with current full access and explicit permission controls; grant unchanged. Permitted Photos grid has no ongoing access controls.",
       "userApproval": "Pending",
       "evidence": [

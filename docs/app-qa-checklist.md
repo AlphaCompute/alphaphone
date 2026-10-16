@@ -254,3 +254,5 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 Current verification:1,455 tests passed, two existing skips; types, production build and404-file production audit passed. All four APK variants built/linted/verified. The installed standalone APK matches the locally signed candidate and retains the original app identity. This does not imply provider-write, full native or human acceptance.
 
 Latest qualification: Android foundation and repository verification passed in hosted CI at a569. Production browser assertions are being updated for the current credit-backed contract; full browser acceptance remains open. Native packaging and Shared911 qualification are running separately.
+
+October16 focused follow-up: 45 browser media checks passed (edit-copy recovery, video trim controls, albums/batch, photo-email review and scanning), plus10 Photos focus/contrast checks and4 search reachability checks at200% text. These are browser tests, not Android export or human acceptance. The protected Calendar event is still present with its original ETag after a fresh GET-only read; deletion remains unconfirmed.
