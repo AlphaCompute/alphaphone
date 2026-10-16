@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test';
+import {openOwnedPhotoViewer} from './helpers/owned-photo';
 
 /**
  * The retained MVP surface, as a list of states the accessibility sweep visits.
@@ -46,7 +47,9 @@ const ARRIVES: Record<string, string> = {
 const mock = (start: string, steps: string[] = [], shows?: string): State => ({
   name: `mock ${[start, ...steps].join(' > ')}`, shows,
   open: async (page, theme) => {
-    await page.goto(`/?mode=mock&theme=${theme || 'light'}&start=${start}`);
+    // Edit and info require a real library revision; prototype images have none.
+    if(start==='photos:viewer'&&steps.some(step=>step==='Edit photo'||step==='Photo info'))await openOwnedPhotoViewer(page,theme);
+    else await page.goto(`/?mode=mock&theme=${theme || 'light'}&start=${start}`);
     await settle(page);
     if (ARRIVES[start]) { await expect(page.getByRole('button', { name: ARRIVES[start], exact: true })).toBeVisible(); await settle(page); }
     if (steps.length) { await press(page, steps); await settle(page); }

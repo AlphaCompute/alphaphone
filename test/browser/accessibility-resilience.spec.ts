@@ -1,5 +1,6 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { setTextScale } from './accessibility-states';
+import {openOwnedPhotoViewer} from './helpers/owned-photo';
 import { auditPage, auditTabOrder, format } from './accessibility-audit';
 
 // Behaviour behind the defects the accessibility sweep found (MVP-48, renderer part).
@@ -164,7 +165,9 @@ test.describe('menus and sheets over a scrim own focus', () => {
   ] as const;
   for (const [start, steps, name, scrim, opener] of POPUPS) {
     test(`${start} > ${steps.join(' > ')}: focus enters, stays, and returns on Escape`, async ({ page }) => {
-      if (start === 'live') { await page.addInitScript(offline); await page.goto('/'); }
+      const ownedInfo=start==='photos:viewer'&&name==='Photo info';
+      if(ownedInfo)await openOwnedPhotoViewer(page);
+      else if (start === 'live') { await page.addInitScript(offline); await page.goto('/'); }
       else await page.goto(`/?mode=mock&start=${start}`);
       for (const step of steps.slice(0, -1)) await page.getByRole('button', { name: step, exact: true }).first().click();
       const last = page.getByRole('button', { name: steps.at(-1)!, exact: true }).first();
@@ -179,9 +182,10 @@ test.describe('menus and sheets over a scrim own focus', () => {
       // The page under the popup is out of the tab order and the accessibility tree; the
       // popup's own scrim still closes it for a pointer or an assistive-technology tap.
       const exposed = await page.evaluate(() => Array.from(document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]'))
-        .filter(el => el.getClientRects().length && !el.closest('[inert]') && !el.closest('[data-alpha-popup]')).map(el => el.getAttribute('aria-label') || el.textContent));
+        .filter(el => el.getClientRects().length && !el.closest('[inert],[aria-hidden="true"]') && !el.closest('[data-alpha-popup],[role="dialog"]')).map(el => el.getAttribute('aria-label') || el.textContent));
       expect(exposed).toEqual([]);
-      await expect(page.getByRole('button', { name: scrim, exact: true })).toHaveCount(1);
+      if(ownedInfo){const scrim=page.locator('button[aria-label="Close album management"]');await expect(scrim).toHaveAttribute('aria-hidden','true');await expect(scrim).toHaveAttribute('tabindex','-1');}
+      await expect(page.getByRole('button', { name: ownedInfo?'Close dialog':scrim, exact: true })).toHaveCount(1);
       const stops = await dialog.locator('button:not(:disabled), input, textarea, select').count();
       for (let step = 0; step < stops + 2; step++) { await page.keyboard.press('Tab'); expect(await inside()).toBe(true); }
       for (let step = 0; step < 2; step++) { await page.keyboard.press('Shift+Tab'); expect(await inside()).toBe(true); }
@@ -247,7 +251,7 @@ test.describe('toast status messages', () => {
 test.describe('photo editor in landscape', () => {
   test.use({ hasTouch: true, isMobile: true, viewport: { width: 915, height: 412 } });
   test('scrolls to Rotate, Crop and the filters, which sit below the preview', async ({ page }) => {
-    await page.goto('/?mode=mock&start=photos:viewer');
+    await openOwnedPhotoViewer(page);
     await page.getByRole('button', { name: 'Edit photo', exact: true }).click();
     const editor = page.locator('[data-alpha-subview="photos-edit"]');
     await expect(editor).toBeVisible();
