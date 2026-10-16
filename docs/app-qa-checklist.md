@@ -15,10 +15,10 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | shell-and-home-01 | Cold launch and saved connection restoration | Pending | Pending | Pending |
 | shell-and-home-02 | Home cards and current calendar summary | Pending | Pending | Pending |
 | shell-and-home-03 | App grid and All apps search | Pending | Pending | Pending |
-| shell-and-home-04 | Full-height layout and chat-pill clearance | Prior preview pass; latest retest pending | Pending | Pending |
+| shell-and-home-04 | Full-height layout and chat-pill clearance | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | shell-and-home-05 | Back gesture and cross-app return | Pending | Pending | Pending |
 | shell-and-home-06 | Chat pill, half sheet and full conversation | Pending | Pending | Pending |
-| shell-and-home-07 | Conversation history after reload | Prior preview pass; latest retest pending | Pending | Pending |
+| shell-and-home-07 | Conversation history after reload | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | shell-and-home-08 | Prompt cancellation and stale approval refusal | Pending | Pending | Pending |
 | shell-and-home-09 | Voice start, interrupt, mute and stop | Pending | Pending | Pending |
 | shell-and-home-10 | Keyboard opening, dismissal and focus | Pending | Pending | Pending |
@@ -34,26 +34,26 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | inbox-02 | Account and folder switching | Pending | Pending | Pending |
 | inbox-03 | Search on Enter and mobile keyboard | Pending | Pending | Pending |
 | inbox-04 | Themed folder menu and removal of More/Search clutter | Pending | Pending | Pending |
-| inbox-05 | Sender images in list and detail | Prior preview pass; latest retest pending | Pending | Pending |
-| inbox-06 | Preview apostrophes, entities and charset decoding | Prior preview pass; latest retest pending | Pending | Pending |
-| inbox-07 | HTML email and default image loading | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-05 | Sender images in list and detail | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| inbox-06 | Preview apostrophes, entities and charset decoding | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| inbox-07 | HTML email and default image loading | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-08 | Image-loading preference | Pending | Pending | Pending |
 | inbox-09 | Long email scrolling and no repeated link chips | Pending | Pending | Pending |
-| inbox-10 | Sender address disclosure: From/To/Cc/Reply-to/date | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-10 | Sender address disclosure: From/To/Cc/Reply-to/date | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-11 | Thread reading and attachments | Pending | Pending | Pending |
-| inbox-12 | New compose alongside unfinished drafts | Prior preview pass; latest retest pending | Pending | Pending |
-| inbox-13 | Reply, Reply all and Forward | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-12 | New compose alongside unfinished drafts | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| inbox-13 | Reply, Reply all and Forward | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-14 | Resume, discard and recover local drafts | Pending | Pending | Pending |
 | inbox-15 | Provider drafts and attachments | Pending | Pending | Pending |
-| inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-16 | Spam, Archive, Sent, Starred and Trash reads | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
-| inbox-18 | Agent list/search/read full email | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-18 | Agent list/search/read full email | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-19 | Agent self-addressed send and delivery readback | Latest real prompt failed before review; Cloud endpoint unavailable | Pending | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
-| inbox-21 | Account-scoped persistent cache and background refresh | Prior preview pass; latest retest pending | Pending | Pending |
+| inbox-21 | Account-scoped persistent cache and background refresh | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
 | inbox-23 | Labels/categories | Outside current standalone QA | Not applicable | Scope recorded |
-| inbox-agent-mailbox | Agent archive, trash and read-state changes | Wired on latest preview; live provider proof pending backend and modify consent | Native owned-broker wiring and provider proof pending | Pending |
+| inbox-agent-mailbox | Agent archive, trash and read-state changes | Wired on latest preview; live provider proof pending backend and modify consent | Native host wiring source-tested; installed provider proof pending | Pending |
 | inbox-agent-threaded-send | Agent threaded reply and forward | Pending | Pending | Pending |
 
 ## Calendar
@@ -71,10 +71,10 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | calendar-09 | Google calendars list and selected source | Pending | Pending | Pending |
 | calendar-10 | Local-first use before Google connection | Pending | Pending | Pending |
 | calendar-11 | Google linked sync enable, destination and status | Pending | Pending | Pending |
-| calendar-12 | Persistent cache and background reconciliation | Prior preview pass; latest retest pending | Pending | Pending |
-| calendar-13 | Agent calendar sources and agenda read | Prior preview pass; latest retest pending | Pending | Pending |
-| calendar-14 | Agent Google event create and readback | Prior preview pass; latest retest pending | Pending | Pending |
-| calendar-15 | Agent Google event update and replay protection | Prior preview pass; latest retest pending | Pending | Pending |
+| calendar-12 | Persistent cache and background reconciliation | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| calendar-13 | Agent calendar sources and agenda read | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| calendar-14 | Agent Google event create and readback | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| calendar-15 | Agent Google event update and replay protection | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | calendar-16 | Agent Google event deletion and provider readback | Pending | Pending | Pending |
 | calendar-17 | Uncertain deletion reconciliation without duplicate write | Latest canonical read: original approval still executing | Pending | Pending |
 | calendar-18 | Native consent and CalendarProvider writes | Pending | Pending | Pending |
@@ -86,7 +86,7 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
 | browser-01 | Blank/new tab and address search | Pending | Pending | Pending |
-| browser-02 | Real website rendering and navigation | Prior preview pass; latest retest pending | Pending | Pending |
+| browser-02 | Real website rendering and navigation | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | browser-03 | Back, Forward and same-URL reload | Pending | Pending | Pending |
 | browser-04 | Tabs create, switch and close | Pending | Pending | Pending |
 | browser-05 | Bookmarks and history | Pending | Pending | Pending |
@@ -100,11 +100,11 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| camera-01 | Photo mode and actual capture | Prior preview pass; latest retest pending | Pending | Pending |
+| camera-01 | Photo mode and actual capture | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | camera-02 | Video mode, recording clock and stop | Pending | Pending | Pending |
 | camera-03 | Mode switching, front/back and zoom | Pending | Pending | Pending |
 | camera-04 | Focus, exposure and supported flash controls | Pending | Pending | Pending |
-| camera-05 | Permission denied, device busy and track termination | Prior preview pass; latest retest pending | Pending | Pending |
+| camera-05 | Permission denied, device busy and track termination | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | camera-06 | Transient toast timeout and centered logo | Pending | Pending | Pending |
 | camera-07 | Capture review and session gallery | Pending | Pending | Pending |
 | camera-08 | Scan capture, add/reorder/remove pages | Pending | Pending | Pending |
@@ -125,12 +125,12 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
 | photos-07 | Photo edits save as copy | Pending | Pending | Pending |
 | photos-08 | Video trim timeline, rotate, crop and preview | Pending | Pending | Pending |
-| photos-09 | Edited-video audio, original preservation and save-copy | Prior preview pass; latest retest pending | Pending | Pending |
+| photos-09 | Edited-video audio, original preservation and save-copy | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | photos-10 | Info and metadata | Pending | Pending | Pending |
 | photos-11 | Share/export actual result | Pending | Pending | Pending |
-| photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Pending | Pending |
-| photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Pending | Pending |
-| photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Pending | Pending |
+| photos-12 | Recently Deleted opens preview on tap | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| photos-13 | Recover one or selected items | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| photos-14 | Permanently delete only explicit selected items | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
 | photos-16 | Native permitted library and consent updates | Pending | Pending | Pending |
 
@@ -138,8 +138,8 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| maps-01 | Real map tiles and rendering | Prior preview pass; latest retest pending | Pending | Pending |
-| maps-02 | Location consent, fix and retry | Prior preview pass; latest retest pending | Pending | Pending |
+| maps-01 | Real map tiles and rendering | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| maps-02 | Location consent, fix and retry | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | maps-03 | Manual origin and coordinate entry | Pending | Pending | Pending |
 | maps-04 | Place search, results and empty state | Pending | Pending | Pending |
 | maps-05 | Place details and saved places | Pending | Pending | Pending |
@@ -153,11 +153,11 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| notes-01 | List, pinned notes and search | Prior preview pass; latest retest pending | Pending | Pending |
-| notes-02 | Create, edit and save text note | Prior preview pass; latest retest pending | Pending | Pending |
+| notes-01 | List, pinned notes and search | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| notes-02 | Create, edit and save text note | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | notes-03 | Checklist conversion and item editing | Pending | Pending | Pending |
-| notes-04 | Reload/restart persistence | Prior preview pass; latest retest pending | Pending | Pending |
-| notes-05 | Recoverable trash and explicit restore | Prior preview pass; latest retest pending | Pending | Pending |
+| notes-04 | Reload/restart persistence | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| notes-05 | Recoverable trash and explicit restore | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | notes-06 | Recording, dictation and interruption | Pending | Pending | Pending |
 | notes-07 | Voice playback, transcript and summary | Pending | Pending | Pending |
 | notes-08 | Share and selected note Ask Alpha | Pending | Pending | Pending |
@@ -167,11 +167,11 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| files-01 | Root and actual storage usage | Prior preview pass; latest retest pending | Pending | Pending |
-| files-02 | Folder create, open, rename and reload | Prior preview pass; latest retest pending | Pending | Pending |
+| files-01 | Root and actual storage usage | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
+| files-02 | Folder create, open, rename and reload | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | files-03 | Search, sorting and grid/list | Pending | Pending | Pending |
 | files-04 | Native folder grant and revoked permission | Pending | Pending | Pending |
-| files-05 | Selection and disabled empty-selection actions | Prior preview pass; latest retest pending | Pending | Pending |
+| files-05 | Selection and disabled empty-selection actions | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | files-06 | Document, image, audio and video preview | Pending | Pending | Pending |
 | files-07 | Rename, share and export | Pending | Pending | Pending |
 | files-08 | Selected-file Ask Alpha and cancellation | Pending | Pending | Pending |
@@ -187,7 +187,7 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | workflows-04 | Reviewed activation and permission scope | Pending | Pending | Pending |
 | workflows-05 | Run, cancel and duplicate prevention | Pending | Pending | Pending |
 | workflows-06 | Run history, failed steps and retry | Pending | Pending | Pending |
-| workflows-07 | Reminder list refresh and completion | Prior preview pass; latest retest pending | Pending | Pending |
+| workflows-07 | Reminder list refresh and completion | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | workflows-08 | Schedule timing and restart recovery | Pending | Pending | Pending |
 | workflows-09 | Agent workflow creation and selected-run context | Pending | Pending | Pending |
 
@@ -230,16 +230,18 @@ Review order: latest preview â†’ deployed backend operations and prompt proof â†
 | platform-and-release-10 | AOSP-only Contacts views | Outside current standalone QA | Not applicable | Scope recorded |
 | platform-and-release-11 | Wallet excluded from MVP | Outside current standalone QA | Not applicable | Scope recorded |
 | platform-and-release-12 | Latest source/runtime/build/installed provenance | Pending | Pending | Pending |
-| platform-and-release-13 | Host verification and production bundle audit | Prior preview pass; latest retest pending | Pending | Pending |
+| platform-and-release-13 | Host verification and production bundle audit | 1450 tests passed;2 existing skips; production bundle audit passed at58c03084 | Pending | Pending |
 | platform-and-release-14 | Hosted CI at published head | Pending | Pending | Pending |
 | platform-and-release-15 | Commits, upstream pins and PR reconciliation | Pending | Pending | Pending |
 | platform-and-release-16 | Human per-view approval and final acceptance | Pending | Pending | Pending |
-| platform-native-google-broker | Native managed Google broker and account binding | Browser host wiring tested | Inspect normal native connector path and qualify owned composition | Pending |
+| platform-native-google-broker | Native managed Google broker and account binding | Browser host wiring tested | Native composition implemented; staging and installed proof pending | Pending |
 
 ## Current integration gaps
 
 - Real new-email preparation reached MESSAGE_SEND_DRAFT but failed at the unavailable Cloud operations endpoint; no email was sent.
-- Agent archive/trash/read-state is implemented and locally tested; live modify consent, backend proof and native composition remain open. Agent threaded reply/forward is still missing.
+- Agent archive/trash/read-state is implemented and locally tested; live modify consent, backend proof and installed native acceptance remain open. Agent threaded reply/forward is still missing.
 - Original Calendar deletion remains executing/uncertain. Reconcile its durable receipt before another effect.
 - ARM64 Seeker and x86 emulator standalone JNI/BGE probes passed at their recorded source. Full installed Alpha, speech and resident-agent acceptance remain pending.
 - JSON records all 14 registered view modules and named presets; excluded and AOSP-only surfaces remain visible.
+
+Current preview source: product `58c03084`, Shared `33a6d19c024a`. The current Gmail read-only agent prompt passed. Native Google module loading and owner fencing are implemented and source-tested. The current engine candidate compiled for ARM64; x86 compilation and full Android runtime staging remain in progress. No send, Calendar-delete, full native or human approval result is implied.

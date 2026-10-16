@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T07:00:07.323631+00:00",
+  "updatedAt": "2026-10-16T11:34:54.025819+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "a09255d6ca69d42b7f98777a59862e6208267238",
+  "productSource": "58c03084cd1506706866b0e85fd7a6561497f32a",
   "agentSource": "33a6d19c024a4ec130710f0808df25588266d542",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -1954,11 +1954,11 @@
       "viewOrFlow": "Host verification and production bundle audit",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Full product verify:1450passed,2existing skips; production build and404-file audit passed at58c03084",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "This does not establish visual, native or provider acceptance."
     },
     {
       "id": "platform-and-release-14",
@@ -2003,11 +2003,13 @@
       "scope": "MVP",
       "implementation": "Implemented and package/host tests passed",
       "preview": "Wired on latest preview; live provider proof pending backend and modify consent",
-      "seeker": "Native owned-broker wiring and provider proof pending",
+      "seeker": "Native host wiring implemented and source-tested; installed provider proof pending",
       "userApproval": "Pending",
       "evidence": [
         "scripts/gmail-agent-mailbox-host.ts",
-        "test/gmail-agent-read-host.test.mjs"
+        "test/gmail-agent-read-host.test.mjs",
+        "backend/native-google-agent-host.ts",
+        "test/native-google-agent-host.test.mjs"
       ],
       "notes": "Trusted caller; stable turn operation ID; exact revision/review/receipt/labels; no uncertain dispatch replay."
     },
@@ -2028,12 +2030,15 @@
       "area": "Platform and release",
       "viewOrFlow": "Native managed Google broker and account binding",
       "scope": "MVP",
-      "implementation": "Explicit managed broker environment is currently configured by browser development host only",
-      "preview": "Browser host wiring tested",
-      "seeker": "Inspect normal native connector path and qualify owned composition",
+      "implementation": "Native launch, authenticated module artifact and Shared loader implemented; source verification passed",
+      "preview": "Actual Gmail read-only prompt passed at33a6; sends/deletion remain open",
+      "seeker": "Current Android runtime staging and installed account/receipt proof pending",
       "userApproval": "Pending",
       "evidence": [
-        "scripts/start-local-remote.mjs"
+        "backend/native-google-agent-host.ts",
+        "backend/native-google-cloud-port.ts",
+        "scripts/native-google-host-artifact.mjs",
+        "test/native-google-agent-host.test.mjs"
       ],
       "notes": "Do not transfer browser B4 credentials to phone A1 or treat browser prompt proof as resident-agent proof."
     }
