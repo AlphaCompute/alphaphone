@@ -15,6 +15,8 @@
 .alpha-cloud-account-summary strong,.alpha-cloud-account-summary span{min-width:0;overflow-wrap:anywhere}
 
 .alpha-google-connections .alpha-google-account{flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px}
+.alpha-google-connections>header{position:sticky;top:-20px;z-index:1;margin:-20px -22px 12px;padding:16px 22px 12px;background:var(--connection-bg,#fff)}
+.alpha-google-connections>header h2{margin:0;font-size:24px;line-height:1.2}
 .alpha-google-account>strong,.alpha-google-account>span{min-width:0;overflow-wrap:anywhere}
 .alpha-google-account>span{flex:none}
 .alpha-google-account details{padding:0;width:100%}

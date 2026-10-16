@@ -7,8 +7,8 @@ import {transformSync} from 'esbuild';
 import {JSDOM} from 'jsdom';
 
 // Mount the actual panel. Only external account/Calendar I/O is replaced.
-test('display selection performs zero provider reads; explicit refresh and grant changes still revalidate',async()=>{
- const dom=new JSDOM('<div id="root"></div>',{url:'https://alpha.invalid'});
+test('Google settings keep display choices local, revalidate grants and own Android Back',async()=>{
+ const dom=new JSDOM('<div class="os" style="--bg:#121212;--fg:#fff;--acct:#95a0ff;--acc:#0000ff"></div><div id="root"></div>',{url:'https://alpha.invalid'});
  const saved={window:globalThis.window,document:globalThis.document,HTMLElement:globalThis.HTMLElement,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
  Object.assign(globalThis,{window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,IS_REACT_ACT_ENVIRONMENT:true});
  const require=createRequire(import.meta.url),React=require('react'),{createRoot}=require('react-dom/client');
@@ -31,7 +31,7 @@ test('display selection performs zero provider reads; explicit refresh and grant
  };
  const compiled=transformSync(readFileSync('apps/app/src/runtime/google-connection-ui.tsx','utf8'),{loader:'tsx',jsx:'automatic',format:'cjs',target:'es2022'}).code;
  const module={exports:{}};
- const context=vm.createContext({module,exports:module.exports,require:name=>name==='react'||name==='react/jsx-runtime'?require(name):modules[name]??(()=>{throw Error('Unexpected import '+name);})(),window:dom.window,document:dom.window.document,HTMLElement:dom.window.HTMLElement,AbortController,Event:dom.window.Event});
+ const context=vm.createContext({module,exports:module.exports,require:name=>name==='react'||name==='react/jsx-runtime'?require(name):modules[name]??(()=>{throw Error('Unexpected import '+name);})(),window:dom.window,document:dom.window.document,getComputedStyle:dom.window.getComputedStyle,HTMLElement:dom.window.HTMLElement,AbortController,Event:dom.window.Event});
  vm.runInContext(compiled,context);
  const {GoogleConnectionsPanel,googleConnectionController}=module.exports;
  const root=createRoot(dom.window.document.getElementById('root'));
@@ -39,6 +39,9 @@ test('display selection performs zero provider reads; explicit refresh and grant
  try{
   googleConnectionController.open();
   await React.act(async()=>{root.render(React.createElement(GoogleConnectionsPanel));await flush();});
+  const panel=dom.window.document.querySelector('[role="dialog"]');
+  assert.equal(panel.style.getPropertyValue('--connection-bg'),'#121212');
+  assert.equal(panel.style.getPropertyValue('--connection-acc'),'#95a0ff','Use the theme text accent, not its lower-contrast fill accent');
   assert.deepEqual(counts,{accounts:1,calendars:1});
   const choices=dom.window.document.querySelectorAll('input[type="radio"]');assert.equal(choices.length,2);
   await React.act(async()=>{choices[1].click();await flush();});
@@ -50,6 +53,11 @@ test('display selection performs zero provider reads; explicit refresh and grant
   await React.act(async()=>{dom.window.dispatchEvent(new dom.window.Event(ACCOUNTS));await flush();});
   assert.deepEqual(counts,{accounts:3,calendars:3});
   assert.equal(dom.window.document.querySelectorAll('input[type="radio"]')[1].checked,true);
+  let underlyingBack=0;dom.window.addEventListener('alpha-back',()=>underlyingBack++);
+  const back=new dom.window.Event('alpha-back',{cancelable:true});
+  await React.act(async()=>{dom.window.dispatchEvent(back);await flush();});
+  assert.equal(back.defaultPrevented,true);assert.equal(underlyingBack,0);
+  assert.equal(googleConnectionController.getSnapshot(),false);assert.equal(dom.window.document.querySelector('[role="dialog"]'),null);
  }finally{
   await React.act(async()=>root.unmount());dom.window.close();
   for(const [key,value] of Object.entries(saved)){if(value===undefined)delete globalThis[key];else globalThis[key]=value;}
