@@ -175,7 +175,8 @@ test('the Home calendar card names the device calendar its event was read from, 
   const card = calendarCard(page);
   await expect(card).toContainText('Quay inspection', { timeout: 20_000 });
   await expect(origin(page)).toHaveText('Harbour team');
-  await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveText(/^Read \d{1,2}:\d{2}/);
+  // The card's visible row names only the calendar; when it was read is in the accessible description.
+  await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
   await expect(card).toHaveAttribute('aria-description', /^Harbour team\. Read \d{1,2}:\d{2}.* from calendars on this device$/);
   await page.screenshot({ path: info.outputPath('home-calendar-name.png'), animations: 'disabled' });
 
@@ -190,7 +191,8 @@ test('the Home calendar card names the device calendar its event was read from, 
   // example it was removed while the instance was still listed). No other calendar's name is used.
   await harness(page, f => { f.calendar.calendars = f.calendar.calendars.filter((row: any) => row.id !== '7'); });
   await resume(page);
-  await expect(origin(page)).toHaveText('Device');
+  // No calendar name is borrowed or invented for an event whose calendar the read did not return.
+  await expect(origin(page)).toHaveText('');
   await expect(card).toContainText('Quay inspection');
   await expect(card).toHaveAttribute('aria-description', /^Read \d{1,2}:\d{2}.* from calendars on this device$/);
   await expect(card).not.toContainText(/Harbour|Family/);
@@ -269,7 +271,8 @@ test('the Home calendar card shows when the provider read completed, not when Ho
   await expect(card).toContainText('Quay inspection', { timeout: 20_000 });
   const drawnAt = await page.evaluate(() => Date.now());
   expect(drawnAt - completed).toBeGreaterThanOrEqual(120_000);
-  await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveText(`Read ${await when(page, completed)}`);
+  await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
+  await expect(card).toHaveAttribute('aria-description', new RegExp(`Read ${(await when(page, completed)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   expect(await when(page, completed)).not.toBe(await when(page, drawnAt));
   expect(await harness(page, f => f.unexpected)).toEqual([]);
 });
