@@ -459,7 +459,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
           }else rows.push(info('Calendar access','Not available in this version'));
           const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
-          groups.push({...group(display?.native?[info('Google sync','Device calendar sync is not available in this build')]:[{kNav:true,label:'Google Calendar sync',lbl:'Google Calendar sync',sub:'Review the destination and enable linked event sync',hasSub:true,chev:true,noAB:true,go:openCalendarSyncSettings}]),cap:'Sync',hasCap:true});
+          groups.push({...group([{kNav:true,label:'Google Calendar sync',lbl:'Google Calendar sync',sub:'Review the destination and enable linked event sync',hasSub:true,chev:true,noAB:true,go:openCalendarSyncSettings}]),cap:'Sync',hasCap:true});
           if(testMocksEnabled&&!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
         }
