@@ -122,16 +122,16 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-02 | Stable top-bar layout across Photos/Albums | Stable header slots implemented; browser visual QA pending. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review. | Pending |
 | photos-03 | Albums list, contents, selection and batch actions | Albums list/contents implemented; selection and batch-action review pending. | Native Albums list opened. Current Select photos action targets library; native custom-album selection remains open. | Pending |
 | photos-04 | Search, favorites and empty results | Pending | Pending | Pending |
-| photos-05 | Photo viewer, zoom and previous/next | Pending | Pending | Pending |
+| photos-05 | Photo viewer, zoom and previous/next | Pending | Opened the newly captured960x1280 QA photo on574; local viewer controls rendered. | Pending |
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
 | photos-07 | Photo edits save as copy | Pending | Pending | Pending |
 | photos-08 | Video trim timeline, rotate, crop and preview | Pending | Pending | Pending |
 | photos-09 | Edited-video audio, original preservation and save-copy | Prior preview pass; latest retest pending | Pending | Pending |
 | photos-10 | Info and metadata | Pending | Pending | Pending |
 | photos-11 | Share/export actual result | Pending | Pending | Pending |
-| photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Pending | Pending |
-| photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Pending | Pending |
-| photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Pending | Pending |
+| photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred. | Pending |
+| photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Passed574: explicit Recover restored the sole QA item; trashcount returned0. | Pending |
+| photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0. | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
 | photos-16 | Native permitted library and consent updates | Pending | Pending | Pending |
 

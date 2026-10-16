@@ -1007,7 +1007,7 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Pending",
-      "seeker": "Pending",
+      "seeker": "Opened the newly captured960x1280 QA photo on574; local viewer controls rendered.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -1091,7 +1091,7 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "seeker": "Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -1103,7 +1103,7 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "seeker": "Passed574: explicit Recover restored the sole QA item; trashcount returned0.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -1115,7 +1115,7 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "seeker": "Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
