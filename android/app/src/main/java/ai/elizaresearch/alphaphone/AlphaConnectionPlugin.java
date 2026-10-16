@@ -114,6 +114,8 @@ public final class AlphaConnectionPlugin extends Plugin {
  private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");});}
  void writeCredentialSlot(String name,String value)throws Exception{storage().writeCredentialSlot(name,value);}
  String readCredentialSlot(String name)throws Exception{return storage().readCredentialSlot(name);}
+ /** The native Calendar sync consent (renderer-inaccessible); read only for a sync write. */
+ private String calendarSyncConsent()throws Exception{return readCredentialSlot(CalendarSyncBridge.SLOT);}
  void removeCredentialSlot(String name)throws Exception{storage().removeCredentialSlot(name);}
  /** Required before rendering or persisting mock mode; never resumes automatically. */
  @PluginMethod public void pauseNotificationCollection(PluginCall call) {
@@ -238,6 +240,8 @@ public final class AlphaConnectionPlugin extends Plugin {
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
     if(!ConnectionRoutes.managedService(url.getRawPath(),url.getRawQuery(),method,call.getString("body")!=null,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
+    // Google Calendar writes need the native sync consent; the renderer's preference alone is not enough.
+    if(CalendarSyncConsent.write(url.getRawPath(),method)&&!CalendarSyncConsent.admits(url.getRawPath(),url.getRawQuery(),method,call.getString("body"),calendarSyncConsent()))throw new IllegalArgumentException();
     String route=url.getRawPath()+(url.getRawQuery()==null?"":"?"+url.getRawQuery());
     if(ConnectionRoutes.retiredPairing(url.getPath(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
     boolean selfRevocation=ConnectionRoutes.cloudSelfRevocation(url.getScheme(),url.getHost(),url.getPort(),url.getRawPath(),url.getRawQuery(),method,call.getString("body")!=null,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
