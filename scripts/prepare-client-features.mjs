@@ -109,6 +109,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
   if (upstream.pin !== '968348d792d3d36df129bc53bd85cebed47d0830') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
+    'packages/host/src/voice.ts':'6dc46172e55c3e3fcac3e5b548b7f5e5c9bbda7cd12792f43f0ee807d48df1f6',
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',
     'packages/core/src/logger.ts':'8c2401ba44a79b94a11095bdce3568f65374d2d7b1421c5894b08753feafb7d1',
@@ -116,6 +117,12 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   for(const [name,digest] of Object.entries(projectionInputs))if(sourceFiles[name]!==digest)throw Error('Review changed voice projection input: '+name);
   const project = (name, text) => source.set(name, {bytes:Buffer.from(text),mode:'100644',sha256:hash(Buffer.from(text))});
   const text = name => source.get(name).bytes.toString();
+  // Preserve Alpha's existing explicit renderer claim/ack protocol through the
+  // canonical browser voice parser. This chooses delivery, never authority.
+  const voiceContextPath='packages/host/src/voice.ts';
+  project(voiceContextPath,text(voiceContextPath)
+    .replace('  uiBrowserSurface?: "native";', '  uiBrowserSurface?: "native";\n  /** Existing renderer claim/ack delivery protocol; not navigation authority. */\n  viewDelivery?: "completed-action";')
+    .replace('  if (source.uiClientId !== undefined) {', '  if (source.viewDelivery !== undefined) {\n    if (source.viewDelivery !== "completed-action") return null;\n    result.viewDelivery = "completed-action";\n  }\n  if (source.uiClientId !== undefined) {'));
   const clientPath='packages/ui/src/voice/voice-session-client.ts';
   const fallback='      const { fetchVoiceSession } = await import("./voice-session-fetch");\n      return fetchVoiceSession(url, init);';
   if(text(clientPath).split(fallback).length!==2)throw Error('Voice fetch projection source changed.');

@@ -1386,6 +1386,7 @@ export const connectionController = {
   cancelViewNavigation(){active?.viewNavigation?.cancel();},
   setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
   voiceRendererClientId(){return boundNavigation()?.clientId;},
+  voiceRendererMetadata(context:ContextEnvelope){return boundNavigation()?.metadata(context)??{};},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
   setForegroundExecutor(executor: ForegroundReviewExecutor) { foregroundExecutor = executor; },
