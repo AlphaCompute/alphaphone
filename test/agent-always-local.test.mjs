@@ -7,7 +7,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {DENYLIST, RETIRED_NO_AGENT_TEXT} from '../scripts/audit-production-bundle.mjs';
+import {DENYLIST, RETIRED_NO_AGENT_TEXT, RETIRED_REMOTE_AGENT_TEXT} from '../scripts/audit-production-bundle.mjs';
 
 const read = file => readFileSync(new URL('../' + file, import.meta.url), 'utf8');
 const ui = read('apps/app/src/runtime/connection-ui.tsx');
@@ -20,6 +20,26 @@ test('production bundles forbid the retired no-agent copy', () => {
     assert.ok(RETIRED_NO_AGENT_TEXT.includes(text), text);
     assert.ok(DENYLIST.includes(text), text);
   }
+});
+
+test('production bundles forbid remote-agent fallback copy, which stays test-mocks only (#381)', () => {
+  for (const text of ['Connect your remote agent', 'No remote agent connected', 'Connect a remote agent']) {
+    assert.ok(RETIRED_REMOTE_AGENT_TEXT.includes(text), text);
+    assert.ok(DENYLIST.includes(text), text);
+  }
+  // Every remote-agent sentence in renderer source sits behind a constant-folded testMocksEnabled
+  // branch; production wording names the on-phone agent instead.
+  const sources = ['apps/app/src/runtime/connection-ui.tsx', 'apps/app/src/prototype/native-adapter.ts', 'apps/app/src/prototype/workflow-adapter.ts'];
+  for (const file of sources) {
+    const lines = read(file).split('\n');
+    for (const [index, line] of lines.entries()) {
+      if (!RETIRED_REMOTE_AGENT_TEXT.some(text => line.includes(text)) || line.trim().startsWith('//') || line.trim().startsWith('*')) continue;
+      assert.match(line, /testMocksEnabled ?\?|!testMocksEnabled ?\?/, `${file}:${index + 1} gates remote-agent copy on testMocksEnabled`);
+    }
+  }
+  assert.match(ui, /const PENDING_FALLBACK = testMocksEnabled \? 'Connect your remote agent in Settings\.' : LOCAL_AGENT_ELSEWHERE;/);
+  assert.match(ui, /export const LOCAL_AGENT_ELSEWHERE = 'Your agent runs on your phone, not here\. Open Alpha on your Android phone to use it\.';/);
+  assert.doesNotMatch(ui, /NO_REMOTE_(SEND|VOICE)/);
 });
 
 test('plan state never stops or withholds the on-device agent', () => {

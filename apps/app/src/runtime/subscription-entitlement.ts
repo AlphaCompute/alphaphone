@@ -454,10 +454,19 @@ const SUBSCRIPTION_KINDS = new Set(['subscription_required', 'subscription_inact
 /**
  * Billing refusals that do not say whether the plan is missing or its usage is spent. The pinned
  * upstream agent reports a Cloud 402 as ChatFailureKind `insufficient_credits`
- * (packages/contracts chat.ts), and today's Cloud returns it for an empty credit balance.
+ * (packages/contracts chat.ts); the name predates subscriptions, and Cloud returns it when the
+ * account has no usable plan allowance. The phone never offers a purchase for it.
  */
 const BILLING_KINDS = new Set(['insufficient_credits', 'insufficient_quota', 'payment_required']);
-function retryFields(row: Bag, now: number): { retryAfterMs: number | null; resetsAt: number | null } {
+/** Longest period-allowance reset a relative wait may describe (a billing period plus slack). */
+const MAX_PERIOD_RESET_MS = 400 * 86_400_000;
+/**
+ * Retry timing on one refusal row. `period` is true for allowance and billing refusals, whose
+ * structured reset (`resetAt`/`resetsAt` as ISO 8601 or epoch, or a `retryAfterSeconds` wait) is
+ * the billing-period allowance reset: a wait longer than a day is kept as that reset instant
+ * instead of a countdown. Rate limits keep the one-day countdown ceiling.
+ */
+function retryFields(row: Bag, now: number, period = false): { retryAfterMs: number | null; resetsAt: number | null } {
   const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : typeof value === 'string' && /^\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null;
   const instant = (value: unknown) => {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) return value < 1e12 ? value * 1000 : value;
@@ -472,9 +481,13 @@ function retryFields(row: Bag, now: number): { retryAfterMs: number | null; rese
   const headerDate = typeof row.retryAfter === 'string' && /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(row.retryAfter.trim()) ? row.retryAfter : undefined;
   const at = instant(row.retryAt ?? row.retry_at ?? headerDate);
   if (retryAfterMs === null && at !== null) retryAfterMs = Math.max(0, at - now);
-  const resetsAt = instant(row.resetsAt ?? row.resetAt ?? row.reset_at);
-  // A retry hint longer than a day is not presented as a countdown.
-  if (retryAfterMs !== null && retryAfterMs > 86_400_000) retryAfterMs = null;
+  let resetsAt = instant(row.resetsAt ?? row.resetAt ?? row.reset_at);
+  // A retry hint longer than a day is not presented as a countdown; for a period allowance it is
+  // the reset instant when Cloud gave no explicit one.
+  if (retryAfterMs !== null && retryAfterMs > 86_400_000) {
+    if (period && resetsAt === null && retryAfterMs <= MAX_PERIOD_RESET_MS) resetsAt = now + retryAfterMs;
+    retryAfterMs = null;
+  }
   return { retryAfterMs, resetsAt };
 }
 /**
@@ -497,7 +510,7 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
     for (const key of ['terminalFailure', 'rateLimit', 'data', 'error', 'details']) {
       const nested = visit(row[key], depth + 1, ownStatus);
       if (nested) {
-        const own = retryFields(row, now);
+        const own = retryFields(row, now, nested.kind !== 'rate-limited');
         return { ...nested, retryAfterMs: nested.retryAfterMs ?? own.retryAfterMs, resetsAt: nested.resetsAt ?? own.resetsAt };
       }
     }
@@ -508,7 +521,7 @@ export function readServiceLimit(source: unknown, now: number = Date.now()): Ser
     else if (has(BILLING_KINDS)) limit = 'billing-refused';
     else if (ownStatus === 429 && depth === 0) limit = 'rate-limited';
     else if (ownStatus === 402 && depth === 0) limit = 'billing-refused';
-    return limit ? { kind: limit, ...retryFields(row, now) } : null;
+    return limit ? { kind: limit, ...retryFields(row, now, limit !== 'rate-limited') } : null;
   };
   return visit(source, 0, null);
 }
@@ -529,7 +542,8 @@ export function serviceLimitMessage(limit: ServiceLimit | null, now: number = Da
     const reset = limit.resetsAt != null && limit.resetsAt > now ? ` It resets ${clock(limit.resetsAt)}.` : limit.retryAfterMs != null ? ` It resets in ${retryDuration(limit.retryAfterMs)}.` : '';
     return `Your plan's AI allowance for this period is used up.${reset} Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
   }
-  if (limit.kind === 'billing-refused') return `Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
+  // A structured period reset from the agent or Cloud is shown; without one the copy is unchanged.
+  if (limit.kind === 'billing-refused') return `Eliza Cloud declined this AI request for your account's billing.${limit.resetsAt != null && limit.resetsAt > now ? ` Eliza Cloud reports your plan allowance resets ${clock(limit.resetsAt)}.` : ''} Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
   return `AI needs an active Eliza Cloud plan. Manage your plan in Eliza Cloud. Nothing is purchased automatically. ${LOCAL_KEEPS_WORKING}`;
 }
 
