@@ -165,11 +165,33 @@ export function checkListenerDescriptor(descriptor, { appId, apkSha256, signer }
   return true;
 }
 
-export function listenerProductMakefile() {
+export function listenerProductMakefile({ systemuiChip = true } = {}) {
   return `
 # Alpha Phone always-on listener (scripts/stage-aosp.mjs --listener-apk).
 include $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/listener/listener.mk
-`;
+` + (systemuiChip ? `# The listener captures only with SystemUI's Listening chip lease: the image's SystemUI must carry the chip patch.
+include $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/listener/systemui/chip/chip.mk
+` : "");
+}
+
+/**
+ * Record of the SystemUI source patches the staged product needs. The listener never captures
+ * without the chip's indicator lease, so every staged listener (production included) requires the
+ * chip bundle unless a development caller explicitly passes systemuiChip:false. Staging never
+ * patches AOSP source: the image build applies the bundle (scripts/aosp-listener-systemui.mjs --chip).
+ */
+export function listenerSystemuiRequirements(root, { systemuiChip = true } = {}) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(root, LISTENER_SOURCE, "systemui/chip/manifest.json"), "utf8"));
+  return {
+    schema: 1,
+    systemuiChip,
+    requiredSourcePatches: systemuiChip ? [{ bundle: "chip", manifest: "listener/systemui/chip/manifest.json", project: manifest.project, revision: manifest.revision, patchSha256: manifest.patchSha256,
+      apply: "node scripts/aosp-listener-systemui.mjs --source ORIGINAL_AOSP --chip --output NEW_OVERLAY, copied into the build copy and checked with --after" }] : [],
+    consequence: systemuiChip
+      ? "SystemUI must be built with the chip patch; the generated certificate overlay names a resource only the patched SystemUI defines."
+      : "Development product without the Listening chip: the listener never receives an indicator lease and never captures.",
+    sourcePatched: false, imageBuilt: false,
+  };
 }
 
 /**
@@ -177,7 +199,7 @@ include $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/listener/listener.m
  * appends its makefile to product.mk. `dump` is `aapt dump permissions` of the APK; `signer` and
  * `launcherSigner` are SHA-256 certificate digests.
  */
-export function stageListener({ root, output, apk, dump, signer, launcherSigner, appId }) {
+export function stageListener({ root, output, apk, dump, signer, launcherSigner, appId, systemuiChip = true }) {
   const source = path.join(root, LISTENER_SOURCE);
   const read = name => fs.readFileSync(path.join(source, name), "utf8");
   checkListenerPermissions(dump, read("permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml"), listenerPackage(appId));
@@ -194,7 +216,8 @@ export function stageListener({ root, output, apk, dump, signer, launcherSigner,
   fs.mkdirSync(chipOverlay, { recursive: true });
   fs.writeFileSync(path.join(chipOverlay, "alpha-listener-certificate.xml"),
     `<resources><string name="config_alphaListeningCertificateSha256" translatable="false">${signer}</string></resources>\n`, { flag: "wx" });
-  fs.appendFileSync(path.join(output, "product.mk"), listenerProductMakefile());
+  fs.writeFileSync(path.join(target, "systemui/required-source-patches.json"), JSON.stringify(listenerSystemuiRequirements(root, { systemuiChip }), null, 2) + "\n", { flag: "wx" });
+  fs.appendFileSync(path.join(output, "product.mk"), listenerProductMakefile({ systemuiChip }));
   return target;
 }
 

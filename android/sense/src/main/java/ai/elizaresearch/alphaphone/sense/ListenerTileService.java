@@ -17,11 +17,11 @@ public final class ListenerTileService extends TileService {
  @Override public void onClick(){
   ListenerPolicy.State state=Listener.state(this);
   ListenerStore store=new ListenerStore(this);
-  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL){
+  if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL||ListenerPolicy.indicatorPaused(state)){
    store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
    Listener.refresh(this);
    render();
-  }else if(state==ListenerPolicy.State.PAUSED_USER){
+  }else if(state==ListenerPolicy.State.PAUSED_USER||state==ListenerPolicy.State.STOPPED_INDICATOR_LOST){
    Runnable resume=()->{store.resume();Listener.refresh(this);render();};
    if(isLocked())unlockAndRun(resume);else resume.run();
   }else{
