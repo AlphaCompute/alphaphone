@@ -126,7 +126,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
 | photos-07 | Photo edits save as copy | Pending | Pending | Pending |
 | photos-08 | Video trim timeline, rotate, crop and preview | Pending | Pending | Pending |
-| photos-09 | Edited-video audio, original preservation and save-copy | Prior preview pass; latest retest pending | Pending | Pending |
+| photos-09 | Edited-video audio, original preservation and save-copy | Browser editor and trim validation pass in45-test media suite. | Native video editing is still disabled; real encoder/export and copy-recovery qualification remain required. | Pending |
 | photos-10 | Info and metadata | Pending | Pending | Pending |
 | photos-11 | Share/export actual result | Pending | Pending | Pending |
 | photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred. | Pending |

@@ -1058,12 +1058,12 @@
       "area": "Photos",
       "viewOrFlow": "Edited-video audio, original preservation and save-copy",
       "scope": "MVP",
-      "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "implementation": "Browser editor implemented. Native video editing remains explicitly disabled; Android trim/rotate/crop/export and receipt recovery still require implementation and qualification.",
+      "preview": "Current45-test media suite passes, including video editor validation and minimum-span trim controls. This does not prove Android export.",
+      "seeker": "Not implemented: native Edit video refuses with the original unchanged.",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "Use a real Android encoder/export path with audio and original preservation, durable copy receipts and source permission/revision checks. Human approval remains pending."
     },
     {
       "id": "photos-10",
