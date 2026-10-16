@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T11:34:54.025819+00:00",
+  "updatedAt": "2026-10-16T13:32:10.542720+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "58c03084cd1506706866b0e85fd7a6561497f32a",
+  "productSource": "065c5810f8b64cd10c75f5b4ce1ac05505955275",
   "agentSource": "33a6d19c024a4ec130710f0808df25588266d542",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -378,7 +378,7 @@
       "viewOrFlow": "Agent list/search/read full email",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -2032,7 +2032,7 @@
       "scope": "MVP",
       "implementation": "Native launch, authenticated module artifact and Shared loader implemented; source verification passed",
       "preview": "Actual Gmail read-only prompt passed at33a6; sends/deletion remain open",
-      "seeker": "Current Android runtime staging and installed account/receipt proof pending",
+      "seeker": "Native broker bundled and source-tested; final APK build running; installed proof pending",
       "userApproval": "Pending",
       "evidence": [
         "backend/native-google-agent-host.ts",
@@ -2189,5 +2189,16 @@
       "scope": "MVP"
     }
   ],
-  "nativeSpeechEvidence": "docs/evidence/alpha-native-speech-2026-10-15.json; synthetic native test app only, not installed Alpha or human acceptance"
+  "nativeSpeechEvidence": "docs/evidence/native-google-33a6; current ARM64 Seeker and x86 API35 component streaming/cancellation/ASR tests passed; full installed Alpha audio and human acceptance pending",
+  "automatedValidation": {
+    "source": "065c5810f8b64cd10c75f5b4ce1ac05505955275",
+    "tests": 1452,
+    "passed": 1450,
+    "skipped": 2,
+    "failed": 0,
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "productionAudit": "404 files; testMocks=false; passed",
+    "visibleAcceptance": false
+  }
 }
