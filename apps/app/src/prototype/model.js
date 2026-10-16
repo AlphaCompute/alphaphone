@@ -2385,6 +2385,7 @@ registerView("photos", {
         slide: "transform: translateX(" + (st.vx || 0) + "px); opacity: " + (st.vx ? 0.35 : 1) + "; transition: " + (st.vt ? "transform .32s cubic-bezier(.19,1,.22,1), opacity .25s" : "none"),
         day: phDayLabel(cur.ts, now), sub: [cur.place, phTime(cur.ts)].filter(Boolean).join(" · "),
         chromeOp: st.chrome ? 1 : 0, chromePE: st.chrome ? "auto" : "none",
+        notDeleted: true,
         favIcon: cur.fav ? "fill: currentColor" : "", favLabel: cur.fav ? "Remove from favorites" : "Add to favorites",
         editLabel: cur.kind === "video" ? "Edit video" : "Edit photo", shareLabel: cur.kind === "video" ? "Share video" : "Share photo", infoLabel: cur.kind === "video" ? "Video info" : "Photo info", deleteLabel: cur.kind === "video" ? "Delete video" : "Delete photo",
         vid: cur.kind === "video", playBtn: cur.kind === "video" && !st.playing, playing: !!st.playing,
