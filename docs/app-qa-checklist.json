@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T21:31:05.575504+00:00",
+  "updatedAt": "2026-10-16T21:49:05.077166+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -43,7 +43,7 @@
       "scope": "MVP",
       "implementation": "Core-only Home defaults; explicit native favorites and All apps retained. 34 unit and 6 browser checks pass.",
       "preview": "Focused synthetic browser proof; real 5209 remains available for human QA.",
-      "seeker": "Pending",
+      "seeker": "Installeda569: core-only grid and All apps visibly verified after update; broader shortcuts/drawer acceptance pending.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -379,9 +379,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending",
-      "seeker": "Pending",
+      "seeker": "Installeda569 ordinary read-only LinkedIn prompt failed before answering: runtime selected missing local chat bundle. Cloud credits UI is recognized; native text-provider wiring needs correction.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-a569-native-update-20261016.json"
+      ],
       "notes": ""
     },
     {
@@ -2281,6 +2283,13 @@
       "characterWake": 1,
       "photosShareScrim": 1
     },
-    "limits": "Focused synthetic browser checks do not prove native providers, native video export, target-device voice quality, or human acceptance. Native APK packaging and Shared911 repository verification remain active."
+    "limits": "Focused browser checks do not prove native providers or native video export. Nativea569 packaging and same-signer Seeker update passed; native prompt failed on local text-provider routing. Shared911 repository verification and live integration acceptance remain open.",
+    "nativeA569": {
+      "fourVariantsPassed": true,
+      "sameSignerUpdateInstalled": true,
+      "dataPreserved": true,
+      "nativePromptAcceptance": false,
+      "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
+    }
   }
 }

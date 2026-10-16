@@ -1,6 +1,6 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Current functional code `a569f79c`, including main `c23eac71`; Shared `9116ba86`. Updated October16,2026.
+Live preview: <http://127.0.0.1:5209/>. Current preview functional code `94bef8bc`, including main `c23eac71`; Shared `9116ba86`. Updated October16,2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
@@ -258,3 +258,5 @@ Latest qualification: Android foundation and repository verification passed in h
 October16 focused follow-up: 45 browser media checks passed (edit-copy recovery, video trim controls, albums/batch, photo-email review and scanning), plus10 Photos focus/contrast checks and4 search reachability checks at200% text. These are browser tests, not Android export or human acceptance. The protected Calendar event is still present with its original ETag after a fresh GET-only read; deletion remains unconfirmed.
 
 Current CI follow-up: repository verification1462 pass/2 skip/0 fail; production browser271 pass. Stored-media Photos fixtures, collapsed-details audit, themed Drafts menu and current context/voice controls are corrected and focused-tested. Development Files/Inbox11 checks, Character wake and Photos share dismissal also pass. These results do not establish native providers or native video export; those gates stay open.
+
+Seeker update: nativea569/shared911 passed all four packaging variants and installed with the original signer, UID and first installation date preserved. Credits are recognized and the resident runs. The first read-only Gmail prompt failed because the runtime attempted an absent local text model; native Cloud text inference wiring and prompt acceptance remain open. See `docs/evidence/seeker-a569-native-update-20261016.json`.
