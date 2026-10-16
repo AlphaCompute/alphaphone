@@ -493,6 +493,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     window.addEventListener('pagehide', this.pageHideHandler);
     window.addEventListener('pageshow', this.pageShowHandler);
     this.backHandler = (event: Event) => {
+      // Native Back reaches the shell directly, so consume the top-layer menu before navigation.
+      const popover = typeof HTMLElement.prototype.hidePopover === 'function' ? Array.from(document.querySelectorAll<HTMLElement>('[popover]:popover-open')).at(-1) : undefined;
+      if (popover) { event.preventDefault(); event.stopImmediatePropagation(); popover.hidePopover(); Array.from(document.querySelectorAll<HTMLElement>('[popovertarget]')).find(trigger=>trigger.getAttribute('popovertarget')===popover.id&&trigger.getAttribute('popovertargetaction')!=='hide')?.focus(); return; }
       // A modal owns Back while the underlying phone is inert. Window-targeted
       // native events must not navigate the shell before its dialog closes.
       const dialog = Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]')).at(-1);
