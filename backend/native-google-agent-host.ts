@@ -1,5 +1,4 @@
 import {createServer} from 'node:http';
-import {prepareNativeCloudRuntime} from './native-cloud-runtime-config.ts';
 import {timingSafeEqual} from 'node:crypto';
 import {createManagedGoogleAgentHost} from './managed-google-agent-host.ts';
 import {createManagedGoogleAgentBroker} from './managed-google-agent-broker.ts';
@@ -11,7 +10,9 @@ export async function startNativeGoogleAgentHost(options:{binding:NativeGoogleBi
  const retired=new AbortController();
  const port=createNativeGoogleCloudPort(options.binding,()=>{retired.signal.throwIfAborted();options.assertCurrent?.();},options.request);
  if(process.env.ELIZA_PLATFORM==='android'&&process.env.ELIZAOS_CLOUD_USE_INFERENCE==='true'){
-  options.assertCurrent?.();await prepareNativeCloudRuntime();options.assertCurrent?.();
+  options.assertCurrent?.();
+  const {prepareNativeCloudRuntime}=await import('./native-cloud-runtime-config.ts');
+  await prepareNativeCloudRuntime();options.assertCurrent?.();
  }
  const broker=createManagedGoogleAgentBroker({host:createManagedGoogleAgentHost(port),async authorized(value){
   const actual=Buffer.from(value??''),expected=Buffer.from('Bearer '+options.apiToken);

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
-if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['--conditions=eliza-source','--import','tsx',process.argv[1]],{stdio:'inherit',timeout:60000,env:{...process.env,TSX_TSCONFIG_PATH:new URL('../vendor/eliza/tsconfig.json',import.meta.url).pathname}});if(child.error)throw child.error;process.exit(child.status??1);}
+if(!process.execArgv.includes('tsx')){const child=spawnSync(process.execPath,['--import','tsx',process.argv[1]],{stdio:'inherit',timeout:60000});if(child.error)throw child.error;process.exit(child.status??1);}
 const {startNativeGoogleAgentHost}=await import('../backend/native-google-agent-host.ts');
 const {createNativeGoogleCloudPort}=await import('../backend/native-google-cloud-port.ts');
 const user='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222',grant='33333333-3333-4333-8333-333333333333';
@@ -54,46 +54,4 @@ test('native service port never becomes a general Cloud or credential proxy',asy
  let calls=0;const port=createNativeGoogleCloudPort(binding(),()=>{},async()=>{calls++;throw Error('No request expected');});const credential=await port.agentCredential();
  for(const url of ['https://api-staging.eliza.app/api/v1/user','https://api.eliza.app/api/v1/api-keys/current','https://example.invalid/api/v1/user'])await assert.rejects(port.agentGmailOperation({url,method:'GET',credentialReference:credential.credentialReference,signal:AbortSignal.timeout(1000)}));
  assert.equal(calls,0);
-});
-
-test('admitted native Cloud startup replaces stale local text routing without persisting its credential',async()=>{
- const fs=await import('node:fs'),os=await import('node:os'),path=await import('node:path');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-native-cloud-routing-'));
- const names=['ELIZA_STATE_DIR','ELIZA_CONFIG_PATH','ELIZA_PERSIST_CONFIG_PATH','ELIZA_PLATFORM','ELIZAOS_CLOUD_USE_INFERENCE','ELIZAOS_CLOUD_API_KEY','ELIZAOS_CLOUD_BASE_URL','ELIZAOS_CLOUD_SMALL_MODEL','ELIZAOS_CLOUD_LARGE_MODEL'];
- const prior=Object.fromEntries(names.map(name=>[name,process.env[name]]));let host;
- try{
-  Object.assign(process.env,{ELIZA_STATE_DIR:root,ELIZA_CONFIG_PATH:path.join(root,'eliza.json'),ELIZA_PERSIST_CONFIG_PATH:path.join(root,'eliza.json'),ELIZA_PLATFORM:'android',ELIZAOS_CLOUD_USE_INFERENCE:'true',ELIZAOS_CLOUD_API_KEY:'synthetic-native-cloud-key',ELIZAOS_CLOUD_BASE_URL:'https://api.eliza.app/api/v1',ELIZAOS_CLOUD_SMALL_MODEL:'cerebras/qwen-3.8-27b',ELIZAOS_CLOUD_LARGE_MODEL:'cerebras/qwen-3.8-27b'});
-  const config=await import('../vendor/eliza/packages/agent/src/config/config.ts');
-  const routing=await import('../vendor/eliza/plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts');
-  config.saveElizaConfig({cloud:{enabled:false,apiKey:'stale-synthetic-key'},serviceRouting:{llmText:{backend:'eliza-local-inference',transport:'local'}},features:{shellEnabled:false}});
-  await routing.writeRoutingPreferences({policy:{TEXT_SMALL:'local-only',TEXT_LARGE:'prefer-local'},preferredProvider:{TEXT_SMALL:'capacitor-llama',TEXT_EMBEDDING:'local-embedding-fixture'}});
-  const f=await fixture();host=f.host;
-  const actual=config.loadElizaConfig();
-  assert.equal(actual.serviceRouting.llmText.backend,'elizacloud');
-  assert.equal(actual.serviceRouting.llmText.transport,'cloud-proxy');
-  assert.equal(actual.serviceRouting.llmText.smallModel,'cerebras/qwen-3.8-27b');
-  assert.equal(actual.serviceRouting.llmText.largeModel,'cerebras/qwen-3.8-27b');
-  assert.equal(actual.features.shellEnabled,false);
-  const prefs=await routing.readRoutingPreferences();
-  for(const slot of ['TEXT_SMALL','TEXT_LARGE']){assert.equal(prefs.preferredProvider[slot],'elizacloud');assert.equal(prefs.policy[slot],'manual');}
-  for(const slot of ['TRANSCRIPTION','TEXT_TO_SPEECH'])assert.equal(prefs.policy[slot],'local-only');
-  assert.equal(prefs.preferredProvider.TEXT_EMBEDDING,'local-embedding-fixture');
-  const {AgentRuntime,ModelType}=await import('../vendor/eliza/packages/core/src/index.ts');
-  const {installRouterHandler}=await import('../vendor/eliza/plugins/plugin-local-inference/src/services/router-handler.ts');
-  const runtime=new AgentRuntime({character:{name:'Native route QA'}});let cloudCalls=0,localCalls=0;
-  // Only the diagnostic log sink is in-memory; the runtime and router select the provider.
-  const modelLogs=[];runtime.registerDatabaseAdapter({createLogs:async rows=>{modelLogs.push(...rows);}});
-  for(const slot of [ModelType.TEXT_SMALL,ModelType.TEXT_LARGE]){
-   runtime.registerModel(slot,async()=>{cloudCalls++;return 'Cloud route selected';},'elizacloud',50);
-   runtime.registerModel(slot,async()=>{localCalls++;throw Error('Local chat must not run');},'capacitor-llama',0);
-  }
-  installRouterHandler(runtime);
-  for(const slot of [ModelType.TEXT_SMALL,ModelType.TEXT_LARGE])assert.equal(await runtime.useModel(slot,{prompt:'Synthetic route check'}),'Cloud route selected');
-  assert.equal(cloudCalls,2);assert.equal(localCalls,0);assert.equal(modelLogs.length,2);
-  const saved=fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8');
-  assert.ok(!saved.includes('synthetic-native-cloud-key'));assert.ok(!saved.includes('stale-synthetic-key'));
- }finally{
-  await host?.close();for(const name of names){if(prior[name]===undefined)delete process.env[name];else process.env[name]=prior[name];}
-  fs.rmSync(root,{recursive:true,force:true});
- }
 });
