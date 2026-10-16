@@ -508,7 +508,9 @@ export async function auditTabOrder(page: Page, limit = 120): Promise<Violation[
     let under = '';
     // A focusable scroll region is the scroller itself: it runs under the dock by design and its
     // content is scrolled clear, which the obscured-by-dock rule of auditPage judges.
-    const region = ['auto', 'scroll'].includes(getComputedStyle(el).overflowY);
+    const region = ['auto', 'scroll'].includes(getComputedStyle(el).overflowY) || el.matches('canvas.maplibregl-canvas[role=region]') && !!el.closest('[data-alpha-map-plane]');
+    // The map is a keyboard-pannable region beneath floating controls. Its marker and buttons
+    // are still checked individually; the canvas viewport itself intentionally fills the view.
     if (!region && !el.closest('[data-alpha-layer="composer"],[data-alpha-layer="pill"],[data-alpha-layer="conversation"],dialog')) {
       const box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
       for (let node = el.parentElement; node && node !== document.documentElement; node = node.parentElement) {

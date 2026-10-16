@@ -32,6 +32,7 @@ async function harness(events,{day=0,personal=true,days=1}={}){
     connectionController:{getCloudClient:()=>cloud,subscribe:()=>()=>{},rejectCloudSession:()=>{}},
     googleCalendarAccountKey:()=>({environment:'production',userId:'owned',organizationId:'owned'}),readGoogleCalendarSelection:()=>selected,
     currentGoogleCalendarBinding:()=>({}),googleConnectionController:{open(){}},GOOGLE_ACCOUNTS_CHANGED:'accounts',GOOGLE_CALENDAR_SELECTION_CHANGED:'selection',
+    startCalendarSyncHost:()=>()=>{},calendarSyncHost:{resume:async()=>{},linkedProviderEvents:async()=>new Set()},
     GoogleCalendarReader:class{invalidate(){}selectSource(){}async listSources(){return allowRead?{status:'ready',calendars:[{id:selected.sourceId}]}:{status:'not-connected',message:'Disconnected'};}async read(){if(pendingRead)await pendingRead;return {status:'ready',events};}},
   });
   vm.runInContext(calendarDays+'\n'+calendar+'\n{'+nativeSource+'\nglobalThis.installNative=installCalendarAdapter;}\n{'+source+'\nglobalThis.install=installGoogleCalendarViewAdapter;}',ctx);

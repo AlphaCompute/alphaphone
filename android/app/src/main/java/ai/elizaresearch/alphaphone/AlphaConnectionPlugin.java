@@ -114,6 +114,8 @@ public final class AlphaConnectionPlugin extends Plugin {
  private AlphaCredentialStore storage(){return new AlphaCredentialStore(getContext(),()->{if(destroyed)throw new IllegalStateException("Connection closed");});}
  void writeCredentialSlot(String name,String value)throws Exception{storage().writeCredentialSlot(name,value);}
  String readCredentialSlot(String name)throws Exception{return storage().readCredentialSlot(name);}
+ /** The native Calendar sync consent (renderer-inaccessible); read only for a sync write. */
+ private String calendarSyncConsent()throws Exception{return readCredentialSlot(CalendarSyncBridge.SLOT);}
  void removeCredentialSlot(String name)throws Exception{storage().removeCredentialSlot(name);}
  /** Required before rendering or persisting mock mode; never resumes automatically. */
  @PluginMethod public void pauseNotificationCollection(PluginCall call) {
@@ -130,7 +132,7 @@ public final class AlphaConnectionPlugin extends Plugin {
   submitStorage(call,()->{
    try {
     String name=RendererCredentialSlots.requireAllowed(call.getString("slot"));
-    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.equals(AlphaCredentialStore.NOTES_DRAFT)||name.equals("note-origins:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
+    if(name==null||!(name.startsWith("inbox-drafts:v1:")||name.matches("inbox-operation:v1:[a-f0-9]{64}")||name.matches("calendar-linked-sync:v1:[a-f0-9]{64}")||name.matches("workflow-draft:v1:[a-f0-9]{64}")||name.matches("assistant-draft:v1:[a-f0-9]{64}")||name.equals("notes-records:v1:device")||name.equals("reminder-deletions:v1:device")||name.equals("reminder-creations:v1:device")||name.equals("clock-handoff:v1:device")||name.equals("notes-audio-deletions:v1:device")||name.equals("notes-trash:v1:device")||name.equals(AlphaCredentialStore.NOTES_DRAFT)||name.equals("note-origins:v1:device")||name.matches("cloud-delegation:v1:[a-f0-9]{64}"))||!call.getData().has("expectedValue")||!call.getData().has("value"))throw new IllegalArgumentException();
     for(String field:new String[]{"expectedValue","value"})if(!call.getData().isNull(field)&&!(call.getData().get(field) instanceof String))throw new IllegalArgumentException();
     String expected=call.getString("expectedValue"), value=call.getString("value");
     JSObject result=new JSObject();
@@ -168,19 +170,27 @@ public final class AlphaConnectionPlugin extends Plugin {
   }
   return output.toByteArray();
  }
- /** Fixed authenticated identity route; no renderer URL or identity field is accepted. */
+ /** Native-owned read routes; URLs and credentials never come from Calendar renderer calls. */
  static JSONObject readCloudIdentity(String token)throws Exception {
+  JSONObject response=readCloudObject(token,"/api/v1/user");
+  if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
+  return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+ }
+ static JSONObject readCalendarSyncCapabilities(String token,String grant,String calendar)throws Exception {
+  if(!java.util.UUID.fromString(grant).toString().equalsIgnoreCase(grant)||calendar==null||calendar.isEmpty()||calendar.length()>1024||calendar.chars().anyMatch(c->c<32||c==127))throw new IllegalArgumentException();
+  JSONObject response=readCloudObject(token,"/api/v1/eliza/google/calendar/sync-v1/capabilities?grantId="+java.net.URLEncoder.encode(grant,"UTF-8")+"&calendarId="+java.net.URLEncoder.encode(calendar,"UTF-8"));
+  return response;
+ }
+ private static JSONObject readCloudObject(String token,String path)throws Exception {
   if(!AlphaLocalAgentPlugin.validProviderToken(token,16384))throw new IllegalArgumentException();
-  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app/api/v1/user",false).toURL().openConnection();
+  HttpURLConnection connection=(HttpURLConnection)validatedUrl("https://api.eliza.app"+path,false).toURL().openConnection();
   try{
    connection.setInstanceFollowRedirects(false);connection.setUseCaches(false);
    connection.setConnectTimeout(20000);connection.setReadTimeout(20000);connection.setRequestMethod("GET");
    connection.setRequestProperty("Accept","application/json");connection.setRequestProperty("Authorization","Bearer "+token);
-   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud identity unavailable");
+   if(connection.getResponseCode()!=200||connection.getContentLengthLong()>RESPONSE_LIMIT)throw new SecurityException("Cloud read unavailable");
    byte[] bytes;try(InputStream input=connection.getInputStream()){bytes=readBounded(input,RESPONSE_LIMIT);}
-   JSONObject response=(JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
-   if(!Boolean.TRUE.equals(response.opt("success")))throw new SecurityException("Cloud identity unavailable");
-   return LocalAgentProviderAdmission.verifiedCloudIdentity(response.getJSONObject("data"));
+   return (JSONObject)parseJson(new String(bytes,StandardCharsets.UTF_8));
   }finally{connection.disconnect();}
  }
  static boolean validDeviceCapabilities(String value) {
@@ -230,10 +240,12 @@ public final class AlphaConnectionPlugin extends Plugin {
     int responseLimit=url.getPath().startsWith("/api/v1/eliza/google/gmail/inbox-v1/")?8*1024*1024:RESPONSE_LIMIT;
     String method = call.getString("method", "GET");
     if(!ConnectionRoutes.managedService(url.getRawPath(),url.getRawQuery(),method,call.getString("body")!=null,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
+    // Google Calendar writes need the native sync consent; the renderer's preference alone is not enough.
+    if(CalendarSyncConsent.write(url.getRawPath(),method)&&!CalendarSyncConsent.admits(url.getRawPath(),url.getRawQuery(),method,call.getString("body"),calendarSyncConsent()))throw new IllegalArgumentException();
     String route=url.getRawPath()+(url.getRawQuery()==null?"":"?"+url.getRawQuery());
     if(ConnectionRoutes.retiredPairing(url.getPath(),BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS))throw new IllegalArgumentException();
     boolean selfRevocation=ConnectionRoutes.cloudSelfRevocation(url.getScheme(),url.getHost(),url.getPort(),url.getRawPath(),url.getRawQuery(),method,call.getString("body")!=null,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
-    if((AutomationsRoutes.owns(url.getPath())||AutomationsRoutes.owns(route))?!AutomationsRoutes.allowed(route,method):!(Set.of("GET","POST").contains(method)||selfRevocation))throw new IllegalArgumentException();
+    if((AutomationsRoutes.owns(url.getPath())||AutomationsRoutes.owns(route))?!AutomationsRoutes.allowed(route,method):!(Set.of("GET","POST").contains(method)||selfRevocation||ConnectionRoutes.calendarSync(url.getPath(),url.getRawQuery(),method,call.getString("body")!=null)))throw new IllegalArgumentException();
     if("GET".equals(method)&&("api.eliza.app".equals(url.getHost())||"api-staging.eliza.app".equals(url.getHost()))&&url.getPath().matches("/api/auth/cli-session/[0-9a-fA-F-]{36}")){
      // Gate only future dispatch. A claim already sent must finish and may be saved while backgrounded.
      long expiresAt=call.getLong("expiresAt",System.currentTimeMillis()+30000);
@@ -262,7 +274,7 @@ public final class AlphaConnectionPlugin extends Plugin {
     }
     String body = call.getString("body");
     if (body != null) {
-     if (!("POST".equals(method)||"PUT".equals(method)&&AutomationsRoutes.allowed(route,method))) throw new IllegalArgumentException();
+     if (!("POST".equals(method)||"PUT".equals(method)&&AutomationsRoutes.allowed(route,method)||"PATCH".equals(method)&&ConnectionRoutes.calendarSync(url.getPath(),url.getRawQuery(),method,true))) throw new IllegalArgumentException();
      byte[] encoded = body.getBytes(StandardCharsets.UTF_8);
      if (encoded.length > responseLimit) throw new IllegalArgumentException();
      parseJson(body); connection.setDoOutput(true); connection.setFixedLengthStreamingMode(encoded.length);

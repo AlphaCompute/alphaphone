@@ -5,6 +5,8 @@ export function managedServiceRequest(url:string,method:string,hasBody=false):bo
  if(parsed.origin!=='https://api.eliza.app'||parsed.username||parsed.password||parsed.hash)return false;
  const path=parsed.pathname;
  if(/[\\%]/.test(path)||path.includes('//'))return false;
+ if(path==='/api/v1/eliza/google/calendar/sync-v1/capabilities')return method==='GET'&&!!parsed.search&&!hasBody;
+ if(path==='/api/v1/eliza/google/calendar/sync-v1/event')return (method==='GET'||method==='DELETE')?!!parsed.search&&!hasBody:(method==='POST'||method==='PATCH')&&!parsed.search&&hasBody;
  if(method==='DELETE')return path==='/api/v1/api-keys/current'&&!parsed.search&&!hasBody;
  // Eliza Cloud Maps (#412): queries and coordinates travel only in a JSON body; capabilities is a bare read.
  if(method==='POST'&&MAPS_POST.test(path))return !parsed.search&&hasBody;

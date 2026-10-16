@@ -3,7 +3,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { gmailCapabilitiesFor, requiredGmailCapability, gmailGrantTier, gmailActionGrant, gmailInboxAllows, gmailModifyIncomplete, gmailReadCacheKey, gmailGrantChange, gmailGrantLabel, GMAIL_MODIFY_CAPABILITIES } from "../apps/app/src/runtime/gmail-grants.ts";
+import { googleAccountAccessLabel, gmailCapabilitiesFor, requiredGmailCapability, gmailGrantTier, gmailActionGrant, gmailInboxAllows, gmailModifyIncomplete, gmailReadCacheKey, gmailGrantChange, gmailGrantLabel, GMAIL_MODIFY_CAPABILITIES } from "../apps/app/src/runtime/gmail-grants.ts";
 
 const account = (capabilities, patch = {}) => ({ configured: true, connected: true, reason: "connected", connectionId: "grant-1", label: "Mailbox", grantedCapabilities: capabilities, ...patch });
 const READ = ["google.gmail.triage"], MODIFY = [...READ, ...GMAIL_MODIFY_CAPABILITIES];
@@ -67,3 +67,8 @@ test("Inbox uses the single modify step and discards unsent reviews when change 
   assert.match(provider, /if\(!gmailInboxAllows\(caps,kind as GmailMailboxAction\)\)/);
   assert.match(provider, /static async discardUnsent|InboxOperation\.discardUnsent\(inboxLocalStore,pending\.owner,pending\.grant\)/, "the discard is bound to the grant, not the live operation");
 });
+
+ test("connection status reflects send-only and Calendar write grants",()=>{
+ assert.equal(googleAccountAccessLabel(account([...READ,"google.calendar.read"])),"Connected · Gmail: Read access · Calendar: Read access");
+ assert.equal(googleAccountAccessLabel(account([...READ,"google.gmail.send","google.calendar.read","google.calendar.write"])),"Connected · Gmail: Read and send access · Calendar: Read and edit access");
+ });

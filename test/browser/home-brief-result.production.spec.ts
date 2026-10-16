@@ -272,7 +272,7 @@ test('the Home calendar card shows when the provider read completed, not when Ho
   const drawnAt = await page.evaluate(() => Date.now());
   expect(drawnAt - completed).toBeGreaterThanOrEqual(120_000);
   await expect(card.locator('[data-alpha-home-calendar-source]')).toHaveCount(0);
-  await expect(card).toHaveAttribute('aria-description', new RegExp(`Read ${(await when(page, completed)).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  await expect(card).toHaveAttribute('aria-description',`Harbour team. Read ${await when(page, completed)} from calendars on this device`);
   expect(await when(page, completed)).not.toBe(await when(page, drawnAt));
   expect(await harness(page, f => f.unexpected)).toEqual([]);
 });

@@ -201,3 +201,9 @@ the repository. The 32 October 12 choices are policy-resolved above; their assoc
 implementation issues remain open TODOs. Existing P-02–P-06/P-08/P-09 continue where
 not explicitly superseded (reset-only removes data import/export requirements;
 normal-browser third-party cookies are now allowed).
+
+## October 15 Google Calendar service decision
+
+During Alpha QA the product owner explicitly requested agent-driven Gmail and Google Calendar tests, local Calendar-to-Google sync, the required Gmail-send/Calendar-event permission upgrade, and completion of the linked integration. The owner approved those Google permissions. This extends AP-09: Eliza Cloud owns Google OAuth token custody and the owner-scoped Calendar read/conditional-write API. Generic native Calendar adapters, local data, orchestration and the agent stay on the phone. The Google connection is optional; local Calendar use does not require a Google connection.
+
+Cloud permission consent does not enable sync by itself. Settings reviews the exact account/destination before opt-in; direct agent writes retain their owner review. Device Calendar access still requires its native permission. Unknown outcomes require readback; unsupported recurrence/attendee fields must not be flattened. Source tests, backend deployment, real provider writes and physical-phone acceptance remain separate. Custom Gmail labels and categories are deferred.
