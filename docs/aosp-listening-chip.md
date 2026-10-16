@@ -171,7 +171,13 @@ or the shade showing the listening notification. With AOD showing the chip,
 listening simply continues with the screen off.
 
 **Unexplained losses** latch `STOPPED_INDICATOR_LOST`, both while capturing and
-during an explained pause. They are:
+during an explained pause. One exception: when the phone sleeps through a
+display-off pause, SystemUI's renewals stop with its main thread, so the lease
+lapses, and on wake SystemUI acquires a new generation that starts pending. With
+the microphone already released by the pause, that lapse and the pending
+re-acquire do not latch (`IndicatorLease.sleepLapse`). Capture still waits for a
+fresh acknowledgement of a visible surface. SystemUI or binder death, a revoke,
+or any lapse while the microphone is held still latches. The latch-worthy losses are:
 
 - expiry with no report;
 - SystemUI or binder death;

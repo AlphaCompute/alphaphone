@@ -22,14 +22,16 @@ public final class ListenerLeaseTest {
  /** One listener-side capture step: what Listener.observeIndicatorLease and the policy do together. */
  static final class Sim {
   final IndicatorLease lease=new IndicatorLease();
-  boolean held,lost,interactive=true,pausedForIndicator;long since=-1;
+  boolean held,lost,interactive=true;long since=-1;
+  ListenerPolicy.IndicatorPause pause=ListenerPolicy.IndicatorPause.NONE;
   Inputs paused(Inputs in){in.indicatorPause=ListenerPolicy.IndicatorPause.DISPLAY_OFF;return in;}
   State step(long now,Inputs base){
    Loss loss=lease.verdict(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now),interactive);
    boolean valid=loss==Loss.NONE;
-   if(ListenerPolicy.latchesIndicatorLoss(held||pausedForIndicator,valid,loss.pause()))lost=true;
-   base.indicatorLeaseValid=valid;base.indicatorLost=lost;base.indicatorPause=IndicatorLease.pauseFor(loss);
-   pausedForIndicator=loss.pause();
+   boolean asleep=IndicatorLease.sleepLapse(held,pause,loss);
+   if(!asleep&&ListenerPolicy.latchesIndicatorLoss(held||pause!=ListenerPolicy.IndicatorPause.NONE,valid,loss.pause()))lost=true;
+   pause=asleep&&!interactive?ListenerPolicy.IndicatorPause.DISPLAY_OFF:IndicatorLease.pauseFor(loss);
+   base.indicatorLeaseValid=valid;base.indicatorLost=lost;base.indicatorPause=pause;
    State state=ListenerPolicy.decide(base,now);
    boolean hold=ListenerPolicy.holdsMicrophone(state);
    if(hold&&!held){held=true;since=now;}else if(!hold){held=false;since=-1;}
@@ -150,6 +152,28 @@ public final class ListenerLeaseTest {
   sim.lease.renew(g,wake+3000,BOOT,true,true,true,DOZE);
   check(sim.step(wake+3000,ready(false))==State.LISTENING,"and resumes when AOD shows it");
   check(sim.step(wake+3000+IndicatorLease.TTL_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"SystemUI silence while dozing is still a loss");
+  // the phone sleeping through a display-off pause: SystemUI's renewals stop, the lease lapses,
+  // and on wake SystemUI acquires a new pending generation. None of that latches; capture resumes
+  // only on a fresh visible acknowledgement. A lapse while the microphone is held still latches.
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);
+  check(sim.step(t,ready(false))==State.LISTENING,"listening before sleep");
+  sim.lease.renew(g,t+1000,BOOT,false,false,false,OFF);sim.interactive=false;
+  check(sim.step(t+1000,ready(false))==State.PAUSED_DISPLAY_OFF&&!sim.held,"display off pauses before sleep");
+  for(long now=t+2000;now<=t+120_000;now+=7000)
+   check(sim.step(now,ready(false))==State.PAUSED_DISPLAY_OFF&&!sim.lost&&!sim.held,"asleep with no renewals stays paused, not lost: "+now);
+  check(!sim.lease.renew(g,t+121_000,BOOT,true,false,false,ON),"the lapsed generation cannot be renewed after sleep");
+  sim.interactive=true;
+  check(sim.step(t+121_000,ready(false))==State.INDICATOR_UNAVAILABLE&&!sim.lost&&!sim.held,"on wake without a fresh lease nothing is captured and nothing is latched");
+  long woke=sim.lease.acquire(BOOT);
+  check(sim.step(t+121_100,ready(false))==State.INDICATOR_UNAVAILABLE&&!sim.lost,"a re-acquired pending lease after sleep is not a loss");
+  sim.lease.renew(woke,t+121_200,BOOT,true,false,false,ON);
+  check(sim.step(t+121_200,ready(false))==State.LISTENING&&sim.held,"a fresh visible acknowledgement after sleep resumes listening");
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,OFF);sim.interactive=false;
+  sim.step(t,ready(false));
+  check(sim.step(t+IndicatorLease.TTL_MS+1,ready(false))!=State.STOPPED_INDICATOR_LOST,"a lapse after the display-off pause released the microphone is not latched");
+  check(!IndicatorLease.sleepLapse(true,ListenerPolicy.IndicatorPause.DISPLAY_OFF,Loss.EXPIRED),"a lapse while the microphone is held is never a sleep lapse");
+  check(!IndicatorLease.sleepLapse(false,ListenerPolicy.IndicatorPause.FULLSCREEN,Loss.EXPIRED),"only a display-off pause explains a lapse");
+  check(!IndicatorLease.sleepLapse(false,ListenerPolicy.IndicatorPause.DISPLAY_OFF,Loss.BINDER_DIED),"SystemUI dying is never a sleep lapse");
   // indicator lost while the display is on stays sticky across display changes
   sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false,ON);sim.step(t,ready(false));
   sim.lease.renew(g,t+500,BOOT,false,false,true,ON);

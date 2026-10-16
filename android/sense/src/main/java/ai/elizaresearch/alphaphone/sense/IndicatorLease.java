@@ -63,6 +63,16 @@ public final class IndicatorLease {
   }
  }
 
+ /**
+  * The phone sleeping during a display-off pause stops SystemUI's renewals (they run on its main
+  * thread), so the lease lapses, and on wake SystemUI acquires a new generation that starts
+  * pending. With the microphone already released by the pause, neither is a loss: capture still
+  * waits for a fresh acknowledgement of a visible surface, but nothing latches.
+  */
+ public static boolean sleepLapse(boolean microphoneHeld,ListenerPolicy.IndicatorPause pause,Loss loss){
+  return !microphoneHeld&&pause==ListenerPolicy.IndicatorPause.DISPLAY_OFF&&(loss==Loss.EXPIRED||loss==Loss.PENDING||loss==Loss.REPLACED);
+ }
+
  private long generation;
  private boolean live;
  private boolean acknowledged;

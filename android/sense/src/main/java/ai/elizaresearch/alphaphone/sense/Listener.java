@@ -75,8 +75,10 @@ final class Listener {
   boolean valid=loss==IndicatorLease.Loss.NONE;
   // An unexplained loss while capturing, or during an explained pause, latches; an explained one pauses.
   boolean paused=indicatorPause!=ListenerPolicy.IndicatorPause.NONE;
-  if(ListenerPolicy.latchesIndicatorLoss(held||paused,valid,loss.pause()))indicatorLost=true;
-  indicatorPause=IndicatorLease.pauseFor(loss);
+  // A lease lapsing while the phone sleeps through a display-off pause is not a loss (see sleepLapse).
+  boolean asleep=IndicatorLease.sleepLapse(held,indicatorPause,loss);
+  if(!asleep&&ListenerPolicy.latchesIndicatorLoss(held||paused,valid,loss.pause()))indicatorLost=true;
+  indicatorPause=asleep&&!screenInteractive?ListenerPolicy.IndicatorPause.DISPLAY_OFF:IndicatorLease.pauseFor(loss);
   return valid;
  }
 

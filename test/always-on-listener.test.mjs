@@ -84,7 +84,8 @@ test('capture fails closed on the SystemUI indicator lease and a lost lease neve
  assert.doesNotMatch(provider,/grantConsent|setEnabled|resume\(|store\.|startForegroundService/,'the lease can only withhold capture');
  const listener=readFileSync(join(source,'Listener.java'),'utf8');
  assert.match(listener,/in\.indicatorLeaseValid=observeIndicatorLease\(context,SystemClock\.elapsedRealtime\(\)\)/);
- assert.match(listener,/if\(ListenerPolicy\.latchesIndicatorLoss\(held\|\|paused,valid,loss\.pause\(\)\)\)indicatorLost=true;/,'only unexplained losses latch');
+ assert.match(listener,/if\(!asleep&&ListenerPolicy\.latchesIndicatorLoss\(held\|\|paused,valid,loss\.pause\(\)\)\)indicatorLost=true;/,'only unexplained losses latch');
+ assert.match(listener,/boolean asleep=IndicatorLease\.sleepLapse\(held,indicatorPause,loss\);/,'only a lapse during a display-off pause with the microphone released is excused');
  assert.match(listener,/in\.indicatorPause=indicatorPause;/,'explained hidden states pause rather than stop');
  assert.match(provider,/extras\.getString\(IndicatorLease\.KEY_DISPLAY\),extras\.getString\(IndicatorLease\.KEY_REASON\)/,'display state and reason come from SystemUI');
  const app=readFileSync(join(source,'SenseApplication.java'),'utf8');
