@@ -531,7 +531,7 @@ test('legacy organization credits cannot bypass a signed plan refusal', async ()
   assert.equal(describeSubscription(result.view).headline,'Eliza Cloud credits');
   assert.equal(describeSubscription(result.view).manageLabel,'Manage billing in Eliza Cloud');
   assert.equal((await checkEntitlement(source({token:'invalid',fallback}),exp,signal(),()=>NOW)).view.kind,'unavailable');
-  const {jwk,sign}=await keyPair();
+  const {jwk,sign}=await keyPair('credit-mode-precedence');
   const signed=await sign(claims({plan:{id:'p-synthetic',name:'Synthetic plan',status:'none'}}));
   const checked=await checkEntitlement(source({token:signed,keys:[jwk],fallback}),exp,signal(),()=>NOW);
   assert.equal(checked.view.kind,'inactive');assert.equal(planAdmission(checked.view),'needs-plan');
