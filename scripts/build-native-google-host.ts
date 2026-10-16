@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {isBuiltin} from 'node:module';
 
 const [root,sdk,file,metadataFile]=process.argv.slice(2);
 if(!root||!sdk||!file||!metadataFile)throw Error('Native host build paths are required');
@@ -9,9 +10,15 @@ const result=await Bun.build({
  tsconfig:path.join(sdk,'tsconfig.json'),metafile:true,
  define:{'import.meta.env':'{"VITE_ELIZA_DEV_ALLOW_TEST_MOCKS":"0"}'},
  plugins:[{name:'pinned-native-server-sdk',setup(builder){
-  builder.onResolve({filter:/^@elizaos\//},args=>{
-   const resolved=Bun.resolveSync(args.path,sdk),relative=path.relative(sdk,resolved);
-   if(!relative||relative.startsWith('..')||path.isAbsolute(relative))throw Error('Native server SDK import escaped its prepared source');
+  builder.onResolve({filter:/^[^./]/},args=>{
+   if(isBuiltin(args.path)||args.path.startsWith('bun:'))return;
+   const vendor=path.join(root,'vendor/eliza'),fromVendor=path.relative(vendor,args.importer),fromSdk=path.relative(sdk,args.importer);
+   const vendorImport=!!args.importer&&!fromVendor.startsWith('..')&&!path.isAbsolute(fromVendor);
+   const sdkImport=!!args.importer&&!fromSdk.startsWith('..')&&!path.isAbsolute(fromSdk);
+   if(!vendorImport&&!sdkImport&&!args.path.startsWith('@elizaos/'))return;
+   const parent=vendorImport?path.dirname(path.join(sdk,fromVendor)):sdkImport?path.dirname(args.importer):sdk;
+   const resolved=Bun.resolveSync(args.path,parent),relative=path.relative(sdk,resolved);
+   if(!relative||relative.startsWith('..')||path.isAbsolute(relative))throw Error('Native server SDK dependency escaped its prepared source');
    return {path:resolved};
   });
  }}],

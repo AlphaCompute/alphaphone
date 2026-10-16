@@ -29,7 +29,7 @@ export function addNativeGoogleHostArtifact(root,directory){
   const meta=path.join(temporary,'meta.json'),file=path.join(directory,'google-host.mjs');
   const sdk=sourceDirectory(root),pin=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json'),'utf8')).commit;
   verifySource(sdk,pin);
-  execFileSync(bun,['--conditions=eliza-source','--tsconfig-override',path.join(sdk,'tsconfig.json'),'scripts/build-native-google-host.ts',root,sdk,file,meta],{cwd:root,stdio:'pipe'});
+  execFileSync(bun,['--conditions=eliza-source','scripts/build-native-google-host.ts',root,sdk,file,meta],{cwd:root,stdio:'pipe'});
   verifySource(sdk,pin);
   const metadata=JSON.parse(fs.readFileSync(meta,'utf8')),names=new Set([...Object.keys(metadata.inputs),'package.json','tsconfig.json','vendor/eliza/tsconfig.json',path.relative(root,path.join(sdk,'tsconfig.json')),'scripts/build-native-google-host.ts','scripts/local-agent-source.mjs','upstream.lock.json','scripts/native-google-host-artifact.mjs','scripts/prepare-client-features.mjs']);
   const inputs={};for(const name of [...names].sort()){
