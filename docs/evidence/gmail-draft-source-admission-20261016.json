@@ -1,6 +1,6 @@
 {
   "baseCommit": "33a6d19c024a4ec130710f0808df25588266d542",
-  "admittedCommit": "0138310a39657783b6dd2eeb6309e4d8b1497554",
+  "admittedCommit": "208d95f7f4de00f6f575a5cd4468e02ac2c4c870",
   "changedPaths": [
     "plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts",
     "plugins/plugin-assistant/src/features/advanced-capabilities/index.ts",
@@ -82,7 +82,19 @@
     "commit": "0138310a39657783b6dd2eeb6309e4d8b1497554",
     "localDurableConsentAndExtractionTests": 3,
     "lint": true,
-    "fullQualification": "Running immutable remote v6 on013; candidate preview QA is separate from release acceptance.",
+    "fullQualification": {
+      "source": "0138310a39657783b6dd2eeb6309e4d8b1497554",
+      "passed": true,
+      "job": "gmail-draft-continuity-20261016-v6"
+    },
     "rule": "Only a whole affirmative user turn selects its same-actor, same-room, unexpired host draft reference; planner parameters cannot redirect it. Exact digest and one-time CAS still govern sending."
+  },
+  "restorationScopeFix": {
+    "commit": "208d95f7f4de00f6f575a5cd4468e02ac2c4c870",
+    "focusedTests": 150,
+    "lint": true,
+    "fullQualification": "running v7; candidate preview QA only",
+    "liveFailureEvidence": "Exact confirmation trace had zero tool events; RESTORE_CONTEXT offered unavailable history when only FACTS was deferred.",
+    "rule": "Advertise only scopes which are currently restorable; keep the existing invalid-restoration boundary."
   }
 }
