@@ -89,12 +89,18 @@ test('standalone Home scrolls to the screen edge without a simulated status-bar 
   await expect(page.getByRole('button',{name:'Calendar',exact:true})).toBeVisible();
   const bounds=await home.boundingBox(),usable=await screen.boundingBox();
   expect(bounds!.y).toBeCloseTo(usable!.y,1);
-  // The viewport fills the screen; inner padding lets its last row clear the dock.
+  // Home fills the screen behind the floating composer; clearance inside the scroll content
+  // lets the final app row move fully above it without clipping the full-height surface.
   const composer=page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]');
-  await expect.poll(async()=>{const area=await home.boundingBox();return Math.round(area!.y+area!.height-(usable!.y+usable!.height));}).toBe(0);
+  expect(bounds!.y+bounds!.height).toBeCloseTo(usable!.y+usable!.height,1);
   await home.evaluate(node=>{node.scrollTop=node.scrollHeight;});
-  const last=home.getByRole('button',{name:'All apps',exact:true});
-  await expect.poll(async()=>{const row=await last.boundingBox(),dock=await composer.boundingBox();return row!.y+row!.height<=dock!.y;}).toBe(true);
+  const lastApp=home.getByRole('button',{name:'All apps',exact:true});
+  await expect.poll(async()=>{const dock=await composer.boundingBox(),last=await lastApp.boundingBox();return dock!.y-(last!.y+last!.height);}).toBeGreaterThanOrEqual(6);
+  await home.evaluate(node=>{node.scrollTop=0;});
+  expect((await home.boundingBox())!.height).toBeGreaterThan(usable!.height-140);
+  const tile=await home.getByRole('button').first().boundingBox();
+  expect(tile!.y-bounds!.y).toBeLessThan(16);
+
   await home.evaluate(node=>{node.scrollTop=80;});
   expect((await home.boundingBox())!.y).toBeCloseTo(usable!.y,1);
   await page.screenshot({path:testInfo.outputPath('home-scrolled-fullscreen.png')});

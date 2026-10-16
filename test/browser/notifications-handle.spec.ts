@@ -166,13 +166,19 @@ test.describe('launcher', () => {
     await expect(shade(page)).toHaveAttribute('aria-hidden', 'false');
   });
 
-  test('a Home that fits hands vertical touch drags to the page', async ({ page }) => {
-    // A tall phone fits the content plus the floating dock's inner clearance.
-    await page.setViewportSize({width:412,height:1200});
+  for (const height of [915, 1200]) test(`a Home that fits hands vertical touch drags to the page at 412x${height}`, async ({ page }) => {
+    // Include the original compact-height dock-padding regression and a tall phone.
+    await page.setViewportSize({width:412,height});
     await home(page);
     const layer = page.locator('[data-alpha-layer="home"]');
     await expect(layer).toHaveAttribute('data-alpha-home-fits', 'true');
     await expect.poll(() => layer.evaluate(element => getComputedStyle(element).touchAction)).toBe('pan-x pinch-zoom');
+    // Half-chat clearance can change scroll range while Home and its icon layout keep their size.
+    const clearance = page.locator('[data-alpha-home-clearance]');
+    await clearance.evaluate(element => { (element as HTMLElement).style.height = '160px'; });
+    await expect(layer).toHaveAttribute('data-alpha-home-fits', 'false');
+    await clearance.evaluate(element => { (element as HTMLElement).style.height = '0px'; });
+    await expect(layer).toHaveAttribute('data-alpha-home-fits', 'true');
   });
 });
 
@@ -207,6 +213,14 @@ test('the button keeps its target and its whole label at 200% text', async ({ pa
   expect(box.height).toBeGreaterThanOrEqual(44);
   expect(box.left).toBeGreaterThanOrEqual(0);
   expect(box.left + box.width).toBeLessThanOrEqual(412);
+  // Full-height Home scrolls behind the floating dock and development gesture bar. Bring the
+  // final app row above both before auditing overlap; no app may be stranded underneath them.
+  const layer = page.locator('[data-alpha-layer="home"]');
+  await layer.evaluate(element => { element.scrollTop = element.scrollHeight; });
+  const settings = page.getByRole('button', { name: 'Settings', exact: true });
+  const composer = page.locator('[data-alpha-layer="composer"] [data-alpha-input-bar]');
+  await expect.poll(async () => { const app = (await settings.boundingBox())!, dock = (await composer.boundingBox())!; return dock.y - (app.y + app.height); }).toBeGreaterThanOrEqual(6);
+  await settings.click({ trial: true });
   const found = format(await auditPage(page, { clipping: true, overlap: true })).filter(line => !line.startsWith('text-truncated:'));
   expect(found, found.join('\n')).toEqual([]);
 });

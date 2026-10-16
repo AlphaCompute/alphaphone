@@ -65,12 +65,12 @@ final class AlphaVoiceLatencyProbe {
  }
 
  /**
-  * The player has just been started with a local spoken reply. Stamps first-pcm on the open turn and
+  * The player has just been started with a local spoken reply. Stamps first-pcm on the admitted turn and
   * polls the player's timestamp on {@code handler} until the audible start is known. {@code current}
   * turns false when the player was replaced or released.
   */
- static void playbackStarted(Context context,MediaPlayer player,Handler handler,int leadInFrames,int totalFrames,int sampleRate,BooleanSupplier current){
-  VoiceLatencyTrials.Trial trial=TRIALS.firstPcm(System.nanoTime());
+ static void playbackStarted(VoiceLatencyTrials.Trial owner,Context context,MediaPlayer player,Handler handler,int leadInFrames,int totalFrames,int sampleRate,BooleanSupplier current){
+  VoiceLatencyTrials.Trial trial=TRIALS.firstPcm(owner,System.nanoTime());
   if(trial==null)return;
   stampEnvironment(context,trial);
   if(leadInFrames<0||sampleRate<=0){TRIALS.failed(trial,"silent-response");return;}

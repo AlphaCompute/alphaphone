@@ -1,6 +1,7 @@
+<!-- Integration 9e7a1553f378a570be3fe74c021e71710a1c96eb combines main Maps and Calendar; native qualification remains pending. -->
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
-Current consumer source pin: `c705a3d911a5` (2026-10-15 local integration). Native build and device acceptance remain pending. The earlier PR #531 pin was `968348d792d3`, llama.cpp `3e5f73922ee8`.
+Current consumer source pin: `9e7a1553f378` (2026-10-15 local integration). Native build and device acceptance remain pending. The earlier PR #531 pin was `968348d792d3`, llama.cpp `3e5f73922ee8`.
 Native source/provenance changed; voice remains unqualified and the prior embedding-host
 receipt remains refused pending requalification. Historical evidence below is not promoted.
 

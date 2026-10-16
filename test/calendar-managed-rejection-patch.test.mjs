@@ -7,21 +7,21 @@ import {execFileSync} from 'node:child_process';
 import {build} from 'esbuild';
 import {createServer} from 'node:http';
 
-// Apply the proposed upstream patch to one isolated source file. The pinned checkout is unchanged.
+// Exercise the carried patch or its exact integrated form in an isolated file; the pinned source stays unchanged.
 // Exercise the real managed transport and mutation port over bounded synthetic HTTP responses.
 test('explicit Calendar rejection survives the private transport; uncertain replies stay blocked',async()=>{
  const upstream=resolve('vendor/eliza'),relative='plugins/plugin-calendar/src/mutations/managed.ts',original=join(upstream,relative);
  const before=readFileSync(original,'utf8'),temp=mkdtempSync(join(tmpdir(),'alpha-calendar-refusal-'));
  try{
   const entry=join(temp,relative);mkdirSync(dirname(entry),{recursive:true});copyFileSync(original,entry);
-  execFileSync('git',['apply',resolve('patches/eliza/calendar-managed-rejection.patch')],{cwd:temp});
+  const patch=resolve('patches/eliza/calendar-managed-rejection.patch');try{execFileSync('git',['apply','--check',patch],{cwd:temp,stdio:'pipe'});}catch{execFileSync('git',['apply','--reverse','--check',patch],{cwd:temp,stdio:'pipe'});execFileSync('git',['apply','--reverse',patch],{cwd:temp});}const baselineSource=readFileSync(entry,'utf8');execFileSync('git',['apply',patch],{cwd:temp});
   const buildPort=contents=>build({stdin:{contents:`export {createManagedCalendarMutationPort} from ${JSON.stringify(entry)};export {CalendarMutationNotAcceptedError} from ${JSON.stringify(join(dirname(original),'types.ts'))};`,resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false,plugins:[{name:'upstream-patch-source',setup(b){
    b.onLoad({filter:/managed\.ts$/},args=>args.path===realpathSync(entry)?{contents,loader:'ts',resolveDir:dirname(original)}:undefined);
    b.onResolve({filter:/^@elizaos\/core$/},()=>({path:'core',namespace:'port'}));
    b.onResolve({filter:/^\.\/ledger\.js$/},()=>({path:'ledger',namespace:'port'}));
    b.onLoad({filter:/.*/,namespace:'port'},args=>({loader:'js',contents:args.path==='core'?'export class ElizaError extends Error{}':'export const calendarMutationApprovalSha256=()=>"hash";export const calendarMutationOperationKey=()=>"stable-key";'}));
   }}]});
-  const [baselineBundle,bundle]=await Promise.all([buildPort(before),buildPort(readFileSync(entry,'utf8'))]);
+  const [baselineBundle,bundle]=await Promise.all([buildPort(baselineSource),buildPort(readFileSync(entry,'utf8'))]);
   const baseline=await import('data:text/javascript;base64,'+Buffer.from(baselineBundle.outputFiles[0].text).toString('base64'));
   const {createManagedCalendarMutationPort,CalendarMutationNotAcceptedError}=await import('data:text/javascript;base64,'+Buffer.from(bundle.outputFiles[0].text).toString('base64'));
   const source='alpha-google:'+'a'.repeat(64),caps={grantId:source,calendarId:'calendar',accountId:'account',read:true,write:true,idempotentCreate:true,conditionalWrites:true,providerExactlyOnce:false};

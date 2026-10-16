@@ -3,10 +3,9 @@
 // adapter's semantics. Nothing leaves the process; this is not evidence of a resident
 // agent reaching the phone, a live route, a device location or physical navigation.
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
 import { AlphaMapsDeviceNavigation } from '../apps/app/src/maps/device-navigation.ts';
+import { withResidentMapsNavigation } from '../apps/app/src/maps/resident-relay.ts';
 import { bindAgentNavigation, residentMapsNavigationPort } from '../apps/app/src/maps/agent-navigation.ts';
 import { MapsController } from '../.eliza/client-features/plugins/plugin-maps/src/client/state.ts';
 import { SavedPlaces } from '../.eliza/client-features/plugins/plugin-maps/src/client/saved-places.ts';
@@ -97,13 +96,11 @@ function screen(maps, options = {}) {
  assert.match(navigation, /start\(request: \{\s*destination: PlaceRef;\s*travelMode: TravelMode;\s*\}\): Promise<MapsDeviceNavigationStatus>;/);
  assert.match(text('plugins/plugin-maps/src/cloud-adapter.ts'), /export const ELIZA_CLOUD_MAPS_PROVIDER_ID = "eliza-cloud";/, 'the agent Cloud provider id changed');
  assert.match(text('plugins/plugin-maps/src/service.ts'), /registerDeviceNavigation\(controller: MapsDeviceNavigation \| null\): void/);
- // Wiring: at this pin the Android resident does not load plugin-maps, so no agent reaches this
- // binding. When a reviewed pin adds plugin-maps and a phone relay, review residentMapsNavigationPort.
- const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
- const grep = pattern => { try { return execFileSync('git', ['-C', path.join(root, 'vendor/eliza'), 'grep', '-l', '-F', pattern, pin, '--', 'packages', 'plugins', ':!plugins/plugin-maps', ':!**/*.md', ':!**/*.test.ts', ':!**/test/**', ':!packages/cloud/**', ':!**/bun.lock'], { encoding: 'utf8' }).trim().split('\n').filter(Boolean); } catch (error) { if (error.status === 1) return []; throw error; } };
- assert.deepEqual(grep('registerDeviceNavigation'), [], 'an upstream relay now registers phone navigation: connect residentMapsNavigationPort to it');
- const loaders = grep('@elizaos/plugin-maps').filter(file => /packages\/agent\/|packages\/app\/src\/|android/.test(file) && !/package\.json$/.test(file));
- assert.deepEqual(loaders, [], 'the resident now loads plugin-maps: connect residentMapsNavigationPort to its relay');
+ // The reviewed upstream pin must load Maps and expose the authenticated turn relay.
+ assert.match(text('packages/agent/src/runtime/core-plugins.ts'), /@elizaos\/plugin-maps/);
+ assert.match(text('packages/agent/src/runtime/optional-plugin-imports.ts'), /import\("@elizaos\/plugin-maps\/plugin"\)/);
+ assert.match(text('packages/agent/src/api/device-action-routes.ts'), /\/api\/client-devices\/maps-navigation/);
+ assert.match(text('plugins/plugin-maps/src/client/navigation-relay.ts'), /export async function withMapsNavigationRelay/);
  assert.equal(residentMapsNavigationPort.relay, false);
 }
 
@@ -319,4 +316,47 @@ function screen(maps, options = {}) {
  assert.equal(listeners.size, 0);
 }
 
+// A cancelled resident turn cannot use a late GPS fix to plan a route.
+{
+ const maps=provider(), fix=deferred(), phone=screen(maps,{locate:()=>fix.promise});
+ const navigation=new AlphaMapsDeviceNavigation(phone.surface,owner), turn=new AbortController();
+ const pending=navigation.start({destination:portRef,travelMode:'drive'},turn.signal);
+ await new Promise(resolve=>setTimeout(resolve,1));
+ turn.abort();fix.resolve({coordinate:CASINO,accuracyMeters:8,timestamp:Date.now(),precision:'precise'});
+ await failsWith(pending,'MAPS_DEVICE_UNAVAILABLE',/cancelled/);
+ assert.equal(maps.calls.filter(call=>call[0]==='route').length,0,'cancelled turn never plans from its late fix');
+ await failsWith(navigation.stop(turn.signal),'MAPS_DEVICE_UNAVAILABLE',/cancelled/);
+ navigation.retire();
+}
+
 console.log('maps device navigation: select, start, reroute, stop, cancellation, stale location, account change and unconfigured registration passed');
+
+// The consumer transport dispatches the actual phone binding and retires its offer.
+{
+ const maps = provider(), phone = screen(maps), nav = new AlphaMapsDeviceNavigation(phone.surface, owner);
+ const reply = deferred(), lifetime = new AbortController();
+ let delivered = false, retired = false;
+ residentMapsNavigationPort.register(nav);
+ const request = async (path, body, signal) => {
+  assert.equal(path, '/api/client-devices/maps-navigation');
+  if (body.phase === 'open') return { protocol: 1, request: null };
+  if (body.phase === 'retire') { retired = true; return { protocol: 1, request: null }; }
+  if (body.phase === 'result') {
+   assert.equal(body.status.state, 'selected');
+   assert.equal(body.status.placeName, 'Port Hercule');
+   reply.resolve('done'); return { protocol: 1, request: null };
+  }
+  if (!delivered) {
+   delivered = true;
+   return { protocol: 1, request: { id: crypto.randomUUID(), expiresAt: Date.now() + 30_000, operation: { kind: 'select', place: portRef } } };
+  }
+  return new Promise((resolve, reject) => {
+   if (signal.aborted) { reject(signal.reason); return; }
+   signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  });
+ };
+ assert.equal(await withResidentMapsNavigation(request, crypto.randomUUID(), lifetime.signal, () => reply.promise), 'done');
+ assert.equal(retired, true);
+ assert.equal(residentMapsNavigationPort.relay, false);
+ residentMapsNavigationPort.register(null); nav.retire();
+}

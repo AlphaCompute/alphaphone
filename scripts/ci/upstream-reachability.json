@@ -3,21 +3,25 @@
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
   "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "c705a3d911a54e49e021accc9eec44846b54a117",
+  "head": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
   "recordedAt": "2026-10-15",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...c705a3d911a54e49e021accc9eec44846b54a117",
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...9e7a1553f378a570be3fe74c021e71710a1c96eb",
   "status": "diverged",
-  "aheadBy": 33,
+  "aheadBy": 39,
   "behindBy": 398,
   "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
   "pinOnlyCommits": [
     {
-      "sha": "a60715fa41ea5efe567d9d6f6d89bd8bda540609",
-      "subject": "fix(calendar): expose existing-event selectors to standalone tools"
+      "sha": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
+      "subject": "Merge Maps relay and allowance with Calendar transport and owner fixes"
     },
     {
       "sha": "c705a3d911a54e49e021accc9eec44846b54a117",
       "subject": "fix(calendar): accept empty DELETE transport streams without accepting bodies"
+    },
+    {
+      "sha": "a60715fa41ea5efe567d9d6f6d89bd8bda540609",
+      "subject": "fix(calendar): expose existing-event selectors to standalone tools"
     },
     {
       "sha": "513d60d0d668b7172a9b13de513fb32ebabd9e41",
@@ -142,6 +146,26 @@
     {
       "sha": "892318c1ee4cc393a61457b066ccd43057cf1386",
       "subject": "Read managed owner Google calendars through the existing Calendar service"
+    },
+    {
+      "sha": "221a0bc4e0d501a670943d274f10d7818357ada4",
+      "subject": "Require selected shared Maps burst and sustained policy"
+    },
+    {
+      "sha": "3345eeacc4dcbf4c18ee4dea4428e4e123f7ceaf",
+      "subject": "Enforce a separate durable Maps request allowance without monetary charges"
+    },
+    {
+      "sha": "1a5a05db0c80dceeff528d3b70c1724cf84ea153",
+      "subject": "Test nonstring Maps protocol fields"
+    },
+    {
+      "sha": "c70652190ad3a1cbdee6888bf73d665aa6164577",
+      "subject": "fix(maps): require string relay phases and result fields"
+    },
+    {
+      "sha": "2d1c8a9071dc5db1db253b940e4eba350e389861",
+      "subject": "Bind Maps navigation to authenticated phone turns"
     }
   ],
   "pullRequests": [
@@ -445,6 +469,20 @@
       "mergedAt": "2026-10-14T21:44:16Z",
       "mergeCommit": "f7f3765d0a9cb8414f6c3a472446cff77e6fb9c7",
       "head": "claude/alpha-ipc-events"
+    },
+    {
+      "number": 36303,
+      "state": "merged",
+      "mergedAt": "2026-10-15T03:21:11Z",
+      "mergeCommit": "c0145e3090cefe3fb87c22963fb5c15b76945162",
+      "head": "adef3e4e3e7ca48e89a5a858404a3349269acac7"
+    },
+    {
+      "number": 36309,
+      "state": "merged",
+      "mergedAt": "2026-10-15T03:57:10Z",
+      "mergeCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
+      "head": "5089d99262639d4ff41dfcdf8fde83a925e7d89c"
     }
   ],
   "sourceBoundary": "Private local commit; GitHub compare returned404. This is local graph against recorded cached develop, not fresh public reachability.",
