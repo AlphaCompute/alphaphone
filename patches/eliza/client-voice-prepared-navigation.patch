@@ -11,14 +11,24 @@
    let playback: VoiceSessionPlayback | null = null;
    let reconnectsUsed = 0;
    // Monotonic timestamp of the most recent server `ready`; null while not live
-@@ -341,9 +345,15 @@
+@@ -333,6 +337,7 @@
+   let captureSocket: VoiceWebSocketLike | null = null;
+   let captureAbort: AbortController | null = null;
+   let microphoneMuted = false;
++  let playbackCompletionSupported = false;
+   let playbackEnd: Extract<
+     ServerControlFrame,
+     {
+@@ -341,9 +346,17 @@
    > | null = null;
    // Whether the caller explicitly stopped us (clean bye) — suppresses reconnect.
    let intentionalClose = false;
 +  const syncMicrophoneMute = (): void => {
 +    mic?.setMuted(
-+      microphoneMuted || state.phase === "speaking" ||
-+      micSocket !== ws || connPhase !== "open",
++      microphoneMuted ||
++        state.phase === "speaking" ||
++        micSocket !== ws ||
++        connPhase !== "open",
 +    );
 +  };
    const setState = (next: VoiceSessionMachineState): void => {
@@ -28,11 +38,10 @@
      options.onState?.(state, toContinuousStatus(state.phase));
    };
    const mark = (name: string, traceId: string | null): void => {
-@@ -396,6 +406,21 @@
-       clearTimeout(rotationTimer);
+@@ -397,6 +410,24 @@
        rotationTimer = null;
      }
-+  };
+   };
 +  const clearCaptureRetentionTimer = (): void => {
 +    if (captureRetentionTimer !== null) clearTimeout(captureRetentionTimer);
 +    captureRetentionTimer = null;
@@ -41,16 +50,28 @@
 +    clearCaptureRetentionTimer();
 +    const heldMic = mic;
 +    if (!heldMic || micSocket !== null) return;
-+    const timer = setTimeout(() => {
-+      if (captureRetentionTimer !== timer) return;
-+      captureRetentionTimer = null;
-+      if (mic === heldMic && micSocket === null) void teardownMic();
-+    }, Math.max(0, deadlineMs - epochNow()));
++    const timer = setTimeout(
++      () => {
++        if (captureRetentionTimer !== timer) return;
++        captureRetentionTimer = null;
++        if (mic === heldMic && micSocket === null) void teardownMic();
++      },
++      Math.max(0, deadlineMs - epochNow()),
++    );
 +    captureRetentionTimer = timer;
-   };
++  };
    async function mintOnce(
      generation: number,
-@@ -673,48 +698,61 @@
+   ): Promise<VoiceSessionMintResponse> {
+@@ -583,6 +614,7 @@
+     switch (event.t) {
+       case "ready":
+         uiContextSupported = event.uiContext === true;
++        playbackCompletionSupported = event.playbackCompletion === true;
+         lastUiContext = undefined;
+         mark("ready", event.traceId);
+         // The server accepted the session: record the health timestamp the
+@@ -673,48 +705,63 @@
      generation: number,
      socket: VoiceWebSocketLike,
    ): Promise<void> {
@@ -77,7 +98,9 @@
 +    let capturedMic: VoiceMicCapture | null = null;
 +    const currentCapture = () =>
 +      isLifecycleCurrent(generation) &&
-+      (capturedMic ? mic === capturedMic : captureSocket === socket && ws === socket);
++      (capturedMic
++        ? mic === capturedMic
++        : captureSocket === socket && ws === socket);
      try {
        const createdMic = await startVoiceMicCapture({
          onFrame: (bytes) => {
@@ -117,7 +140,7 @@
        // Keep the server's default half-duplex policy. Advertising continuous
        // handoff would opt this client into acoustic interruption during speech.
        // Now genuinely listening.
-@@ -742,6 +780,16 @@
+@@ -742,6 +789,16 @@
      const downlink = negotiateCodec(preferredDownlink, minted.downlink?.codecs);
      if (!uplink || !downlink) {
        throw new VoiceSessionMintError(-1, "no compatible codec offered");
@@ -134,7 +157,7 @@
      }
      connPhase = "connecting";
      uiContextSupported = false;
-@@ -906,12 +954,16 @@
+@@ -906,12 +963,18 @@
      // The transport is already gone, so publish that fact before a browser
      // driver is allowed to delay microphone teardown. Later retry attempts
      // re-arm the caller's connect watchdog from inside the loop.
@@ -144,17 +167,19 @@
 -    // context so an autoplay unlock survives the reconnect.
 +    // Clean idle token rotation retains the owned, muted device capture. Unexpected
 +    // transport loss still releases it; no audio is sent until the new ready.
-+    const retainCapture = reason === "token_rotation" && !budgetedInitial && mic?.active;
++    const retainCapture =
++      reason === "token_rotation" && !budgetedInitial && mic?.active;
 +    // Keep the playback context so an autoplay unlock survives reconnect.
      playbackEnd = null;
      playback?.flush();
 -    await teardownMic();
 +    if (!retainCapture) await teardownMic();
-+    else if (rotationDeadlineMs !== null) retainCaptureUntil(rotationDeadlineMs);
++    else if (rotationDeadlineMs !== null)
++      retainCaptureUntil(rotationDeadlineMs);
      if (!isLifecycleCurrent(generation) || intentionalClose) return;
      // Budget refill: a session that stayed healthy long enough since its last
      // recovery earns a fresh budget, so a long conversation tolerates
-@@ -960,6 +1012,10 @@
+@@ -960,6 +1023,10 @@
        } catch (err) {
          if (!isLifecycleCurrent(generation)) return;
          if (err instanceof VoiceSessionLifecycleCancelledError) return;
@@ -165,7 +190,7 @@
          const transient =
            (err instanceof VoiceSessionMintError && err.isTransient) ||
            err instanceof VoiceSessionConsentError;
-@@ -987,14 +1043,25 @@
+@@ -987,14 +1054,28 @@
      }
    }
    async function teardownMic(): Promise<void> {
@@ -187,12 +212,31 @@
 -    await currentMic?.stop().catch(() => {});
 +    const release = currentMic.stop().catch(() => {});
 +    retiringMic = release;
-+    try { await release; }
-+    finally { if (retiringMic === release) retiringMic = null; }
++    try {
++      await release;
++    } finally {
++      if (retiringMic === release) retiringMic = null;
++    }
    }
    async function stop(): Promise<void> {
      disposed = true;
-@@ -1166,7 +1233,7 @@
+@@ -1098,6 +1179,15 @@
+                 state.phase === "speaking" &&
+                 state.traceId === ended.traceId
+               ) {
++                // Ordered before resumed audio on this same socket. Older servers
++                // retain their conservative estimate until they advertise support.
++                if (playbackCompletionSupported && ws && connPhase === "open")
++                  ws.send(
++                    encodeClientControl({
++                      t: "playback_complete",
++                      traceId: ended.traceId,
++                    }),
++                  );
+                 setState(loopToListening(applyServerEvent(state, ended)));
+               }
+             }
+@@ -1166,7 +1256,7 @@
      setMicrophoneMuted(muted) {
        if (disposed || microphoneMuted === muted) return;
        microphoneMuted = muted;
@@ -214,7 +258,22 @@
  import type { VoiceUiContext } from "@elizaos/host/protocol";
  export const VOICE_SESSION_PROTOCOL_VERSION = 1 as const;
  /** Uplink/downlink codecs negotiated in `hello`. */
-@@ -135,6 +139,9 @@
+@@ -66,12 +70,14 @@
+   | ClientHelloFrame
+   | ClientAudioMetaFrame
+   | ClientAudioCapabilitiesFrame
++  | { t: "playback_complete"; traceId: string }
+   | ClientBargeInFrame
+   | ClientByeFrame;
+ // ── Server -> client control / state events ────────────────────────────
+ export interface ServerReadyEvent {
+   t: "ready";
+   uiContext?: boolean;
++  playbackCompletion?: boolean;
+   sessionId: string;
+   traceId: string;
+ }
+@@ -135,6 +141,9 @@
    viewPath?: string;
    subview?: string;
    traceId: string;
@@ -224,7 +283,7 @@
  }
  export type InterruptionReason = "acoustic" | "explicit";
  export interface ServerInterruptedEvent {
-@@ -269,12 +276,39 @@
+@@ -269,12 +278,39 @@
      ) {
        return null;
      }

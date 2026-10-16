@@ -4,15 +4,15 @@
     {
       "path": "packages/ui/src/voice/voice-session-client.ts",
       "beforeSha256": "1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081",
-      "afterSha256": "3db3461efdbdd9a455eefd4d70873d126ff63f548b9f4375be570e6421bbc723"
+      "afterSha256": "20ef94c8c4e01d4f1ec1ee6c64f62182eff28626ce50608b1cf0dae873495f63"
     },
     {
       "path": "packages/ui/src/voice/voice-session-protocol.ts",
       "beforeSha256": "d3162f2622f93f140233bfd8822e417df7c94edf809da692be82cd89f2677326",
-      "afterSha256": "de0b2382cfb5ca74f5213b9af2804bab7c7b48c7f69aa6ed07930da5cebcb521"
+      "afterSha256": "6476281e74873613551adaef4aae2d941aeff97cc2c76bfd28e2de5443bc3146"
     }
   ],
-  "patchSha256": "0292f60e6fa344b56d472fbe00389452a350c5fdaf1647092bbe5ebd14d3b163",
-  "sourceScope": "Reviewed canonical voice source preserving client57 capture lease plus optional prepared navigation protocol. Core helper remains unmodified.",
-  "canonicalCommit": "bcc33c29da92a5fa39df8288802cee08546972d8"
+  "patchSha256": "72a3ea87c4881c0c9fdc7ab45c1a2ebdccff9f5bfab675c41d4ee705c76fdd2a",
+  "sourceScope": "Tested canonical voice capture lease and prepared navigation plus negotiated, trace-bound actual playback completion; applied as an exact explicit patch without editing vendor source.",
+  "canonicalCommit": "66d80924bee0bcab9caca85793d312f0dac63e39"
 }
