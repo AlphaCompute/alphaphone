@@ -1,4 +1,4 @@
-<!-- Integration 9e7a1553f378a570be3fe74c021e71710a1c96eb combines main Maps and Calendar; native qualification remains pending. -->
+<!-- Checked source integration a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd; full native product qualification remains pending. -->
 # Current MVP status
 
 ## October 12 approved policy versus current implementation
@@ -31,7 +31,7 @@ The historical October 14 development rebuild used upstream `193d9264fc`; curren
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The consumer pin in `upstream.lock.json` is `89cd411342` (2026-10-15 local mailbox/Calendar integration; native qualification remains pending). The earlier pin was `968348d792` (moved on 2026-10-14,
+- The consumer pin in `upstream.lock.json` is `a89b72fce7` (2026-10-16 checked mailbox/Calendar integration; full native product qualification remains pending). The earlier pin was `968348d792` (moved on 2026-10-14,
   PR #531), with llama.cpp gitlink `3e5f73922ee8`. It preserves Phonon-2 batch/streaming
   ASR, Paradee-8M TTS, misaki G2P and voice ABI 18 from the previous `c7a9a0d7e7` pin,
   adds the upstream-preserving native integration, native build/Kokoro classification repairs

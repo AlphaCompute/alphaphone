@@ -1,14 +1,16 @@
 --- a/packages/agent/src/api/approval-routes.ts
 +++ b/packages/agent/src/api/approval-routes.ts
-@@ -10,6 +10,8 @@
+@@ -10,8 +10,10 @@
  import type http from "node:http";
  import {
-   PENDING_USER_ACTION_WEIGHT,
-+  resolveOwnerEntityIdOrDefault,
 +  type IAgentRuntime,
+   PENDING_USER_ACTION_WEIGHT,
    type PendingUserAction,
    type PendingUserActionOption,
++  resolveOwnerEntityIdOrDefault,
    ServiceType,
+   type Task,
+   type UUID,
 @@ -33,6 +35,7 @@
  
  interface ApprovalRouteRuntime {

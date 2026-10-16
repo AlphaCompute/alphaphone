@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T04:22:24.171574+00:00",
+  "updatedAt": "2026-10-16T07:00:07.323631+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "8b3d1c3ae2bbb0cadf5c8b8dd0bc9f4a02596630",
-  "agentSource": "89cd411342f9fa3a48154e477f7d5e049686344a",
+  "productSource": "a09255d6ca69d42b7f98777a59862e6208267238",
+  "agentSource": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -2183,5 +2183,6 @@
       ],
       "scope": "MVP"
     }
-  ]
+  ],
+  "nativeSpeechEvidence": "docs/evidence/alpha-native-speech-2026-10-15.json; synthetic native test app only, not installed Alpha or human acceptance"
 }

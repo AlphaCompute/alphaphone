@@ -3,14 +3,38 @@
   "repository": "elizaOS/eliza",
   "base": "recorded-local-origin/develop",
   "baseCommit": "988e0da131da6e734738b6896ae4d5cc761d7dba",
-  "head": "89cd411342f9fa3a48154e477f7d5e049686344a",
-  "recordedAt": "2026-10-15",
-  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...89cd411342f9fa3a48154e477f7d5e049686344a",
+  "head": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
+  "recordedAt": "2026-10-16",
+  "command": "git rev-list --left-right --count 988e0da131da6e734738b6896ae4d5cc761d7dba...a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
   "status": "diverged",
-  "aheadBy": 42,
+  "aheadBy": 48,
   "behindBy": 398,
   "mergeBase": "fa37eb8c0a2c950d05aa40751112599cfb9f2a7d",
   "pinOnlyCommits": [
+    {
+      "sha": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
+      "subject": "Scope Calendar approval contracts to preserve legacy Life Ops compatibility"
+    },
+    {
+      "sha": "432a1bbe5af856674fcd38f9956728678938ff05",
+      "subject": "Fix native voice qualification helper for current speech API"
+    },
+    {
+      "sha": "04a502f21fd19d1ceaf8cd8d323e40e87733486f",
+      "subject": "Align carried Life Ops schema formatting with the verification gate"
+    },
+    {
+      "sha": "a32cc71174be51103cb35e3751f69ec4274baedb",
+      "subject": "Order contract exports for normal workspace verification"
+    },
+    {
+      "sha": "ffb248054c4da9cc483f3b05f5f768fc9883f5c6",
+      "subject": "Fix Calendar sync route import ordering for normal verification"
+    },
+    {
+      "sha": "69ee4946902883c82064c03ff30045824ec69f39",
+      "subject": "Fix lint gates in managed Google and approval source integration"
+    },
     {
       "sha": "89cd411342f9fa3a48154e477f7d5e049686344a",
       "subject": "Fix Calendar lint gates without weakening managed grant checks"
