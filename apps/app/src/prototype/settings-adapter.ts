@@ -1,3 +1,4 @@
+import {openCalendarSyncSettings} from '../runtime/calendar-sync-settings';
 import {browserDevProfile as devProfileQuery} from '../browser/dev-profile';
 import {testMocksEnabled,devSurfacesEnabled} from '../build-flags';
 import {openCalendarRecovery} from '../browser/calendar-recovery';
@@ -10,7 +11,7 @@ import { registerPlugin } from '../platform-plugins';
 import { broaderPageNotice, switchValue } from './native-adapter';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps } from '../daily';
-import { connectionController, agentPendingText } from '../runtime/connection-ui';
+import { connectionController, agentAvailabilityNotice } from '../runtime/connection-ui';
 import {googleConnectionController} from '../runtime/google-connection-ui';
 import {GOOGLE_ACCOUNTS_CHANGED,googleDisconnectConfirmation,googleDisconnectMessage} from '../runtime/google-accounts';
 import { browserLocalAgentEnabled } from '../runtime/local-agent';
@@ -18,7 +19,7 @@ import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-c
 import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { retireGmailBackground } from '../runtime/gmail-background';
-import { gmailGrantLabel, gmailGrantTier } from '../runtime/gmail-grants';
+import { gmailGrantLabel, googleAccountAccessLabel } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { exportVoiceTiming } from '../runtime/voice-timing';
@@ -180,7 +181,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
-    digests = workflow ? 'Checking agent support…' : agentPendingText();
+    digests = workflow ? 'Checking agent support…' : agentAvailabilityNotice();
     inferenceProvider = 'Not reported by agent';
     changed();
     const timeout = setTimeout(() => { abort.abort(); if (owner === instance && capabilityAbort === abort) { if (gmail === 'Checking authorization…') gmail = 'Authorization not verified'; if (digests === 'Checking agent support…') digests = 'Agent support not verified'; changed(); } }, 10000);
@@ -461,6 +462,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
           }else rows.push(info('Calendar access','Not available in this version'));
           const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
+          groups.push({...group(display?.native?[info('Google sync','Device calendar sync is not available in this build')]:[{kNav:true,label:'Google Calendar sync',lbl:'Google Calendar sync',sub:'Review the destination and enable linked event sync',hasSub:true,chev:true,noAB:true,go:openCalendarSyncSettings}]),cap:'Sync',hasCap:true});
           if(testMocksEnabled&&!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
         }
@@ -530,7 +532,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([{ kNav:true,label:'Manage Google accounts',lbl:'Manage Google accounts',chev:true,noAB:true,go:()=>googleConnectionController.open() },info('Gmail', gmail),
-          ...connected.map(a => info(a.label, { modify: 'Connected · read and change access', readonly: 'Connected · read access', none: 'Connected · read access not granted' }[gmailGrantTier(a)])),
+          ...connected.map(a => info(a.label, googleAccountAccessLabel(a))),
           ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),

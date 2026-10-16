@@ -180,6 +180,7 @@ export const CLASS_REGISTRY = {
   PhotosTrash: {},
   ReminderDeletionJournal: {},
   CalendarDeletionReview: { secondaryUser: true, args: { calendarDeletionReview: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Actual native review, Cancel, Undo and expiry against an owned disposable Calendar" },
+  CalendarSyncProvider: { secondaryUser: true, args: { calendarSyncProvider: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Exact rich-event CalendarProvider CAS in a fresh disposable user; no Google or agent traffic" },
   ScopedCalendarDeletion: { secondaryUser: true, args: { scopedCalendarDeletion: "1" }, grant: ["READ_CALENDAR", "WRITE_CALENDAR"], note: "Exact synthetic provider rows in a fresh owned secondary user; no real account integration" },
   ReminderCapacity: {},
   ReminderHeadsUp: { note: "skips unless notifications are enabled for the app and Do Not Disturb is off" },

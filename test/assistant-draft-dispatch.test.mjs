@@ -4,6 +4,28 @@ const {AssistantDraftController}=await import('data:text/javascript;base64,'+Buf
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 const record=(text,revision='1')=>({version:1,binding:'test',revision,text});
 function fixture(){let text='',saved=null;const store={async read(){return saved;},async save(expected,value){assert.deepEqual(expected,saved);return saved=record(value,String(Number(saved?.revision||0)+1));}};const c=new AssistantDraftController(async()=>store,()=>text,value=>{text=value;},()=>{});return {c,store,set:value=>{text=value;c.edit(value);},get:()=>text,saved:()=>saved,external:value=>{saved=record(value,'external');}};}
+test('opening quietly retries a transient read without losing restored draft text',async()=>{
+ const f=fixture();f.external('Keep these words');const read=f.store.read;let attempts=0;
+ f.store.read=async()=>{if(++attempts===1)throw Error('Storage opening');return read();};
+ const opening=f.c.open('one');assert.equal(f.c.state.message,'');assert.equal(f.c.state.opening,true);
+ await opening;assert.equal(attempts,2);assert.equal(f.c.state.error,false);assert.equal(f.get(),'Keep these words');
+});
+test('a retired draft cannot restore its text after a storage-open retry',async()=>{
+ const f=fixture();let attempts=0;f.store.read=async()=>{attempts++;throw Error('Unavailable');};
+ const opening=f.c.open('old');await tick();f.c.retire();f.set('New words');await opening;
+ assert.equal(attempts,1);assert.equal(f.get(),'New words');assert.equal(f.c.state.error,false);
+});
+test('repeated connection notifications wait for the same pending draft read',async()=>{
+ const f=fixture();let finish;f.store.read=()=>new Promise(resolve=>{finish=resolve;});
+ const first=f.c.open('one');let secondFinished=false;const second=f.c.open('one').then(()=>{secondFinished=true;});
+ await tick();assert.equal(secondFinished,false);finish(record('Saved words'));await Promise.all([first,second]);
+ assert.equal(f.get(),'Saved words');assert.equal(f.c.state.opening,false);
+});
+test('persistent read failure remains actionable and cannot send or overwrite a draft',async()=>{
+ const f=fixture();f.store.read=async()=>{throw Error('Unavailable');};f.set('Unsent words');await f.c.open('one');
+ assert.equal(f.get(),'Unsent words');assert.equal(f.saved(),null);assert.equal(f.c.state.error,true);
+ await assert.rejects(f.c.hold('Unsent words'),/Review local draft storage/);
+});
 test('the saved draft keeps the text while a send is in flight and clears only after dispatch',async()=>{
  const f=fixture();f.external('Hello agent');await f.c.open('one');assert.equal(f.get(),'Hello agent');
  await f.c.hold('Hello agent');f.set('');await tick();

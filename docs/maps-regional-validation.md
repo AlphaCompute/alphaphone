@@ -105,3 +105,9 @@ Evidence and limits: `scripts/maps/test-renderer.mjs` passes in headless Chromiu
 The upstream integration tests exercise the actual Maps action handlers, shared transport, HTTP owner authorization and SQL enrollment store with a scripted phone host. The native gitlinks are unchanged. This establishes the process contract without claiming a physical phone, real GPS or deployed Cloud Maps integration was exercised.
 
 Evidence: `scripts/test-maps-device-navigation.mjs` (through `test/adapter-contracts.test.mjs`) runs the binding against the real shared `MapsController`, a stubbed Cloud provider and a scripted stand-in for the Maps screen (not the adapter itself), covering select, start, reroute, stop, cancellation (including a late GPS result after a turn ends), stale location, account change and unconfigured registration, plus resident loading and relay contracts at the pin. It is not evidence of an agent reaching the phone, a live route, device location or physical navigation.
+
+## Global map display
+
+Alpha restores the existing host-selected OpenFreeMap basemap independently of the Cloud search and routing service. It loads real public imagery and retains attribution and the map privacy disclosure. Opening Maps does not request device location. Coordinates enter the map only through an explicit location request, a selected saved place, or manual entry. Directions are offered only when the configured provider reports a supported mode.
+
+From pin `08703642627c` the upstream pin carries the qualified global renderer (`plugins/plugin-maps/src/client/map-plane.ts`, elizaOS/eliza#36314) byte for byte, so `prepare-client-features.mjs` takes it from the authenticated pin and no longer applies a carried patch.

@@ -30,7 +30,7 @@ The historical October 14 development rebuild used upstream `193d9264fc`; curren
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `afd44a8544` (eliza `develop`, moved on 2026-10-16),
+- The upstream pin in `upstream.lock.json` is `0870364262` (eliza `develop`, moved on 2026-10-16; native bytes built at `afd44a8544`, unchanged since),
   with llama.cpp gitlink `6e6a4401aae4` (the fork's `main`, which eliza `develop` pins). The Maps
   allowance commits of the previous `221a0bc4e0` pin are on `develop` through merged PRs. Both
   Android ABIs were rebuilt at this pin (voice ABI 19, bounded Paradee streaming PCM and stricter

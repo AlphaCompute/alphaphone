@@ -1,6 +1,6 @@
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
-Current source pin: `afd44a8544b4` (2026-10-16, eliza `develop`), llama.cpp `6e6a4401aae4` (fork `main`).
+Current source pin: `08703642627c` (2026-10-16, eliza `develop`; native inputs identical to `afd44a8544b4`), llama.cpp `6e6a4401aae4` (fork `main`).
 Both Android ABIs were rebuilt at this pin (voice ABI 19, Paradee streaming PCM); build inspection only. Voice remains unqualified and the prior embedding-host
 receipt remains refused pending requalification. Historical evidence below is not promoted.
 

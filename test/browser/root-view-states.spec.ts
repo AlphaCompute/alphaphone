@@ -14,7 +14,7 @@ const EMPTY: Record<View, RegExp> = {
   Browser: /No open pages|New tab/,
   Camera: /Camera unavailable\. Tap the shutter to retry\./,
   Photos: /^No photos$/,
-  Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/,
+  Maps: /Add a location/,
   Notes: /No notes yet/,
   Files: /No recent files/,
   Workflows: /Connect your remote agent in Settings\. Reminders on this phone stay available/,
@@ -35,6 +35,7 @@ async function blockStorage(page: Page) {
   });
 }
 async function open(page: Page, view: View, theme: 'light' | 'dark'): Promise<Locator> {
+  if(view==='Maps')await page.route('https://tiles.openfreemap.org/**',route=>route.fulfill({json:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#e7ebed'}}]}}));
   // Android's shade is the notification surface (#416). This development build stands in for it,
   // opened from launcher Home's Notifications button (docs/gesture-zones.md); the standalone app has none.
   const launcher = view === 'Notifications' ? (theme === 'dark' ? '&shell=launcher' : '?shell=launcher') : '';

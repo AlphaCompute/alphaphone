@@ -67,9 +67,14 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
  assert.throws(()=>prepareClientFeatures({root}),/Review voice projections/);
  assert.equal(fs.existsSync(path.join(root,'.eliza/client-features')),false);
 }));
-test('actual pinned voice projection authenticates source and output hashes and excludes dashboard transport',()=>{
+test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'afd44a8544b4aed3bae7824be5d261270a69540e');assert.equal(stamp.projectionVersion,1);
+ assert.equal(stamp.baseCommit,'08703642627ca12167ad6f3b08516d352b7e3a0d');assert.equal(stamp.projectionVersion,3);
+ // The global renderer and the browser-safe Calendar engine come from the pin itself (formerly carried projections).
+ assert.match(fs.readFileSync(path.join(source,'plugins/plugin-maps/src/client/map-plane.ts'),'utf8'),/export interface GlobalBasemap/);
+ assert.equal(stamp.files['packages/contracts/src/calendar-linked-sync.ts'],stamp.sourceFiles['packages/contracts/src/calendar-linked-sync.ts']);
+ const calendarBundle=buildSync({entryPoints:[path.join(source,'packages/contracts/src/calendar-linked-sync.ts')],bundle:true,write:false,platform:'browser',format:'esm',metafile:true});
+ assert.equal(Object.keys(calendarBundle.metafile.inputs).length,1,'shared Calendar reconciliation has no Node, SQL, or runtime dependency');
  const client='packages/ui/src/voice/voice-session-client.ts',text=fs.readFileSync(path.join(source,client),'utf8');
  assert.match(text,/requires an injected session fetch/);assert.doesNotMatch(text,/import\("\.\/voice-session-fetch"\)/);
  assert.notEqual(stamp.sourceFiles[client],stamp.files[client]);

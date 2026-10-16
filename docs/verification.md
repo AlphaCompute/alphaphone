@@ -1488,3 +1488,12 @@ transcript buffers (#81). The elizavoice-jni Java class now declares `nativePara
   release APKs; `verify-apks` records both releases `distributable: false`.
 
 No host, emulator or device execution of the new native bytes is claimed, and no qualification is transferred.
+
+### Source pin 08703642627c (2026-10-16)
+
+The pin then moved to eliza `develop` `08703642627ca12167ad6f3b08516d352b7e3a0d`, which adds elizaOS/eliza#36546 (local
+end-of-turn route), #36547 (heard-only assistant content), #36549 (period-allowance reset in chat terminal failures) and
+#36556 (Maps admission latency harness). The llama.cpp gitlink, every native build input, the elizavoice-jni Java class, the
+voice projection inputs and `bun.lock` are byte-identical to `afd44a8544b4`, so the recorded native bytes are unchanged and
+no rebuild was needed. Reachability: `behind`, no pin-only commits. Resident audit: identical 98 findings across 3691 package
+versions; dispositions carried forward.
