@@ -1,6 +1,6 @@
 {
   "baseCommit": "33a6d19c024a4ec130710f0808df25588266d542",
-  "admittedCommit": "208d95f7f4de00f6f575a5cd4468e02ac2c4c870",
+  "admittedCommit": "60f38e1d701f2c6a16a9fe4ac347b32b6faf2584",
   "changedPaths": [
     "plugins/plugin-assistant/src/features/advanced-capabilities/actions/message.ts",
     "plugins/plugin-assistant/src/features/advanced-capabilities/index.ts",
@@ -93,8 +93,20 @@
     "commit": "208d95f7f4de00f6f575a5cd4468e02ac2c4c870",
     "focusedTests": 150,
     "lint": true,
-    "fullQualification": "running v7; candidate preview QA only",
+    "fullQualification": {
+      "passed": true,
+      "source": "208d95f7f4de00f6f575a5cd4468e02ac2c4c870",
+      "job": "gmail-draft-continuity-20261016-v7",
+      "sourceUnchanged": true
+    },
     "liveFailureEvidence": "Exact confirmation trace had zero tool events; RESTORE_CONTEXT offered unavailable history when only FACTS was deferred.",
     "rule": "Advertise only scopes which are currently restorable; keep the existing invalid-restoration boundary."
+  },
+  "directConnectorAdmissionFix": {
+    "commit": "60f38e1d701f2c6a16a9fe4ac347b32b6faf2584",
+    "focusedTests": 152,
+    "lint": true,
+    "fullQualification": "running v8; candidate preview QA only",
+    "rule": "Only an explicit direct-send operation requires a locally registered send connector. The umbrella and reviewed-draft operations retain their own gates."
   }
 }
