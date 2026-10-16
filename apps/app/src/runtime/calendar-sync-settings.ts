@@ -1,0 +1,143 @@
+import { calendarSyncHost } from "./calendar-sync-host";
+import { holdPhoneInert } from "./modal-inert";
+import type { CalendarSyncReview } from "./calendar-sync-controller";
+/** Explicit destination review. Opening Settings does not enable sync or dispatch provider writes. */
+export function openCalendarSyncSettings() {
+	const dialog = document.createElement("dialog");
+	dialog.className = "note-source-dialog";
+	dialog.setAttribute("aria-label", "Google Calendar sync");
+	const theme = document.querySelector(".os");
+	if (theme) {
+		const style = getComputedStyle(theme);
+		for (const token of ["bg", "fg"])
+			dialog.style.setProperty(
+				"--source-" + token,
+				style.getPropertyValue("--" + token),
+			);
+	}
+	const content = document.createElement("div");
+	content.className = "note-source-content";
+	const title = document.createElement("h2");
+	title.textContent = "Google Calendar sync";
+	const description = document.createElement("p");
+	description.textContent =
+		"Events created in Alpha sync to your selected Google calendar. Later edits and deletions sync both ways for linked events while Alpha is open. Google receives event details and guest email addresses. Pausing keeps saved events.";
+	const summary = document.createElement("p");
+	summary.setAttribute("role", "status");
+	summary.setAttribute("aria-live", "polite");
+	summary.textContent = "Sync stays off until you review and enable it.";
+	const details = document.createElement("p");
+	const footer = document.createElement("footer");
+	const reviewButton = document.createElement("button"),
+		enable = document.createElement("button"),
+		sync = document.createElement("button"),
+		pause = document.createElement("button"),
+		close = document.createElement("button");
+	reviewButton.textContent = "Review sync";
+	enable.textContent = "Enable sync";
+ enable.style.cssText="background:var(--acc,#0000ff);color:#fff";
+	enable.disabled = true;
+	sync.textContent = "Sync now";
+	pause.textContent = "Pause sync";
+	close.textContent = "Close";
+	const primary = document.createElement("div");
+	primary.style.cssText = "display:flex;flex-wrap:wrap;gap:8px";
+	primary.append(reviewButton, enable, sync, pause);
+	content.append(title, description, summary, details, primary);
+	footer.append(close);
+	dialog.append(content, footer);
+	const prior = document.activeElement as HTMLElement | null,
+		release = holdPhoneInert(document.querySelector<HTMLElement>(".os"));
+	let alive = true,
+		busy = false,
+		review: CalendarSyncReview | undefined;
+	const update = () => {
+		if (!alive) return;
+		const state = calendarSyncHost.snapshot();
+		summary.textContent = state.status;
+		reviewButton.disabled = busy || state.running;
+		enable.disabled = busy || state.running || !review;
+		sync.disabled = busy || state.running || !state.enabled;
+		sync.hidden = !state.enabled;
+		pause.hidden = !state.enabled && !state.running;
+		reviewButton.hidden = state.enabled;
+		enable.hidden = state.enabled || !review;
+		pause.disabled = false;
+	};
+	const unsubscribe = calendarSyncHost.subscribe(update);
+	const finish = () => {
+		if (!alive) return;
+		alive = false;
+		unsubscribe();
+		calendarSyncHost.cancel();
+		window.removeEventListener("alpha-back", back, true);
+		window.removeEventListener("pagehide", finish);
+		document.removeEventListener("visibilitychange", visibility);
+		dialog.remove();
+		release();
+		if (prior?.isConnected) prior.focus();
+	};
+	const back = (event: Event) => {
+			event.preventDefault();
+			event.stopImmediatePropagation();
+			finish();
+		},
+		visibility = () => {
+			if (document.hidden) finish();
+		};
+	const run = async (action: () => Promise<unknown>) => {
+		if (busy) return;
+		busy = true;
+		update();
+		try {
+			await action();
+		} catch (error) {
+			if (alive)
+				summary.textContent =
+					error instanceof Error ? error.message : "Sync could not be checked.";
+		} finally {
+			busy = false;
+			update();
+		}
+	};
+	reviewButton.onclick = () =>
+		void run(async () => {
+			review = undefined;
+			const result = await calendarSyncHost.review();
+			if (!alive) return;
+			review = result;
+			const destination = calendarSyncHost.destination();
+			details.textContent = `Google account: ${destination.account}. Calendar: ${destination.calendar}. ${result.events.length} Alpha events will be linked. Existing Google events will not be imported or overwritten.`;
+		});
+	enable.onclick = () =>
+		void run(async () => {
+			if (!review) return;
+			const selected = review;
+			review = undefined;
+			await calendarSyncHost.enable(selected);
+		});
+	sync.onclick = () => void run(() => calendarSyncHost.sync());
+	pause.onclick = () =>
+		void calendarSyncHost.pause().catch((error) => {
+			if (alive)
+				summary.textContent =
+					error instanceof Error ? error.message : "Sync could not be paused.";
+		});
+	close.onclick = finish;
+	dialog.oncancel = (event) => {
+		event.preventDefault();
+		finish();
+	};
+	window.addEventListener("alpha-back", back, true);
+	window.addEventListener("pagehide", finish);
+	document.addEventListener("visibilitychange", visibility);
+	document.body.append(dialog);
+	dialog.showModal();
+	void calendarSyncHost.settings().catch(() => {
+		if (alive)
+			summary.textContent =
+				"Saved sync settings could not be checked. Nothing was enabled.";
+	});
+	update();
+	reviewButton.focus();
+}

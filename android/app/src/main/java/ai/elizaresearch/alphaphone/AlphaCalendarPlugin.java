@@ -31,6 +31,10 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
  private static final class DeleteOwner{org.json.JSONObject owner,identity,operation;}
  private final java.util.concurrent.ConcurrentHashMap<String,DeleteOwner> deleteOwners=new java.util.concurrent.ConcurrentHashMap<>();
  private volatile boolean deletionRetired;
+ private CalendarSyncBridge calendarSync;
+ private synchronized CalendarSyncBridge calendarSync(){if(calendarSync==null)calendarSync=new CalendarSyncBridge(this);return calendarSync;}
+ void calendarSyncChanged(){notifyListeners("calendarSyncChanged",new JSObject());}
+ @PluginMethod public void sync(PluginCall call){calendarSync().call(call);}
  private CalendarScopedDeletionReview scopedDeletion;
  private synchronized CalendarScopedDeletionReview scopedDeletion(){if(scopedDeletion==null)scopedDeletion=new CalendarScopedDeletionReview(this);return scopedDeletion;}
  @PluginMethod public void inspectDeletion(PluginCall call){scopedDeletion().inspect(call);}
@@ -68,8 +72,8 @@ public final class AlphaCalendarPlugin extends CalendarPlugin {
   }catch(Exception unavailable){deleteOwners.remove(id,ticket);call.reject("Authenticated local agent is unavailable for deletion review.");}});}catch(java.util.concurrent.RejectedExecutionException retired){deleteOwners.remove(id,ticket);call.resolve(status("cancelled"));}
  }
  @Override @PluginMethod public void cancelAgent(PluginCall call){deleteOwners.remove(call.getString("operationId",""));super.cancelAgent(call);}
- @Override protected void handleOnPause(){if(scopedDeletion!=null)scopedDeletion.pause();super.handleOnPause();}
- @Override protected void handleOnDestroy(){if(scopedDeletion!=null)scopedDeletion.destroy();deletionRetired=true;deleteOwners.clear();deleteOwnerWorker.shutdown();super.handleOnDestroy();}
+ @Override protected void handleOnPause(){if(scopedDeletion!=null)scopedDeletion.pause();if(calendarSync!=null)calendarSync.pause();super.handleOnPause();}
+ @Override protected void handleOnDestroy(){if(scopedDeletion!=null)scopedDeletion.destroy();if(calendarSync!=null)calendarSync.destroy();deletionRetired=true;deleteOwners.clear();deleteOwnerWorker.shutdown();super.handleOnDestroy();}
 
  private boolean granted(){return getPermissionState("calendar")==PermissionState.GRANTED;}
  /** Capacitor's own permission request launches through the activity; see {@link LateLaunch}. */

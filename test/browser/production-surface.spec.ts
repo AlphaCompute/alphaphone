@@ -183,12 +183,13 @@ test('Settings keeps the unavailable fallback when the license notices cannot be
 });
 
 test('deferred apps are absent and root views show honest unconnected states', async ({ page }) => {
+  await page.route('https://tiles.openfreemap.org/**',route=>route.fulfill({json:{version:8,sources:{},layers:[{id:'background',type:'background',paint:{'background-color':'#e7ebed'}}]}}));
   await page.addInitScript(offline);
   await page.goto('/?tools=1');
   for (const deferred of ['Phone', 'Messages', 'Contacts', 'Wallet']) await expect(page.getByRole('button', { name: deferred, exact: true })).toHaveCount(0);
   const states: Record<string, RegExp> = {
     Inbox: /Connect Eliza Cloud/, Workflows: /Connect your remote agent in Settings\. Reminders on this phone stay available\./, Notes: /No notes yet/,
-    Photos: /No photos/, Maps: /Sign in to Eliza Cloud with an active subscription to search places and plan routes/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
+    Photos: /No photos/, Maps: /Add a location/, Calendar: /\d/, Files: /Choose a document/, Settings: /Agent connection/,
   };
   for (const [view, expected] of Object.entries(states)) {
     await page.goto('/?tools=1');

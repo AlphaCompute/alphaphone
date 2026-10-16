@@ -1,25 +1,77 @@
-/** Host reads for owner-only Inbox tools. Provider credentials remain in the
- * existing private Cloud store. No mailbox cache or mutation path is created. */
+/** Owner-only Google tools. Provider credentials remain in the private Cloud
+ * store; Gmail sends use the canonical prepared-review/dispatch/receipt flow. */
 import {createHash} from 'node:crypto';
 import {CloudProtocol} from '../apps/app/src/runtime/cloud-protocol.ts';
 import {createBrowserCloudDevHandler} from './browser-cloud-dev-bridge.ts';
 import {decodeBasicHtmlEntities} from '../vendor/eliza/plugins/plugin-assistant/src/utils/html-entities.ts';
+export type AgentSendContent={to:string[];subject:string;bodyText:string};
+function sendProposal(input:AgentSendContent){
+ if(!Array.isArray(input.to)||input.to.length<1||input.to.length>20||input.to.some(value=>typeof value!=='string'||value.length>320||!/^\S+@[^\s@]+\.[^\s@]+$/.test(value)||/[\p{Cc}\p{Cf}]/u.test(value))||typeof input.subject!=='string'||input.subject.length>998||/[\r\n]/.test(input.subject)||typeof input.bodyText!=='string'||input.bodyText.length>64000)throw Error('Review valid recipients, subject, and email text before preparing this send.');
+ return {kind:'send',mode:'compose',to:input.to,cc:[],bcc:[],subject:input.subject,bodyText:input.bodyText,attachments:[]};
+}
 export function createGmailAgentReadHost(profile:string){
  const host=createBrowserCloudDevHandler({profile});
  const refuseWrite=()=>{throw Error('Gmail agent reads cannot change credentials or mail.');};
- async function verified<T>(run:(client:CloudProtocol,grantId:string,scope:string,signal:AbortSignal)=>Promise<T>,parent?:AbortSignal){
+ async function verified<T>(run:(client:CloudProtocol,grantId:string,scope:string,signal:AbortSignal)=>Promise<T>,parent?:AbortSignal,capability='google.gmail.triage',operation=false){
   const credential=await host.agentCredential();if(!credential)throw Error('Sign in to Eliza Cloud before reading Gmail.');
   const identity=JSON.stringify(credential),signal=parent?AbortSignal.any([parent,AbortSignal.timeout(30000)]):AbortSignal.timeout(30000);
   const current=async()=>{signal.throwIfAborted();if(JSON.stringify(await host.agentCredential())!==identity)throw Error('Cloud account changed while reading Gmail.');};
-  const client=new CloudProtocol('production',host.agentRead,{acceptsReferences:true,read:async()=>{await current();return credential;},write:async()=>refuseWrite(),clear:async()=>refuseWrite()},async()=>refuseWrite());
+  const client=new CloudProtocol('production',operation?host.agentGmailOperation:host.agentRead,{acceptsReferences:true,read:async()=>{await current();return credential;},write:async()=>refuseWrite(),clear:async()=>refuseWrite()},async()=>refuseWrite());
   const owner=await client.identity(signal);await current();
   if(owner.userId!==credential.userId||owner.organizationId!==credential.organizationId)throw Error('Cloud owner could not be verified for Gmail.');
-  const accounts=(await client.gmailAccounts(signal)).filter(a=>a.connected&&a.connectionId&&a.grantedCapabilities.includes('google.gmail.triage'));
+  const accounts=(await client.gmailAccounts(signal)).filter(a=>a.connected&&a.connectionId&&a.grantedCapabilities.includes(capability));
   await current();if(accounts.length!==1)throw Error(accounts.length?'More than one Gmail account is connected. Select an account before an agent read.':'No readable Gmail account is connected.');
   const grantId=accounts[0].connectionId!,scope=createHash('sha256').update(identity+':'+grantId).digest('hex'),value=await run(client,grantId,scope,signal);await current();
-  const latest=await client.gmailAccounts(signal);if(!latest.some(a=>a.connectionId===grantId&&a.connected&&a.grantedCapabilities.includes('google.gmail.triage')))throw Error('Gmail permission changed.');await current();return value;
+  const latest=await client.gmailAccounts(signal);if(!latest.some(a=>a.connectionId===grantId&&a.connected&&a.grantedCapabilities.includes(capability)))throw Error('Gmail permission changed.');await current();return value;
  }
  return {
+  async prepareSend(input:AgentSendContent&{requestId:string},parent?:AbortSignal){
+   const proposal=sendProposal(input);if(!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId))throw Error('Invalid send request identity.');
+   return verified(async(client,grantId,scope,signal)=>{
+    const prepared=await client.gmailPrepareOperation(grantId,input.requestId,proposal,signal);
+    const digest=createHash('sha256').update(JSON.stringify(prepared.review)).digest('hex');
+    if(prepared.receipt.kind!=='send'||prepared.receipt.state!=='prepared'||prepared.receipt.reviewDigest!==digest)throw Error('The prepared email review could not be verified.');
+    if(prepared.review.kind!=='send'||typeof prepared.review.from!=='string'||!prepared.review.from||prepared.review.subject!==proposal.subject||prepared.review.bodyText!==proposal.bodyText||['to','cc','bcc'].some(key=>JSON.stringify(prepared.review[key])!==JSON.stringify(proposal[key as 'to'|'cc'|'bcc'])))throw Error('The provider review does not match the requested email. Nothing was sent.');
+    return {id:`alpha-gmail-send:${scope}:${input.requestId}`,reviewDigest:digest,review:prepared.review,receipt:prepared.receipt};
+   },parent,'google.gmail.send',true);
+  },
+  async sendReceipt(id:string,parent?:AbortSignal){
+   return verified(async(client,grantId,scope,signal)=>{
+    const prefix=`alpha-gmail-send:${scope}:`,requestId=id.slice(prefix.length);
+    if(!id.startsWith(prefix)||!/^[-a-f0-9]{36}$/i.test(requestId))throw Error('This send belongs to another account or credential.');
+    const receipt=await client.gmailOperation(grantId,requestId,signal);if(receipt.kind!=='send')throw Error('This is not an email send receipt.');return receipt;
+   },parent,'google.gmail.send',true);
+  },
+  async dispatchSend(input:AgentSendContent&{id:string;reviewDigest:string},parent?:AbortSignal){
+   const proposal=sendProposal(input);if(!/^[a-f0-9]{64}$/.test(input.reviewDigest))throw Error('An exact prepared review is required.');
+   return verified(async(client,grantId,scope,signal)=>{
+    const prefix=`alpha-gmail-send:${scope}:`,requestId=input.id.slice(prefix.length);
+    if(!input.id.startsWith(prefix)||!/^[-a-f0-9]{36}$/i.test(requestId))throw Error('This send belongs to another account or credential.');
+    const prior=await client.gmailOperation(grantId,requestId,signal);
+    if(prior.kind!=='send'||prior.reviewDigest!==input.reviewDigest)throw Error('The reviewed email changed. Nothing was sent.');
+    if(prior.state==='succeeded')return prior;
+    if(prior.state!=='prepared')throw Error('The send outcome needs review. This request will not be dispatched again.');
+    return client.gmailDispatchOperation(grantId,requestId,input.reviewDigest,proposal,signal);
+   },parent,'google.gmail.send',true);
+  },
+  async calendarSources(parent?:AbortSignal){
+   return verified(async(client,grantId,scope,signal)=>{
+    const account=(await client.gmailAccounts(signal)).find(a=>a.connectionId===grantId)!;
+    return (await client.googleCalendars(grantId,signal)).filter(row=>['reader','writer','owner'].includes(row.accessRole)).map(row=>({...row,provider:'google',side:'owner',grantId:`alpha-google:${scope}`,connectorAccountId:`alpha-google:${scope}`,accountEmail:account.label,includeInFeed:true,selectionVersion:1}));
+   },parent,'google.calendar.read');
+  },
+  async calendarFeed(input:{grantId:string;calendarId:string;timeMin:string;timeMax:string;timeZone:string},parent?:AbortSignal){
+   return verified(async(client,grantId,scope,signal)=>{
+    if(input.grantId!==`alpha-google:${scope}`)throw Error('Select a calendar from the current owner connection.');
+    const calendar=(await client.googleCalendars(grantId,signal)).find(row=>row.calendarId===input.calendarId&&['reader','writer','owner'].includes(row.accessRole));
+    if(!calendar)throw Error('This calendar is not currently readable.');
+    const result=await client.googleCalendarFeed(grantId,input.calendarId,{timeMin:input.timeMin,timeMax:input.timeMax,timeZone:input.timeZone},signal);
+    const key={provider:'google',side:'owner',grantId:input.grantId,connectorAccountId:input.grantId,calendarId:input.calendarId};
+    return {...result,source:'synced',state:'complete',timeMin:input.timeMin,timeMax:input.timeMax,
+     sources:[{key,summary:calendar.summary,accessRole:calendar.accessRole,visibility:'details',status:'fresh',syncedAt:result.syncedAt,error:null}],
+     events:result.events.map(event=>({...event,id:`${input.grantId}:${event.externalId}`,agentId:'',provider:'google',side:'owner',grantId:input.grantId,connectorAccountId:input.grantId,syncedAt:result.syncedAt,updatedAt:typeof event.metadata.updated==='string'?event.metadata.updated:result.syncedAt,calendarSummary:calendar.summary}))};
+   },parent,'google.calendar.read');
+  },
   async list({limit=25,query='',since}:{limit?:number;query?:string;since?:string},parent?:AbortSignal){
    if(!Number.isSafeInteger(limit)||limit<1||limit>51||typeof query!=='string'||query.length>4096)throw Error('Choose a Gmail read limit from 1 to 50 plus its overflow probe.');
    const parts=[query||'in:inbox'];if(since!==undefined){const date=Date.parse(since);if(!Number.isFinite(date))throw Error('Invalid Gmail read date.');parts.push(`after:${Math.floor(date/1000)}`);}

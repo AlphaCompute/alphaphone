@@ -1,6 +1,11 @@
-import {guardPendingCalendarChanges,type CalendarDeletionState} from './calendar-deletions';
+import {guardPendingCalendarChanges,type CalendarDeletionState,type CalendarDeletion} from './calendar-deletions';
+import type {CalendarRecord} from './calendar-records';
+import type {CalendarResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract';
+import {revision} from './revision';
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
+export type BrowserCalendarState={deletions?:Record<string,CalendarDeletion>;deleteClaims?:Record<string,string>;creations?:Record<string,{binding:string;result:{status:'saved';id:string;calendarId:string;creationId:string};acknowledged:boolean}>;alertDismissed?:Record<string,number>;preferences?:{visible:boolean;color:'acc'|'fg'|'mut'};sourceRevision:string;events:CalendarRecord[];receipts?:Record<string,{binding:string;result:CalendarResult}>};
+export const initialCalendarState=():BrowserCalendarState=>({sourceRevision:revision(),events:[]});
 
 export const calendarStorageKey='alpha.browser.calendar.v1';
 const domain=new BrowserDomainDocument(browserDocuments,calendarStorageKey,()=>localStorage.getItem(calendarStorageKey));
@@ -8,7 +13,7 @@ const channel=typeof BroadcastChannel==='undefined'?null:new BroadcastChannel('a
 const refresh=()=>window.dispatchEvent(new Event('alpha:calendar-document-changed'));
 if(channel)channel.onmessage=event=>{if(event.data?.key===calendarStorageKey)refresh();};
 // The originating action owns its completion UI, including delayed receipts.
-const changed=()=>{channel?.postMessage({key:calendarStorageKey});};
+const changed=()=>{channel?.postMessage({key:calendarStorageKey});window.dispatchEvent(new Event('alpha:calendar-sync-source-changed'));};
 
 export const calendarDocument={
  read:<T>(initial:()=>T|Promise<T>,signal?:AbortSignal)=>domain.read(initial,signal),
@@ -27,3 +32,5 @@ export const calendarDocument={
   if(modified)changed();return result;
  },
 };
+/** Claim an empty source once, so its identity survives reloads and sync checkpoints. */
+export async function prepareCalendarSource(){const raw=await calendarDocument.readRaw(),data:BrowserCalendarState=raw===null?await calendarDocument.edit(initialCalendarState,data=>data):JSON.parse(raw);if(typeof data.sourceRevision!=='string'||!data.sourceRevision||!Array.isArray(data.events))throw Error('The local calendar needs recovery.');return {status:'ready' as const,sourceId:'local' as const,sourceRevision:data.sourceRevision};}

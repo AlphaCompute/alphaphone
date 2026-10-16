@@ -48,7 +48,7 @@ function evaluate(expression,text,depth=0){
  let match;
  if((match=expression.match(/^(['"])([^'"]*)\1$/)))return [match[2]];
  if((match=expression.match(/^`([^`]*)`$/)))return [match[1].replace(/\$\{[^}]*\}/g,SAMPLE)];
- if((match=expression.match(/^(['"])([^'"]*)\1\s*\+\s*\w+$/)))return [match[2]+SAMPLE];
+ if((match=expression.match(/^(['"])([^'"]*)\1\s*\+\s*(?:this\.)?\w+$/)))return [match[2]+SAMPLE];
  // A static key derivation (Class.method(args)) resolves through its one-line return.
  if((match=expression.match(/^(?!this\.)\w+\.(\w+)\([^()]*\)$/))){
   const body=text.match(new RegExp(`static\\s+(?:async\\s+)?${match[1]}\\s*\\([^)]*\\)\\s*\\{\\s*return\\s+([^;]+);`));
@@ -72,7 +72,7 @@ function evaluate(expression,text,depth=0){
 // Receivers that reach the native secure store. Browser-only stores are listed so a new receiver
 // must be classified here before it can ship.
 // inboxLocalStore delegates to secureConnectionStore with the same slot on Android (runtime/inbox-local-store.ts).
-const nativeReceivers=new Set(['secureConnectionStore','inboxLocalStore','vault','storage','this.deps.store','store']);
+const nativeReceivers=new Set(['secureConnectionStore','inboxLocalStore','calendarLinkStorage','vault','storage','this.storage','this.deps.store','store']);
 const browserOnly=new Set(['this.documents','browserDocuments','backend','store()','slot']);
 function rendererSlots(){
  const found=[];
@@ -86,6 +86,11 @@ function rendererSlots(){
    if(where.endsWith('runtime/notes-secure-store.ts')&&match[2].trim()==='key')continue;
    // The Inbox local store passes its caller's slot through; its callers' slots are checked.
    if(where.endsWith('runtime/inbox-local-store.ts')&&match[2].trim()==='slot')continue;
+   // The Calendar adapter accepts only this exact owner/source-derived namespace.
+   if(where.endsWith('runtime/calendar-linked-storage.ts')&&match[2].trim()==='slot'){
+    assert.ok(text.includes('calendar-linked-sync:v1:[a-f0-9]{64}'));
+    continue;
+   }
    // InboxOperation.discardUnsent writes the same per-owner slot as the instance's key() (one storeKey).
    if(where.endsWith('runtime/inbox-operation.ts')&&match[2].trim()==='key'){
     assert.match(text,/const key = await InboxOperation\.storeKey\(owner, grantId\);/);

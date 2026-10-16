@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 
 // Real renderer, pairing, connection controller, proposal parser and journal
 // orchestration; synthetic HTTP/native boundaries, no provider or device effects.
-for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read', 'receipt-replay', 'stale-replay'] as const) {
+for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read', 'receipt-replay', 'stale-replay', 'basemap-ready'] as const) {
   test(`approved Maps snapshot: ${mode}`, async ({ page }) => {
     await page.addInitScript((mode) => {
       const w = window as any, store = new Map();
@@ -92,6 +92,14 @@ for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read
       await page.getByRole('button',{name:'Directions',exact:true}).click();
       const origin=page.getByRole('textbox',{name:'Route origin coordinates'});await origin.fill('43.738,7.424');await origin.press('Enter');
       await expect(page.getByText(/no live traffic/).first()).toBeVisible();
+    }
+    if(mode==='basemap-ready'){
+      const before=await page.evaluate(async()=>{const {getMapsSelectedObject}=await import('/src/maps/agent-context.ts');return getMapsSelectedObject();});
+      expect(before?.kind).toBe('map-place');
+      await page.locator('[data-alpha-map-plane]').evaluate(element=>element.setAttribute('data-map-ready','false'));
+      await page.locator('[data-alpha-map-plane]').evaluate(element=>element.setAttribute('data-map-ready','true'));
+      const after=await page.evaluate(async()=>{const {getMapsSelectedObject}=await import('/src/maps/agent-context.ts');return getMapsSelectedObject();});
+      expect(after).toEqual(before);
     }
     await page.getByRole('button', { name: 'Type', exact: true }).click();
     const input = page.locator('[data-alpha-layer="composer"][aria-hidden="false"], [data-alpha-layer="conversation"][aria-hidden="false"]').getByRole('textbox').first();

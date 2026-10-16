@@ -3,7 +3,7 @@ import { testMocksEnabled } from '../build-flags';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
-import { connectionController, agentPendingText, type ConnectionSnapshot } from '../runtime/connection-ui';
+import { connectionController, agentAvailabilityNotice, type ConnectionSnapshot } from '../runtime/connection-ui';
 import { modelLabel } from '../runtime/local-agent';
 import { askAboutCapture } from './camera-adapter';
 import { captureQuestion, locationMimeTypes } from './context-selection';
@@ -380,7 +380,7 @@ export function installPrototypeNativeAdapters(
             ] : []),
         ];
         const groups: Bag[] = !connection.session
-          ? [{ rows: [info(connection.kind === 'starting' || connection.kind === 'recovering' ? agentPendingText(connection) + ' Activity appears when it is running.' : 'Connect your remote agent to see activity', ''), nav('Your agent', () => connectionController.open())] }]
+          ? [{ rows: [...(connection.kind==='starting'?[]:[info(connection.kind === 'recovering' ? agentAvailabilityNotice(connection) : 'Connect your remote agent to see activity', '')]), nav('Your agent', () => connectionController.open())] }]
           : !connection.phoneActionsAvailable
             ? [{ rows: [info('Phone action history', 'Not reported by agent')] }]
             : connection.actionHistory.length

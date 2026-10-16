@@ -437,3 +437,5 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .note-source-dialog footer{flex-direction:row-reverse}
 .note-source-dialog footer button{flex:1 1 120px}
 .note-source-dialog [role=status]:empty{display:none}
+
+.alpha-map-privacy:not([open]) > p { display:none; }
