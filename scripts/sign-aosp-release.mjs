@@ -7,11 +7,18 @@
  *   node scripts/sign-aosp-release.mjs \
  *     --target-files /abs/unsigned-target_files.zip --target-files-sha256 <hex from the build record> \
  *     --keys-dir /dev/shm/keys --releasetools /abs/otatools/bin --out /abs/new-release-dir \
- *     [--apk-manifest /abs/apk-manifest.json] [--incremental-from /abs/previous-signed-target_files.zip] [--dry-run]
+ *     [--apksigner /abs/apksigner] [--map-key SOURCE=NAME ...] [--apk-manifest /abs/apk-manifest.json]
+ *     [--incremental-from /abs/previous-signed-target_files.zip] [--dry-run]
  *
- * It follows the upstream key layout and signing job (vendor/eliza/packages/os/android/signing):
- * `sign_target_files_apks -o -d KEYS` with the `avb` key for vbmeta and its chained partitions,
- * then `ota_from_target_files -k KEYS/releasekey`, then writes release-record.json
+ * It follows the upstream key layout and signing job (vendor/eliza/packages/os/android/signing).
+ * Before anything runs it reads the unsigned target-files' META/misc_info.txt, apkcerts.txt and
+ * apexkeys.txt, and refuses an APK certificate it does not map to a release key, a chained AVB
+ * partition without its own key mapping, or a missing APEX key. It then runs
+ * `sign_target_files_apks -o -d KEYS` (plus -k for bluetooth, nfc and --map-key sources,
+ * --extra_apex_payload_key/--extra_apks for every non-presigned APEX, and the `avb` key for vbmeta
+ * and each chained partition), verifies with apksigner that every non-presigned APK and APEX in the
+ * signed target-files carries a release certificate and every APEX the release payload key, and
+ * only then runs `ota_from_target_files -k KEYS/releasekey` and writes release-record.json
  * (scripts/aosp-release-record.mjs) and the public avb_pkmd.bin for avb_custom_key enrollment.
  *
  * Keys never come from the repository: the key directory must be outside every Git working tree
@@ -23,16 +30,26 @@
  * release qualification.
  */
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { PIXEL10A_PRODUCT, pixel10aProductProblems, placeholderFields } from "./aosp-pixel10a.mjs";
-import { compatibilityRecord, fileSha256, keyCertificates, writeRecord } from "./aosp-release-record.mjs";
+import { chainedPartitionsFromMiscInfo, compatibilityRecord, entries, entry, fileSha256, incrementalSource, keyCertificates, parseProperties, parseQuotedRows, writeRecord } from "./aosp-release-record.mjs";
 
 /** x509/pk8 keys sign_target_files_apks maps by default name (upstream key-manifest.json). */
 export const X509_KEYS = Object.freeze(["releasekey", "platform", "shared", "media", "networkstack", "sdk_sandbox", "bluetooth", "nfc"]);
 export const RELEASETOOLS = Object.freeze(["sign_target_files_apks", "ota_from_target_files"]);
+/** AOSP development keys `-d KEYS` remaps to the same-named release key (releasekey for testkey and devkey). */
+export const DEFAULT_KEY_MAP = Object.freeze({ testkey: "releasekey", devkey: "releasekey", platform: "platform", shared: "shared", media: "media", networkstack: "networkstack", sdk_sandbox: "sdk_sandbox" });
+/** Development keys `-d` does not remap; passed explicitly with -k. */
+export const EXPLICIT_KEYS = Object.freeze(["bluetooth", "nfc"]);
+const DEV_KEY_DIRS = Object.freeze(["build/make/target/product/security", "build/target/product/security"]);
+/** One APEX container key pair and one APEX payload key (upstream key-manifest.json). */
+export const APEX_KEYS = Object.freeze({ container: "apex", payload: "apex_payload" });
+const KEY_NAME = /^[a-z][a-z0-9_]*$/;
+const PRESIGNED = new Set(["PRESIGNED", "EXTERNAL"]);
 const HEX64 = /^[0-9a-f]{64}$/;
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 
@@ -66,69 +83,213 @@ export function channelDistributionProblems(channel, file = "android/aosp/pixel1
   return problems;
 }
 
-function insideGitWorkTree(dir) {
-  const out = spawnSync("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
-  return out.status === 0 && out.stdout.trim() === "true";
+/** Refuse unless git positively says the directory is outside any repository; a missing or failing git is not proof. */
+export function gitWorkTreeProblem(dir, run = spawnSync) {
+  const out = run("git", ["-C", dir, "rev-parse", "--is-inside-work-tree"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (out.error || out.status === null) return "--keys-dir could not be confirmed to be outside a Git working tree (git did not run)";
+  if (out.status === 0) return "--keys-dir is inside a Git working tree; release keys never enter a working tree";
+  if (!/not a git repository/i.test(String(out.stderr ?? ""))) return "--keys-dir could not be confirmed to be outside a Git working tree";
+  return null;
 }
 
-/** Runtime key directory checks: location and permissions, file presence, and public digests. Never opens a private key. */
-export function keyDirectoryProblems(keysDir, { product, channel, root = process.cwd() } = {}) {
+/** True when `child` is `parent` or inside it (a sibling named `..keys` is not). */
+export function isWithin(parent, child) {
+  const relative = path.relative(parent, child);
+  return !(relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative));
+}
+
+/** The source key (path without .x509.pem) an apkcerts/apexkeys row names, or null when presigned. */
+function sourceKey(certificate) {
+  if (!certificate || PRESIGNED.has(certificate)) return null;
+  return certificate.replace(/\.x509\.pem$/, "");
+}
+
+/** Release key name for a development key source, from the default -d map, the explicit -k keys and --map-key. */
+export function releaseKeyFor(source, keyMap = {}) {
+  if (Object.hasOwn(keyMap, source)) return keyMap[source];
+  const dir = path.posix.dirname(source), base = path.posix.basename(source);
+  if (DEV_KEY_DIRS.includes(dir) && Object.hasOwn(DEFAULT_KEY_MAP, base)) return DEFAULT_KEY_MAP[base];
+  if (DEV_KEY_DIRS.includes(dir) && EXPLICIT_KEYS.includes(base)) return base;
+  return null;
+}
+
+/** Signing-relevant metadata of a target-files zip (read with unzip; no image bytes). */
+export function inspectTargetFiles(zip) {
+  const names = new Set(entries(zip));
+  const read = name => names.has(name) ? entry(zip, name).toString("utf8") : null;
+  const misc = read("META/misc_info.txt");
+  const miscInfo = misc === null ? null : parseProperties(misc);
+  const apkcerts = parseQuotedRows(read("META/apkcerts.txt") ?? "");
+  const apexkeys = parseQuotedRows(read("META/apexkeys.txt") ?? "");
+  return { miscInfo, apkcerts, apexkeys, hasApkcerts: names.has("META/apkcerts.txt"), chainedPartitions: miscInfo ? chainedPartitionsFromMiscInfo(miscInfo) : [] };
+}
+
+/** APEXes the job re-signs (neither payload nor container presigned). */
+function signedApexes(apexkeys) {
+  return apexkeys.filter(row => row.name && !PRESIGNED.has(row.private_key) && !PRESIGNED.has(row.container_private_key));
+}
+
+/** Every key file the job passes to the releasetools, for these target-files. */
+export function requiredKeyFiles({ product, keyMap = {}, inspection = null }) {
+  const names = new Set([...Object.values(DEFAULT_KEY_MAP), ...EXPLICIT_KEYS, "releasekey", ...Object.values(keyMap)]);
+  const files = [...names].flatMap(name => [`${name}.pk8`, `${name}.x509.pem`]);
+  files.push(product?.avb?.vbmetaKey ?? "avb.pem", product?.avb?.publicKeyMetadata ?? "avb_pkmd.bin");
+  if (inspection && signedApexes(inspection.apexkeys).length)
+    files.push(`${APEX_KEYS.container}.pk8`, `${APEX_KEYS.container}.x509.pem`, `${APEX_KEYS.payload}.pem`, `${APEX_KEYS.payload}.avbpubkey`);
+  return [...new Set(files)];
+}
+
+/** Pre-sign target-files problems: AVB chaining against the product's key mapping, and unmapped APK or APEX keys. */
+export function targetFilesProblems(inspection, { product, keyMap = {} }) {
+  const problems = [];
+  if (!inspection.miscInfo) return ["--target-files has no META/misc_info.txt; its AVB chaining cannot be checked"];
+  if (inspection.miscInfo.avb_enable !== "true") problems.push("--target-files was built without AVB (avb_enable is not true)");
+  const mapped = new Set(product?.avb?.chainedPartitions ?? []);
+  for (const partition of inspection.chainedPartitions)
+    if (!mapped.has(partition)) problems.push(`chained AVB partition ${partition} has no mapped --avb_${partition}_key (add it to avb.chainedPartitions in ${PIXEL10A_PRODUCT})`);
+  for (const partition of mapped)
+    if (!inspection.chainedPartitions.includes(partition)) problems.push(`${PIXEL10A_PRODUCT} maps --avb_${partition}_key, but the target-files does not chain ${partition}`);
+  if (!inspection.hasApkcerts) problems.push("--target-files has no META/apkcerts.txt; its APK certificates cannot be checked");
+  for (const row of inspection.apkcerts) {
+    if (row.certificate === "EXTERNAL") { problems.push(`APK ${row.name} is EXTERNAL; externally signed APKs are not supported by this job`); continue; }
+    const source = sourceKey(row.certificate);
+    if (source && !releaseKeyFor(source, keyMap)) problems.push(`APK ${row.name} is signed with ${row.certificate}, which no release key mapping covers (use --map-key ${source}=NAME)`);
+  }
+  for (const row of inspection.apexkeys)
+    if (PRESIGNED.has(row.private_key) !== PRESIGNED.has(row.container_private_key)) problems.push(`APEX ${row.name} is only partly presigned (payload ${row.private_key}, container ${row.container_private_key})`);
+  return problems;
+}
+
+/** Runtime key directory checks: location, permissions, every required file and public digests. Never opens a private key. */
+export function keyDirectoryProblems(keysDir, { product, channel, root = process.cwd(), keyMap = {}, inspection = null, runGit } = {}) {
   if (!keysDir) return ["--keys-dir is required: the decrypted release key directory, supplied at signing time"];
   if (!path.isAbsolute(keysDir)) return ["--keys-dir must be an absolute path"];
   if (!fs.existsSync(keysDir) || !fs.statSync(keysDir).isDirectory()) return [`--keys-dir ${keysDir} is not a directory`];
   const problems = [];
   const real = fs.realpathSync(keysDir), repo = fs.realpathSync(root);
-  const relative = path.relative(repo, real);
-  if (!relative.startsWith("..") && !path.isAbsolute(relative)) problems.push("--keys-dir is inside this repository; release keys never enter a working tree");
-  if (insideGitWorkTree(real)) problems.push("--keys-dir is inside a Git working tree; release keys never enter a working tree");
+  if (isWithin(repo, real)) problems.push("--keys-dir is inside this repository; release keys never enter a working tree");
+  const git = gitWorkTreeProblem(real, runGit);
+  if (git) problems.push(git);
   if (fs.statSync(real).mode & 0o077) problems.push("--keys-dir must not be readable or writable by group or others (mode 0700)");
-  const missing = [...X509_KEYS.flatMap(name => [`${name}.pk8`, `${name}.x509.pem`]), product?.avb?.vbmetaKey ?? "avb.pem", product?.avb?.publicKeyMetadata ?? "avb_pkmd.bin"]
-    .filter(name => !fs.existsSync(path.join(real, name)));
+  const missing = [];
+  for (const name of requiredKeyFiles({ product, keyMap, inspection })) {
+    let stat;
+    try { stat = fs.lstatSync(path.join(real, name)); } catch { missing.push(name); continue; }
+    if (stat.isSymbolicLink()) problems.push(`--keys-dir ${name} is a symbolic link; key files must be regular files in the key directory`);
+    else if (!stat.isFile()) problems.push(`--keys-dir ${name} is not a regular file`);
+    else if (stat.mode & 0o077) problems.push(`--keys-dir ${name} must not be readable or writable by group or others (mode 0600)`);
+  }
   if (missing.length) problems.push(`--keys-dir lacks ${missing.join(", ")} (decrypt the release key bundle first; .enc files are not read)`);
   const certs = keyCertificates(real, ["platform", "releasekey"]);
   if (certs.platform && certs.platform !== product?.signer?.platformCertificateSha256) problems.push(`platform.x509.pem is ${certs.platform}, not the product's signer.platformCertificateSha256`);
   if (certs.releasekey && certs.releasekey !== channel?.otaCertificateSha256) problems.push(`releasekey.x509.pem is ${certs.releasekey}, not the channel's otaCertificateSha256`);
   const pkmd = path.join(real, product?.avb?.publicKeyMetadata ?? "avb_pkmd.bin");
-  if (fs.existsSync(pkmd) && sha256(fs.readFileSync(pkmd)) !== product?.avb?.publicKeySha256) problems.push(`${path.basename(pkmd)} is not the product's avb.publicKeySha256`);
+  if (fs.existsSync(pkmd) && !fs.lstatSync(pkmd).isSymbolicLink() && sha256(fs.readFileSync(pkmd)) !== product?.avb?.publicKeySha256) problems.push(`${path.basename(pkmd)} is not the product's avb.publicKeySha256`);
   return problems;
 }
 
-/** The exact releasetools invocations. Key paths are arguments only; their contents are never read here. */
-export function signingCommands({ targetFiles, keysDir, releasetools, out, product, incrementalFrom = null }) {
-  const keys = path.resolve(keysDir), tools = path.resolve(releasetools);
+/**
+ * The exact releasetools invocations. `keysDir` must already be the key directory's realpath.
+ * Key paths are arguments only; their contents are never read here.
+ */
+export function signingCommands({ targetFiles, keysDir, releasetools, out, product, incrementalFrom = null, keyMap = {}, inspection = { apexkeys: [] } }) {
+  const keys = keysDir, tools = path.resolve(releasetools);
   const algorithm = product.avb.algorithm, avbKey = path.join(keys, product.avb.vbmetaKey);
   const signed = path.join(out, "signed-target_files.zip"), ota = path.join(out, incrementalFrom ? "incremental-ota.zip" : "ota.zip");
+  const explicit = [...EXPLICIT_KEYS.map(name => [`${DEV_KEY_DIRS[0]}/${name}`, name]), ...Object.entries(keyMap)]
+    .flatMap(([source, name]) => ["-k", `${source}=${path.join(keys, name)}`]);
+  const apex = signedApexes(inspection.apexkeys).flatMap(row => ["--extra_apex_payload_key", `${row.name}=${path.join(keys, `${APEX_KEYS.payload}.pem`)}`, "--extra_apks", `${row.name}=${path.join(keys, APEX_KEYS.container)}`]);
   const avb = ["--avb_vbmeta_key", avbKey, "--avb_vbmeta_algorithm", algorithm,
     ...product.avb.chainedPartitions.flatMap(partition => [`--avb_${partition}_key`, avbKey, `--avb_${partition}_algorithm`, algorithm])];
   return {
     signed, ota,
     commands: [
-      { tool: path.join(tools, "sign_target_files_apks"), args: ["-p", path.dirname(tools), "-o", "-d", keys, ...avb, path.resolve(targetFiles), signed] },
+      { tool: path.join(tools, "sign_target_files_apks"), args: ["-p", path.dirname(tools), "-o", "-d", keys, ...explicit, ...apex, ...avb, path.resolve(targetFiles), signed] },
       { tool: path.join(tools, "ota_from_target_files"), args: ["-p", path.dirname(tools), "-k", path.join(keys, "releasekey"), ...(incrementalFrom ? ["-i", path.resolve(incrementalFrom)] : []), signed, ota] },
     ],
   };
 }
 
+/** Certificate SHA-256 digests apksigner reports for one APK or APEX. */
+function signerDigests(apksigner, file) {
+  const out = spawnSync(apksigner, ["verify", "--print-certs", file], { encoding: "utf8", maxBuffer: 16 << 20 });
+  if (out.status !== 0) return null;
+  return [...out.stdout.matchAll(/Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F]{64})/g)].map(match => match[1].toLowerCase());
+}
+
+/**
+ * After sign_target_files_apks and before any OTA: every APK and APEX in the signed target-files
+ * that is not presigned must be signed only by a release certificate from the key directory, and
+ * every re-signed APEX must carry the release payload public key. A remaining test or development
+ * certificate (or any unknown one) is refused.
+ */
+export function signedTargetFilesProblems({ signed, keysDir, apksigner, keyMap = {} }) {
+  const problems = [];
+  const releaseNames = [...new Set([...Object.values(DEFAULT_KEY_MAP), ...EXPLICIT_KEYS, "releasekey", ...Object.values(keyMap), APEX_KEYS.container])];
+  const release = new Set(Object.values(keyCertificates(keysDir, releaseNames)).filter(value => /^[0-9a-f]{64}$/.test(value ?? "")));
+  const inspection = inspectTargetFiles(signed);
+  const presigned = new Set([...inspection.apkcerts.filter(row => !sourceKey(row.certificate)).map(row => row.name),
+    ...inspection.apexkeys.filter(row => PRESIGNED.has(row.private_key)).map(row => row.name)]);
+  const listed = new Set([...inspection.apkcerts, ...inspection.apexkeys].map(row => row.name));
+  for (const row of inspection.apkcerts) {
+    const source = sourceKey(row.certificate);
+    if (source && !isWithin(keysDir, path.resolve(path.dirname(source)))) problems.push(`signed apkcerts.txt still names ${row.certificate} for ${row.name}`);
+  }
+  const payload = fs.existsSync(path.join(keysDir, `${APEX_KEYS.payload}.avbpubkey`)) ? fs.readFileSync(path.join(keysDir, `${APEX_KEYS.payload}.avbpubkey`)) : null;
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), "alpha-signed-check-"));
+  try {
+    for (const name of entries(signed).filter(item => /\.(apk|apex)$/.test(item))) {
+      const base = path.posix.basename(name);
+      if (presigned.has(base)) continue;
+      if (!listed.has(base)) { problems.push(`${name} is in neither apkcerts.txt nor apexkeys.txt`); continue; }
+      const file = path.join(work, "package");
+      fs.writeFileSync(file, entry(signed, name));
+      const digests = signerDigests(apksigner, file);
+      if (!digests || !digests.length) problems.push(`${name}: apksigner could not verify its signature`);
+      else for (const digest of digests) if (!release.has(digest)) problems.push(`${name} is signed with ${digest}, which is not a release certificate (test or development key remains)`);
+      if (base.endsWith(".apex")) {
+        let key = null;
+        try { key = execFileSync("unzip", ["-p", file, "apex_pubkey"], { maxBuffer: 1 << 20, stdio: ["ignore", "pipe", "ignore"] }); } catch { key = null; }
+        if (!key || !payload || !key.equals(payload)) problems.push(`${name} does not carry the release APEX payload key`);
+      }
+      fs.rmSync(file);
+    }
+  } finally { fs.rmSync(work, { recursive: true, force: true }); }
+  return problems;
+}
+
+function apksignerPath(options) {
+  if (options.apksigner) return options.apksigner;
+  return options.releasetools ? path.join(options.releasetools, "apksigner") : null;
+}
+
 /** Every reason the signing job would refuse, without running anything. */
-export async function signingProblems({ root = process.cwd(), targetFiles, targetFilesSha256, keysDir, releasetools, out, incrementalFrom, product, channel }) {
+export async function signingProblems({ root = process.cwd(), targetFiles, targetFilesSha256, keysDir, releasetools, apksigner, out, incrementalFrom, product, channel, keyMap = {}, runGit }) {
   const problems = [...pixel10aProductProblems(root)];
   if (!HEX64.test(product?.avb?.publicKeySha256 ?? "")) problems.push(`${PIXEL10A_PRODUCT}: avb.publicKeySha256 must be a SHA-256`);
   if (!/^SHA(256|512)_RSA(4096|8192)$/.test(product?.avb?.algorithm ?? "")) problems.push(`${PIXEL10A_PRODUCT}: avb.algorithm must be an RSA-4096/8192 AVB algorithm`);
   if (!Array.isArray(product?.avb?.chainedPartitions)) problems.push(`${PIXEL10A_PRODUCT}: avb.chainedPartitions must list the chained vbmeta partitions`);
   problems.push(...channelSigningProblems(channel, product, product?.ota?.channel));
+  for (const [source, name] of Object.entries(keyMap)) if (!KEY_NAME.test(name) || !source || source.includes("=")) problems.push(`--map-key ${source}=${name} must map a source key path to a key name`);
+  let inspection = null;
   if (!targetFiles || !fs.existsSync(targetFiles) || !fs.statSync(targetFiles).isFile()) problems.push("--target-files must name the unsigned target-files zip");
-  else if (!HEX64.test(targetFilesSha256 ?? "")) problems.push("--target-files-sha256 must be the SHA-256 from the image build record");
-  else if (await fileSha256(targetFiles) !== targetFilesSha256) problems.push("--target-files differs from --target-files-sha256");
+  else {
+    if (!HEX64.test(targetFilesSha256 ?? "")) problems.push("--target-files-sha256 must be the SHA-256 from the image build record");
+    else if (await fileSha256(targetFiles) !== targetFilesSha256) problems.push("--target-files differs from --target-files-sha256");
+    try { inspection = inspectTargetFiles(targetFiles); } catch (error) { problems.push(`--target-files could not be read: ${error.message}`); }
+    if (inspection) problems.push(...targetFilesProblems(inspection, { product, keyMap }));
+  }
   if (incrementalFrom && !fs.existsSync(incrementalFrom)) problems.push("--incremental-from must name the previous signed target-files zip");
   if (!releasetools) problems.push("--releasetools is required: the otatools bin directory");
   else for (const name of RELEASETOOLS) {
-    const tool = path.join(releasetools, name);
-    try { fs.accessSync(tool, fs.constants.X_OK); } catch { problems.push(`--releasetools lacks an executable ${name}`); }
+    try { fs.accessSync(path.join(releasetools, name), fs.constants.X_OK); } catch { problems.push(`--releasetools lacks an executable ${name}`); }
   }
+  const verifier = apksignerPath({ apksigner, releasetools });
+  try { fs.accessSync(verifier ?? "", fs.constants.X_OK); } catch { problems.push("an executable apksigner is required to verify the signed target-files (--apksigner, or apksigner in --releasetools)"); }
   if (!out) problems.push("--out is required: a new output directory");
   else if (fs.existsSync(out)) problems.push(`--out ${out} already exists`);
-  problems.push(...keyDirectoryProblems(keysDir, { product, channel, root }));
-  return [...new Set(problems)];
+  problems.push(...keyDirectoryProblems(keysDir, { product, channel, root, keyMap, inspection, runGit }));
+  return { problems: [...new Set(problems)], inspection };
 }
 
 export async function signRelease(options) {
@@ -137,22 +298,29 @@ export async function signRelease(options) {
   const product = read(PIXEL10A_PRODUCT);
   let channel = null;
   try { channel = read(product.ota?.channel); } catch { channel = null; }
-  const problems = await signingProblems({ ...options, root, product, channel });
-  const plan = Array.isArray(product.avb?.chainedPartitions) && options.targetFiles && options.keysDir && options.releasetools && options.out
-    ? signingCommands({ ...options, product }) : null;
+  const keyMap = options.keyMap ?? {};
+  const { problems, inspection } = await signingProblems({ ...options, root, product, channel, keyMap });
+  const keysDir = options.keysDir && path.isAbsolute(options.keysDir) && fs.existsSync(options.keysDir) ? fs.realpathSync(options.keysDir) : options.keysDir;
+  const plan = Array.isArray(product.avb?.chainedPartitions) && options.targetFiles && keysDir && options.releasetools && options.out
+    ? signingCommands({ ...options, keysDir, product, keyMap, inspection: inspection ?? { apexkeys: [] } }) : null;
   if (options.dryRun) return { dryRun: true, problems, commands: plan?.commands ?? [], ran: false };
   if (problems.length) throw new Error(`Refusing to sign the release:\n${problems.map(item => `  - ${item}`).join("\n")}`);
   fs.mkdirSync(options.out, { mode: 0o700 });
   const env = { ...process.env, PATH: `${path.resolve(options.releasetools)}${path.delimiter}${process.env.PATH ?? ""}` };
-  for (const { tool, args } of plan.commands) execFileSync(tool, args, { stdio: "inherit", env });
-  const pkmd = path.join(options.keysDir, product.avb.publicKeyMetadata);
+  const [sign, makeOta] = plan.commands;
+  execFileSync(sign.tool, sign.args, { stdio: "inherit", env });
+  // No OTA is built from target-files that still carry a test, development or unknown certificate.
+  const remaining = signedTargetFilesProblems({ signed: plan.signed, keysDir, apksigner: apksignerPath(options), keyMap });
+  if (remaining.length) throw new Error(`Refusing the signed target-files; no OTA was built:\n${remaining.map(item => `  - ${item}`).join("\n")}`);
+  execFileSync(makeOta.tool, makeOta.args, { stdio: "inherit", env });
+  const pkmd = path.join(keysDir, product.avb.publicKeyMetadata);
   fs.copyFileSync(pkmd, path.join(options.out, "avb_pkmd.bin"), fs.constants.COPYFILE_EXCL);
   const apkManifest = options.apkManifest ? JSON.parse(fs.readFileSync(options.apkManifest, "utf8")) : null;
-  const certificates = keyCertificates(options.keysDir, X509_KEYS);
+  const certificates = keyCertificates(keysDir, [...new Set([...X509_KEYS, ...Object.values(keyMap), ...(fs.existsSync(path.join(keysDir, `${APEX_KEYS.container}.x509.pem`)) ? [APEX_KEYS.container] : [])])]);
   const record = await compatibilityRecord({
     signedTargetFiles: plan.signed, ota: plan.ota, product, channel, apkManifest, certificates,
     avbPublicKeySha256: sha256(fs.readFileSync(pkmd)),
-    incrementalFrom: options.incrementalFrom ? { file: path.basename(options.incrementalFrom), sha256: await fileSha256(options.incrementalFrom) } : null,
+    incrementalFrom: await incrementalSource(options.incrementalFrom),
     inputs: { unsignedTargetFilesSha256: options.targetFilesSha256, productDescriptorSha256: sha256(fs.readFileSync(path.join(root, PIXEL10A_PRODUCT))), sourceLockSha256: product.sourceLock.sha256 },
   });
   const recordFile = path.join(options.out, "release-record.json");
@@ -162,13 +330,20 @@ export async function signRelease(options) {
 }
 
 export function parseSigningArgs(args) {
-  const names = { "--target-files": "targetFiles", "--target-files-sha256": "targetFilesSha256", "--keys-dir": "keysDir", "--releasetools": "releasetools", "--out": "out", "--apk-manifest": "apkManifest", "--incremental-from": "incrementalFrom" };
+  const names = { "--target-files": "targetFiles", "--target-files-sha256": "targetFilesSha256", "--keys-dir": "keysDir", "--releasetools": "releasetools", "--apksigner": "apksigner", "--out": "out", "--apk-manifest": "apkManifest", "--incremental-from": "incrementalFrom" };
+  const usage = "Use --target-files ZIP --target-files-sha256 HEX --keys-dir DIR --releasetools DIR --out NEW_DIR [--apksigner FILE] [--map-key SOURCE=NAME ...] [--apk-manifest FILE] [--incremental-from ZIP] [--dry-run]";
   const options = { dryRun: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--dry-run") { options.dryRun = true; continue; }
+    if (args[i] === "--map-key") {
+      const value = args[i + 1] ?? "", at = value.indexOf("=");
+      if (at <= 0 || value.startsWith("--")) throw new Error(usage);
+      options.keyMap = { ...(options.keyMap ?? {}), [value.slice(0, at)]: value.slice(at + 1) };
+      i++;
+      continue;
+    }
     const key = names[args[i]];
-    if (!key || !args[i + 1] || args[i + 1].startsWith("--") || options[key] !== undefined)
-      throw new Error("Use --target-files ZIP --target-files-sha256 HEX --keys-dir DIR --releasetools DIR --out NEW_DIR [--apk-manifest FILE] [--incremental-from ZIP] [--dry-run]");
+    if (!key || !args[i + 1] || args[i + 1].startsWith("--") || options[key] !== undefined) throw new Error(usage);
     options[key] = args[++i];
   }
   return options;

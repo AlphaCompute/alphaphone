@@ -76,7 +76,6 @@ export function pixel10aProductProblems(root = process.cwd()) {
     if (!HEX64.test(signer ?? '')) problems.push(`android/release-signer.json signerSha256 is ${JSON.stringify(signer)}, not a reviewed release certificate`);
   }
   if (!HEX64.test(product.signer?.platformCertificateSha256 ?? '')) problems.push(`${PIXEL10A_PRODUCT}: signer.platformCertificateSha256 must be a SHA-256`);
-  if (product.avb?.makefile !== 'android/aosp/stallion/release-avb.mk' || !fs.existsSync(at(product.avb.makefile))) problems.push(`${PIXEL10A_PRODUCT}: avb.makefile must be android/aosp/stallion/release-avb.mk`);
   return [...new Set(problems)];
 }
 
@@ -90,8 +89,9 @@ export function writePixel10aProduct({root, output, apk, identity, sourceEvidenc
   if (production) {
     const bytes = fs.readFileSync(path.join(root, PIXEL10A_PRODUCT));
     descriptor = {file:PIXEL10A_PRODUCT, sha256:sha256(bytes), ...JSON.parse(bytes)};
-    // Release verified-boot configuration; keys are applied by sign-aosp-release.mjs, never here.
-    fs.appendFileSync(path.join(output, 'product.mk'), '\n# Release verified boot (no key path; release keys are applied when the target-files are signed).\ninclude vendor/alphaphone/stallion/release-avb.mk\n');
+    // No BOARD_AVB_* here: board variables belong to the device BoardConfig, not product config.
+    // Release AVB keys and algorithms are applied when the target-files are signed
+    // (sign-aosp-release.mjs --avb_<partition>_key/--avb_<partition>_algorithm).
   }
   const report = production
     ? {schema:1, target:'pixel10a', product:'alpha_stallion_phone', lunch:descriptor.lunch.production, production:true, developmentOnly:false, productDescriptor:{file:descriptor.file, sha256:descriptor.sha256}, sourceLockSha256:descriptor.sourceLock.sha256, platformCertificateSha256:descriptor.signer.platformCertificateSha256, sourceEvidence, imageBuilt:false, imageSigned:false, releaseQualified:false, deviceAcceptanceVerified:false}

@@ -21,7 +21,6 @@
     "decision": "A-06"
   },
   "avb": {
-    "makefile": "android/aosp/stallion/release-avb.mk",
     "algorithm": "SHA256_RSA4096",
     "vbmetaKey": "avb.pem",
     "chainedPartitions": ["vbmeta_system", "vbmeta_vendor"],
