@@ -1143,7 +1143,7 @@
       "scope": "MVP",
       "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
       "preview": "Four permission-state browser flows pass; ten light/dark compact Photos focus/contrast flows pass. Broader45-test media suite passes; native export qualification remains separate.",
-      "seeker": "Installed9d86d051: Settings > Photos visibly verified with current full access and explicit permission controls; grant unchanged. Permitted Photos grid has no ongoing access controls.",
+      "seeker": "Installeda569f79c: fresh Settings > Photos readback and Android photo permissions navigation passed; returned to Alpha; existing full grant unchanged. Denied permission contract retains explicit request.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/photo-access-settings-native-20261016.json"

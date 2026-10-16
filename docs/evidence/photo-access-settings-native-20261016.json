@@ -41,5 +41,15 @@
     "scope": "Synthetic renderer: permitted search, selected access through Settings, denied explicit request, revocation",
     "nativePermissionDialog": "Not re-requested on personal device; current full grant retained"
   },
-  "humanApproval": "pending"
+  "humanApproval": "pending",
+  "freshA569Readback": {
+    "at": "2026-10-16T23:09:46.440377+00:00",
+    "source": "a569f79cc03ea881365743247c069bf2169ca252",
+    "photosSettingsVisible": true,
+    "androidPermissionsButtonOpenedAppSettings": true,
+    "settingsPackage": "com.android.settings",
+    "grantChanged": false,
+    "returnedToAlpha": true,
+    "deniedPermissionPrompt": "Prior browser/native contract proof retained; personal full grant not revoked"
+  }
 }
