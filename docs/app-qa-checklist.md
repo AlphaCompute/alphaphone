@@ -14,7 +14,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | --- | --- | --- | --- | --- |
 | shell-and-home-01 | Cold launch and saved connection restoration | Installed574 launches and resident reconnects; existing account retained. Human startup QA pending. | Exact installed APK hash verified; running resident visible. | Pending |
 | shell-and-home-02 | Home cards and current calendar summary | Pending | Pending | Pending |
-| shell-and-home-03 | App grid and All apps search | Pending | Pending | Pending |
+| shell-and-home-03 | App grid and All apps search | Core-only defaults;34 unit/6 browser pass. All apps and chosen native shortcuts retained. | Integrated native retest pending | Pending |
 | shell-and-home-04 | Full-height layout and chat-pill clearance | Prior preview pass; latest retest pending | Pending | Pending |
 | shell-and-home-05 | Back gesture and cross-app return | Current source tests cover modal/popover Back; latest preview visual QA pending. | Google panel Back closes to Accounts; folder popup Back keeps Inbox open at574. | Pending |
 | shell-and-home-06 | Chat pill, half sheet and full conversation | Pending | Pending | Pending |
@@ -49,7 +49,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Latest real prompt failed before review; Cloud endpoint unavailable | Pending | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Ordinary prompt reaches reviewed draft preview; subject-extraction fix under qualification. No send/delivery yet. | Pending | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Account-scoped cache implemented and source-tested. | Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead). | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
