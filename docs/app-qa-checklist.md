@@ -1,6 +1,6 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Current code `574c8e39`, including main `c23eac71`; Shared `33a6d19c`. Updated October16,2026.
+Live preview: <http://127.0.0.1:5209/>. Current functional code `a569f79c`, including main `c23eac71`; Shared `9116ba86`. Updated October16,2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
@@ -49,7 +49,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Exact reviewed preview passes; confirmation hits context-restoration error. Canonical exact-content receipt is prepared, with no dispatch. No send/delivery yet. | Pending | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Exact reviewed preview and plain Yes reached real dispatch. Original receipt9364 remains outcome-unknown; exact Message-ID and agent inbox readback found no match. Delivery unproven; no resend. | Pending | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Account-scoped cache implemented and source-tested. | Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead). | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
@@ -252,3 +252,5 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 - Full app audio, held-out ASR quality and human acceptance remain separate from passed component/packaging tests.
 
 Current verification:1,455 tests passed, two existing skips; types, production build and404-file production audit passed. All four APK variants built/linted/verified. The installed standalone APK matches the locally signed candidate and retains the original app identity. This does not imply provider-write, full native or human acceptance.
+
+Latest qualification: Android foundation and repository verification passed in hosted CI at a569. Production browser assertions are being updated for the current credit-backed contract; full browser acceptance remains open. Native packaging and Shared911 qualification are running separately.

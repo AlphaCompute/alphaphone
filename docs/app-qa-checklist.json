@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T15:31:30.426488+00:00",
+  "updatedAt": "2026-10-16T21:12:22.352004+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "ff45ed28e3f3a6ada469f7861d97fae4c25035eb",
-  "agentSource": "0138310a39657783b6dd2eeb6309e4d8b1497554",
+  "productSource": "a569f79cc03ea881365743247c069bf2169ca252",
+  "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -389,14 +389,17 @@
       "area": "Inbox",
       "viewOrFlow": "Agent self-addressed send and delivery readback",
       "scope": "MVP",
-      "implementation": "Exact ordinary draft preview passed on013. Plain Yes hit PLANNER_CONTEXT_RESTORE_INVALID. Canonical prepared receipt review hash matches the exact approved email; no dispatch or finish timestamp. No send/delivery acceptance.",
-      "preview": "Receipt correlation completed; planner context-restoration defect remains. Native prompt test pending.",
+      "implementation": "Source911 ordinary prompt produced exact reviewed draft; plain Yes reached MESSAGE_SEND_DRAFT and real backend dispatch. Receipt outcome remains unknown; send and delivery acceptance incomplete.",
+      "preview": "Canonical receipt9364 is outcome-unknown. Exact Message-ID search and ordinary inbox readback found no match; absence does not prove non-delivery.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [
-        "LATEST-GMAIL-PROMPT-RESULT.json"
+        "GMAIL-SEND-911-PREPARE-RESULT.json",
+        "GMAIL-SEND-911-CONFIRM-RESULT.json",
+        "GMAIL-SEND-911-CANONICAL-RECEIPT.json",
+        "GMAIL-911-READBACK-PROMPT-RESULT.json"
       ],
-      "notes": "MESSAGE_SEND_DRAFT actually invoked. Nothing sent. Backend release required."
+      "notes": "Preserve original receipt and unknown history. Do not repeat this send. Backend workerd redirect error reproduced before egress in a closed synthetic probe; serving fix and durable reconciliation still pending."
     },
     {
       "id": "inbox-20",
@@ -632,11 +635,13 @@
       "viewOrFlow": "Agent Google event deletion and provider readback",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Original attempta048 remains ambiguous. Read-only agent DATABASE_QUERY returned one row: attempted21:14:24.587UTC Oct15, updated21:14:31.346UTC, attemptCount1, no completedAt. No retry.",
       "seeker": "Pending",
       "userApproval": "Pending",
-      "evidence": [],
-      "notes": ""
+      "evidence": [
+        "CALENDAR-ATTEMPT-DIAGNOSTIC-RESULT.json"
+      ],
+      "notes": "Backend trace reconciliation requested for the original seven-second window; provider deletion acceptance still unproven."
     },
     {
       "id": "calendar-17",
@@ -1138,7 +1143,7 @@
       "viewOrFlow": "Native permitted library and consent updates",
       "scope": "MVP",
       "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
-      "preview": "Pending",
+      "preview": "Four permitted/selected/denied/revoked browser flows passed on currenta569 source; explicit permission request remains when denied.",
       "seeker": "Installed9d86d051: Settings > Photos visibly verified with current full access and explicit permission controls; grant unchanged. Permitted Photos grid has no ongoing access controls.",
       "userApproval": "Pending",
       "evidence": [

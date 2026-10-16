@@ -319,7 +319,7 @@ test('production signed-out voice stays on-device with no capture, upload or Clo
   expect(uploads).toEqual([]);expect(engines).toEqual([]);expect(foreign).toEqual([]);
   expect(await violations()).toEqual([]);
 });
-for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
+for (const mode of ['signed-out','empty','credits','unavailable','funded','replaced','unpackaged','legacy-offline'] as const) {
  test(`resident always present (P-43), Cloud admission only binds inference: ${mode}`,async({page})=>{
   await page.addInitScript(mode=>{
    const w=window as any;w.androidBridge={};w.residentCalls=[];
@@ -359,7 +359,7 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
      const path=new URL(input.url).pathname;
      if(path==='/api/v1/user')return{status:200,data:{success:true,data:{id}}};
      if(path==='/api/v1/subscription/entitlement')return { status: 404, data: {} }; // Entitlement route absent: the billing snapshot answers.
-     if(path==='/api/v1/billing/limits')return mode==='unavailable'?{status:503,data:{error:'temporary'}}:{status:200,data:{success:true,data:{v2:{subscription:mode==='funded'||mode==='replaced'?{status:'available',value:{planKey:'plus_monthly',state:'active',currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}:{status:'not_applicable',reason:'no_organization_subscription'}}}}};
+     if(path==='/api/v1/billing/limits')return mode==='unavailable'?{status:503,data:{error:'temporary'}}:{status:200,data:{success:true,data:{v2:{subscription:mode==='funded'||mode==='replaced'?{status:'available',value:{planKey:'plus_monthly',state:'active',currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}:{status:'not_applicable',reason:mode==='credits'?'no_organization_subscription':'subscription_not_active'}}}}};
      throw Error('Unexpected Cloud route: '+path);
     }
     return {};
@@ -370,7 +370,7 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
   const agentCalls=async()=>((await page.evaluate(()=>(window as any).residentCalls)) as any[]).filter(c=>c.plugin==='Agent').map(c=>c.method);
   if(mode!=='unpackaged')await expect.poll(agentCalls).toContain('start');
   for(const retired of ['without AI','Continue offline','Connect an agent'])expect(await page.locator('body').innerText()).not.toContain(retired);
-  // Every Alpha Phone needs an Eliza Cloud account with a plan: signed out, the sign-in dialog opens
+  // Every Alpha Phone needs an Eliza Cloud account for AI: signed out, the sign-in dialog opens
   // by itself and cannot be dismissed. Without an admissible plan a non-blocking notice beside the
   // running agent offers Redeem code and Choose a plan; its Redeem code opens the plan panel. A
   // sign-in that changed underneath admission is reported in the dialog. Otherwise nothing opens.
@@ -397,21 +397,22 @@ for (const mode of ['signed-out','empty','unavailable','funded','replaced','unpa
    await expect(dialog.getByRole('alert')).toHaveText('This developer build does not include the on-device agent.');
   }else await expect(dialog.getByText('Running on this device',{exact:true})).toBeVisible();
   if(signedOut){
-   await expect(dialog.getByText('Alpha Phone needs an Eliza Cloud account with a plan. Your agent runs on this phone meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
+   await expect(dialog.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
    await expect(dialog.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
    await expect(dialog.getByRole('button',{name:'Close connection settings',exact:true})).toHaveCount(0);
    await page.keyboard.press('Escape');await expect(dialog).toBeVisible();
   }
   // No admissible plan (none, or one Cloud cannot confirm): Redeem code and Choose a plan beside the
   // running agent; nothing is bound. Cloud refuses AI requests without a plan.
-  const admitted=mode==='funded';
+  const admitted=mode==='funded'||mode==='credits';
   if(needsPlan){
    await expect(dialog.getByRole('button',{name:'Redeem code',exact:true})).toBeVisible();
    await expect(dialog.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
    await expect(dialog.getByText(mode==='empty'?'No active plan':'Plan status unavailable',{exact:true})).toBeVisible();
   }
   if(mode==='replaced')await expect(dialog.getByText(/account changed/i)).toBeVisible();
-  if(mode==='funded')await expect(dialog.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
+  if(admitted)await expect(dialog.getByRole('button',{name:'Sign out',exact:true})).toBeVisible();
+  if(mode==='credits'){await expect(dialog.getByText('Eliza Cloud credits',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'Redeem code',exact:true})).toHaveCount(0);}
   for(const retired of ['Use local apps without AI','Continue offline'])await expect(dialog.getByRole('button',{name:retired,exact:true})).toHaveCount(0);
   // Every dialog but the required sign-in closes; the agent keeps running.
   if(!signedOut){await page.keyboard.press('Escape');await expect(dialog).toHaveCount(0);}

@@ -50,15 +50,15 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
     await expect(page.getByText(UNKNOWN, { exact: true })).toHaveCount(0);
     await expect(bubble(page, `Failing ${kind}`)).toHaveCount(1);
     if (kind === 'insufficient_credits') {
-      // Cloud's plan page opens only when the owner asks; no purchase or upgrade is started here.
-      const manage = page.getByRole('button', { name: /^Manage plan in Eliza Cloud/ });
+      // A billing refusal offers the billing page only when the owner asks; no purchase is started.
+      const manage = page.getByRole('button', { name: /^Manage billing in Eliza Cloud/ });
       await expect(manage).toHaveCount(1);
       expect(await stub(page, s => s.opened)).toEqual([]);
       await manage.click();
       await expect.poll(() => stub(page, s => s.opened)).toEqual(['https://cloud.eliza.app/cloud/billing']);
     } else {
       if (kind === 'no_provider') await expect(page.getByRole('button', { name: /^Check Eliza Cloud again/ })).toHaveCount(1);
-      else await expect(page.getByRole('button', { name: /^(Manage plan|Check Eliza Cloud again|Set up AI)/ })).toHaveCount(0);
+      else await expect(page.getByRole('button', { name: /^(Manage (plan|billing)|Check Eliza Cloud again|Set up AI)/ })).toHaveCount(0);
       // Agent connection no longer says the agent is ready.
       await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
       await button(page, 'Settings').click();

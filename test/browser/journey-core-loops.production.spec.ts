@@ -302,7 +302,7 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
   const account = page.getByRole('dialog', { name: 'Your agent' });
   await expect(account).toContainText('Running on this device');
-  await expect(account).toContainText('Your agent uses your Eliza Cloud plan for AI.');
+  await expect(account).toContainText('Your agent uses Eliza Cloud for AI.');
   await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
