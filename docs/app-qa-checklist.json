@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T13:32:10.542720+00:00",
+  "updatedAt": "2026-10-16T15:31:30.426488+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "065c5810f8b64cd10c75f5b4ce1ac05505955275",
+  "productSource": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
   "agentSource": "33a6d19c024a4ec130710f0808df25588266d542",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -18,8 +18,8 @@
       "viewOrFlow": "Cold launch and saved connection restoration",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Installed574 launches and resident reconnects; existing account retained. Human startup QA pending.",
+      "seeker": "Exact installed APK hash verified; running resident visible.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -66,8 +66,8 @@
       "viewOrFlow": "Back gesture and cross-app return",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Current source tests cover modal/popover Back; latest preview visual QA pending.",
+      "seeker": "Google panel Back closes to Accounts; folder popup Back keeps Inbox open at574.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -174,8 +174,8 @@
       "viewOrFlow": "Inbox and unread rows",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Latest browser QA pending.",
+      "seeker": "Real native Gmail rows loaded;10 cached rows visible on574.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -198,8 +198,8 @@
       "viewOrFlow": "Search on Enter and mobile keyboard",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Search implementation retained; latest browser visual QA pending.",
+      "seeker": "Enter returned10 matching Coinbase rows at4d; no separate Search Gmail button.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -210,8 +210,8 @@
       "viewOrFlow": "Themed folder menu and removal of More/Search clutter",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Custom themed folder menu implemented; browser visual QA pending.",
+      "seeker": "Themed popup visibly verified; Android Back corrected and verified at574.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -222,8 +222,8 @@
       "viewOrFlow": "Sender images in list and detail",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "preview": "Sender avatars implemented; latest browser QA pending.",
+      "seeker": "LinkedIn/Google/Robinhood logos visibly loaded; unavailable logos use initials.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -416,8 +416,8 @@
       "viewOrFlow": "Account-scoped persistent cache and background refresh",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
-      "seeker": "Pending",
+      "preview": "Account-scoped cache implemented and source-tested.",
+      "seeker": "Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead).",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -536,8 +536,8 @@
       "viewOrFlow": "Google accounts and permissions in Settings",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Google connection manager retained; latest browser QA pending.",
+      "seeker": "Native read/send and Calendar read/edit grants independently verified after approved Mac Chrome consent.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -572,8 +572,8 @@
       "viewOrFlow": "Google linked sync enable, destination and status",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Sync review implemented; live sync acceptance pending.",
+      "seeker": "Settings entry reachable at4d; configured-destination review refused context; no enable/write. Latest574 error-guide retest pending.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -658,8 +658,8 @@
       "viewOrFlow": "Native consent and CalendarProvider writes",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Native consent bridge and current-main write guard implemented.",
+      "seeker": "Device access already allowed; exact native consent guard tests passed. Live write/Undo acceptance pending.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -982,8 +982,8 @@
       "viewOrFlow": "Albums list, contents, selection and batch actions",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Header slots retained.",
+      "seeker": "Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode names were absent from native accessibility tree.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -1618,8 +1618,8 @@
       "viewOrFlow": "Accounts and Google consent",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Google consent UI implemented.",
+      "seeker": "Read/send + Calendar read/edit approved in nubsontopgang Mac Chrome and confirmed in native UI; optional modify unrequested.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -1942,8 +1942,8 @@
       "viewOrFlow": "Latest source/runtime/build/installed provenance",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Current main c23 integrated; source574 pushed; full verification passed.",
+      "seeker": "Signed installed574 APK hash matches; same appId and original install time; no reset.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -2031,8 +2031,8 @@
       "viewOrFlow": "Native managed Google broker and account binding",
       "scope": "MVP",
       "implementation": "Native launch, authenticated module artifact and Shared loader implemented; source verification passed",
-      "preview": "Actual Gmail read-only prompt passed at33a6; sends/deletion remain open",
-      "seeker": "Native broker bundled and source-tested; final APK build running; installed proof pending",
+      "preview": "Common browser/native host implemented; source and packaging verified.",
+      "seeker": "Full resident/Google/voice payload packaged and resident connected; actual native Google-agent prompts pending active plan.",
       "userApproval": "Pending",
       "evidence": [
         "backend/native-google-agent-host.ts",
@@ -2041,6 +2041,54 @@
         "test/native-google-agent-host.test.mjs"
       ],
       "notes": "Do not transfer browser B4 credentials to phone A1 or treat browser prompt proof as resident-agent proof."
+    },
+    {
+      "id": "shell-ipc-recovery-review",
+      "area": "Shell and Home",
+      "viewOrFlow": "Retained startup recovery records without resetting app data",
+      "scope": "MVP",
+      "implementation": "Existing preservation guard; operator review performed",
+      "preview": "Pending visible QA",
+      "seeker": "Eight Oct8/9 retired IPC directories archived intact; live IPC unchanged; resident started.",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "User-facing recovery review remains a follow-up; no files deleted or credentials read."
+    },
+    {
+      "id": "settings-google-account-controls",
+      "area": "Settings",
+      "viewOrFlow": "Google account card, named calendar choices, theme and Back",
+      "scope": "MVP",
+      "implementation": "Layout/labels/theme/Back implemented at05; display choice resource budget tested",
+      "preview": "Pending visible QA",
+      "seeker": "Readable one-column card and named radio controls verified at574; Back returns to Accounts. Dark visual check pending.",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "Actual React panel test: zero account/source enumerations for local choice; explicit refresh/grant changes revalidate."
+    },
+    {
+      "id": "photos-album-selection",
+      "area": "Photos",
+      "viewOrFlow": "Select custom albums with stable header controls",
+      "scope": "MVP",
+      "implementation": "Needs review and native album-selection wiring",
+      "preview": "Pending visible QA",
+      "seeker": "Header stays aligned; current native Select photos action targets the library, not albums.",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "Do not count stable icon positions as implemented album selection."
+    },
+    {
+      "id": "platform-google-oauth-callback",
+      "area": "Platform and release",
+      "viewOrFlow": "Native Google OAuth completion page and independent grant readback",
+      "scope": "MVP",
+      "implementation": "Cloud callback presentation needs investigation",
+      "preview": "Pending visible QA",
+      "seeker": "Chrome auth/success says connection unverified; native connection/grant readback succeeds.",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "Keep the callback verification gate; fix proof issuance/return UX through its owning backend lane."
     }
   ],
   "registeredViewInventory": [
@@ -2191,14 +2239,24 @@
   ],
   "nativeSpeechEvidence": "docs/evidence/native-google-33a6; current ARM64 Seeker and x86 API35 component streaming/cancellation/ASR tests passed; full installed Alpha audio and human acceptance pending",
   "automatedValidation": {
-    "source": "065c5810f8b64cd10c75f5b4ce1ac05505955275",
-    "tests": 1452,
-    "passed": 1450,
+    "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
+    "tests": 1457,
+    "passed": 1455,
     "skipped": 2,
     "failed": 0,
     "typecheck": "passed",
     "productionBuild": "passed",
     "productionAudit": "404 files; testMocks=false; passed",
     "visibleAcceptance": false
+  },
+  "mainIntegrated": "c23eac718e7133c91b397d3b63a813946aadc2b2",
+  "nativeInstalled": {
+    "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
+    "apkSha256": "36f477a3564263abbb425c2e64dad6b2b1bd4609a2da8cfeb24425538cc2151b",
+    "sameExistingSigner": true,
+    "sameAppIdAndOriginalInstallTime": true,
+    "dataReset": false,
+    "residentRunning": true,
+    "allViewsAccepted": false
   }
 }
