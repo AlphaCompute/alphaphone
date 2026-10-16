@@ -1,0 +1,114 @@
+package com.android.systemui.privacy;
+
+import ai.elizaresearch.alphaphone.sense.IndicatorLease;
+import android.content.Context;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.ProviderInfo;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.IBinder;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * Host-JVM run of the prepared SystemUI lease client (AlphaListeningLease) against the listener's
+ * real IndicatorLease rules, through hand-written Android stubs. The fake provider below stands in
+ * for IndicatorLeaseProvider's binder transport; nothing here runs SystemUI or Android.
+ */
+public final class SystemUiLeaseClientTest {
+ static void check(boolean value,String why){if(!value)throw new AssertionError(why);}
+ static final int UID=10_042;static final long BOOT=3;
+
+ static final class Listener {
+  final IndicatorLease lease=new IndicatorLease();final Handler clock;
+  final List<String> calls=new ArrayList<>();final List<Set<String>> keys=new ArrayList<>();
+  IBinder token;long generation=-1;
+  Listener(Handler clock){this.clock=clock;}
+  Bundle call(String method,Bundle extras){
+   calls.add(method);keys.add(new java.util.TreeSet<>(extras.keySet()));
+   Bundle out=new Bundle();
+   if(IndicatorLease.ACQUIRE.equals(method)){token=extras.getBinder(IndicatorLease.KEY_TOKEN);check(token!=null,"token");generation=lease.acquire(BOOT);out.putLong(IndicatorLease.KEY_GENERATION,generation);}
+   else if(IndicatorLease.RENEW.equals(method))out.putBoolean(IndicatorLease.KEY_ACCEPTED,lease.renew(extras.getLong(IndicatorLease.KEY_GENERATION,-1),clock.now,BOOT,
+    extras.getBoolean(IndicatorLease.KEY_SURFACE,false),extras.getBoolean(IndicatorLease.KEY_CHIP,false),extras.getBoolean(IndicatorLease.KEY_RECORDING,false)));
+   else if(IndicatorLease.REVOKE.equals(method))lease.revoke(extras.getLong(IndicatorLease.KEY_GENERATION,-1));
+   else throw new IllegalArgumentException(method);
+   return out;
+  }
+  /** SystemUI's process died: the listener's linkToDeath recipient fires. */
+  void systemUiDied(){lease.binderDied(generation);}
+  IndicatorLease.Loss verdict(boolean attribution){return lease.verdict(clock.now,BOOT,attribution);}
+ }
+
+ static int uid=UID;static boolean surface=true,chip=false,recording=false;
+
+ static ProviderInfo provider(String pkg,int owner){ProviderInfo info=new ProviderInfo();info.packageName=pkg;info.applicationInfo=new ApplicationInfo();info.applicationInfo.uid=owner;return info;}
+
+ public static void main(String[] args){
+  check(AlphaListeningPolicy.LEASE_AUTHORITY.equals(IndicatorLease.AUTHORITY)&&AlphaListeningPolicy.LEASE_ACQUIRE.equals(IndicatorLease.ACQUIRE)
+   &&AlphaListeningPolicy.LEASE_RENEW.equals(IndicatorLease.RENEW)&&AlphaListeningPolicy.LEASE_REVOKE.equals(IndicatorLease.REVOKE)
+   &&AlphaListeningPolicy.KEY_TOKEN.equals(IndicatorLease.KEY_TOKEN)&&AlphaListeningPolicy.KEY_GENERATION.equals(IndicatorLease.KEY_GENERATION)
+   &&AlphaListeningPolicy.KEY_ACCEPTED.equals(IndicatorLease.KEY_ACCEPTED)&&AlphaListeningPolicy.KEY_SURFACE.equals(IndicatorLease.KEY_SURFACE)
+   &&AlphaListeningPolicy.KEY_CHIP.equals(IndicatorLease.KEY_CHIP)&&AlphaListeningPolicy.KEY_RECORDING.equals(IndicatorLease.KEY_RECORDING)
+   &&AlphaListeningPolicy.LEASE_RENEW_MS==IndicatorLease.RENEW_MS&&AlphaListeningPolicy.LEASE_RENEW_MS*2<IndicatorLease.TTL_MS,"SystemUI and listener share one lease contract");
+  Handler main=new Handler();main.now=1_000_000;
+  Context context=new Context();Listener listener=new Listener(main);
+  context.resolver.handler=(uri,method,arg,extras)->{check(("content://"+IndicatorLease.AUTHORITY).equals(uri.toString()),"only the lease authority");return listener.call(method,extras);};
+  context.packages.provider=provider(AlphaListeningPolicy.PACKAGE,UID);
+  AlphaListeningLease client=new AlphaListeningLease(context,main,Runnable::run,()->new AlphaListeningLease.Acknowledgement(uid,surface,chip,recording));
+  client.now();main.advanceTo(main.now);
+  check(listener.calls.isEmpty(),"nothing is sent before start");
+  client.start();main.advanceTo(main.now);
+  check(listener.calls.equals(List.of("acquire","renew")),"acquire then acknowledge: "+listener.calls);
+  check(listener.keys.get(0).equals(Set.of(IndicatorLease.KEY_TOKEN)),"acquire carries only the death token");
+  check(listener.keys.get(1).equals(Set.of(IndicatorLease.KEY_GENERATION,IndicatorLease.KEY_SURFACE,IndicatorLease.KEY_CHIP,IndicatorLease.KEY_RECORDING)),"acknowledgements carry visibility facts only");
+  check(listener.verdict(false)==IndicatorLease.Loss.NONE,"visible surface admits a start");
+  // ---- renewal ----
+  long start=main.now;main.advanceTo(start+30_000);
+  check(listener.verdict(false)==IndicatorLease.Loss.NONE,"renewals keep the lease alive");
+  check(listener.calls.stream().filter("renew"::equals).count()>=30&&listener.calls.stream().filter("acquire"::equals).count()==1,"one generation, renewed every second");
+  // ---- recording shown, then the chip hidden ----
+  recording=true;chip=true;client.now();main.advanceTo(main.now);
+  check(listener.verdict(true)==IndicatorLease.Loss.NONE,"SystemUI observes and shows the recording");
+  chip=false;client.now();main.advanceTo(main.now);
+  check(listener.verdict(false)==IndicatorLease.Loss.CHIP_HIDDEN,"a hidden chip is reported at once, not at the next renewal");
+  recording=false;chip=true;client.now();main.advanceTo(main.now);
+  check(listener.verdict(true)==IndicatorLease.Loss.UNATTRIBUTED,"a visible chip without SystemUI's own recording observation is never acknowledged");
+  // ---- hidden/detached surface ----
+  recording=true;chip=true;client.now();main.advanceTo(main.now);check(listener.verdict(true)==IndicatorLease.Loss.NONE,"restored");
+  surface=false;chip=false;client.now();main.advanceTo(main.now);
+  check(listener.verdict(false)==IndicatorLease.Loss.SURFACE_HIDDEN,"a detached or hidden surface is acknowledged as hidden");
+  surface=true;chip=true;client.now();main.advanceTo(main.now);
+  // ---- SystemUI hangs: no renewals, the lease expires ----
+  long hung=main.now;main.now=hung+IndicatorLease.TTL_MS; // main thread blocked: no ticks run
+  check(listener.verdict(true)==IndicatorLease.Loss.EXPIRED,"a hung SystemUI loses the lease within the TTL");
+  long expired=listener.generation;main.advanceTo(main.now+10);
+  check(listener.verdict(false)==IndicatorLease.Loss.EXPIRED,"the late renewal of the expired generation is refused");
+  main.advanceTo(main.now+IndicatorLease.RENEW_MS);
+  check(listener.verdict(false)==IndicatorLease.Loss.NONE&&listener.generation>expired&&listener.calls.get(listener.calls.size()-2).equals("acquire"),"SystemUI then acquires a new generation");
+  // ---- SystemUI death ----
+  long before=listener.generation;listener.systemUiDied();
+  check(listener.verdict(false)==IndicatorLease.Loss.BINDER_DIED,"binder death ends the lease immediately");
+  main.advanceTo(main.now+IndicatorLease.RENEW_MS);
+  main.advanceTo(main.now+IndicatorLease.RENEW_MS);
+  check(listener.generation>before,"the next renewal on the dead generation is refused and a new one acquired");
+  // ---- identity loss and provider substitution ----
+  uid=-1;client.now();main.advanceTo(main.now);
+  check(listener.calls.get(listener.calls.size()-1).equals("revoke")&&listener.verdict(false)==IndicatorLease.Loss.REVOKED,"unverified listener identity revokes");
+  int count=listener.calls.size();main.advanceTo(main.now+5*IndicatorLease.RENEW_MS);
+  check(listener.calls.size()==count,"nothing is sent while identity is unverified");
+  uid=UID;context.packages.provider=provider("com.example.impostor",UID);main.advanceTo(main.now+3*IndicatorLease.RENEW_MS);
+  check(listener.calls.size()==count,"acknowledgements never go to another package's provider");
+  context.packages.provider=provider(AlphaListeningPolicy.PACKAGE,UID+1);main.advanceTo(main.now+3*IndicatorLease.RENEW_MS);
+  check(listener.calls.size()==count,"nor to a provider under another UID");
+  context.packages.provider=null;main.advanceTo(main.now+3*IndicatorLease.RENEW_MS);
+  check(listener.calls.size()==count,"nor when no provider resolves");
+  // ---- an unavailable provider fails closed ----
+  context.packages.provider=provider(AlphaListeningPolicy.PACKAGE,UID);main.advanceTo(main.now+IndicatorLease.RENEW_MS);
+  check(listener.verdict(true)==IndicatorLease.Loss.NONE,"recovers with a new generation");
+  context.resolver.handler=(uri,method,arg,extras)->{throw new IllegalStateException("listener process gone");};
+  main.advanceTo(main.now+IndicatorLease.TTL_MS);
+  check(listener.verdict(false)==IndicatorLease.Loss.EXPIRED,"undeliverable acknowledgements let the lease expire");
+  System.out.println("PASS SystemUI lease client: contract, renewal, hidden chip/surface, hang, death, identity");
+ }
+}

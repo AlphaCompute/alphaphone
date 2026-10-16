@@ -9,21 +9,28 @@ import android.os.*;
 import android.service.notification.StatusBarNotification;
 import com.android.systemui.CoreStartable;
 import com.android.systemui.dagger.SysUISingleton;
+import com.android.systemui.dagger.qualifiers.Background;
 import com.android.systemui.dagger.qualifiers.Main;
 import com.android.systemui.res.R;
 import com.android.systemui.settings.UserTracker;
 import com.android.systemui.statusbar.NotificationListener;
 import java.security.MessageDigest;
 import java.util.*;
+import java.util.concurrent.Executor;
 import javax.inject.Inject;
 
-/** SystemUI-owned microphone truth. Notification actions are capabilities, never capture evidence. */
+/**
+ * SystemUI-owned microphone truth. Notification actions are capabilities, never capture evidence.
+ * It also holds the listener's indicator health lease ({@link AlphaListeningLease}), acknowledging
+ * only what its own views measure, so the listener stops when this indicator cannot be shown.
+ */
 @SysUISingleton
 public final class AlphaListeningController implements CoreStartable {
  private static AlphaListeningController instance;
  private static final Set<AlphaListeningChipView> views=new HashSet<>(); // main thread only
  private final Context context;private final AudioManager audio;private final Handler main;
  private final UserTracker users;private final NotificationListener notifications;
+ private final AlphaListeningLease lease;
  private int uid=-1;private boolean active;
  private final AudioManager.AudioRecordingCallback recording=new AudioManager.AudioRecordingCallback(){
   @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){refresh(configs);}
@@ -32,8 +39,9 @@ public final class AlphaListeningController implements CoreStartable {
   @Override public void onBeforeUserSwitching(int user){uid=-1;active=false;publish();}
   @Override public void onUserChanged(int user,Context userContext){refreshCurrent();}
  };
- @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,
-   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;}
+ @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
+   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
+  lease=new AlphaListeningLease(context,main,background,this::acknowledgement);}
  @Override public void start(){
   instance=this;
   audio.registerAudioRecordingCallback(recording,main);
@@ -41,10 +49,19 @@ public final class AlphaListeningController implements CoreStartable {
   IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
   context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refreshCurrent();}},filter,null,main,Context.RECEIVER_NOT_EXPORTED);
   refreshCurrent();
+  lease.start();
  }
  static void attach(AlphaListeningChipView view){views.add(view);if(instance!=null)instance.refreshCurrent();else view.render(false);}
- static void detach(AlphaListeningChipView view){views.remove(view);}
- private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);}
+ static void detach(AlphaListeningChipView view){views.remove(view);surfaceChanged();}
+ static void surfaceChanged(){if(instance!=null)instance.lease.now();}
+ /** Main thread: what SystemUI itself measures. Unverified identity or user switching acknowledges nothing. */
+ private AlphaListeningLease.Acknowledgement acknowledgement(){
+  boolean admitted=uid!=-1&&!users.isUserSwitching()&&users.getUserId()==0;
+  boolean surface=false,chip=false;
+  for(AlphaListeningChipView view:views){boolean shown=view.chipVisible();chip|=shown;surface|=shown||view.hostVisible();}
+  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active);
+ }
+ private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);lease.now();}
  private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}
  private int verifiedUid(){
   try{

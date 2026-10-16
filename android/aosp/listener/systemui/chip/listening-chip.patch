@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,50 @@
 +package com.android.systemui.privacy;
 +
 +/** Platform-derived facts only. No transcript, PCM, listener self-report or app-supplied UID. */
@@ -24,11 +24,36 @@
 +   &&PACKAGE.equals(notificationPackage)&&PACKAGE.equals(creatorPackage)&&notificationId==1
 +   &&"listening-indicator".equals(channel)&&immutable&&broadcast&&!requiresUnlock&&PAUSE.equals(marker);
 + }
++ // Indicator health lease (docs/aosp-listening-chip.md); mirrors the listener's IndicatorLease contract.
++ public static final String LEASE_AUTHORITY="ai.elizaresearch.alphaphone.sense.indicator";
++ public static final String LEASE_ACQUIRE="acquire",LEASE_RENEW="renew",LEASE_REVOKE="revoke";
++ public static final String KEY_TOKEN="token",KEY_GENERATION="generation",KEY_ACCEPTED="accepted",
++  KEY_SURFACE="surfaceVisible",KEY_CHIP="chipVisible",KEY_RECORDING="recordingObserved";
++ public static final long LEASE_RENEW_MS=1_000;
++ /** Below this effective alpha or visible fraction a surface does not count as shown. */
++ public static final float MIN_ALPHA=0.5f;
++ public static final int MIN_VISIBLE_PERCENT=90;
++ /**
++  * Effective on-screen visibility of one SystemUI view, measured by SystemUI from its own view
++  * tree: attached, its window visible, shown through every ancestor, aggregated-visible, mostly
++  * opaque along the ancestor chain and almost entirely inside the visible screen area.
++  */
++ public static boolean effectivelyVisible(boolean attached,boolean windowVisible,boolean shown,boolean aggregated,
++   float effectiveAlpha,long visibleArea,long area){
++  return attached&&windowVisible&&shown&&aggregated&&effectiveAlpha>=MIN_ALPHA&&area>0&&visibleArea>0
++   &&visibleArea<=area&&visibleArea*100>=area*MIN_VISIBLE_PERCENT;
++ }
++ /** Acknowledgements go only to the lease provider of the already admitted listener UID. */
++ public static boolean leaseTarget(int admittedUid,String providerPackage,int providerUid){
++  return admittedUid>=10000&&admittedUid<20000&&PACKAGE.equals(providerPackage)&&providerUid==admittedUid;
++ }
++ /** The chip may be acknowledged as visible only while SystemUI itself observes the recording. */
++ public static boolean chipAcknowledged(boolean recordingObserved,boolean anyChipVisible){return recordingObserved&&anyChipVisible;}
 + private AlphaListeningPolicy(){}
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java
-@@ -0,0 +1,90 @@
+@@ -0,0 +1,107 @@
 +package com.android.systemui.privacy;
 +
 +import android.app.Notification;
@@ -40,21 +65,28 @@
 +import android.service.notification.StatusBarNotification;
 +import com.android.systemui.CoreStartable;
 +import com.android.systemui.dagger.SysUISingleton;
++import com.android.systemui.dagger.qualifiers.Background;
 +import com.android.systemui.dagger.qualifiers.Main;
 +import com.android.systemui.res.R;
 +import com.android.systemui.settings.UserTracker;
 +import com.android.systemui.statusbar.NotificationListener;
 +import java.security.MessageDigest;
 +import java.util.*;
++import java.util.concurrent.Executor;
 +import javax.inject.Inject;
 +
-+/** SystemUI-owned microphone truth. Notification actions are capabilities, never capture evidence. */
++/**
++ * SystemUI-owned microphone truth. Notification actions are capabilities, never capture evidence.
++ * It also holds the listener's indicator health lease ({@link AlphaListeningLease}), acknowledging
++ * only what its own views measure, so the listener stops when this indicator cannot be shown.
++ */
 +@SysUISingleton
 +public final class AlphaListeningController implements CoreStartable {
 + private static AlphaListeningController instance;
 + private static final Set<AlphaListeningChipView> views=new HashSet<>(); // main thread only
 + private final Context context;private final AudioManager audio;private final Handler main;
 + private final UserTracker users;private final NotificationListener notifications;
++ private final AlphaListeningLease lease;
 + private int uid=-1;private boolean active;
 + private final AudioManager.AudioRecordingCallback recording=new AudioManager.AudioRecordingCallback(){
 +  @Override public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs){refresh(configs);}
@@ -63,8 +95,9 @@
 +  @Override public void onBeforeUserSwitching(int user){uid=-1;active=false;publish();}
 +  @Override public void onUserChanged(int user,Context userContext){refreshCurrent();}
 + };
-+ @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,
-+   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;}
++ @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
++   UserTracker users,NotificationListener notifications){this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
++  lease=new AlphaListeningLease(context,main,background,this::acknowledgement);}
 + @Override public void start(){
 +  instance=this;
 +  audio.registerAudioRecordingCallback(recording,main);
@@ -72,10 +105,19 @@
 +  IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
 +  context.registerReceiver(new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){refreshCurrent();}},filter,null,main,Context.RECEIVER_NOT_EXPORTED);
 +  refreshCurrent();
++  lease.start();
 + }
 + static void attach(AlphaListeningChipView view){views.add(view);if(instance!=null)instance.refreshCurrent();else view.render(false);}
-+ static void detach(AlphaListeningChipView view){views.remove(view);}
-+ private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);}
++ static void detach(AlphaListeningChipView view){views.remove(view);surfaceChanged();}
++ static void surfaceChanged(){if(instance!=null)instance.lease.now();}
++ /** Main thread: what SystemUI itself measures. Unverified identity or user switching acknowledges nothing. */
++ private AlphaListeningLease.Acknowledgement acknowledgement(){
++  boolean admitted=uid!=-1&&!users.isUserSwitching()&&users.getUserId()==0;
++  boolean surface=false,chip=false;
++  for(AlphaListeningChipView view:views){boolean shown=view.chipVisible();chip|=shown;surface|=shown||view.hostVisible();}
++  return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active);
++ }
++ private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);lease.now();}
 + private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}
 + private int verifiedUid(){
 +  try{
@@ -120,18 +162,112 @@
 + }
 +}
 --- /dev/null
-+++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java
-@@ -0,0 +1,21 @@
++++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningLease.java
+@@ -0,0 +1,87 @@
 +package com.android.systemui.privacy;
 +
 +import android.content.Context;
++import android.content.pm.ProviderInfo;
++import android.net.Uri;
++import android.os.Binder;
++import android.os.Bundle;
++import android.os.Handler;
++import java.util.concurrent.Executor;
++
++/**
++ * SystemUI side of the listener's indicator health lease. Every {@link AlphaListeningPolicy#LEASE_RENEW_MS}
++ * (and at once on any surface change) it measures its own views on the main thread and sends a
++ * visibility acknowledgement to the admitted listener on the background executor. A hidden,
++ * detached or unattributed surface is acknowledged as such, so the listener stops capture; if
++ * SystemUI hangs or dies, renewals stop and the token binder dies, which also stops it.
++ * Acknowledgements carry visibility facts only: no audio, transcript, consent or resume command.
++ */
++final class AlphaListeningLease {
++ /** One acknowledgement: the admitted listener UID (-1 for none) and SystemUI-measured facts. */
++ static final class Acknowledgement {
++  final int uid;final boolean surface,chip,recording;
++  Acknowledgement(int uid,boolean surface,boolean chip,boolean recording){this.uid=uid;this.surface=surface;this.chip=chip;this.recording=recording;}
++ }
++ interface Source{Acknowledgement read();}
++
++ private final Context context;private final Handler main;private final Executor background;private final Source source;
++ /** Never shared beyond the lease provider: its death tells the listener this SystemUI process is gone. */
++ private final Binder token=new Binder();
++ private final Uri uri=Uri.parse("content://"+AlphaListeningPolicy.LEASE_AUTHORITY);
++ private volatile long generation=-1; // background executor only (serial)
++ private boolean running; // main thread only
++ private final Runnable tick=this::tick;
++
++ AlphaListeningLease(Context context,Handler main,Executor background,Source source){
++  this.context=context;this.main=main;this.background=background;this.source=source;
++ }
++ void start(){running=true;main.post(tick);}
++ /** A surface changed: acknowledge now rather than at the next renewal. */
++ void now(){if(!running)return;main.removeCallbacks(tick);main.post(tick);}
++
++ private void tick(){
++  if(!running)return;
++  Acknowledgement ack;
++  try{ack=source.read();}catch(RuntimeException unreadable){ack=null;}
++  Acknowledgement sent=ack;
++  background.execute(()->deliver(sent));
++  main.postDelayed(tick,AlphaListeningPolicy.LEASE_RENEW_MS);
++ }
++
++ private void deliver(Acknowledgement ack){
++  if(ack==null||ack.uid<0||!target(ack.uid)){revoke();return;}
++  try{
++   if(generation<0){
++    Bundle acquire=new Bundle();acquire.putBinder(AlphaListeningPolicy.KEY_TOKEN,token);
++    Bundle out=call(AlphaListeningPolicy.LEASE_ACQUIRE,acquire);
++    generation=out==null?-1:out.getLong(AlphaListeningPolicy.KEY_GENERATION,-1);
++    if(generation<0)return;
++   }
++   Bundle renew=new Bundle();
++   renew.putLong(AlphaListeningPolicy.KEY_GENERATION,generation);
++   renew.putBoolean(AlphaListeningPolicy.KEY_SURFACE,ack.surface);
++   renew.putBoolean(AlphaListeningPolicy.KEY_CHIP,AlphaListeningPolicy.chipAcknowledged(ack.recording,ack.chip));
++   renew.putBoolean(AlphaListeningPolicy.KEY_RECORDING,ack.recording);
++   Bundle out=call(AlphaListeningPolicy.LEASE_RENEW,renew);
++   // A refused renewal (expired, revoked, replaced) is never retried on the same generation.
++   if(out==null||!out.getBoolean(AlphaListeningPolicy.KEY_ACCEPTED,false))generation=-1;
++  }catch(RuntimeException unavailable){generation=-1;}
++ }
++
++ private void revoke(){
++  long current=generation;
++  if(current<0)return;
++  generation=-1;
++  try{Bundle revoke=new Bundle();revoke.putLong(AlphaListeningPolicy.KEY_GENERATION,current);call(AlphaListeningPolicy.LEASE_REVOKE,revoke);}
++  catch(RuntimeException unavailable){/* Expiry still stops capture. */}
++ }
++
++ private boolean target(int uid){
++  try{
++   ProviderInfo provider=context.getPackageManager().resolveContentProvider(AlphaListeningPolicy.LEASE_AUTHORITY,0);
++   return provider!=null&&provider.applicationInfo!=null&&AlphaListeningPolicy.leaseTarget(uid,provider.packageName,provider.applicationInfo.uid);
++  }catch(RuntimeException unavailable){return false;}
++ }
++
++ private Bundle call(String method,Bundle extras){return context.getContentResolver().call(uri,method,null,extras);}
++}
+--- /dev/null
++++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java
+@@ -0,0 +1,42 @@
++package com.android.systemui.privacy;
++
++import android.content.Context;
++import android.graphics.Rect;
 +import android.util.AttributeSet;
 +import android.view.Gravity;
++import android.view.View;
++import android.view.ViewParent;
 +import android.widget.TextView;
 +import com.android.systemui.res.R;
 +
-+/** Independent fixed-text surface. Parent visibility/health remains an image qualification gate. */
++/** Independent fixed-text surface. Its measured visibility feeds the listener's health lease. */
 +public final class AlphaListeningChipView extends TextView {
++ private boolean aggregated; // main thread only
 + public AlphaListeningChipView(Context context){this(context,null);}
 + public AlphaListeningChipView(Context context,AttributeSet attrs){
 +  super(context,attrs);setGravity(Gravity.CENTER);setTextSize(12);setTextColor(0xffffffff);
@@ -141,7 +277,24 @@
 + }
 + @Override protected void onAttachedToWindow(){super.onAttachedToWindow();AlphaListeningController.attach(this);}
 + @Override protected void onDetachedFromWindow(){AlphaListeningController.detach(this);super.onDetachedFromWindow();}
-+ void render(boolean active){setText(R.string.alpha_listening_pause);setContentDescription(getContext().getString(R.string.alpha_listening_pause));setVisibility(active?VISIBLE:GONE);setEnabled(active);}
++ @Override public void onVisibilityAggregated(boolean visible){super.onVisibilityAggregated(visible);aggregated=visible;AlphaListeningController.surfaceChanged();}
++ @Override protected void onWindowVisibilityChanged(int visibility){super.onWindowVisibilityChanged(visibility);AlphaListeningController.surfaceChanged();}
++ void render(boolean active){setText(R.string.alpha_listening_pause);setContentDescription(getContext().getString(R.string.alpha_listening_pause));setVisibility(active?VISIBLE:GONE);setEnabled(active);AlphaListeningController.surfaceChanged();}
++
++ /** The rendered chip itself is effectively on screen. */
++ boolean chipVisible(){return getVisibility()==VISIBLE&&measured(this,aggregated);}
++
++ /** The surface that shows the chip (status bar or keyguard indication area) is effectively on screen. */
++ boolean hostVisible(){ViewParent parent=getParent();return parent instanceof View&&measured((View)parent,((View)parent).isShown());}
++
++ private static boolean measured(View view,boolean aggregated){
++  Rect rect=new Rect();
++  boolean onScreen=view.getGlobalVisibleRect(rect);
++  float alpha=view.getAlpha();
++  for(ViewParent node=view.getParent();node instanceof View;node=node.getParent())alpha*=((View)node).getAlpha();
++  return AlphaListeningPolicy.effectivelyVisible(view.isAttachedToWindow(),view.getWindowVisibility()==VISIBLE,view.isShown(),aggregated,
++   alpha,onScreen?(long)rect.width()*rect.height():0,(long)view.getWidth()*view.getHeight());
++ }
 +}
 --- /dev/null
 +++ b/packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipBinder.kt

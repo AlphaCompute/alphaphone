@@ -38,7 +38,37 @@ final class Listener {
   in.inCall=inCall;
   in.otherAppRecording=otherAppRecording;
   in.micSilenced=micSilenced;
+  in.indicatorLeaseValid=observeIndicatorLease(context,SystemClock.elapsedRealtime());
+  in.indicatorLost=indicatorLost;
   return in;
+ }
+
+ /** SystemUI's indicator health lease (fed by {@link IndicatorLeaseProvider}); in memory only, so it never outlives the process. */
+ static final IndicatorLease lease=new IndicatorLease();
+ /**
+  * Set by the service while an AudioRecord is open, and the monotonic time capture last became
+  * unsilenced (-1 while silenced or closed). Read here so every policy evaluation can latch a lost lease.
+  */
+ static volatile boolean microphoneHeld;
+ static volatile long unsilencedSince=-1;
+ /** Latched when the lease is lost while the microphone is held; only an explicit user resume or turn-on clears it. */
+ static volatile boolean indicatorLost;
+
+ private static volatile long boot=Long.MIN_VALUE;
+ /** The boot a lease belongs to, read once per process (the lease itself never outlives the process). */
+ static long leaseBoot(Context context){
+  long value=boot;
+  if(value==Long.MIN_VALUE){value=ListenerStore.bootCount(context);boot=value;}
+  return value;
+ }
+
+ /** Whether the lease permits capture now; latches {@link #indicatorLost} when it fails while capturing. */
+ static boolean observeIndicatorLease(Context context,long now){
+  boolean held=microphoneHeld;
+  long since=unsilencedSince;
+  boolean valid=lease.permits(now,leaseBoot(context),IndicatorLease.requiresAttribution(held&&since>=0,since,now));
+  if(ListenerPolicy.latchesIndicatorLoss(held,valid))indicatorLost=true;
+  return valid;
  }
 
  /** The listener's user (the primary user) is the one using the phone. Unknown counts as not. */

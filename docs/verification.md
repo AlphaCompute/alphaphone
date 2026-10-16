@@ -43,6 +43,29 @@ build type, packaged runtime or signing certificate contradicts the row that adm
 re-derived from the APK, so for those the manifest written by `verify-apks` is the evidence and
 must come from the build being installed.
 
+### Always-on listener APK (issue #424)
+
+The listener (`android/sense`, ADR 0001) is a separate image-only APK with its own
+qualification record, `android/sense/qualified-listener.json`. It is **not
+device-qualified**: gates G1–G6 are open, its only APK build record
+(`docs/evidence/listener-session-build-2026-10-12.json`) is historical and predates
+the SystemUI indicator lease, and no emulator, image or device evidence exists.
+Build it with `./gradlew :sense:assembleRelease` and copy `sense-*.apk` next to the
+Alpha APKs; `verify-apks` then adds a `listener` section to `apk-manifest.json`
+(hash, signer, permissions against the privapp allowlist, no network permission,
+voice bundle) and fails on a listener APK that requests network access or
+unreviewed permissions. Without listener APKs the section records that none was
+built. Its rows are APK-build evidence (class B) and stay `distributable: false`
+while the record is unqualified; `scripts/listener-qualification.mjs` refuses a
+record that claims qualification without passed gates and image/device evidence.
+
+| Check | Class | What it does not prove |
+| --- | --- | --- |
+| `node --test test/always-on-listener.test.mjs test/listener-store-failure.test.mjs test/aosp-listening-chip.test.mjs test/listener-qualification.test.mjs` | S | That the listener or SystemUI builds as an APK/image, or that any indicator is visible |
+| A `listener` row in `apk-manifest.json` | B | Privileges, the lease or capture on an image |
+| `node scripts/verify-aosp-listener.mjs --serial S --user 0` on a booted image | I | Indicator visibility, stop reliability, coexistence, battery |
+| Gates G3–G6 on a Pixel 10a | D | Other devices |
+
 ### Speech engine (decision P-42)
 
 On-device and local speech run only on libelizainference ([fused speech](fused-speech.md)).

@@ -29,6 +29,19 @@ public final class ListenerSystemUiPolicyTest {
   check(ListenerActionContract.PAUSE.equals(ListenerActionContract.marker(PKG+".action.PAUSE")),"only pause advertised");
   for(String action:new String[]{null,"",PKG+".action.RESUME",PKG+".action.STOP",PKG+".action.DISMISSED"})check(ListenerActionContract.marker(action)==null,"never advertise another action");
   check(ListenerActionContract.KEY.equals(AlphaListeningPolicy.ACTION_KEY),"producer consumer contract");
-  System.out.println("PASS listener SystemUI policy: identity, recording, pause-only capability");
+  // ---- lease visibility measurement ----
+  check(AlphaListeningPolicy.effectivelyVisible(true,true,true,true,1f,100,100),"attached, shown and on screen");
+  check(!AlphaListeningPolicy.effectivelyVisible(false,true,true,true,1f,100,100),"detached view");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,false,true,true,1f,100,100),"window hidden");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,true,false,true,1f,100,100),"an ancestor is hidden");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,true,true,false,1f,100,100),"aggregated visibility false");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,true,true,true,0.2f,100,100),"faded out");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,true,true,true,1f,89,100),"mostly clipped off screen");
+  check(AlphaListeningPolicy.effectivelyVisible(true,true,true,true,1f,90,100),"burn-in shift within tolerance");
+  check(!AlphaListeningPolicy.effectivelyVisible(true,true,true,true,1f,0,0)&&!AlphaListeningPolicy.effectivelyVisible(true,true,true,true,1f,200,100),"empty or inconsistent geometry");
+  check(AlphaListeningPolicy.leaseTarget(10042,PKG,10042),"admitted listener provider");
+  check(!AlphaListeningPolicy.leaseTarget(10042,"com.example",10042)&&!AlphaListeningPolicy.leaseTarget(10042,PKG,10043)&&!AlphaListeningPolicy.leaseTarget(-1,PKG,-1),"never another provider");
+  check(AlphaListeningPolicy.chipAcknowledged(true,true)&&!AlphaListeningPolicy.chipAcknowledged(false,true)&&!AlphaListeningPolicy.chipAcknowledged(true,false),"chip acknowledged only with SystemUI's own recording observation");
+  System.out.println("PASS listener SystemUI policy: identity, recording, pause-only capability, lease visibility");
  }
 }

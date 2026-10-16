@@ -26,7 +26,38 @@ test('staged source and exact patch stay bound; independent monitor does not tru
  assert.match(controller,/registerAudioRecordingCallback/);assert.match(controller,/getClientUid\(\),config.isClientSilenced\(\)/);
  assert.match(controller,/token.getIntent\(\)/);assert.match(controller,/ListenerActionReceiver/);assert.match(controller,/chosen.send\(\)/);
  assert.doesNotMatch(controller,/ContentResolver|LISTENER_CONTROL|RECORD_AUDIO|pcm16|transcript|\.resume\(/);
- assert.equal(manifest.indicatorHealthLeaseImplemented,false);assert.equal(manifest.lockAodIndicatorQualified,false);
+ // Source-level lease only: never compiled in SystemUI, built into an image or qualified on a device.
+ assert.equal(manifest.indicatorHealthLeaseImplemented,true);assert.equal(manifest.lockAodIndicatorQualified,false);
+ assert.deepEqual([manifest.fullTreeVerified,manifest.imageBuilt,manifest.indicatorHealthLease.systemUiCompiled,manifest.indicatorHealthLease.qualified],[false,false,false,false]);
+ const lease=fs.readFileSync(`${bundle}/source/AlphaListeningLease.java`,'utf8');
+ assert.match(lease,/content:\/\/"\+AlphaListeningPolicy\.LEASE_AUTHORITY/);assert.match(lease,/new Binder\(\)/);assert.match(lease,/leaseTarget\(/);
+ assert.doesNotMatch(lease.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm,''),/sense\.control|LISTENER_CONTROL|RECORD_AUDIO|pcm|transcript|resume|consent|turnOn|enable/i,'acknowledgements carry visibility only');
+ const view=fs.readFileSync(`${bundle}/source/AlphaListeningChipView.java`,'utf8');
+ for(const hook of [/onVisibilityAggregated/,/onWindowVisibilityChanged/,/onDetachedFromWindow\(\)\{AlphaListeningController\.detach/,/getGlobalVisibleRect/,/isShown\(\)/])assert.match(view,hook);
+});
+const java=name=>path.join(javaHome(),'bin',name);
+function javaHome(){return process.env.JAVA_HOME||(process.platform==='darwin'&&fs.existsSync('/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home')?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');}
+const stubs=dir=>fs.readdirSync(dir,{recursive:true}).filter(name=>name.endsWith('.java')).map(name=>path.join(dir,name));
+test('prepared Java chip sources type-check against SystemUI stubs and the lease client fails closed on the JVM',()=>{
+ // Hand-written stubs (test/fixtures/systemui-chip-jvm), not the pinned SystemUI tree; the Kotlin binder is not compiled.
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'listener-chip-lease-'));
+ try{
+  const sources=fs.readdirSync(`${bundle}/source`).filter(name=>name.endsWith('.java')).map(name=>`${bundle}/source/${name}`);
+  assert.equal(sources.length,4);
+  execFileSync(java('javac'),['--release','11','-Xlint:all','-Werror','-Xlint:-serial','-d',temp,...stubs('test/fixtures/systemui-chip-jvm'),...sources,
+   'android/sense/src/main/java/ai/elizaresearch/alphaphone/sense/IndicatorLease.java','test/fixtures/SystemUiLeaseClientTest.java'],{timeout:60000});
+  assert.match(execFileSync(java('java'),['-cp',temp,'com.android.systemui.privacy.SystemUiLeaseClientTest'],{encoding:'utf8',timeout:60000}),/^PASS SystemUI lease client/);
+ }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
+test('the exact patch creates the staged chip sources byte for byte',()=>{
+ const temp=fs.mkdtempSync(path.join(os.tmpdir(),'listener-chip-newfiles-'));
+ try{
+  execFileSync('git',['init','-q'],{cwd:temp});
+  execFileSync('git',['apply','--whitespace=error','--include=packages/SystemUI/src/com/android/systemui/privacy/Alpha*',path.resolve(bundle,manifest.patch)],{cwd:temp});
+  const created=fs.readdirSync(path.join(temp,'packages/SystemUI/src/com/android/systemui/privacy')).sort();
+  assert.deepEqual(created,fs.readdirSync(`${bundle}/source`).sort());
+  for(const file of created)assert.ok(fs.readFileSync(path.join(temp,'packages/SystemUI/src/com/android/systemui/privacy',file)).equals(fs.readFileSync(`${bundle}/source/${file}`)),file);
+ }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });
 test('chip overlay applies to exact pinned source and rejects new-file collisions and mutation',{skip:!process.env.ALPHA_SYSTEMUI_TEST_SOURCE},()=>{
  const temp=fs.mkdtempSync(path.join(os.tmpdir(),'listener-chip-exact-'));

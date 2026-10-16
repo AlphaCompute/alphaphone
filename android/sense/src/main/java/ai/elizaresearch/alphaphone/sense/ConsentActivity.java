@@ -28,7 +28,7 @@ public final class ConsentActivity extends Activity {
   "When on, this phone's microphone stays open in the background, including while the phone is locked, so you can say “Alpha” instead of opening the app.\n\n"
   +"• Speech is detected and recognised on this phone. Audio is never uploaded and never saved.\n"
   +"• What you say is checked only for “Alpha”. Anything not addressed to Alpha is discarded. When you say “Alpha”, the Alpha app opens and handles your request as if you had opened it.\n"
-  +"• A notification shows whenever listening is on or paused, including on the lock screen; listening does not run without it. The system microphone indicator is also expected to show while the microphone is open.\n"
+  +"• A notification shows whenever listening is on or paused, including on the lock screen; listening does not run without it. The system microphone indicator is also expected to show while the microphone is open. Listening runs only while the system Listening indicator can be shown; if it stops being shown, listening turns off until you resume it.\n"
   +"• Pause or turn off at any time from the notification, the Quick Settings tile, the microphone privacy toggle or by saying “Alpha, stop listening”.\n"
   +"• Listening pauses while the phone rings, during calls, while sound or speech is playing (wake word only), whenever another app uses the microphone and while another user is using the phone. Calls are never recorded.\n"
   +"• Saying “Alpha” while the phone is locked does nothing; unlock first.\n"
@@ -103,7 +103,7 @@ public final class ConsentActivity extends Activity {
    button(consented?"Turn on listening":"I understand — turn on listening",view->requestMicrophone());
   }
   if(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED)button("Allow the listening notification",view->openNotificationSettings());
-  if(state==ListenerPolicy.State.PAUSED_USER)button("Resume listening",view->{store.resume();changed();});
+  if(state==ListenerPolicy.State.PAUSED_USER||state==ListenerPolicy.State.STOPPED_INDICATOR_LOST)button("Resume listening",view->{store.resume();changed();});
   if(ListenerPolicy.holdsMicrophone(state)||state==ListenerPolicy.State.PAUSED_CALL){
    button("Pause for 15 minutes",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),15));changed();});
    button("Pause for 1 hour",view->{store.pause(ListenerPolicy.pauseUntil(SystemClock.elapsedRealtime(),60));changed();});

@@ -1,0 +1,161 @@
+package ai.elizaresearch.alphaphone.sense;
+
+import ai.elizaresearch.alphaphone.sense.IndicatorLease.Loss;
+import ai.elizaresearch.alphaphone.sense.ListenerPolicy.Inputs;
+import ai.elizaresearch.alphaphone.sense.ListenerPolicy.State;
+
+/**
+ * Plain-JVM checks of the listener's SystemUI indicator health lease and how the policy uses it.
+ * Not an Android, SystemUI, image or device test.
+ */
+public final class ListenerLeaseTest {
+ private static void check(boolean condition,String name){if(!condition)throw new AssertionError(name);}
+ static final long BOOT=7;
+
+ private static Inputs ready(boolean leaseValid){
+  Inputs in=new Inputs();
+  in.consentVersion=ListenerPolicy.CONSENT_VERSION;in.enabled=true;in.recordAudioGranted=true;in.userUnlocked=true;
+  in.notificationsVisible=true;in.userForeground=true;in.indicatorLeaseValid=leaseValid;
+  return in;
+ }
+
+ /** One listener-side capture step: what Listener.observeIndicatorLease and the policy do together. */
+ static final class Sim {
+  final IndicatorLease lease=new IndicatorLease();
+  boolean held,lost;long since=-1;
+  State step(long now,Inputs base){
+   boolean valid=lease.permits(now,BOOT,IndicatorLease.requiresAttribution(held&&since>=0,since,now));
+   if(ListenerPolicy.latchesIndicatorLoss(held,valid))lost=true;
+   base.indicatorLeaseValid=valid;base.indicatorLost=lost;
+   State state=ListenerPolicy.decide(base,now);
+   boolean hold=ListenerPolicy.holdsMicrophone(state);
+   if(hold&&!held){held=true;since=now;}else if(!hold){held=false;since=-1;}
+   return state;
+  }
+ }
+
+ public static void main(String[] args){
+  long t=1_000_000;
+  // ---- no lease, pending lease ----
+  IndicatorLease lease=new IndicatorLease();
+  check(lease.verdict(t,BOOT,false)==Loss.NEVER_ACQUIRED,"a fresh process has no lease");
+  check(ListenerPolicy.decide(ready(false),t)==State.INDICATOR_UNAVAILABLE,"no lease, no capture");
+  check(!ListenerPolicy.holdsMicrophone(State.INDICATOR_UNAVAILABLE)&&!ListenerPolicy.foreground(State.INDICATOR_UNAVAILABLE)&&ListenerPolicy.needsAttention(State.INDICATOR_UNAVAILABLE),"waiting for the indicator holds nothing");
+  long gen=lease.acquire(BOOT);
+  check(lease.verdict(t,BOOT,false)==Loss.PENDING,"acquiring alone is not a visible acknowledgement");
+  check(lease.renew(gen,t,BOOT,false,false,false)&&lease.verdict(t,BOOT,false)==Loss.PENDING,"a hidden first acknowledgement never makes the lease fresh");
+  // ---- renewal ----
+  check(lease.renew(gen,t,BOOT,true,false,false),"visible surface acknowledged");
+  check(lease.permits(t,BOOT,false),"fresh lease permits starting capture");
+  for(long now=t+IndicatorLease.RENEW_MS;now<=t+20*IndicatorLease.RENEW_MS;now+=IndicatorLease.RENEW_MS)check(lease.renew(gen,now,BOOT,true,true,true)&&lease.permits(now,BOOT,true),"steady renewals keep the lease: "+now);
+  long last=t+20*IndicatorLease.RENEW_MS;
+  check(lease.nextCheckDelay(last)<=IndicatorLease.RENEW_MS&&lease.nextCheckDelay(last+IndicatorLease.TTL_MS-10)<=50,"the watchdog re-checks no later than expiry");
+  // ---- expiry ----
+  check(lease.permits(last+IndicatorLease.TTL_MS-1,BOOT,true),"valid until the TTL");
+  check(lease.verdict(last+IndicatorLease.TTL_MS,BOOT,true)==Loss.EXPIRED,"SystemUI that stops renewing loses the lease within the TTL");
+  check(!lease.renew(gen,last+IndicatorLease.TTL_MS+1,BOOT,true,true,true),"an expired generation can never be renewed");
+  check(lease.verdict(last+IndicatorLease.TTL_MS+1,BOOT,false)==Loss.EXPIRED,"still expired");
+  IndicatorLease late=new IndicatorLease();long lg=late.acquire(BOOT);late.renew(lg,t,BOOT,true,false,false);
+  check(!late.renew(lg,t+IndicatorLease.TTL_MS,BOOT,true,false,false)&&!late.permits(t+IndicatorLease.TTL_MS,BOOT,false),"a renewal arriving after expiry does not revive the lease");
+  long fresh=lease.acquire(BOOT);
+  check(fresh!=gen&&!lease.renew(gen,last+5000,BOOT,true,true,true),"a stale generation is refused after re-acquire");
+  check(lease.renew(fresh,last+5000,BOOT,true,false,false)&&lease.permits(last+5000,BOOT,false),"a new generation must be acknowledged anew");
+  // ---- hidden view, detached chip, unattributed capture ----
+  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true);
+  check(lease.permits(t,BOOT,true),"chip shown while SystemUI observes the recording");
+  lease.renew(gen,t+100,BOOT,false,false,true);
+  check(lease.verdict(t+100,BOOT,false)==Loss.SURFACE_HIDDEN,"a hidden or detached surface stops capture at once, not at expiry");
+  lease.renew(gen,t+200,BOOT,true,false,true);
+  check(lease.verdict(t+200,BOOT,false)==Loss.CHIP_HIDDEN,"recording observed but the chip not shown");
+  lease.renew(gen,t+300,BOOT,true,false,false);
+  check(lease.permits(t+300,BOOT,false)&&lease.verdict(t+300,BOOT,true)==Loss.UNATTRIBUTED,"after the grace period SystemUI must attribute and show the recording");
+  check(!IndicatorLease.requiresAttribution(true,t,t+IndicatorLease.ATTRIBUTION_GRACE_MS-1)&&IndicatorLease.requiresAttribution(true,t,t+IndicatorLease.ATTRIBUTION_GRACE_MS),"attribution grace");
+  check(!IndicatorLease.requiresAttribution(false,t,t+60_000)&&!IndicatorLease.requiresAttribution(true,-1,t),"silenced or closed capture needs no attribution");
+  // ---- binder death and explicit revoke ----
+  lease=new IndicatorLease();gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true);
+  lease.binderDied(gen-1);
+  check(lease.permits(t,BOOT,true),"a stale death notice is ignored");
+  lease.binderDied(gen);
+  check(lease.verdict(t,BOOT,false)==Loss.BINDER_DIED,"SystemUI process death ends the lease immediately");
+  check(!lease.renew(gen,t+1,BOOT,true,true,true),"nothing from the dead generation is accepted");
+  gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true);lease.revoke(gen);
+  check(lease.verdict(t,BOOT,false)==Loss.REVOKED,"explicit revoke");
+  gen=lease.acquire(BOOT);lease.renew(gen,t,BOOT,true,true,true);long replaced=lease.acquire(BOOT);
+  check(lease.verdict(t,BOOT,false)==Loss.PENDING&&!lease.renew(gen,t,BOOT,true,true,true),"a second acquire replaces the first");
+  lease.renew(replaced,t,BOOT,true,true,true);
+  check(lease.permits(t,BOOT,true),"the replacement can be acknowledged");
+
+  // ---- policy: loss while capturing latches; nothing resumes silently ----
+  Sim sim=new Sim();
+  check(sim.step(t,ready(false))==State.INDICATOR_UNAVAILABLE&&!sim.held,"no capture before SystemUI acknowledges");
+  long g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false);
+  check(sim.step(t,ready(false))==State.LISTENING&&sim.held,"capture starts with a fresh lease");
+  sim.lease.renew(g,t+1000,BOOT,true,true,true);
+  check(sim.step(t+3000,ready(false))==State.LISTENING,"attributed, visible capture continues");
+  sim.lease.binderDied(g);
+  check(sim.step(t+3001,ready(false))==State.STOPPED_INDICATOR_LOST&&!sim.held,"binder death while capturing stops capture");
+  g=sim.lease.acquire(BOOT);sim.lease.renew(g,t+4000,BOOT,true,false,false);
+  check(sim.step(t+4000,ready(false))==State.STOPPED_INDICATOR_LOST&&!sim.held,"a returning SystemUI lease never resumes capture by itself");
+  check(!ListenerPolicy.foreground(State.STOPPED_INDICATOR_LOST)&&ListenerPolicy.needsAttention(State.STOPPED_INDICATOR_LOST),"stopped state releases the microphone and tells the user");
+  Inputs paused=ready(false);paused.pausedUntilMs=ListenerPolicy.PAUSE_UNTIL_RESUMED;
+  check(sim.step(t+4001,paused)==State.STOPPED_INDICATOR_LOST,"pausing does not clear the latch");
+  sim.lost=false; // ListenerStore.resume or an explicit turn-on (user action, after unlock)
+  check(sim.step(t+4002,ready(false))==State.LISTENING,"an explicit user resume with a fresh lease restarts");
+  // expiry while capturing
+  check(sim.step(t+4002+IndicatorLease.TTL_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"expiry while capturing stops capture and latches");
+  // hidden view while capturing
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false);sim.step(t,ready(false));
+  sim.lease.renew(g,t+500,BOOT,false,false,true);
+  check(sim.step(t+500,ready(false))==State.STOPPED_INDICATOR_LOST,"a hidden Listening surface stops capture");
+  // unattributed capture (SystemUI cannot verify the listener or never sees the recording)
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false);sim.step(t,ready(false));
+  sim.lease.renew(g,t+1000,BOOT,true,false,false);
+  check(sim.step(t+1000,ready(false))==State.LISTENING,"within the attribution grace");
+  sim.lease.renew(g,t+2000,BOOT,true,false,false);
+  check(sim.step(t+IndicatorLease.ATTRIBUTION_GRACE_MS,ready(false))==State.STOPPED_INDICATOR_LOST,"unattributed capture stops after the grace period");
+  // a loss while nothing was captured only withholds the next start
+  sim=new Sim();g=sim.lease.acquire(BOOT);sim.lease.renew(g,t,BOOT,true,false,false);
+  sim.step(t,paused);sim.lease.revoke(g);
+  check(sim.step(t+1,paused)==State.PAUSED_USER&&!sim.lost,"losing the lease while paused is not latched");
+  check(sim.step(t+2,ready(false))==State.INDICATOR_UNAVAILABLE&&!sim.held,"resuming without a lease does not open the microphone");
+  // silenced capture holds the microphone and also needs the lease
+  Inputs silenced=ready(false);silenced.micSilenced=true;
+  check(ListenerPolicy.decide(silenced,t)==State.INDICATOR_UNAVAILABLE,"silenced capture needs the lease too");
+
+  // ---- reboot before unlock ----
+  IndicatorLease boot=new IndicatorLease();long bg=boot.acquire(BOOT);boot.renew(bg,t,BOOT,true,false,false);
+  Inputs locked=ready(true);locked.userUnlocked=false;
+  check(ListenerPolicy.decide(locked,t)==State.WAITING_FOR_UNLOCK,"a fresh lease never captures before first unlock");
+  locked.indicatorLost=true;
+  check(ListenerPolicy.decide(locked,t)!=State.LISTENING,"nothing captures before unlock");
+  check(boot.verdict(t,BOOT+1,false)==Loss.OTHER_BOOT&&!boot.renew(bg,t,BOOT+1,true,true,true),"a lease from another boot never counts");
+  Inputs rebooted=ready(true);rebooted.consentVersion=0;
+  check(ListenerPolicy.decide(rebooted,t)==State.OFF,"a restarted process without fresh opt-in is off whatever the lease");
+
+  // ---- crash-loop interaction ----
+  Inputs crashed=ready(true);crashed.crashLoopTripped=true;
+  check(ListenerPolicy.decide(crashed,t)==State.STOPPED_AFTER_ERRORS,"a fresh lease never overrides the crash-loop breaker");
+  crashed.indicatorLost=true;
+  check(ListenerPolicy.decide(crashed,t)==State.STOPPED_AFTER_ERRORS,"crash loop reported before a lost indicator");
+  Inputs lostOnly=ready(true);lostOnly.indicatorLost=true;
+  check(ListenerPolicy.decide(lostOnly,t)==State.STOPPED_INDICATOR_LOST,"lost indicator is sticky even with a fresh lease");
+  // Lease loss stops capture cleanly (the session marker is closed), so repeated SystemUI loss never counts as listener crashes.
+  long[] exits=new long[0];
+  for(int i=0;i<10;i++)exits=CrashLoopBreaker.onProcessStart(exits,false,t+i);
+  check(!CrashLoopBreaker.tripped(exits,t+10),"lease losses are clean stops, not unclean exits");
+
+  // ---- who may hold the lease ----
+  String[] systemui={IndicatorLease.SYSTEMUI_PACKAGE};
+  check(IndicatorLease.admitsController(true,10_123,systemui,true),"platform-signed SystemUI in user 0");
+  check(!IndicatorLease.admitsController(false,10_123,systemui,true),"without STATUS_BAR_SERVICE");
+  check(!IndicatorLease.admitsController(true,10_123,new String[]{"ai.elizaresearch.alphaphone"},false),"Alpha cannot renew");
+  check(!IndicatorLease.admitsController(true,10_123,systemui,false),"a non-platform package named like SystemUI");
+  check(!IndicatorLease.admitsController(true,1_010_123,systemui,true),"another user's SystemUI");
+  check(!IndicatorLease.admitsController(true,10_123,new String[]{IndicatorLease.SYSTEMUI_PACKAGE,"other"},true),"shared UID");
+  check(!IndicatorLease.admitsController(true,10_123,null,true),"unknown UID");
+
+  // ---- labels ----
+  for(State state:new State[]{State.INDICATOR_UNAVAILABLE,State.STOPPED_INDICATOR_LOST}){String label=ListenerPolicy.label(state);check(label!=null&&label.length()<64,"label "+state);}
+  System.out.println("PASS listener indicator lease: renewal, expiry, binder death, hidden view, reboot, crash loop");
+ }
+}

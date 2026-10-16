@@ -21,7 +21,7 @@ public final class ListenerTileService extends TileService {
    store.pause(ListenerPolicy.PAUSE_UNTIL_RESUMED);
    Listener.refresh(this);
    render();
-  }else if(state==ListenerPolicy.State.PAUSED_USER){
+  }else if(state==ListenerPolicy.State.PAUSED_USER||state==ListenerPolicy.State.STOPPED_INDICATOR_LOST){
    Runnable resume=()->{store.resume();Listener.refresh(this);render();};
    if(isLocked())unlockAndRun(resume);else resume.run();
   }else{

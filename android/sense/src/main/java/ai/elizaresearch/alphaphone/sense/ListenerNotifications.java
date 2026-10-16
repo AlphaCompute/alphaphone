@@ -117,7 +117,9 @@ final class ListenerNotifications {
    .setSmallIcon(R.drawable.ic_listening)
    .setContentTitle(ListenerPolicy.label(state))
    .setContentText(state==ListenerPolicy.State.NOTIFICATIONS_REQUIRED?"Listening is off until its notification is allowed. Open listening settings."
-    :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone.":"The microphone is off. Open listening settings to turn it back on.")
+    :state==ListenerPolicy.State.WAITING_FOR_UNLOCK?"The microphone stays off until you unlock this phone."
+    :state==ListenerPolicy.State.INDICATOR_UNAVAILABLE?"The microphone stays off until the system Listening indicator can be shown."
+    :state==ListenerPolicy.State.STOPPED_INDICATOR_LOST?"The system Listening indicator was not shown, so the microphone was turned off. Open listening settings to resume.":"The microphone is off. Open listening settings to turn it back on.")
    .setVisibility(Notification.VISIBILITY_PUBLIC)
    .setOnlyAlertOnce(true)
    .setContentIntent(settings(context));

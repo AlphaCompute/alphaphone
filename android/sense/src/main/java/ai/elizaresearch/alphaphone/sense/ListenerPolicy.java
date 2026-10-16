@@ -31,6 +31,13 @@ public final class ListenerPolicy {
   /** Repeated unclean exits; capture stays stopped until the user turns it back on. */
   STOPPED_AFTER_ERRORS,
   /**
+   * The SystemUI indicator lease was lost while the microphone was held (SystemUI died, its
+   * Listening chip or surface was hidden, detached or not attributed, or the lease expired or was
+   * revoked). Capture stopped and stays stopped until the user resumes; a returning lease never
+   * resumes it.
+   */
+  STOPPED_INDICATOR_LOST,
+  /**
    * The primary user (the only user the listener is installed for) is not the foreground user, so
    * its notification is invisible to whoever is using the phone. Never captures.
    */
@@ -39,6 +46,11 @@ public final class ListenerPolicy {
   WAITING_FOR_UNLOCK,
   /** The local speech model could not be loaded. Never captures. */
   SPEECH_UNAVAILABLE,
+  /**
+   * No fresh SystemUI indicator lease (SystemUI has not yet acknowledged a visible Listening
+   * surface). Never captures; capture starts once a lease is fresh.
+   */
+  INDICATOR_UNAVAILABLE,
   PAUSED_USER,
   PAUSED_CALL,
   /** Another app is recording; the listener releases the microphone until it finishes. */
@@ -69,6 +81,10 @@ public final class ListenerPolicy {
   public boolean inCall;
   public boolean otherAppRecording;
   public boolean micSilenced;
+  /** A fresh SystemUI indicator lease permits capture ({@link IndicatorLease#permits}). */
+  public boolean indicatorLeaseValid;
+  /** The lease was lost while the microphone was held; cleared only by an explicit user resume or turn-on. */
+  public boolean indicatorLost;
  }
 
  public static boolean consented(int storedVersion){return storedVersion==CONSENT_VERSION;}
@@ -78,12 +94,15 @@ public final class ListenerPolicy {
   if(!in.recordAudioGranted)return State.PERMISSION_REQUIRED;
   if(!in.notificationsVisible)return State.NOTIFICATIONS_REQUIRED;
   if(in.crashLoopTripped)return State.STOPPED_AFTER_ERRORS;
+  if(in.indicatorLost)return State.STOPPED_INDICATOR_LOST;
   if(!in.userForeground)return State.PAUSED_OTHER_USER;
   if(!in.userUnlocked)return State.WAITING_FOR_UNLOCK;
   if(in.speechUnavailable)return State.SPEECH_UNAVAILABLE;
   if(in.pausedUntilMs>nowMs)return State.PAUSED_USER;
   if(in.inCall)return State.PAUSED_CALL;
   if(in.otherAppRecording)return State.PAUSED_MIC_IN_USE;
+  // Every state below holds the microphone: none may run without SystemUI's independent indicator.
+  if(!in.indicatorLeaseValid)return State.INDICATOR_UNAVAILABLE;
   if(in.micSilenced)return State.PAUSED_MIC_UNAVAILABLE;
   return State.LISTENING;
  }
@@ -107,7 +126,8 @@ public final class ListenerPolicy {
 
  /** States the user should be told about although nothing is captured. */
  public static boolean needsAttention(State state){
-  return state==State.PERMISSION_REQUIRED||state==State.NOTIFICATIONS_REQUIRED||state==State.STOPPED_AFTER_ERRORS||state==State.WAITING_FOR_UNLOCK||state==State.SPEECH_UNAVAILABLE;
+  return state==State.PERMISSION_REQUIRED||state==State.NOTIFICATIONS_REQUIRED||state==State.STOPPED_AFTER_ERRORS||state==State.WAITING_FOR_UNLOCK||state==State.SPEECH_UNAVAILABLE
+   ||state==State.INDICATOR_UNAVAILABLE||state==State.STOPPED_INDICATOR_LOST;
  }
 
  /** Lock-screen-safe status text. Never contains captured content. */
@@ -121,12 +141,21 @@ public final class ListenerPolicy {
    case WAITING_FOR_UNLOCK:return "Listening starts after unlock";
    case SPEECH_UNAVAILABLE:return "Listening unavailable — speech model not ready";
    case STOPPED_AFTER_ERRORS:return "Listening stopped after repeated errors";
+   case STOPPED_INDICATOR_LOST:return "Listening stopped — indicator not shown";
+   case INDICATOR_UNAVAILABLE:return "Listening waits for the system indicator";
    case PERMISSION_REQUIRED:return "Listening needs microphone permission";
    case NOTIFICATIONS_REQUIRED:return "Listening needs its notification";
    case PAUSED_OTHER_USER:return "Paused while another user is active";
    default:return "Listening off";
   }
  }
+
+ /**
+  * Losing the lease while the microphone is held latches {@link State#STOPPED_INDICATOR_LOST}: a
+  * lease that later returns never restarts capture by itself. Losing it while nothing is captured
+  * only withholds the next start ({@link State#INDICATOR_UNAVAILABLE}).
+  */
+ public static boolean latchesIndicatorLoss(boolean microphoneHeld,boolean leaseValid){return microphoneHeld&&!leaseValid;}
 
  /** Pausing reduces capability, so it never needs unlock. Resuming or turning on does. */
  public static boolean resumeRequiresUnlock(){return true;}
