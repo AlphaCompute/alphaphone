@@ -22,7 +22,7 @@ try{
   window.inboxFixture.snapshot={...c.getSnapshot(),cloudAccount:{environment:'production',userId:window.inboxFixture.owner,sessionId:window.inboxFixture.session,credentialId:'fixture-only'}};c.getSnapshot=()=>window.inboxFixture.snapshot;
  });await page.getByRole('button',{name:'Inbox',exact:true}).click();await page.getByRole('button',{name:'Refresh inbox',exact:true}).waitFor();}
  const compose=()=>page.getByRole('button',{name:'Compose',exact:true});
- const reopenLocalDraft=async()=>{await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('drafts');await page.getByRole('button',{name:/^Local draft,/}).first().click();};
+ const reopenLocalDraft=async()=>{await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();await page.getByRole('button',{name:/^Local draft,/}).first().click();};
  await setup();await compose().click();await page.getByRole('textbox',{name:'To',exact:true}).fill('literal@example.invalid');await page.getByRole('textbox',{name:'To',exact:true}).press('Enter');await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Private fixture draft');await page.getByRole('textbox',{name:'Message',exact:true}).fill('Exact local body\nsecond line');
  await page.getByRole('button',{name:'Save draft locally',exact:true}).click();await page.getByRole('status').filter({hasText:'Saved locally on this device'}).waitFor();assert.equal(slots.size,1);assert.equal([...slots.values()][0].body,'Exact local body\nsecond line');
  assert.equal(await page.getByRole('button',{name:'Send email',exact:true}).isDisabled(),true);assert.equal(slots.size,1);
