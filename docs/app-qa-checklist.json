@@ -970,8 +970,8 @@
       "viewOrFlow": "Stable top-bar layout across Photos/Albums",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "preview": "Stable header slots implemented; browser visual QA pending.",
+      "seeker": "Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -982,8 +982,8 @@
       "viewOrFlow": "Albums list, contents, selection and batch actions",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Header slots retained.",
-      "seeker": "Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode names were absent from native accessibility tree.",
+      "preview": "Albums list/contents implemented; selection and batch-action review pending.",
+      "seeker": "Native Albums list opened. Current Select photos action targets library; native custom-album selection remains open.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": ""
@@ -2065,18 +2065,6 @@
       "userApproval": "Pending",
       "evidence": [],
       "notes": "Actual React panel test: zero account/source enumerations for local choice; explicit refresh/grant changes revalidate."
-    },
-    {
-      "id": "photos-album-selection",
-      "area": "Photos",
-      "viewOrFlow": "Select custom albums with stable header controls",
-      "scope": "MVP",
-      "implementation": "Needs review and native album-selection wiring",
-      "preview": "Pending visible QA",
-      "seeker": "Header stays aligned; current native Select photos action targets the library, not albums.",
-      "userApproval": "Pending",
-      "evidence": [],
-      "notes": "Do not count stable icon positions as implemented album selection."
     },
     {
       "id": "platform-google-oauth-callback",

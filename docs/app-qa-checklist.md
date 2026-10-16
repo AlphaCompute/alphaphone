@@ -2,7 +2,7 @@
 
 Live preview: <http://127.0.0.1:5209/>. Current code `574c8e39`, including main `c23eac71`; Shared `33a6d19c`. Updated October16,2026.
 
-The JSON companion tracks 172 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
+The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
 For each applicable flow check light/dark, compact portrait, landscape, large text, keyboard and safe areas, Back, reload/resume, empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
@@ -119,8 +119,8 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
 | photos-01 | Library groups and thumbnail loading | Pending | Pending | Pending |
-| photos-02 | Stable top-bar layout across Photos/Albums | Pending | Pending | Pending |
-| photos-03 | Albums list, contents, selection and batch actions | Header slots retained. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode names were absent from native accessibility tree. | Pending |
+| photos-02 | Stable top-bar layout across Photos/Albums | Stable header slots implemented; browser visual QA pending. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review. | Pending |
+| photos-03 | Albums list, contents, selection and batch actions | Albums list/contents implemented; selection and batch-action review pending. | Native Albums list opened. Current Select photos action targets library; native custom-album selection remains open. | Pending |
 | photos-04 | Search, favorites and empty results | Pending | Pending | Pending |
 | photos-05 | Photo viewer, zoom and previous/next | Pending | Pending | Pending |
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
@@ -134,7 +134,6 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Pending | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
 | photos-16 | Native permitted library and consent updates | Pending | Pending | Pending |
-| photos-album-selection | Select custom albums with stable header controls | Pending visible QA | Header stays aligned; current native Select photos action targets the library, not albums. | Pending |
 
 ## Maps
 
