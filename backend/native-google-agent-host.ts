@@ -1,4 +1,5 @@
 import {createServer} from 'node:http';
+import {prepareNativeCloudRuntime} from './native-cloud-runtime-config.ts';
 import {timingSafeEqual} from 'node:crypto';
 import {createManagedGoogleAgentHost} from './managed-google-agent-host.ts';
 import {createManagedGoogleAgentBroker} from './managed-google-agent-broker.ts';
@@ -9,6 +10,9 @@ export async function startNativeGoogleAgentHost(options:{binding:NativeGoogleBi
  if(!/^[A-Za-z0-9_-]{64}$/.test(options.apiToken))throw Error('Private native agent authentication is unavailable');
  const retired=new AbortController();
  const port=createNativeGoogleCloudPort(options.binding,()=>{retired.signal.throwIfAborted();options.assertCurrent?.();},options.request);
+ if(process.env.ELIZA_PLATFORM==='android'&&process.env.ELIZAOS_CLOUD_USE_INFERENCE==='true'){
+  options.assertCurrent?.();await prepareNativeCloudRuntime();options.assertCurrent?.();
+ }
  const broker=createManagedGoogleAgentBroker({host:createManagedGoogleAgentHost(port),async authorized(value){
   const actual=Buffer.from(value??''),expected=Buffer.from('Bearer '+options.apiToken);
   return actual.length===expected.length&&timingSafeEqual(actual,expected);
@@ -19,7 +23,9 @@ export async function startNativeGoogleAgentHost(options:{binding:NativeGoogleBi
  const address=server.address();if(!address||typeof address==='string')throw Error('Native Google host did not bind');
  return {port:address.port,async close(){
   if(!retired.signal.aborted)retired.abort();
-  server.closeAllConnections();
-  await new Promise<void>((resolve,reject)=>server.close(error=>error?reject(error):resolve()));
+  await new Promise<void>((resolve,reject)=>{
+   server.close(error=>error?reject(error):resolve());
+   server.closeAllConnections();
+  });
  }};
 }
