@@ -2485,9 +2485,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: license unverified
 Source: https://github.com/elizaOS/llama.cpp tools/paradee, tools/kokoro, tools/omnivoice; https://github.com/elizaOS/eliza packages/app/platforms/android
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 Flags: licence-text-missing-from-package, unverified
 Obligation (licence-text-missing-from-package): The package ships no licence file, and no canonical text for its licence is held in licenses/. The licence text itself is therefore not in this entry.
@@ -2501,9 +2501,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: GPL-3.0-or-later
 Source: https://github.com/espeak-ng/espeak-ng/tree/1.52.0
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: copyleft-strong, licence-text-missing-from-package
@@ -5501,9 +5501,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: MIT
 Source: https://github.com/elizaOS/llama.cpp (fork of ggml-org/llama.cpp)
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: licence-text-missing-from-package
@@ -5535,9 +5535,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: Apache-2.0 WITH LLVM-exception
 Source: https://github.com/llvm/llvm-project/tree/main/libcxx
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: licence-text-missing-from-package
@@ -6492,9 +6492,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: Apache-2.0
 Source: https://github.com/hexgrad/misaki (fba1236595f2d2bf21d414ba6e57d25256afada3), ported in elizaOS/llama.cpp tools/misaki-g2p
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: licence-text-missing-from-package
@@ -7719,9 +7719,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: MIT
 Source: https://github.com/elizaOS/llama.cpp tools/parakeet
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: licence-text-missing-from-package
@@ -9596,9 +9596,9 @@ Version: elizaOS llama.cpp fork 6e6a4401aae473723cb164a3190eebea6526ea6e (eliza 
 License: MIT
 Source: https://github.com/snakers4/silero-vad
         Recorded libraries:
-        arm64-v8a/libelizainference.so (sha256 21efd2f8208e817510780e054849d2cdff6f8531ea616a49a0e451ee94c90b51; 8005256 bytes)
+        arm64-v8a/libelizainference.so (sha256 2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b; 8006192 bytes)
         arm64-v8a/libc++_shared.so (sha256 cd61762848882a16c8244c964a6f396c0caa0b440588a210ce9cc4ab0e6d9f0c; 1253544 bytes)
-        x86_64/libelizainference.so (sha256 dc39fffee2f35b13817423fe324d782eeb26d56e58b7e0ac364a0c2ff5b871b3; 8623576 bytes)
+        x86_64/libelizainference.so (sha256 adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518; 8624224 bytes)
         x86_64/libc++_shared.so (sha256 2e855857f80819737d25a663109fedf816a5e996a85423166806014a06593256; 1229808 bytes)
 License text: canonical SPDX text (the package ships no licence file)
 Flags: licence-text-missing-from-package

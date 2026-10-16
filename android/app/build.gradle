@@ -70,14 +70,9 @@ android {
   buildConfigField 'boolean', 'ELIZA_DEV_ALLOW_TEST_MOCKS', 'false'
   // The verified App Link host this build declares (ELIZAOS_APP_LINK_HOST), or "" when none.
   buildConfigField 'String', 'ELIZAOS_APP_LINK_HOST', "\"${appLinkHost}\""
-  // libelizainference ASR backend and decode threads, exported by the pinned ElizaVoiceNative
-  // (ElizaAsrNativeEnv) before the library loads. The APK ships only Phonon-2
-  // (android/paradee-voice/asr-inputs.json), so the default is parakeet; an explicit
-  // ELIZA_ASR_BACKEND build environment (auto | parakeet | qwen3) overrides it. Empty threads
-  // means one per big core, measured on the device.
-  def elizaAsrBackend = (System.getenv('ELIZA_ASR_BACKEND') ?: 'parakeet').trim().toLowerCase()
+  // The shared voice loader configures Phonon-2's in-tree ggml backend.
+  // Decode threads may be supplied by the host; empty means one per big core.
   def elizaAsrThreads = (System.getenv('ELIZA_ASR_THREADS') ?: '').trim()
-  buildConfigField 'String', 'ELIZA_ASR_BACKEND', "\"${elizaAsrBackend in ['auto', 'parakeet', 'qwen3', 'mtmd'] ? elizaAsrBackend : 'parakeet'}\""
   buildConfigField 'String', 'ELIZA_ASR_THREADS', "\"${elizaAsrThreads ==~ /[0-9]{1,2}/ ? elizaAsrThreads : ''}\""
   // The source commit each voice latency trial records (issue #395, AlphaVoiceLatencyProbe).
   // A tree with tracked changes is recorded as dirty; the aggregator never accepts dirty trials.

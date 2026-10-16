@@ -5,8 +5,8 @@
   "cmake": "4.0.3",
   "engineRepository": "https://github.com/elizaOS/llama.cpp.git",
   "engineRepositoryEvidence": "vendor/eliza .gitmodules, submodule plugins/plugin-local-inference/native/llama.cpp; the commit is the gitlink recorded as forkPin in qualified-host.json.",
-  "remapBuildPath": false,
-  "remapBuildPathEvidence": "Current component was built with explicit file-prefix remapping by prepare-embedding-host.mjs. The automatic fresh-path rebuild opt-in remains false until a second-path reproduction proves these newly reviewed bytes. The original unqualified macOS measurement below is historical and does not qualify the new6e engine.",
+  "remapBuildPath": true,
+  "remapBuildPathEvidence": "Current33a6/6e ARM64 component was built with explicit file-prefix remapping by prepare-embedding-host.mjs and its exact fullJNI/BGEbytes were reviewed against Seeker execution. Automatic rebuilds must use that remap and stage only when every library matches the reviewed SHA256. A fresh-path reproduction is being checked independently; no result from the historical macOS measurement is transferred.",
   "remapBuildPathMeaning": "Set to true only in the commit that replaces qualified-host.json with libraries built by `node scripts/build-embedding-host.mjs --candidate` and qualified by a person. From then on `npm run agent:build-embedding-host` rebuilds them and stages the rebuild only when it is byte-identical to the reviewed bytes; a host whose rebuild differs stops with exit 3. Path independence was measured on one macOS arm64 host only (unqualifiedCandidateMeasurement); no Linux or second host has been tried.",
   "unqualifiedCandidateMeasurement": {
     "note": "NOT reviewed, NOT qualified and NOT staged by any script. Two --remap-build-path builds in different directories on one macOS arm64 host, 2026-10-11, were byte-identical to each other, and a third built by `node scripts/build-embedding-host.mjs --candidate` in another directory matched them. Recorded so a later candidate build can be compared with it.",
@@ -28,5 +28,6 @@
         "sha256": "35e56d209d7f28a79bf1e263cbf1e4bafc5038448dea0a954cba0423a28f0f6b"
       }
     ]
-  }
+  },
+  "currentReproductionStatus": "Fresh-path comparison pending; a mismatch must stop before staging. Existing remotely staged bytes already match the reviewed component receipt."
 }

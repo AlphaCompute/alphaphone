@@ -27,5 +27,5 @@ export function admitSpeech(kind, env=process.env) {
   walkAsr(join(root,'asr'));const expected=speechAssets.asr.filter(pin=>pin.path.startsWith('asr/')).map(pin=>join(root,pin.path));
   if(asr.length!==expected.length||asr.some(file=>!expected.includes(file)))throw Error('Ambiguous ASR assets');
  }
- return {ELIZA_INFERENCE_LIBRARY:library,ELIZA_INFERENCE_LIBRARY_SHA256:digest,[key]:root,[kind==='tts'?'ELIZA_PARADEE_ENABLED':'ELIZA_ASR_ENABLED']:'1',...(kind==='asr'?{ELIZA_ASR_BACKEND:'parakeet'}:{})};
+ return {ELIZA_INFERENCE_LIBRARY:library,ELIZA_INFERENCE_LIBRARY_SHA256:digest,[key]:root,[kind==='tts'?'ELIZA_PARADEE_ENABLED':'ELIZA_ASR_ENABLED']:'1',...(kind==='asr'?{ELIZA_ASR_BACKEND:'ggml'}:{})};
 }
