@@ -2,7 +2,8 @@
 
 Issues #399 and #377 select Pixel 10a, codename `stallion`, on Android 17.
 The connected development device's hardware SKU is `GE1GQ`. Pixel 10 and Pixel 11
-are different targets; their placeholders and configurations cannot admit this device.
+are different devices and are not supported targets; the former Pixel 10 placeholder lock is
+retired, and no other device configuration can admit this one.
 
 `android/aosp/pixel10a-source.json` records the inspected development source inputs:
 
@@ -49,6 +50,11 @@ Read-only October 15 observation found Android 17 booted with enforcing SELinux 
 Alpha HOME on the physical Pixel, but with an app override under `/data/app`.
 Cuttlefish at the separately inspected target had Alpha under `/product/app` and
 Alpha HOME. Neither observation qualifies the current app/runtime pin or signed updates.
+
+The lock records `developmentOnly: true`. Production staging (`--target pixel10a
+--production`, see [Pixel 10a staging](pixel10a-staging.md)) refuses it until a reviewed
+change marks the inputs admitted for release and pins the resulting lock hash in
+`android/aosp/pixel10a-product.json`; the verifier reports the lock's value.
 
 Remaining work includes integrating these inputs with the current admitted APK and
 listener, rebuilding/booting exact images, native runtime and speech execution,

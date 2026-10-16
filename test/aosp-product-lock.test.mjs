@@ -26,7 +26,6 @@ function completeLock(t) {
   const lock = read(product.sourceLock.file);
   Object.assign(lock.profiles.cuttlefish.manifest, { tag: "android-17.0.0_r1", tagObject: hex("a", 40), commit: hex("b", 40) });
   write(product.sourceLock.file, lock);
-  write("android/aosp/pixel10.lock.json", read("android/aosp/pixel10.lock.json"));
   write("android/release-signer.json", { ...read("android/release-signer.json"), signerSha256: hex("d") });
   return { dir, write, product, lock };
 }
@@ -40,9 +39,11 @@ test("the committed Cuttlefish product names its target, lock, host packages and
   const brand = read(product.brandConfig);
   assert.equal(brand.packageName, read("app.config.json").appId);
   assert.equal(brand.envPrefix, "ELIZA", "brand environment names stay on the upstream ELIZA_ prefix");
-  // Pixel 10 is a separate lock that is not admitted.
-  assert.equal(read(product.notAdmitted.pixel10).admitted, false);
-  assert.notEqual(product.sourceLock.file, product.notAdmitted.pixel10);
+  // Pixel 10a (stallion) has its own source lock and production descriptor; the Cuttlefish product never stages against them.
+  assert.equal(product.separateLocks.pixel10a, "android/aosp/pixel10a-source.json");
+  assert.notEqual(product.sourceLock.file, product.separateLocks.pixel10a);
+  assert.equal(read(product.physicalProduct).product, "alpha_stallion_phone");
+  assert.equal(fs.existsSync(path.join(root, "android/aosp/pixel10.lock.json")), false, "the unadmitted Pixel 10 placeholder lock is retired");
   const problems = aospProductLockProblems(root);
   for (const expected of [/manifest\.commit is unset/, /must be a full Git object ID/, /host package cuttlefish-base needs a version and a SHA-256/,
     /signerSha256 is "unset"/, /platformCertificateSha256 must be a SHA-256/])
@@ -62,8 +63,9 @@ test("a fully populated fixture lock is complete; each unset, placeholder or for
   refuse(product.sourceLock.file, { ...lock, profiles: { cuttlefish: { ...lock.profiles.cuttlefish, manifest: { ...lock.profiles.cuttlefish.manifest, tag: "REVISION_PLACEHOLDER" } } } }, /manifest\.tag is unset or a placeholder/);
   refuse(PRODUCT_DESCRIPTOR, { ...product, hostPackages: [{ ...product.hostPackages[0], sha256: "unset" }] }, /cuttlefish-base needs a version and a SHA-256/);
   refuse(PRODUCT_DESCRIPTOR, { ...product, hostPackages: [] }, /lists no Cuttlefish host package/);
-  refuse(PRODUCT_DESCRIPTOR, { ...product, target: "pixel10" }, /target must be one of/);
-  refuse(PRODUCT_DESCRIPTOR, { ...product, sourceLock: { file: "android/aosp/pixel10.lock.json", profile: "pixel10" } }, /not admitted/);
+  refuse(PRODUCT_DESCRIPTOR, { ...product, target: "pixel10a" }, /target must be one of/);
+  write("android/aosp/pixel10a-source.json", { schema: 1, target: "pixel10a" });
+  refuse(PRODUCT_DESCRIPTOR, { ...product, sourceLock: { file: "android/aosp/pixel10a-source.json", profile: "cuttlefish" } }, /separate product's lock; it is not admitted for the Cuttlefish product/);
   refuse(PRODUCT_DESCRIPTOR, { ...product, signer: { ...product.signer, platformCertificateSha256: "UNSET" } }, /platformCertificateSha256/);
   refuse("android/release-signer.json", { ...read("android/release-signer.json"), signerSha256: "unset" }, /signerSha256 is "unset"/);
   refuse(product.brandConfig, { ...read(product.brandConfig), packageName: "ai.elizaos.app" }, /packageName ai\.elizaos\.app is not ai\.elizaresearch\.alphaphone/);
