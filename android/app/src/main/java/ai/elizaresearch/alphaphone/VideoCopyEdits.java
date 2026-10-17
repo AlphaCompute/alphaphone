@@ -191,7 +191,11 @@ final class VideoCopyEdits {
     if(!first.toString().equals(escrow.toString())||!first.toString().equals(second.toString())||!before.toString().equals(after.toString()))throw new IOException("Pending output changed during preservation");
     preservationFile(archive,"metadata-after.json",after.toString());requirePreservationState(token,expectedRecordHash,admittedEpoch);
     JSONObject complete=new JSONObject().put("operationId",token).put("status","preserved").put("recordSHA256",expectedRecordHash).put("sourceURI",source.toString()).put("sourceBefore",before).put("sourceAfter",after).put("bytes",first.getLong("bytes")).put("sha256",first.getString("sha256")).put("forensicOnly",true);
-    stage="complete";preservationFile(archive,"COMPLETE.json",complete.toString());syncPreservationDirectory(archive);
+    // Publish only an already fsynced whole manifest. link() is atomic and
+    // refuses an existing destination; the sealed source is retained too.
+    stage="seal";preservationFile(archive,"COMPLETION.pending",complete.toString());syncPreservationDirectory(archive);requirePreservationState(token,expectedRecordHash,admittedEpoch);
+    Uri finalFound=copy(token,record);if(finalFound==null||!after.toString().equals(preservationMetadata(finalFound,token).toString()))throw new IOException("Pending output changed before preservation seal");
+    requirePrivateDirectory(archive);stage="complete";Os.link(new File(archive,"COMPLETION.pending").getAbsolutePath(),new File(archive,"COMPLETE.json").getAbsolutePath());syncPreservationDirectory(archive);
     JSObject result=new JSObject();result.put("operationId",token);result.put("artifactId",token);result.put("status","preserved");result.put("bytes",first.getLong("bytes"));result.put("sha256",first.getString("sha256"));call.resolve(result);
    }catch(Exception failure){
     if(archive!=null)try{preservationFile(archive,"INCOMPLETE.json",new JSONObject().put("operationId",token).put("stage",stage).put("errorClass",failure.getClass().getSimpleName()).put("sourceWritesPerformed",false).put("journalWritesPerformed",false).toString());syncPreservationDirectory(archive);}catch(Exception retained){/* Keep existing evidence; never overwrite or clean up. */}
