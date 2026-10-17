@@ -135,7 +135,7 @@ test('production Export diagnostics saves redacted JSON',async({page})=>{
  expect(report.platform).toBe('web');
  expect(report.app.testMocks).toBe(false);
  expect(report.connection).toEqual({kind:'offline',connected:false});
- expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','nativeVoiceTiming','runtimeHashes','upstreamPin','voiceTiming']);
+ expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','nativeVoiceTiming','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
  // The voice timing section is an aggregator-ready document with timing fields only.
  expect(report.voiceTiming.format).toBe('alpha-voice-timing-v1');
  expect(report.voiceTiming.records).toEqual([{version:1,id:'0b0c7a52-6d5e-4e0f-9a43-5c1d2e3f4a5b',recordedAt:1760000000000,route:'eliza-cloud',cold:true,entry:'conversation',policy:'auto-send',marks:{'recording-end':0,'transcript-ready':640,send:640,'first-token':1210,'final-reply':2380}}]);

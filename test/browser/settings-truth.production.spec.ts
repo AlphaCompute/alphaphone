@@ -338,7 +338,7 @@ test('the flag-off build exports redacted diagnostics with the real version and 
  expect(report.format).toBe('alpha-diagnostics/v1');
  expect(report.app).toEqual({version:'0.1.0',versionCode:7,variant:'launcher',buildType:'release',testMocks:false});
  expect(report.permissions).toEqual({Microphone:true,Location:false,Camera:false,Calendar:true,Notifications:true});
- expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','nativeVoiceTiming','runtimeHashes','upstreamPin','voiceTiming']);
+ expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','nativeVoiceTiming','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
  for(const leak of ['csk-synthetic','Stub phone','Stub maker','stub-build','Stub Mail','update','Update'])expect(shared).not.toContain(leak);
 });
 
