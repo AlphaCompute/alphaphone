@@ -1,3 +1,4 @@
+import {validateCameraCaptureResult,type CameraCaptureResult} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
 import {reviewFileEmail} from './file-email-review';
 import {connectionController} from '../runtime/connection-ui';
 import type {MailAttachment} from '../runtime/inbox-attachment';
@@ -16,6 +17,12 @@ import {browserCamera,browserLibrary,browserPhotoLibrary,mountBrowserCamera,impo
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
 
+type CameraCaptureAttempt={status:'succeeded'|'failed'|'unknown';summary:string;cameraResult?:CameraCaptureResult};
+let requestedPhoto:((operationId:string,signal:AbortSignal,current:()=>void)=>Promise<CameraCaptureAttempt>)|undefined;
+export async function captureAgentPhoto(operationId:string,signal:AbortSignal,current:()=>void):Promise<CameraCaptureAttempt>{
+  if(!requestedPhoto)return {status:'failed',summary:'Camera capture is unavailable.'};
+  return requestedPhoto(operationId,signal,current);
+}
 type Bag = Record<string, any>;
 type VideoReceipt = { path: string; duration: number; width: number; height: number; fileSize: number };
 type Photo = { base64: string; format: string; width: number; height: number; path?: string };
@@ -624,6 +631,24 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     } catch (error) { if (token === epoch && active()) { if(mediaAccessDenied(error)==='microphone'){message('');showAccess('microphone');} else message('Video could not start. Allow microphone access and tap the shutter to retry.'); } }
     finally { recordingStarting = false; schedule(); }
   }
+  async function saveCameraPhoto(owner:Bag,showSaved:boolean):Promise<SavedPhoto>{
+    // The pinned plugin scales width/height independently. Supplying only a
+    // width distorts the saved image; retain sensor dimensions and let the
+    // owned-media reader create bounded, aspect-preserving display previews.
+    const photo = await camera.capturePhoto({ format: 'jpeg', quality: 85, saveToGallery: true });
+    if (!photo.path || !(browserMode ? /^browser-photo:\/\/\/[1-9][0-9]{0,18}$/.test(photo.path) : /^content:\/\/media\/(?:external|external_primary)\/images\/media\/[1-9][0-9]{0,18}$/.test(photo.path)) || photo.format !== 'jpeg' || !photo.base64 || photo.width <= 0 || photo.height <= 0) throw new Error('Incomplete photo receipt');
+    // A capture may finish after navigation: the native gallery write already
+    // happened. Retain its real receipt, but never move the user back to Camera.
+    const mediaId = photo.path.split('/').pop();
+    if (!mediaId || !/^\d+$/.test(mediaId)) throw new Error('Missing MediaStore identity');
+    const item: SavedPhoto = { id: 'native-camera-' + mediaId, image: 'data:image/jpeg;base64,' + photo.base64, width: photo.width, height: photo.height, date: Date.now(), revision: 'captured' };
+    if (disposed) return item;
+    captures = [item, ...captures.filter(row => row.id !== item.id)];
+    loaded = false;
+    if(showSaved)owner.setView('photos', { nativeCaptureRevision: item.id });
+    else owner.set({nativeCaptureRevision:item.id});
+    return item;
+  }
   async function capture() {
     if (phase !== 'ready') { await start(true); return; }
     if (!api || capturing || controlBusy) return;
@@ -647,26 +672,31 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     }
     message('Saving photo…',true);
     try {
-      // The pinned plugin scales width/height independently. Supplying only a
-      // width distorts the saved image; retain sensor dimensions and let the
-      // owned-media reader create bounded, aspect-preserving display previews.
-      const photo = await camera.capturePhoto({ format: 'jpeg', quality: 85, saveToGallery: true });
-      if (!photo.path || photo.format !== 'jpeg' || !photo.base64 || photo.width <= 0 || photo.height <= 0) throw new Error('Incomplete photo receipt');
-      // A capture may finish after navigation: the native gallery write already
-      // happened. Retain its real receipt, but never move the user back to Camera.
-      const mediaId = photo.path.split('/').pop();
-      if (!mediaId || !/^\d+$/.test(mediaId)) throw new Error('Missing MediaStore identity');
-      const item: SavedPhoto = { id: 'native-camera-' + mediaId, image: 'data:image/jpeg;base64,' + photo.base64, width: photo.width, height: photo.height, date: Date.now(), revision: 'captured' };
-      if (disposed) return;
-      captures = [item, ...captures.filter(row => row.id !== item.id)];
-      loaded = false;
-      owner.setView('photos', { nativeCaptureRevision: item.id });
+      await saveCameraPhoto(owner,true);
       if (token === epoch && active()) {
         message('');
       }
     } catch { if (token === epoch && active()) message('Photo could not be saved. No successful capture was confirmed.'); }
     finally { capturing = false; }
   }
+  const takeRequestedPhoto=async(operationId:string,signal:AbortSignal,current:()=>void):Promise<CameraCaptureAttempt>=>{
+    let dispatched=false,ownsCapture=false;
+    try{
+      signal.throwIfAborted();current();
+      if(!active()||!api||capturing||controlBusy||recording||recordingStarting||finalizing)return {status:'failed',summary:'Open Camera and finish the current capture before taking another photo.'};
+      capturing=true;ownsCapture=true;
+      if(phase!=='ready')await start(true);
+      signal.throwIfAborted();current();
+      if(!active()||phase!=='ready')return {status:'failed',summary:'Camera access or preview is unavailable. No photo was taken.'};
+      const owner=api;dispatched=true;message('Taking photo…',true);
+      const item=await saveCameraPhoto(owner,false);
+      const cameraResult=validateCameraCaptureResult({version:1,kind:'camera_capture_photo',operationId,mediaId:nativeId(item.id),width:item.width,height:item.height,mime:'image/jpeg'},operationId);
+      if(active())message('');
+      return {status:'succeeded',summary:'Photo saved in Photos.',cameraResult};
+    }catch{return {status:dispatched?'unknown':'failed',summary:dispatched?'The photo outcome is unconfirmed. Check Photos before taking another.':'The Camera request changed. No photo was taken.'};}
+    finally{if(ownsCapture)capturing=false;}
+  };
+  requestedPhoto=takeRequestedPhoto;
   async function keepScan(photo:Photo,signal:AbortSignal,owner:Bag):Promise<string>{
     if(browserMode){
       const row=await importBrowserPhoto({original:new File([],'scan.jpg',{type:'image/jpeg'}),image:'data:image/jpeg;base64,'+photo.base64,width:photo.width,height:photo.height},signal);
@@ -948,6 +978,6 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const resumed=()=>{void restartAfterResume(()=>({denied,phase,disposed}),()=>cameraAccess.checkPermissions()).then(restart=>{if(restart){phase='off';schedule();}});};
   let resumeHandle:{remove():Promise<void>}|undefined;
   void DailyApps.addListener('appResumed',resumed).then(handle=>{if(disposed)void handle.remove();else resumeHandle=handle;}).catch(()=>{});
-  return () => { window.clearTimeout(noticeTimer);noticeGeneration++;watchLibrary(false);deviceLibrary.dispose();captureQuestion=undefined;void libraryChangeHandle?.remove();hideAccess();void resumeHandle?.remove();window.removeEventListener('alpha:albums-document-changed',albumsChanged);if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pageHide); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
+  return () => { if(requestedPhoto===takeRequestedPhoto)requestedPhoto=undefined;window.clearTimeout(noticeTimer);noticeGeneration++;watchLibrary(false);deviceLibrary.dispose();captureQuestion=undefined;void libraryChangeHandle?.remove();hideAccess();void resumeHandle?.remove();window.removeEventListener('alpha:albums-document-changed',albumsChanged);if(scanApi&&prototype.api===scanApi)prototype.api=originalApi;disposed = true;cancelEdit();endHold();selection=undefined; clearInterval(timer); closeVideo(); observer.disconnect(); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', pageHide); window.removeEventListener('resize', resize); void stop(); style.remove(); captures = []; module.render = render; module.onLeave = leave; module.back = cameraBack; if (views.photos) { views.photos.render = photosRender; views.photos.back = photosBack; views.photos.onLeave = photosLeave; } };
 
 }

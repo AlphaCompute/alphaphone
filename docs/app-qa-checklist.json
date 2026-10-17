@@ -2131,12 +2131,12 @@
       "area": "Camera",
       "viewOrFlow": "Agent takes and saves one requested photo",
       "scope": "MVP",
-      "implementation": "Integration gap: upstream VISION and native camera exist, but Alpha does not start the upstream camera bridge.",
-      "preview": "Pending; no capture success claimed.",
+      "implementation": "Foreground Camera-only source wired through the existing capture adapter and durable device-action receipt. Runtime integration and Home continuation remain open.",
+      "preview": "Product/bridge fixtures and shared real-SQL receipt lifecycle pass. No live camera or agent-prompt success claimed.",
       "seeker": "Pending; no capture success claimed.",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": "Reuse native capture with foreground permission, current-request binding and a verified saved-photo receipt; do not enable unbound background capture polling."
+      "notes": "No hidden polling or image upload. Existing Camera view is required; Home-to-capture continuation is still unimplemented."
     }
   ],
   "registeredViewInventory": [

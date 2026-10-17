@@ -1,3 +1,5 @@
+import {captureAgentPhoto} from './camera-adapter';
+import {isCameraCapture} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
 import {aospImage} from '../runtime/aosp-image';
 import {smsSubscriptionRevision} from '../runtime/sms-subscription-revision';
 import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
@@ -623,6 +625,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isCameraCapture(operation)){
+        const ownerSession=connectionController.getSnapshot().session;
+        const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||expectedContext.sensitive||expectedContext.view!=='camera'||ownerSession!==connectionController.getSnapshot().session||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Camera request changed');};
+        return captureAgentPhoto(operationId,signal,current);
+      }
       if(isSmsSend(operation)){
         if(!aospImage||expectedContext.sensitive||document.hidden||expectedContext.view!=='messages'||expectedContext.selectedObject?.kind!=='sms-subscription'||expectedContext.selectedObject.id!==String(operation.subscriptionId))throw Error('Open Messages on the Alpha image and select the approved SIM');
         const plugin=registerPlugin<AlphaTelephonyPlugin>('AlphaTelephony'),client=createAospTelephony(plugin,true);

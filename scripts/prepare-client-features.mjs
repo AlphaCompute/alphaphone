@@ -106,6 +106,11 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   const upstream = upstreamNativeSource(root);
   const source = new Map(CLIENT_FEATURE_PATHS.flatMap(prefix => [...upstream.read(prefix)]));
   const sourceFiles = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
+  const cameraContract=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.json'),'utf8'));
+  const cameraBytes=fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.ts'));
+  if(cameraContract.baseCommit!==upstream.pin||cameraContract.path!=='plugins/plugin-assistant/src/services/device-actions/camera-contract.ts'||hash(cameraBytes)!==cameraContract.sha256)throw Error('Camera contract projection changed');
+  source.set(cameraContract.path,{bytes:cameraBytes,mode:'100644',sha256:cameraContract.sha256});
+
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.

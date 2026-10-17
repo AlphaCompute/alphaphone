@@ -294,6 +294,6 @@ Observer coordination correctiond35dd318: renderer/native-bridge regression repr
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
 | shell-agent-app-navigation | Agent switches to every Home app | 11 route-delivery and 2 registry tests pass; merged live prompt sweep pending | Pending | Pending |
-| camera-agent-capture | Agent takes and saves one requested photo | Upstream VISION/native camera exist; Alpha bridge integration and saved-photo proof remain open | Pending | Pending |
+| camera-agent-capture | Agent takes and saves one requested photo | Foreground Camera source + journal/receipt fixtures pass; live capture and Home continuation remain open | Pending | Pending |
 
 The separate 5219 voice trial reached server ready but produced no transcript or audio. Client state and microphone-resume fixes have local regression proof; they have not passed another live audio trial.
