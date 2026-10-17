@@ -54,7 +54,7 @@ async function entitlements(overrides:Record<string,unknown>={}){
 }
 
 type Fixture={plan?:string;route?:'signed'|'absent'|'503'|'401'|'offline';limits?:'active'|'none'|'canceled'|'absent'|'503';identity?:'ok'|'offline'|'401';
- redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;storage?:Record<string,string>};
+ redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;providerFailure?:string;storage?:Record<string,string>};
 async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;keys?:unknown[]}={}){
  page.on('pageerror',(error:Error)=>console.error('Composition page error:',error.message));
  await page.route('https://**',route=>route.abort());
@@ -68,7 +68,7 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:undefined,url:input?.url,httpMethod:input?.method});
    if(plugin==='Agent'){
     if(method==='getStatus')return {packaged:true,state:'stopped',serviceActive:false,socketListening:false};
-    if(method==='configureCloudProvider'){if(f.holdProvider)await new Promise<void>(resolve=>f.releaseProvider=resolve);return {};}
+    if(method==='configureCloudProvider'){if(f.providerFailure)throw Error(f.providerFailure);if(f.holdProvider)await new Promise<void>(resolve=>f.releaseProvider=resolve);return {};}
     // Unbinding removes the stored provider; native confirms it (provider status reads unconfigured).
     if(method==='clearProvider')return {configured:false};
     if(method==='providerStatus')return {provider:'elizacloud',configured:false};
@@ -524,4 +524,16 @@ test.describe('account, plan and sign-in expiry',()=>{
   await expect(page.getByRole('button',{name:'Approve this phone again',exact:true})).toHaveCount(0);
   await release(page);
  });
+});
+
+test('failed native provider binding reports AI off and exposes the error before history',async({page})=>{
+ await boot(page,{...await entitlements(),holdProvider:false,providerFailure:'Synthetic account verification failure'});await started(page);await idle(page);
+ const dialog=agentDialog(page);await expect(dialog).toBeVisible();
+ await expect(dialog.getByText('AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('Your agent uses Eliza Cloud for AI.',{exact:true})).toHaveCount(0);
+ const error=dialog.getByRole('alert').filter({hasText:'Synthetic account verification failure'});await expect(error).toBeVisible();
+ const history=dialog.getByText('Conversation history',{exact:true});await expect(history).toBeVisible();
+ expect(await error.evaluate((node,other)=>(node.compareDocumentPosition(other!)&Node.DOCUMENT_POSITION_FOLLOWING)!==0,await history.elementHandle())).toBe(true);
+ expect(await configured(page)).toBe(1);
+ expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentInference)).toBe('unavailable');
 });
