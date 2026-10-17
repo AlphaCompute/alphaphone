@@ -473,3 +473,6 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 @media (hover:hover) { [data-alpha-message-actions] [role="menuitem"]:hover { background:var(--s3); } }
 [data-alpha-transcript] { scroll-padding-block:16px; }
 [data-alpha-transcript][data-alpha-scroll-overflow="false"] { -webkit-mask-image:none; mask-image:none; animation:none; }
+
+/* A service recovery cannot capture audio; do not render its disabled mic as an active control. */
+.alpha-voice-composer button[aria-pressed]:disabled,[data-alpha-pill-voice] button[aria-pressed]:disabled { opacity:.35; cursor:default; }
