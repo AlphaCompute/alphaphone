@@ -235,6 +235,7 @@ export const NOT_RUN_BY_A_RUNNER = {
   PairedMaps: "needs a real paired host and an external Maps fixture (pairedMaps=1); no runner pairs one",
   PairedReminder: "needs a real paired host (pairedReminder=1); no runner pairs one",
   PhotosFixtureRecovery: "operator tool that inventories or deletes stranded test-owned media (alphaPhotoRecovery=inventory|delete); never part of a campaign",
+  VideoCopyClosedFailureReview: "native-only preservation operator for one existing closed failed copy; requires the exact operation, reviewed record SHA, owner UID and explicit main-process lifecycle approval. Never a generic or bulk campaign; the signed entry is admitted separately after fixture qualification",
   PrototypeFlow: "needs the same live provider host as LiveAgent (liveAgent=true)",
   PublicCloudTransportProbe: "probes the public Eliza Cloud endpoint with an owned account (publicCloudProbe=1, ownedCloudRead=1); a human sign-in step",
   RemoteAgent: "needs the real local Eliza app host at 10.0.2.2:47839 and a pairing-code file (localRemote=true); its runner was removed in 49b1bf4c",
