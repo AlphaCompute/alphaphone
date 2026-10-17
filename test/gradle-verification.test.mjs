@@ -44,7 +44,7 @@ test('the committed metadata verifies every artifact by SHA-256 and trusts nothi
 
 test('every coordinate that ships in the APKs is pinned, and the build tools are pinned for each CI host', () => {
   const classpath = JSON.parse(read(CLASSPATH));
-  assert.equal(classpath.coordinates.length, 71);
+  assert.equal(classpath.coordinates.length, 88);
   let archives = 0;
   for (const coordinate of classpath.coordinates) {
     const pinned = coordinateChecksum(metadata, ...coordinate.split(':'));

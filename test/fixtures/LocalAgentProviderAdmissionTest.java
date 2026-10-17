@@ -128,7 +128,15 @@ public final class LocalAgentProviderAdmissionTest {
   refused(()->LocalAgentProviderAdmission.bindCloudProvider(store,OTHER,"cerebras/qwen-3.8-27b",()->NOW),"Cloud binding refuses another credential id");
   check(LocalAgentProviderAdmission.managedGoogleBinding(bound,store.cloud,NOW)==null,"Cloud without an organization keeps inference but does not enable Google tools");
   String googleCloud=cloud(ID,NOW+60_000);
+  // Native App Auth stores token identity without optional renderer account metadata.
+  Store minimalCredential=new Store();
+  minimalCredential.cloud=new JSONObject().put("credentialId",ID).put("token",TOKEN).put("expiresAt",NOW+60_000).toString();
+  String minimalBinding=LocalAgentProviderAdmission.bindCloudProvider(minimalCredential,ID,LocalAgentProviderAdmission.CLOUD_PROVIDER_MODEL,()->NOW);
+  check(LocalAgentProviderAdmission.currentGeneration(minimalBinding,minimalCredential.cloud)!=null,"native sign-in credentials admit without optional account metadata");
+  check(LocalAgentProviderAdmission.managedGoogleBinding(minimalBinding,minimalCredential.cloud,NOW)==null,"missing verified organization still grants no Google tools");
   JSONObject googleIdentity=new JSONObject().put("userId","3b241101-e2bb-4255-8caf-4136c566a962").put("organizationId","6ba7b810-9dad-41d1-80b4-00c04fd430c8");
+  String minimalGoogle=LocalAgentProviderAdmission.admit(null,selected.toString(),minimalCredential.cloud,googleIdentity);
+  check(LocalAgentProviderAdmission.managedGoogleBinding(minimalGoogle,minimalCredential.cloud,NOW).getString("organizationId").equals(googleIdentity.getString("organizationId")),"native sign-in Google binding uses only the verified server organization");
   String googleSelected=LocalAgentProviderAdmission.admit(null,selected.toString(),googleCloud,googleIdentity);
   JSONObject google=LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,googleCloud,NOW);
   check(google.getString("accountRef").equals(LocalAgentProviderAdmission.cloudAccountRef(new JSONObject(googleSelected))),"Google account is native-admitted");

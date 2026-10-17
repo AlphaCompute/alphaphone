@@ -44,7 +44,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {fileURLToPath} from 'node:url';
-import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, MAVEN_FAMILIES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, fontLicense, fontNames, packagedRuntimePresent, pinnedVoiceModels, productionLockPackages, voiceHostProblems} from './generate-licenses.mjs';
+import {AGENT_ASSETS, ANDROID_CLASSPATH, BUN_ENTRY, COMMERCIAL_FONT, FONT_LICENSES, HELD_OUTSIDE_REPOSITORY, KNOWN_LICENSES, NO_FONT_LICENCE, ROOT, TESSERACT_CORE_SOURCES, UNKNOWN, UNVERIFIED, VOICE_HOST, collectNotices, fontLicense, fontNames, mavenFamily, packagedRuntimePresent, pinnedVoiceModels, productionLockPackages, voiceHostProblems} from './generate-licenses.mjs';
 import {METADATA as GRADLE_METADATA, coordinateChecksum, parseVerificationMetadata} from './gradle-verification.mjs';
 import {classifyLicence, flagSummary} from './licence-policy.mjs';
 
@@ -127,7 +127,7 @@ function gradleComponents(root) {
     const [group, artifact, version] = coordinate.split(':');
     if (!group || !artifact || !version) throw new Error(`${ANDROID_CLASSPATH}: malformed coordinate ${coordinate}`);
     const purl = `pkg:maven/${group}/${artifact}@${version}`;
-    const family = MAVEN_FAMILIES.find(item => item.exact ? group === item.prefix : group.startsWith(item.prefix));
+    const family = mavenFamily(group,artifact,version);
     const pinned = metadata ? coordinateChecksum(metadata, group, artifact, version) : null;
     return {type: 'library', 'bom-ref': purl, group, name: artifact, version, purl, hashes: pinned ? [{alg: 'SHA-256', content: pinned.sha256}] : undefined, licenses: licenses(family ? family.license : UNKNOWN),
       properties: [property('ships-in', 'apk'),

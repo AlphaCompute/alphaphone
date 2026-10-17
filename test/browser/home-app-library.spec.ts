@@ -223,8 +223,8 @@ test('an open drawer follows installs and removals, and a removed favorite is no
   await page.evaluate(apps => (window as any).deviceChange(apps, true), [SETTINGS, CLOCK]);
   await expect.poll(async () => (await calls(page, 'list')).length).toBe(reads + 1);
   await openDrawer(page);
-  // Clock is back both as a favorite and in the full list.
-  await expect(drawer.getByRole('button', { name: 'Open Clock', exact: true })).toHaveCount(2);
+  // Clock returns to Favorites without a duplicate in the inventory list.
+  await expect(drawer.getByRole('button', { name: 'Open Clock', exact: true })).toHaveCount(1);
   await expect(drawer.getByRole('status').first()).toHaveText('12 apps');
 });
 

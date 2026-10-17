@@ -133,7 +133,7 @@ test('a saved capture identity is its id and a local counter, never the library 
  assert.deepEqual(captures({...plain}),first,'an unchanged item keeps its identity');
  // A favorite, trash, restore or edit changes the library revision, so the identity changes too.
  const second=captures(flagged);
- assert.equal(second.id,first.id);assert.notEqual(second.revision,first.revision);assert.doesNotMatch(JSON.stringify(second),/1760000000|52344|917|\|/);
+ assert.equal(second.id,first.id);assert.equal(second.revision,first.revision.replace(/-1$/,'-2'));assert.doesNotMatch(JSON.stringify(second),/1760000000:52344|\|917/);
  assert.deepEqual(sanitizePhoneContext({view:'photos',revision:1,sensitive:false,selectedObject:second}).selectedObject,second);
  // The browser library keeps one revision per item and changes only its mutation revision.
  const browser={kind:'video',id:'native-camera-3f0c',revision:'9d2e',mutationRevision:'m1'};

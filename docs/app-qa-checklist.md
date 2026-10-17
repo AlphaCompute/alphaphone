@@ -1,12 +1,14 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Current preview functional code `94bef8bc`, including main `c23eac71`; Shared `9116ba86`. Updated October16,2026.
+Live preview: <http://127.0.0.1:5209/>. Functional source `2446a567`; Shared `6ef36b8d`, including the recorded main integration `f1d4baa6`. All13 prior conversations and228 messages survived the preview update; Cloud identity and fresh agent Gmail search passed. Seeker now has the same functional source, with its original UID/data retained. Test-only CI repairs are on `ab523907`. Updated October 17, 2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
 For each applicable flow check light/dark, compact portrait, landscape, large text, keyboard and safe areas, Back, reload/resume, empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
 Review order: latest preview → deployed backend/prompt proof → installed Seeker → your per-view approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
+
+Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, existing certificate, UID10250 and original install date preserved. Normal SDK/product verification, four variants, lint and APK checks passed. The valid saved credential now commits a provider binding; resident is now running with Cloud inference and connected Google permissions after all eight retired IPC directories were archived intact. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider result was observed. Native send and Calendar write were not attempted. See [native read evidence](evidence/seeker-cloud-read-20261017.json). Prior row evidence stays labeled by its observed build; human approval remains separate.
 
 ## Shell and Home
 
@@ -49,7 +51,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | Native routing fix APK rebuild and prompt retest pending | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | 2446 running and Google connected. One known-QA read failed at Cloud text HTTP400; native send remains unproven. | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Account-scoped cache implemented and source-tested. | Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead). | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
@@ -125,15 +127,15 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-05 | Photo viewer, zoom and previous/next | Pending | Opened the newly captured960x1280 QA photo on574; local viewer controls rendered. | Pending |
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
 | photos-07 | Photo edits save as copy | Pending | Pending | Pending |
-| photos-08 | Video trim timeline, rotate, crop and preview | Pending | Pending | Pending |
-| photos-09 | Edited-video audio, original preservation and save-copy | Browser editor and trim validation pass in45-test media suite. | Native video editing is still disabled; real encoder/export and copy-recovery qualification remain required. | Pending |
+| photos-08 | Video trim timeline, rotate, crop and preview | 33 current browser video/storage regressions pass; native UI/gesture qualification is separate. | Exact production exporter component passes real trim/clockwise rotate/crop and timestamps. Full Alpha editor UI has not yet been installed/qualified. | Pending |
+| photos-09 | Edited-video audio, original preservation and save-copy | 33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior. | Two actual offline Seeker component tests pass: decoded audio, original bytes/revision, physical trim samples, publish-receipt recovery, no duplicate, changed binding/source refusal and background cancellation. Full Alpha UI/revocation/process-death qualification remains pending. | Pending |
 | photos-10 | Info and metadata | Pending | Pending | Pending |
 | photos-11 | Share/export actual result | Pending | Pending | Pending |
 | photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred. | Pending |
 | photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Passed574: explicit Recover restored the sole QA item; trashcount returned0. | Pending |
 | photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0. | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
-| photos-16 | Native permitted library and consent updates | Access controls moved to Settings > Photos; denied-access grid keeps Choose photo access. Full verification passed:1455 pass/2 skips/0 fail. | Installeda569f79c: fresh Settings > Photos readback and Android permissions navigation passed; existing grant unchanged. Denied access retains explicit request. | Pending |
+| photos-16 | Native permitted library and consent updates | Four current-candidate permission regressions pass: Settings controls, selected access, denied request/approval, and revocation. New manual preview observation unavailable while browser controls are disabled. | Installeda569f79c: fresh Settings > Photos readback and Android permissions navigation passed; existing grant unchanged. Denied access retains explicit request. | Pending |
 
 ## Maps
 
@@ -241,15 +243,23 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 
 ## Current integration gaps
 
-- Gmail reading/search/full-message prompts passed in the browser agent. Real agent self-send/delivery is still pending backend activation. No QA email has been sent.
-- Backend SQL files initially lacked journal entries. The owner has now proved the normal372-entry migration and rerun in isolation; production activation remains pending.
-- Original Calendar approval/attempt remains protected and uncertain; no reset, blind replay or substitute fixture.
-- Seeker is running the full installed app. Its existing Cloud account reports no active AI plan; the account/plan question is pending for native prompt tests.
-- Native Google read/send and Calendar read/edit access are confirmed. Calendar sync review currently refuses context; live enable/write/Undo remains open.
+Latest native component proof: `bd0e622a` built both fixture APKs and passed all **11 real Seeker methods (0 failures, 0 skips)** in a separate app UID. Coverage includes preservation/collision/refusal/concurrency checks and hardware trim/rotate/crop/audio/timestamps/recovery/idempotency/cancellation. All14 old fixture entries and retained failure files, main2446/processes, source639 and pending640/failed record stayed unchanged. The original640 byte archive, packaged current main and full Alpha UI SaveCopy remain open. See [current component evidence](evidence/native-video-preservation-bd0e-seeker-20261017.json).
+
+Hosted parent `a2786dd2` repository verification passed1495 tests with0 failures/2 skips and the404-file production audit; Android foundation and production-surface checks passed. The free/busy reader case passed there. These receipts do not retroactively turn the older remote-image three skipped cases into passes. Remaining browser shards and human per-view approval are separate.
+
+Latest physical fixture result: source `bff09b90` passed both Java compiles and built both fixture APKs. The same-certificate fixture upgrade preserved its UID, original install date and all13 prior journal entries. The first preservation method failed at `complete/ErrnoException`; the remaining nine methods were not run. The new synthetic artifacts are retained; main Alpha2446, all three process identities, source639 and pending640/failed record stayed unchanged. A supported completion-publication protocol needs review before another qualified attempt. This is not full-app SaveCopy or native Gmail/Calendar acceptance. See [exact fixture failure](evidence/native-video-bff09-seeker-seal-failure-20261017.json).
+
+- Browser ordinary Gmail self-send, independent Inbox delivery, exact full-body readback and agent search/read passed for a new QA fixture. Native acceptance is separate.
+- Browser ordinary Google Calendar create/read/delete passed for a distinct QA event, with independent provider absence readback. Original uncertain operations remain fenced and were not replayed.
+- Seeker now runs source2446/Shared6ef with its original identity/data, Cloud inference and Google read/send plus Calendar read/edit connected. Its one known-QA email read prompt failed at the Cloud text request with HTTP400. That exact request is handed off for correlation; no native send or Calendar write was attempted.
+- Native Calendar consent/write/Undo has prior build evidence; current installed sync and prompt lifecycle acceptance remain open.
+- Photo access controls are in Settings > Photos. Denied Photos still requires explicit Android permission choice; selected/full access does not show ongoing access controls in the grid. Four focused browser permission flows passed. On current Seeker2446, Settings visibly contains both access controls and the existing full grant, while Photos grid omits access controls; no grant was changed. Physical denied/selected/revoked transitions and human approval remain separate.
 - Agent threaded reply/forward and optional Gmail mailbox-change consent remain open.
-- Native camera saved a new disposable QA photo. Recently Deleted, video editing, scan and remaining per-view native flows are still being checked.
-- Native album selection and mode accessibility names require follow-up. Stable header positioning alone does not complete that request.
+- Full packaged Camera/Photos editor UI, revocation, process-death recovery and remaining per-view native flows remain open; component exporter tests passed separately.
 - Full app audio, held-out ASR quality and human acceptance remain separate from passed component/packaging tests.
+- Hosted CI atab523907: repository, Android and production browser checks pass; three MVP browser shards remain running. Preview5209 returns HTTP200.
+
+The dated entries below retain earlier build results and blockers; the current state above supersedes their blocker wording.
 
 Current verification:1,455 tests passed, two existing skips; types, production build and404-file production audit passed. All four APK variants built/linted/verified. The installed standalone APK matches the locally signed candidate and retains the original app identity. This does not imply provider-write, full native or human acceptance.
 
@@ -261,4 +271,18 @@ Current CI follow-up: repository verification1462 pass/2 skip/0 fail; production
 
 Seeker update: nativea569/shared911 passed all four packaging variants and installed with the original signer, UID and first installation date preserved. Credits are recognized and the resident runs. The first read-only Gmail prompt failed because the runtime attempted an absent local text model; native Cloud text inference wiring and prompt acceptance remain open. See `docs/evidence/seeker-a569-native-update-20261016.json`.
 
+October17 video CI follow-up: callback-shutdown repair e530eb51 passes33 focused checks plus Android Java compilation/lint. Prior physical exporter evidence retains its exact source hashes; it does not prove the changed callbacks. Current-source physical rerun subsequently passed all3 tests in59.198s, including late callback shutdown/recovery; exact installed/source hashes are retained in docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain open.
+
 October17 native qualification: bb4d/9365 passed normal four-variant assembly, lint and packaged-runtime verification; exact signed APK5b0d1015 installed on Seeker with UID/first-install preserved. The first ordinary Gmail read prompt failed because the actual resident launched with Cloud inference disabled and no Google broker. Supported existing-account admission is pending; native Gmail sending and Google Calendar deletion remain unproven and were not attempted. See docs/evidence/seeker-native-startup-20261017.json.
+
+Latest installed read-only Home/Models check:2446 Home shows the11 core navigation controls, while All apps reports84 apps and displays installed app rows. Models reports on-device connection/voice and Eliza Cloud qwen-3.8-27b (Cerebras) inference. No favorite/shortcut/provider/permission changes or model request. Custom-shortcut baseline, remote/offline transitions and full visual geometry acceptance remain open. See [scoped native evidence](evidence/seeker-home-models-readonly-20261017.json).
+
+Current installed2446 paused-video editor passed trim, rotate, center crop and Android Back on one synthetic QA clip. Original bytes and revision unchanged; no playback or save-copy. See [native editor evidence](evidence/seeker-paused-video-editor-20261017.json). Export/audio output, process-death and human acceptance remain separate.
+
+Current installed Save copy attempt failed once at pending-write/code0; source639 unchanged and pending output640/journal retained. Candidatef3b88d32 fixes separate pending lookup/custody/diagnostics defects and adds regression cases; native qualification is pending. See [exact failed operation](evidence/seeker-video-save-failure-20261017.json). No second Save or publication/deletion.
+
+Pending-video custody correction1d29 now passes both Java compiles, fixture APK assembly/signature/source verification, and exactly3 real-provider Seeker regressions in0.286s. MainAlpha2446/resident, source639, pending640/failed8e43 and11 prior fixture journal records unchanged. This qualifies custody preservation only; originalwritecause and normalAlphaSaveCopy remain open. See [provider evidence](evidence/native-video-pending-custody-20261017.json).
+
+Exact1d29 real synthetic exporter component passed11.291s on Seeker: trim/rotate/crop/audio and timestamp markers, lost-publication-receipt recovery, same-operation duplicate identity, changed-binding refusal and cancel-without-copy. MainAlpha2446/source639/pending640/8e43 and11 prior fixture journal records unchanged. This is component proof; original mainAlpha writecause and normal SaveCopy acceptance remain open. See [exporter evidence](evidence/native-video-exporter-1d29-20261017.json).
+
+Observer coordination correctiond35dd318: renderer/native-bridge regression reproduced2libraryChanged notifications causing3nativecancellations duringpendingSave; fix keepsobserveractive and rechecks source/access while deferringvalidcatalogrefresh.8focusedbrowserchecks andnormalproduct1495pass/2existingskips/types/build/audit404pass. Nativequalification/install pending; mainSave remainsheldbyexact640preservationreview. Historical8e43cause is not proven bythe reproduction. See [observer evidence](evidence/native-video-library-observer-20261017.json).
