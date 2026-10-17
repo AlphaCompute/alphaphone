@@ -55,6 +55,9 @@ export function openCalendarSyncSettings() {
 		if (!alive) return;
 		const state = calendarSyncHost.snapshot();
 		summary.textContent = state.status;
+		const destination = calendarSyncHost.destination();
+		if (state.enabled && destination.account && destination.calendar)
+			details.textContent = `Google account: ${destination.account}. Calendar: ${destination.calendar}. Only linked Alpha events sync. Existing Google events are not imported or overwritten.`;
 		reviewButton.disabled = busy || state.running;
 		enable.disabled = busy || state.running || !review;
 		sync.disabled = busy || state.running || !state.enabled;

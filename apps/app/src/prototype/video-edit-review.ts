@@ -4,7 +4,7 @@ import type {VideoEdit} from '../browser/video-edit';
 import {validateVideoEdit,drawEditedVideo} from '../browser/video-edit';
 /** A media workspace: preview first, direct trim handles, one copy-save action.
  * Alpha's existing media colors and published icons; no unsupported tools. */
-export function openVideoEditReview(source:{path:string;duration:number},save:(edit:VideoEdit,signal:AbortSignal)=>Promise<boolean>,onClose:()=>void=()=>{}){
+export function openVideoEditReview(source:{path:string;duration:number;stream?:boolean},save:(edit:VideoEdit,signal:AbortSignal)=>Promise<boolean>,onClose:()=>void=()=>{}){
  const previous=document.activeElement,controller=new AbortController(),dialog=document.createElement('dialog');
  dialog.setAttribute('aria-label','Edit video');dialog.className='scan-dialog video-edit-review';
  const video=document.createElement('video');video.preload='auto';video.playsInline=true;video.hidden=true;
@@ -70,5 +70,8 @@ export function openVideoEditReview(source:{path:string;duration:number},save:(e
  for(const [b,label] of [[rotate,'Rotate'],[crop,'Center crop']] as const){const caption=document.createElement('span');caption.textContent=label;b.append(caption);tools.append(b);}
  const panel=document.createElement('div');panel.className='video-editor-panel';panel.append(playback,timeline,times,tools,status);
  dialog.append(header,preview,panel);dialog.oncancel=e=>{e.preventDefault();dispose();};window.addEventListener('alpha-back',back,true);window.addEventListener('pagehide',dispose);document.addEventListener('visibilitychange',visibility);(document.querySelector('.os')||document.body).append(dialog);updateTimeline();updateControls();dialog.showModal();
- void fetch(source.path,{signal:controller.signal}).then(response=>{if(!response.ok)throw Error('Video unavailable');return response.blob();}).then(blob=>{if(closed)return;sourceUrl=URL.createObjectURL(blob);video.src=sourceUrl;}).catch(()=>{if(!closed)status.textContent='Video could not load. Close and reopen the editor to try again.';});return dispose;
+ // Native playback is an already-admitted, same-origin range capability. Let
+ // the decoder stream it instead of duplicating the complete video in a Blob.
+ if(source.stream)video.src=source.path;
+ else void fetch(source.path,{signal:controller.signal}).then(response=>{if(!response.ok)throw Error('Video unavailable');return response.blob();}).then(blob=>{if(closed)return;sourceUrl=URL.createObjectURL(blob);video.src=sourceUrl;}).catch(()=>{if(!closed)status.textContent='Video could not load. Close and reopen the editor to try again.';});return dispose;
 }

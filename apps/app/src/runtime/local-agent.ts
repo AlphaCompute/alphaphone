@@ -1,3 +1,4 @@
+import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { registerPlugin } from '../platform-plugins';
 import { Capacitor } from '@capacitor/core';
@@ -175,6 +176,25 @@ export class LocalAgentProtocol {
       // remains bound to the captured session, generation and cancellation signal above.
       if(result.provider!=='local-inference'||(audio?(typeof result.text!=='string'||!result.text.trim()||result.text.length>16000):typeof result.ready!=='boolean'))throw Error('Invalid local speech response.');
       return result;
+    }finally{this.streams.delete(controller);}
+  }
+  /** Developer-only Cloud speech through the same owner-bound agent as text inference. */
+  async developmentCloudSpeech(input:{kind:'asr';audio:Uint8Array}|{kind:'tts';text:string},signal:AbortSignal){
+    if(!developmentCloudVoiceEnabled||!this.browserSpeechAvailable||!this.session)throw Error('Developer Cloud speech is unavailable.');
+    const session=this.session,generation=this.generation,controller=new AbortController(),requestId=crypto.randomUUID();
+    this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);
+    try{
+      bounded.throwIfAborted();let audioBase64:string|undefined;
+      if(input.kind==='asr'){if(!input.audio.byteLength||input.audio.byteLength>2*1024*1024)throw Error('Recording is too large.');let binary='';for(let i=0;i<input.audio.length;i+=8192)binary+=String.fromCharCode(...input.audio.subarray(i,i+8192));audioBase64=btoa(binary);}
+      else if(!input.text.trim()||input.text.length>16000)throw Error('Choose text between 1 and 16000 characters.');
+      const response=await this.bridge.request({path:input.kind==='asr'?'/api/asr/cloud':'/api/tts/cloud',ownerId:session.ownerId,method:'POST',headers:{},requestId,timeoutMs:120000,...(audioBase64?{audioBase64}:{body:JSON.stringify({text:(input as {text:string}).text,modelId:'sonic-3'})})},bounded);
+      bounded.throwIfAborted();if(session!==this.session||generation!==this.generation)throw new DOMException('Voice selection changed','AbortError');
+      if(response.status!==200)throw Object.assign(Error(`Cloud speech unavailable (HTTP ${response.status}).`),{code:'voice-http-'+response.status});
+      const result=JSON.parse(response.body||'{}');
+      if(result.provider!=='cartesia'||result.route!=='cloud'||result.requestId!==requestId)throw Error('Cloud speech provider was not verified.');
+      if(input.kind==='asr'){if(typeof result.text!=='string'||result.text.length>16000)throw Error('Invalid Cloud transcript.');return {text:result.text,local:false as const};}
+      if(result.contentType!=='audio/mpeg'||typeof result.audioBase64!=='string'||!result.audioBase64.length||result.audioBase64.length>11184812)throw Error('Invalid Cloud speech audio.');
+      const bytes=Uint8Array.from(atob(result.audioBase64),c=>c.charCodeAt(0));if(bytes.length>8*1024*1024)throw Error('Cloud speech audio is too large.');return new Blob([bytes],{type:'audio/mpeg'});
     }finally{this.streams.delete(controller);}
   }
   async synthesizeSpeech(text:string,signal:AbortSignal):Promise<Blob>{

@@ -1,0 +1,42 @@
+{
+  "sha256": "820fe31fdba09257460dc1bff5710dfb6e3f61e35a6506754ae6687fb6de0cd4",
+  "bytes": 76022,
+  "generator": "local FFmpeg, generated colors and sine waves; no user camera/microphone/media",
+  "video": {
+    "width": 320,
+    "height": 240,
+    "fps": 30,
+    "seconds": 4,
+    "quadrants": [
+      "red",
+      "lime",
+      "blue",
+      "white"
+    ],
+    "centerMarker": "grayscale20+5*floor(t*10)"
+  },
+  "audio": {
+    "sampleRate": 48000,
+    "channels": 1,
+    "frequenciesPerSecond": [
+      440,
+      880,
+      1320,
+      1760
+    ]
+  },
+  "expectedEdit": {
+    "start": 1.2,
+    "end": 2.8,
+    "clockwiseRotation": 90,
+    "centerCrop": 1.3,
+    "width": 184,
+    "height": 246,
+    "firstAudioHz": 880,
+    "lastAudioHz": 1320
+  },
+  "sourceClasses": [
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/VideoCopyEdits.java",
+    "android/app/src/main/java/ai/elizaresearch/alphaphone/VideoEditSpec.java"
+  ]
+}

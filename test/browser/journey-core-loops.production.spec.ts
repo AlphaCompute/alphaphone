@@ -302,7 +302,7 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
   const account = page.getByRole('dialog', { name: 'Your agent' });
   await expect(account).toContainText('Running on this device');
-  await expect(account).toContainText('Your agent uses your Eliza Cloud plan for AI.');
+  await expect(account).toContainText('Your agent uses Eliza Cloud for AI.');
   await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
   expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
@@ -500,8 +500,7 @@ test('loops D and F in the web build: digests and mail name the missing account 
   await expect(page.locator('[data-screen]')).toContainText('Connect Eliza Cloud to use Gmail');
   // No development mailbox: no fixture message, and Compose does not open a local "Sent locally" path.
   await expect(page.getByText('Dinner Friday?', { exact: true })).toHaveCount(0);
-  await button(page, 'Compose').click();
-  await expect(page.getByText('Connect a Gmail account first.', { exact: true })).toBeVisible();
+  await expect(button(page, 'Compose')).toBeDisabled();
   await expect(page.getByRole('textbox', {name: 'To', exact: true})).toHaveCount(0);
   await expect(button(page, 'Send email')).toHaveCount(0);
   await expectNoDevelopmentSurface(page);

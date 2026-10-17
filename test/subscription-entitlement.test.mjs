@@ -523,7 +523,8 @@ test('billing snapshot fallback reads only known subscription states', () => {
   for (const state of ['past_due', 'grace', 'unpaid']) assert.equal(fallbackPlanFromLimits(value(state)).status, 'past_due', state);
   for (const state of ['canceled', 'incomplete_expired']) assert.equal(fallbackPlanFromLimits(value(state)).status, 'canceled', state);
   for (const state of ['pending', 'incomplete', 'paused', 'unknown', 7]) assert.equal(fallbackPlanFromLimits(value(state)), null, String(state));
-  assert.deepEqual(fallbackPlanFromLimits(limits({status: 'not_applicable', reason: 'no_organization_subscription'})), {status: 'none', planName: null, periodEnd: null});
+  assert.deepEqual(fallbackPlanFromLimits(limits({status: 'not_applicable', reason: 'no_organization_subscription'})), {status: 'none', planName: null, periodEnd: null, billingMode: 'organization-credits'});
+  assert.deepEqual(fallbackPlanFromLimits(limits({status: 'not_applicable', reason: 'unrecognized'})), {status: 'none', planName: null, periodEnd: null});
   assert.equal(fallbackPlanFromLimits(limits({status: 'unavailable', error: {code: 'x'}})), null);
   assert.equal(fallbackPlanFromLimits({success: true, data: {}}), null);
   assert.equal(fallbackPlanFromLimits(null), null);
@@ -606,4 +607,26 @@ test('billing snapshot refresh adopts signed scheduling and discards a late resu
   for (let i = 0; i < 10; i++) await Promise.resolve();
   assert.equal(views.length, 1);
   assert.equal(timers.queue.length, 0);
+});
+
+test('legacy organization credits cannot bypass a signed plan refusal', async () => {
+  const fallback = {status:'none',planName:null,periodEnd:null,billingMode:'organization-credits'};
+  const result = await checkEntitlement(source({fallback}), exp, signal(), () => NOW);
+  assert.deepEqual(result,{view:{kind:'credits',source:'billing-limits'},entitlement:null});
+  assert.equal(planAdmission(result.view),'admit');
+  assert.equal(describeSubscription(result.view).headline,'Eliza Cloud credits');
+  assert.equal(describeSubscription(result.view).manageLabel,'Manage billing in Eliza Cloud');
+  assert.equal((await checkEntitlement(source({token:'invalid',fallback}),exp,signal(),()=>NOW)).view.kind,'unavailable');
+  const {jwk,sign}=await keyPair('credit-mode-precedence');
+  const signed=await sign(claims({plan:{id:'p-synthetic',name:'Synthetic plan',status:'none'}}));
+  const checked=await checkEntitlement(source({token:signed,keys:[jwk],fallback}),exp,signal(),()=>NOW);
+  assert.equal(checked.view.kind,'inactive');assert.equal(planAdmission(checked.view),'needs-plan');
+});
+test('credit billing refreshes in the background and stops on revoked authentication',async()=>{
+  const timers=fakeTimers(),views=[];let checks=0,revoked=false,auth=0;
+  const refresher=new EntitlementRefresher({timers,fallbackActive:true,onView:view=>views.push(view),onAuthFailure:()=>auth++,check:async()=>{checks++;if(revoked)throw Object.assign(Error('revoked'),{status:401});return {view:{kind:'credits',source:'billing-limits'},entitlement:null};}});
+  await timers.advance(FALLBACK_REFRESH_MS);assert.equal(checks,1);assert.equal(views.at(-1).kind,'credits');
+  await timers.advance(FALLBACK_REFRESH_MS);assert.equal(checks,2);revoked=true;
+  await timers.advance(FALLBACK_REFRESH_MS);assert.equal(auth,1);const stopped=checks;
+  await timers.advance(FALLBACK_REFRESH_MS*3);assert.equal(checks,stopped);refresher.stop();
 });

@@ -291,7 +291,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
    bindCloudProvider(store,credentialId,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
-  }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}},()->{call.reject("Local agent bridge is closed.");});
+  }catch(Exception unavailable){
+   String code="NATIVE_CLOUD_ADMISSION_UNAVAILABLE";
+   if(unavailable instanceof LocalAgentProviderAdmission.CloudBindingFailure){LocalAgentProviderAdmission.CloudBindingFailure failure=(LocalAgentProviderAdmission.CloudBindingFailure)unavailable;code="NATIVE_CLOUD_ADMISSION_"+failure.stage.toUpperCase(java.util.Locale.ROOT).replace('-','_');android.util.Log.w("AlphaCloudAdmission",failure.diagnostic.toString());}
+   call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.",code);
+  }},()->{call.reject("Local agent bridge is closed.");});
  }
  /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
  static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
@@ -325,7 +329,10 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  static void applyUnboundEnvironment(java.util.Map<String,String> env){
   for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
    "CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER",
-   "ELIZA_LOCAL_EMBEDDING_MODEL_PATH","ELIZA_LOCAL_EMBEDDING_DIMENSIONS"})env.remove(name);
+   "ELIZA_LOCAL_EMBEDDING_MODEL_PATH","ELIZA_LOCAL_EMBEDDING_DIMENSIONS","ELIZA_NATIVE_GOOGLE_HOST_MODULE","ELIZA_NATIVE_GOOGLE_BINDING_JSON",
+   "ELIZA_MANAGED_GMAIL_READ_BROKER","ELIZA_MANAGED_GMAIL_SEND_BROKER","ELIZA_MANAGED_GMAIL_OPERATION_BROKER","ELIZA_MANAGED_CALENDAR_READ_BROKER",
+   // Upstream default-off Google mutations (elizaOS/eliza#36598) stay off until Seeker acceptance and the production service.
+   "ELIZA_MANAGED_CALENDAR_DELETE_ENABLED","ELIZA_NATIVE_GOOGLE_GMAIL_SEND_ENABLED","ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED"})env.remove(name);
   env.put("ELIZAOS_CLOUD_USE_INFERENCE","false");
   env.put("ELIZAOS_CLOUD_USE_EMBEDDINGS","false");
   // No embedding download: the packaged on-device embedding model is enabled when present (configureLocalEmbeddings).
@@ -344,6 +351,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     String saved=store.readCredentialSlot("local-agent-provider:v1");
     JSONObject provider=LocalAgentProviderAdmission.providerIdentity(saved);
     String cloud="elizacloud".equals(provider.optString("provider"))?store.readCredentialSlot("cloud:production"):null;
+    if(BuildConfig.DEBUG){try{android.util.Log.i("AlphaCloudAdmission","credential-schema="+LocalAgentProviderAdmission.cloudCredentialDiagnostics(store.readCredentialSlot("cloud:production"),null,System.currentTimeMillis()));}catch(Exception unavailable){android.util.Log.i("AlphaCloudAdmission","credential-schema-read-unavailable");}}
     call.resolve(new JSObject(LocalAgentProviderAdmission.providerStatus(saved,cloud,System.currentTimeMillis()).toString()));
    }
    catch(Exception unavailable){call.reject("Provider status unavailable.");}
@@ -376,7 +384,9 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   final long epoch;
   synchronized(lifecycleLock){launchedGeneration=null;if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
+  for(String key:new String[]{"ELIZA_NATIVE_GOOGLE_HOST_MODULE","ELIZA_NATIVE_GOOGLE_BINDING_JSON","ELIZA_MANAGED_GMAIL_READ_BROKER","ELIZA_MANAGED_GMAIL_SEND_BROKER","ELIZA_MANAGED_GMAIL_OPERATION_BROKER","ELIZA_MANAGED_CALENDAR_READ_BROKER","ELIZA_MANAGED_CALENDAR_DELETE_ENABLED","ELIZA_NATIVE_GOOGLE_GMAIL_SEND_ENABLED","ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED"})env.remove(key);
   env.remove("ELIZA_MOBILE_WORKFLOWS");
+  java.io.File nativeHostResources=null;
   java.io.InputStream workerIndex=null;
   try {workerIndex=context.getAssets().open("agent/workflow-worker/files.sha256");}
   catch(java.io.FileNotFoundException absent) { /* Older payloads do not contain a workflow worker. */ }
@@ -384,6 +394,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    String root=env.get("AGENT_ROOT");if(root==null){workerIndex.close();throw new java.io.IOException("Agent resource directory unavailable");}
    java.io.File worker=WorkflowWorkerAssets.install(new java.io.File(root),workerIndex,path->context.getAssets().open("agent/workflow-worker/"+path));
    WorkflowWorkerAssets.configureEnvironment(worker,env);
+   nativeHostResources=worker;
   }
   try {
   // Decision P-43: the resident always runs. With no provider slot it launches with no hosted
@@ -405,6 +416,18 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
   // No usable provider: every provider credential and selector is removed (applyUnboundEnvironment).
   if(provider==null)applyUnboundEnvironment(env);
+  if(provider!=null&&"elizacloud".equals(provider.optString("provider"))&&nativeHostResources!=null){
+   java.io.File google=new java.io.File(nativeHostResources,"google-host.mjs");
+   if(google.isFile()){
+    JSONObject binding=LocalAgentProviderAdmission.managedGoogleBinding(saved,cloudSaved,System.currentTimeMillis());
+    if(binding!=null){
+    JSONObject current=new AlphaCredentialStore(context).providerAdmissionSnapshot();
+    if(!binding.getString("accountRef").equals(current.getString("accountRef"))||!binding.getString("sessionGeneration").equals(current.getString("sessionGeneration"))||!LocalAgentProviderAdmission.sameCloudCredential(cloudSaved,new AlphaCredentialStore(context).readCredentialSlot("cloud:production")))throw new SecurityException("Native Google provider changed");
+    env.put("ELIZA_NATIVE_GOOGLE_HOST_MODULE",google.getCanonicalPath());
+    env.put("ELIZA_NATIVE_GOOGLE_BINDING_JSON",binding.toString());
+    }
+   }
+  }
   if(provider==null||!"elizacloud".equals(provider.optString("provider","cerebras")))configureLocalEmbeddings(new File(context.getApplicationInfo().nativeLibraryDir),context.getFilesDir(),env);
   env.put("ELIZA_DISABLE_PERSONAL_ASSISTANT","1");
   env.put("ELIZA_DISTRIBUTION_PROFILE","store");
@@ -660,10 +683,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   synchronized(lifecycleLock){requireEnrollmentRoot(epoch,root);rootToken=root;ownerToken=token;ownerIdentity=paired.getString("identityId");expiresAt=expiry;return token;}
   }
  }
+ static boolean calendarApprovalReadAllowed(String path,String method,String owner){return "/api/approvals?state=all&limit=500".equals(path)&&"GET".equals(method)&&owner!=null&&!owner.trim().isEmpty();}
  @PluginMethod public void request(PluginCall call) {
   String path=call.getString("path",""),method=call.getString("method","GET"),body=call.getString("body"),expectedOwner=call.getString("ownerId");
-  boolean automation=AutomationsRoutes.owns(path);
-  if((automation? !AutomationsRoutes.allowed(path,method)||expectedOwner==null||expectedOwner.trim().isEmpty(): ((path.startsWith("/api/views/")||path.endsWith("/messages/truncate")||path.endsWith("/heard"))&&(!method.equals("POST")||expectedOwner==null||expectedOwner.trim().isEmpty()))||(path.equals("/api/asr/local-inference/end-of-turn")&&!method.equals("POST"))||(path.contains("?before=")&&!method.equals("GET"))||(path.startsWith("/api/turns/")&&!method.equals("POST"))||path.contains("..")||path.contains("%")||path.contains("\\")||!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages(/truncate|/[0-9a-fA-F-]{36}/heard|\\?before=[0-9]{1,16}(&beforeId=[0-9a-fA-F-]{36})?(&limit=[0-9]{1,3})?)?)?)?|turns/[0-9a-fA-F-]{36}/abort|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?|asr/local-inference/(live(/status)?|end-of-turn))$")||!(method.equals("GET")||method.equals("POST")))||((method.equals("GET")||method.equals("DELETE"))&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
+  boolean automation=AutomationsRoutes.owns(path),approvalRead=calendarApprovalReadAllowed(path,method,expectedOwner);
+  if((automation? !AutomationsRoutes.allowed(path,method)||expectedOwner==null||expectedOwner.trim().isEmpty(): ((path.startsWith("/api/views/")||path.endsWith("/messages/truncate")||path.endsWith("/heard"))&&(!method.equals("POST")||expectedOwner==null||expectedOwner.trim().isEmpty()))||(path.equals("/api/asr/local-inference/end-of-turn")&&!method.equals("POST"))||(path.contains("?before=")&&!method.equals("GET"))||(path.startsWith("/api/turns/")&&!method.equals("POST"))||path.contains("..")||path.contains("%")||path.contains("\\")||(!approvalRead&&!path.matches("^/api/(auth/me|agents|status|conversations(/[A-Za-z0-9_-]+(/messages(/truncate|/[0-9a-fA-F-]{36}/heard|\\?before=[0-9]{1,16}(&beforeId=[0-9a-fA-F-]{36})?(&limit=[0-9]{1,3})?)?)?)?|turns/[0-9a-fA-F-]{36}/abort|views/interact-(claim|result)|client-devices/[A-Za-z0-9_/-]+|workflow(/[A-Za-z0-9_/?=&-]+)?|asr/local-inference/(live(/status)?|end-of-turn))$"))||!(method.equals("GET")||method.equals("POST")))||((method.equals("GET")||method.equals("DELETE"))&&body!=null)||(body!=null&&body.length()>2*1024*1024)){
    call.reject("Unsupported local agent request.");return;
   }
   JSONObject headers=call.getObject("headers");

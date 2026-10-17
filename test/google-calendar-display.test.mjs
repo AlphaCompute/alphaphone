@@ -25,11 +25,11 @@ async function harness(events,{day=0,personal=true,days=1}={}){
   const ctx=vm.createContext({calendarDayColumnsUnderTest:days,Date:FixedDate,console,AbortController,DOMException,Intl,Event,
     IC:{},CAL_SEED:[],PEOPLE:[],DAYS:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],MONS:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],copy:()=>({}),
     formatHours:value=>String(value),fmtT:value=>String(value),formatHoursRange:(a,b)=>`${a}–${b}`,formatHour:value=>String(value),formatShortDate:date=>date.toISOString().slice(0,10),formatMonthTitle:date=>String(date.getMonth()),
-    registerView:(_key,value)=>{ctx.view=value;},window:listeners,document:{hidden:false},queueMicrotask,
+    registerView:(_key,value)=>{ctx.view=value;},window:listeners,document:Object.assign(new EventTarget(),{hidden:false}),queueMicrotask,
     registerPlugin:()=>localCalendar,Capacitor:{getPlatform:()=> 'web',isNativePlatform:()=>false,isPluginAvailable:()=>true},
     DailyApps:{async addListener(){return {remove(){}};}},
     openCalendarRecovery(){},openReminderRecovery(){},openReminderCreationRecovery(){},openReminderActionRecovery(){},
-    connectionController:{getCloudClient:()=>cloud,subscribe:()=>()=>{},rejectCloudSession:()=>{}},
+    connectionController:{getSnapshot:()=>({cloudAccount:null}),getCloudClient:()=>cloud,subscribe:()=>()=>{},rejectCloudSession:()=>{}},
     googleCalendarAccountKey:()=>({environment:'production',userId:'owned',organizationId:'owned'}),readGoogleCalendarSelection:()=>selected,
     currentGoogleCalendarBinding:()=>({}),googleConnectionController:{open(){}},GOOGLE_ACCOUNTS_CHANGED:'accounts',GOOGLE_CALENDAR_SELECTION_CHANGED:'selection',
     startCalendarSyncHost:()=>()=>{},calendarSyncHost:{resume:async()=>{},linkedProviderEvents:async()=>new Set()},
@@ -38,9 +38,9 @@ async function harness(events,{day=0,personal=true,days=1}={}){
   vm.runInContext(calendarDays+'\n'+calendar+'\n{'+nativeSource+'\nglobalThis.installNative=installCalendarAdapter;}\n{'+source+'\nglobalThis.install=installGoogleCalendarViewAdapter;}',ctx);
   class Shell{live=true;S(){return {view};}vget(){return state;}vset(_key,patch){Object.assign(state,patch);}async refreshReminders(){}componentDidMount(){}componentDidUpdate(){}componentWillUnmount(){}}
   ctx.installNative(Shell,{calendar:ctx.view});ctx.install(Shell,{calendar:ctx.view});const shell=new Shell();shell.componentDidMount();shell.componentDidUpdate();
-  for(let i=0;i<12;i++)await Promise.resolve();
+  for(let i=0;i<24;i++)await Promise.resolve();
   const api={now:new FixedDate(),get:key=>key==='calendar'?state:{},set:patch=>{writes.push(patch);Object.assign(state,patch);},sw:()=>({}),track:()=>'',kx:()=>0,swallowed:()=>false,toast:()=>{},person:()=>null};
-  return {render:()=>ctx.view.render(state,api),state,writes,holdNextRead(){let release;pendingRead=new Promise(resolve=>{release=resolve;});return()=>{release();pendingRead=null;};},async startRefresh(){listeners.dispatchEvent(new Event('accounts'));for(let i=0;i<8;i++)await Promise.resolve();},leave(){view='home';},revoke(){allowRead=false;listeners.dispatchEvent(new Event('accounts'));},async returnToCalendar(){view='calendar';shell.componentDidUpdate();for(let i=0;i<12;i++)await Promise.resolve();},clear(){selected=null;listeners.dispatchEvent(new Event('selection'));},close:()=>shell.componentWillUnmount()};
+  return {render:()=>ctx.view.render(state,api),state,writes,holdNextRead(){let release;pendingRead=new Promise(resolve=>{release=resolve;});return()=>{release();pendingRead=null;};},async startRefresh(){listeners.dispatchEvent(new Event('accounts'));for(let i=0;i<8;i++)await Promise.resolve();},leave(){view='home';},revoke(){allowRead=false;listeners.dispatchEvent(new Event('accounts'));},async returnToCalendar(){view='calendar';shell.componentDidUpdate();for(let i=0;i<24;i++)await Promise.resolve();},clear(){selected=null;listeners.dispatchEvent(new Event('selection'));},close:()=>shell.componentWillUnmount()};
 }
 test('Google visibility is independent of the local Personal calendar toggle',async()=>{
   const h=await harness([event()],{personal:false});try{assert.equal(h.render().events.length,1);}finally{h.close();}

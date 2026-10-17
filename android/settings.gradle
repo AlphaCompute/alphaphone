@@ -11,6 +11,8 @@ project(':eliza-location').projectDir = new File('../vendor/eliza/plugins/plugin
 
 // Explicit standalone synthetic witness; never packaged in Alpha Phone.
 include ':notification-fixture'
+// Offline synthetic video-export witness. Never a dependency of :app.
+include ':video-fixture'
 
 // Shared paradee-voice Java API and JNI (ai.eliza.voice) on libelizainference: Paradee-8M TTS and the
 // voice bundle's ASR slot. The only on-device speech runtime; see docs/fused-speech.md.

@@ -188,7 +188,7 @@ html:not(.standalone-app) [data-alpha-layer="home"][data-alpha-home-fits="true"]
 @keyframes calendar-scroll-fade-top { from { --calendar-scroll-fade-top:0px; } to { --calendar-scroll-fade-top:12px; } }
 @keyframes calendar-scroll-fade-bottom { from { --calendar-scroll-fade-bottom:12px; } to { --calendar-scroll-fade-bottom:0px; } }
 @supports (animation-timeline:scroll()) {
- .calendar-timeline,.standalone-app [data-alpha-app-scroll] {
+ .calendar-timeline,.standalone-app [data-alpha-app-scroll],[data-alpha-transcript] {
   -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 var(--calendar-scroll-fade-top),#000 calc(100% - var(--calendar-scroll-fade-bottom)),transparent 100%);
   mask-image:linear-gradient(to bottom,transparent 0,#000 var(--calendar-scroll-fade-top),#000 calc(100% - var(--calendar-scroll-fade-bottom)),transparent 100%);
   -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat;
@@ -425,10 +425,17 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 [data-alpha-subview="calendar-list"]:has(.calendar-agenda) { overflow-y:auto; overscroll-behavior:contain; box-sizing:border-box; padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); scroll-padding-bottom:calc(var(--alpha-dock-clearance,102px) + 16px); }
 [data-alpha-subview="calendar-list"] .calendar-agenda { flex:1 0 auto!important; overflow-y:visible!important; padding-bottom:12px!important; }
 
-.mail-folder-picker{position:relative;display:inline-flex;flex-shrink:0;width:92px;border-radius:22px;background:var(--s2);color:var(--fg)}
-.mail-folder-select{appearance:none;-webkit-appearance:none;height:44px;width:100%;min-width:0;padding:0 36px 0 14px;border:0;border-radius:22px;background:transparent;color:inherit;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer}
-.mail-folder-select:focus-visible{outline:2px solid var(--acct);outline-offset:2px}
-.mail-folder-chevron{position:absolute;right:12px;top:14px;width:16px;height:16px;pointer-events:none;background:currentColor;mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}
+.mail-folder-picker{display:inline-flex;flex-shrink:0;border-radius:22px;background:var(--s2);color:var(--fg)}
+.mail-folder-trigger{display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;border:0;border-radius:22px;background:transparent;color:inherit;font-family:inherit;font-size:14px;font-weight:600;white-space:nowrap;cursor:pointer}
+.mail-folder-trigger:focus-visible,.mail-folder-option:focus-visible{outline:2px solid var(--acct);outline-offset:2px}
+.mail-folder-chevron{display:block;flex-shrink:0;width:16px;height:16px;background:currentColor;mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}
+.mail-folder-menu{position:fixed;inset:var(--mail-menu-top,140px) auto auto var(--mail-menu-left,16px);width:var(--mail-menu-width,224px);max-height:calc(100dvh - var(--mail-menu-top,140px) - 24px);overflow-y:auto;margin:0;padding:6px;border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--fg);box-shadow:0 8px 24px #0002;box-sizing:border-box}
+.mail-folder-option{display:flex;align-items:center;gap:12px;width:100%;min-height:48px;padding:10px 12px;border:0;border-radius:10px;background:transparent;color:inherit;text-align:start;font-family:inherit;font-size:15px;line-height:1.3;cursor:pointer}
+.mail-folder-option[aria-checked="true"]{background:var(--s2);font-weight:600}
+.mail-folder-option:disabled{opacity:.45;cursor:default}
+.mail-folder-option-icon,.mail-folder-check{display:block;flex-shrink:0;width:20px;height:20px;background:currentColor;mask-position:center;mask-size:contain;mask-repeat:no-repeat;-webkit-mask-position:center;-webkit-mask-size:contain;-webkit-mask-repeat:no-repeat}
+.mail-folder-check{margin-inline-start:auto;width:18px;height:18px;mask-image:url('/icons/lucide/check.svg');-webkit-mask-image:url('/icons/lucide/check.svg')}
+@media(hover:hover){.mail-folder-option:not(:disabled):hover{background:var(--s2)}}
 
 .note-source-dialog .content-question-help{font-size:.875em;color:var(--mut,#666);margin:0 0 16px;line-height:1.5}
 .note-source-dialog textarea{display:block;border:1px solid var(--line,#ddd);border-radius:12px;background:var(--s1,#fafafa);color:inherit;resize:vertical;min-height:72px}
@@ -439,3 +446,64 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .note-source-dialog [role=status]:empty{display:none}
 
 .alpha-map-privacy:not([open]) > p { display:none; }
+
+.alpha-voice-composer { display:flex; align-items:center; gap:6px; flex-shrink:0; min-height:56px; box-sizing:border-box; margin:0 12px 30px; padding:6px 6px 6px 20px; border-radius:28px; background:var(--s2); color:var(--fg); }
+.alpha-wide:not(.alpha-landscape) .alpha-voice-composer { width:calc(100% - 24px); max-width:560px; margin-inline:auto; }
+.alpha-voice-input { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:center; gap:4px; }
+.alpha-voice-status-hidden,.alpha-message-action-announcement { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.alpha-voice-error { flex-shrink:0; margin:-22px 24px 24px; font-size:13px; line-height:1.4; max-height:100px; overflow:auto; overflow-wrap:anywhere; }
+.alpha-voice-waveform { display:flex; align-items:center; justify-content:flex-start; height:28px; overflow:hidden; color:var(--acc); }
+.alpha-voice-waveform [data-alpha-voice-animation] { display:flex; width:100%; height:28px; align-items:center; justify-content:space-between; gap:2px; }
+.alpha-voice-waveform [data-alpha-voice-bar] { display:block; width:2px; flex-shrink:0; border-radius:999px; background:currentColor; transform-origin:center; transition:transform 160ms cubic-bezier(.22,1,.36,1),opacity 160ms cubic-bezier(.22,1,.36,1); }
+@media (prefers-reduced-motion: reduce) { .alpha-voice-waveform [data-alpha-voice-bar] { transition:none; } }
+.alpha-voice-composer button { flex-shrink:0; width:max(48px,calc(44px / var(--phone-scale,1))); height:max(48px,calc(44px / var(--phone-scale,1))); }
+.alpha-voice-primary { display:flex; align-items:center; justify-content:center; width:44px; height:44px; border-radius:50%; background:var(--acc); color:#fff; }
+.alpha-voice-composer :is(button,.alpha-voice-status):focus-visible { outline:2px solid var(--acct); outline-offset:2px; }
+
+/* Pill voice keeps the same three compact controls; opening chat stays explicit. */
+.alpha-pill-voice-controls { display:flex; align-items:center; gap:2px; }
+.alpha-pill-voice-controls button { display:flex; align-items:center; justify-content:center; width:44px; height:44px; flex-shrink:0; border-radius:22px; }
+.alpha-pill-voice-synth { background:transparent; color:var(--acc); }
+.alpha-pill-voice-synth .alpha-voice-waveform { width:30px; }
+.alpha-pill-voice-stop { background:var(--acc); color:#fff; }
+.alpha-pill-voice-controls button:focus-visible { outline:2px solid var(--acct); outline-offset:2px; }
+
+/* Message actions use the same surface press color as the rest of Alpha. */
+[data-alpha-message-actions] [role="menuitem"] { border-radius:10px; transition:background-color 120ms ease-out; }
+[data-alpha-message-actions] [role="menuitem"]:active { background:var(--s3); }
+@media (hover:hover) { [data-alpha-message-actions] [role="menuitem"]:hover { background:var(--s3); } }
+[data-alpha-transcript] { scroll-padding-block:16px; }
+[data-alpha-transcript][data-alpha-scroll-overflow="false"] { -webkit-mask-image:none; mask-image:none; animation:none; }
+
+.mail-sender-avatar{position:relative;display:flex;align-items:center;justify-content:center;flex-shrink:0;width:44px;height:44px;border-radius:50%;background:var(--s2);font-size:14px;font-weight:700;overflow:hidden}
+.mail-sender-avatar img{position:absolute;inset:0;width:100%;height:100%;box-sizing:border-box;object-fit:contain;padding:9px;background:var(--s2)}
+
+.mail-search-input::-webkit-search-cancel-button,.mail-search-input::-webkit-search-decoration{-webkit-appearance:none;appearance:none}
+
+.content-question-dialog{padding:20px;border-radius:24px;max-height:min(calc(100dvh - 24px),calc(var(--phone-height,100dvh) - 24px))}
+.content-question-dialog h2{font:600 22px/1.25 'Public Sans',system-ui,sans-serif;margin:0 0 4px;letter-spacing:-.015em}
+.content-question-source{font-size:13px;line-height:1.4;color:var(--source-mut,#666);margin:0 0 12px;overflow-wrap:anywhere}
+.content-question-dialog .content-question-help{font-size:13px;line-height:1.4;margin:0 0 12px;color:var(--source-mut,#666)}
+.content-question-dialog label{font-size:14px;font-weight:500}
+.content-question-dialog textarea{font-size:16px!important;line-height:1.4!important;resize:none;background:var(--source-s2,#f3f3f3);border:0;border-radius:12px;min-height:72px}
+.content-question-dialog footer{gap:8px;padding-top:4px}
+.content-question-dialog footer button{font-size:15px;font-weight:600;min-height:48px}
+.content-question-dialog button.content-question-primary{background:var(--source-acc,#0000ff);color:#fff}
+
+.mail-addresses{min-width:0;flex:1;overflow-wrap:anywhere}
+.mail-addresses summary{display:block;list-style:none;cursor:pointer;min-height:44px}
+.mail-addresses summary::-webkit-details-marker{display:none}
+.mail-address-chevron{display:inline-block;width:14px;height:14px;margin-inline-start:8px;vertical-align:middle;background:var(--mut);mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat;-webkit-mask:url('/icons/lucide/chevron-down.svg') center/contain no-repeat}
+.mail-addresses[open] .mail-address-chevron{transform:rotate(180deg)}
+.mail-addresses summary:focus-visible{outline:2px solid var(--acct);outline-offset:3px;border-radius:4px}
+.mail-addresses dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 12px;margin:12px 0 0;font-size:13px;line-height:1.45}
+.mail-addresses dt{color:var(--mut)}.mail-addresses dd{margin:0;min-width:0;user-select:text}
+
+.calendar-request-review { background:var(--s2);padding:16px;border-radius:16px;display:flex;flex-direction:column;gap:8px;align-items:flex-start; }
+.calendar-request-review strong { font-size:15px;line-height:1.4; }
+.calendar-request-review p { margin:0;color:var(--mut);font-size:14px;line-height:1.4; }
+.calendar-request-review button { min-height:44px;padding:8px 16px;border-radius:22px;background:var(--acc);color:#fff;font:inherit;font-weight:600; }
+.calendar-approval-review h2 { font-family:'Public Sans',system-ui,sans-serif;font-size:22px;line-height:1.2;font-weight:600;margin:0 0 16px;letter-spacing:normal; }
+.calendar-approval-review p { font-size:15px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap; }
+.calendar-approval-review footer button { min-height:44px;font:inherit; }
+.calendar-approval-review footer .calendar-approval-primary { background:var(--acc,#0000ff);color:#fff; }

@@ -28,6 +28,8 @@ import { listenerStatus, openListenerSettings, pauseListener, turnOffListener, t
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
 type Bag = Record<string, any>;
+type PhotoAccess = {scope:'full'|'partial'|'selected'|'denied';images:string;videos:string};
+const photoLibrary = registerPlugin<{libraryAccess():Promise<PhotoAccess>;requestLibraryAccess():Promise<PhotoAccess>;openLibrarySettings():Promise<void>}>('AlphaPhotos');
 declare const __APP_VERSION__: string;
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Build version injected at build time from app.config.json or ELIZAOS_VERSION_NAME. */
@@ -153,7 +155,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   const definition = views.settings, render = definition.render, p = Component.prototype;
   const mount = p.componentDidMount, unmount = p.componentWillUnmount, openView = p.openView, update = p.componentDidUpdate;
   let owner: any, facts: Bag = {}, controls: Bag = {}, delivery: Bag = {}, generation = 0,scaleGeneration=0, cross:Bag={}, choices:Bag[]|null=null, history:Bag[]|null=null, notificationBusy=false;
-  let passwordOpening=false,mailImagesSaving=false;
+  let passwordOpening=false,mailImagesSaving=false,photoAccessBusy=false;
+  let photoAccess:PhotoAccess|null=null;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
@@ -304,13 +307,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const instance = owner, token = ++generation;
     if (!instance) return;
     const native = Capacitor.isNativePlatform();
-    const [state, settings, noticeState, crossState, metadata, roleState, build, problems] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
+    const [state, settings, noticeState, crossState, metadata, roleState, build, problems, photos] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
       // Browsers have no Android roles: the web plugin rejects, so nothing is shown there.
-      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog()]);
+      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog(), native ? photoLibrary.libraryAccess() : Promise.resolve(null), native ? connectionController.refreshProviderStatus() : Promise.resolve()]);
     if (owner !== instance || generation !== token) return;
     roles = roleState.status === 'fulfilled' ? readRoles(roleState.value) : null;
     if (build.status === 'fulfilled' && build.value) launcher = build.value.launcher === true;
     crashLog = problems.status === 'fulfilled' ? problems.value : null;
+    photoAccess = photos.status === 'fulfilled' ? photos.value : null;
     facts = state.status === 'fulfilled' ? state.value : {};
     controls = settings.status === 'fulfilled' ? settings.value : {};
     delivery = noticeState.status === 'fulfilled' ? noticeState.value : {};
@@ -453,6 +457,19 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
           ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
+        if(native){
+          const photoAction=(label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
+          page.groups.push(group([photoAction('Photos',()=>{api.set({page:'photos'});void refresh();})]));
+          if(state.page==='photos'){
+            const status=photoAccess?.scope==='full'?'All photos and videos':photoAccess?.scope==='selected'?'Selected photos and videos':photoAccess?.scope==='partial'?`Photos: ${photoAccess.images}; videos: ${photoAccess.videos}`:photoAccess?.scope==='denied'?'Only photos and videos saved by Alpha':'Access could not be checked';
+            const choose=async()=>{if(photoAccessBusy)return;photoAccessBusy=true;changed();const instance=owner;try{const access=await photoLibrary.requestLibraryAccess();if(owner===instance)photoAccess=access;}catch{if(owner===instance)api.toast('Photo access could not open. Review it in Android settings.');}finally{photoAccessBusy=false;if(owner===instance)changed();}};
+            out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Photos',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group([
+              info('Library access',status),
+              {...photoAction(photoAccessBusy?'Opening…':'Choose photo access',()=>void choose()),busy:photoAccessBusy},
+              photoAction('Android photo permissions',()=>void photoLibrary.openLibrarySettings().catch(()=>api.toast('Android app settings could not open.'))),
+            ])]});
+          }
+        }
         page.groups.push(group([{kNav:true,label:'Calendar',lbl:'Calendar',chev:true,noAB:true,go:()=>api.set({page:'calendar'})}]));
         if(state.page==='calendar'){
           const display=views.calendar.displaySources?.(),rows:Bag[]=[info('Display only','Agent access is reviewed separately')];
@@ -462,7 +479,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             if(display.native)rows.push(info('Calendar visibility','Managed in Android Calendar'));
           }else rows.push(info('Calendar access','Not available in this version'));
           const groups=[{...group(rows),cap:'Calendars shown in Alpha',hasCap:true}];
-          groups.push({...group(display?.native?[info('Google sync','Device calendar sync is not available in this build')]:[{kNav:true,label:'Google Calendar sync',lbl:'Google Calendar sync',sub:'Review the destination and enable linked event sync',hasSub:true,chev:true,noAB:true,go:openCalendarSyncSettings}]),cap:'Sync',hasCap:true});
+          groups.push({...group([{kNav:true,label:'Google Calendar sync',lbl:'Google Calendar sync',sub:'Review the destination and enable linked event sync',hasSub:true,chev:true,noAB:true,go:openCalendarSyncSettings}]),cap:'Sync',hasCap:true});
           if(testMocksEnabled&&!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
         }
@@ -523,7 +540,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           page.groups = page.groups.map((g:Bag) => ({...g, rows:g.rows.filter((row:Bag) => !systemOnly.has(row.label))})).filter((g:Bag) => g.rows.length);
         }
         for (const g of page.groups) for (const row of g.rows) if (row.label in topValues) {
-          row.val = topValues[row.label]; row.hasVal = true;
+          row.sub = topValues[row.label]; row.hasSub = true; row.val = ''; row.hasVal = false;
         }
         continue;
       }
@@ -582,8 +599,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           ...(Capacitor.isNativePlatform() ? [info('Mobile data', reported(facts.mobileDataEnabled)), info('Airplane mode', reported(facts.airplaneMode))] : []),
           nav('Manage mobile networks', 'mobile'), ...(Capacitor.isNativePlatform() ? [nav('Airplane mode in Android', 'airplane')] : [])])];
       } else if (page.title === 'Models') {
-        page.hero = { ...page.hero, big: target, sub: developmentCartesiaVoiceEnabled?'Direct Cerebras and Cartesia · development':'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
-        page.groups = [group([info('Connection', connection.kind), ...(browserLocalAgentEnabled ? [info('Inference provider', inferenceProvider)] : []), info('Inference model', 'Not reported by agent'), info('Voice', developmentCartesiaVoiceEnabled?'Cartesia · development':account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
+        const native=Capacitor.isNativePlatform(),provider=connection.kind==='resident'&&connection.session?connection.providerStatus:null;
+        page.hero = { ...page.hero, big: target, sub: native?'Conversation uses the selected agent. Voice runs on this device.':developmentCartesiaVoiceEnabled?'Direct Cerebras and Cartesia · development':'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
+        page.groups = [group([info('Connection', native?runtimeLocation:connection.kind), ...(native?[info('Inference provider',provider?provider.configured?(provider.provider==='elizacloud'?'Eliza Cloud':'Cerebras'):'Not configured':'Status unavailable')]:browserLocalAgentEnabled ? [info('Inference provider', inferenceProvider)] : []), info('Inference model', native&&provider?.configured&&provider.model?provider.model:'Not reported by agent'), info('Voice', native?'On this device':developmentCartesiaVoiceEnabled?'Cartesia · development':account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || buildVersion), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([problemsRow(), diagnosticsRow()]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {

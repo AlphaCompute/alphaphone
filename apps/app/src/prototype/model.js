@@ -1075,6 +1075,8 @@ registerView("inbox", {
       searching: searching, notSearching: !searching, q: st.q || "", hasQ: !!sq,
       openSearch: function () { api.set({ q: "" }); },
       closeSearch: function () { api.set({ q: null }); },
+      clearSearch: function () { api.set({ q: "" }); },
+      submitSearch: function (event) { event.preventDefault(); },
       onQ: function (e) { api.set({ q: e.target.value }); },
       askQ: function () { var q0 = (api.get("inbox").q || "").trim(); api.set({ q: null }); api.send(/mail|inbox/i.test(q0) ? q0 : "Find emails about " + q0); },
       addAcct: function () { api.open("settings", { page: "accounts", adding: true }); },
@@ -1941,7 +1943,7 @@ registerView("camera", {
       zoomCss: "transform: scale(" + zs + ")" + (front ? " scaleX(-1)" : "") + "; filter: " + (st.flip ? "blur(14px) brightness(.7)" : "none"),
       flOp: st.fl ? (st.flash ? 1 : 0.85) : 0, flTr: st.fl ? "none" : "opacity .45s",
       hasFocus: !!st.focus, focus: st.focus ? "left: " + (st.focus.x - 34) + "px; top: " + (st.focus.y - 34) + "px" : "",
-      flashIcon: st.flash ? IC.camFlash : IC.camFlashOff, flashLabel: st.flash ? "Flash on" : "Flash off",
+      flashIcon: st.flash ? IC.camFlash : IC.camFlashOff, flashAvailable: true, flashLabel: st.flash ? "Flash on" : "Flash off",
       toggleFlash: function () { api.set({ flash: !api.get("camera").flash }); },
       rec: st.rec, recTime: st.rec ? camRecLabel(st) : "",
       said: st.said || "", hasSaid: !!st.said, clearSaid: function () { api.set({ said: "" }); },
@@ -2383,6 +2385,7 @@ registerView("photos", {
         slide: "transform: translateX(" + (st.vx || 0) + "px); opacity: " + (st.vx ? 0.35 : 1) + "; transition: " + (st.vt ? "transform .32s cubic-bezier(.19,1,.22,1), opacity .25s" : "none"),
         day: phDayLabel(cur.ts, now), sub: [cur.place, phTime(cur.ts)].filter(Boolean).join(" · "),
         chromeOp: st.chrome ? 1 : 0, chromePE: st.chrome ? "auto" : "none",
+        notDeleted: true,
         favIcon: cur.fav ? "fill: currentColor" : "", favLabel: cur.fav ? "Remove from favorites" : "Add to favorites",
         editLabel: cur.kind === "video" ? "Edit video" : "Edit photo", shareLabel: cur.kind === "video" ? "Share video" : "Share photo", infoLabel: cur.kind === "video" ? "Video info" : "Photo info", deleteLabel: cur.kind === "video" ? "Delete video" : "Delete photo",
         vid: cur.kind === "video", playBtn: cur.kind === "video" && !st.playing, playing: !!st.playing,
@@ -2459,7 +2462,7 @@ registerView("photos", {
       groups: groups, empty: !shown.length, secure: secure,
       people: ppl, hasPeople: ppl.length > 0, tiles: tiles, trashN: (st.trash || []).length,
       openTrash: function () { api.set({ album: "trash" }); },
-      album: !!alb, alb: alb,
+      albumBackLabel: 'Back to albums', album: !!alb, alb: alb,
       selecting: selecting, selN: nSel === 0 ? "Select" : String(nSel), selNone: nSel === 0,
       selDim: nSel === 0 ? "opacity:.35;pointer-events:none" : "",
       selCancel: function () { api.set({ sel: null }); },
@@ -3673,7 +3676,7 @@ registerView("files", {
       var subs = FILES_FOLDERS.filter(function (d) { return d.parent === st.folder; }).map(folderRow);
       var items = subs.concat(sorted(files.filter(function (f) { return f.folder === st.folder; })).map(row));
       fd = {
-        name: st.folder, items: items, empty: items.length === 0,
+        name: st.folder, items: items, empty: items.length === 0, emptyText: "This folder is empty.", selectDisabled: items.length === 0,
         close: function () { var d = null; FILES_FOLDERS.forEach(function (x) { if (x.id === st.folder) d = x; }); api.set({ folder: d && d.parent ? d.parent : null, sel: null }); },
         viewIcon: st.grid ? IC.filesRows : IC.grid, viewLabel: st.grid ? "Show as list" : "Show as grid",
         toggleView: function () { api.set({ grid: !st.grid }); },
@@ -3779,7 +3782,7 @@ registerView("files", {
       storageW: copy("files").storageW || "0%",
       inFolder: !!fd, fd: fd,
       isList: !st.grid, isGrid: !!st.grid,
-      isSel: isSel, notSel: !isSel, selCount: selCount === 0 ? "Select" : String(selCount), hasSel: selCount > 0, selOp: selCount > 0 ? "1" : ".35",
+      isSel: isSel, notSel: !isSel, selectionBusy: false, selectionDisabled: selCount === 0, selCount: selCount === 0 ? "Select" : String(selCount), hasSel: selCount > 0, selOp: selCount > 0 ? "1" : ".35",
       exitSel: function () { api.set({ sel: null }); },
       selAll: function () { api.set({ sel: files.filter(function (x) { return x.folder === st.folder; }).map(function (x) { return x.id; }) }); },
       selShare: function () { if (selCount) api.set({ sheet: "share" }); },
@@ -5537,7 +5540,7 @@ class Component extends DCLogic {
 
     var apps = ORDER.filter(function (k) { return !VIEWS[k].hidden; }).map(function (k) {
       var def = VIEWS[k];
-      return { d: IC[def.icon] || IC.grid, label: def.title, open: function () { self.openView(k); }, badge: def.badge && ["phone", "messages", "inbox"].indexOf(k) >= 0 ? !!def.badge(self.vget(k)) : false };
+      return { key: k, d: IC[def.icon] || IC.grid, label: def.title, open: function () { self.openView(k); }, badge: def.badge && ["phone", "messages", "inbox"].indexOf(k) >= 0 ? !!def.badge(self.vget(k)) : false };
     });
 
     var NOTIFS = NOTIF.map(function (n) { return Object.assign({}, n, { d: IC[n.icon] || IC.bell }); });
@@ -5565,7 +5568,7 @@ class Component extends DCLogic {
     var msgs = S.msgs.map(function (m) {
       var c = m.card || {}; var t = c.type;
       return {
-        id: m.id, text: m.text, isUser: m.from === "user", isAgent: m.from === "agent", c: c,
+        id: m.id, text: m.text, displayText: m.text, hasCalendarText: true, calendarReviews: [], isUser: m.from === "user", isAgent: m.from === "agent", c: c,
         cAgenda: t === "agenda", cEvent: t === "event", cDigest: t === "digest", cNote: t === "note", cFlow: t === "flow", cSummary: t === "summary", cDraft: t === "draft", cCall: t === "call", cGeneric: t === "generic",
         gIcon: IC[c.icon] || IC.spark, evIcon: c.act && !c.done ? IC.plus : IC.check, callIni: c.ini || ((c.who || "").split(" ").map(function (w) { return w.charAt(0); }).join("").slice(0, 2)),
         sumSave: t === "summary" && !c.done && !!c.act, sumOpen: t === "summary" && !c.act && !!c.go,
@@ -5625,9 +5628,9 @@ class Component extends DCLogic {
       viewBg: imm.dark ? "#000000" : "var(--bg)", viewFg: imm.dark ? "#ffffff" : "var(--fg)", sbColor: sbColor, homeIndicatorColor: out.photos && out.photos.albumManager ? "var(--fg)" : sbColor,
       systemShell: P.systemShell !== false,
       showAppBack: P.systemShell === false && isOn && isView && !S.shade,
-      // A new Home press is intentional even immediately after opening the chat.
-      chatHomePointer: function (event) { if (event.isPrimary !== false && event.button === 0) self.swallow = 0; },
-      backToApps: function (event) { if (event && event.detail > 0 && event.currentTarget && event.currentTarget.hasAttribute("data-alpha-chat-home") && self.swallowed()) return; self.goHome(); },
+      // A fresh Home or Talk press is intentional even immediately after opening chat.
+      chatControlPointer: function (event) { if (event.isPrimary !== false && event.button === 0) self.swallow = 0; },
+      backToApps: function (event) { var fromChat = event && event.currentTarget && event.currentTarget.hasAttribute("data-alpha-chat-home"); if (fromChat && event.detail > 0 && self.swallowed()) return; self.goHome(fromChat ? self.S().chat : undefined); },
       showStatus: !P.nativeSystemChrome && S.screen !== "boot" && S.screen !== "off" && !imm.noStatus, micLive: S.voice === "listening",
       showIndicator: !P.nativeSystemChrome && (isOn || S.screen === "lock") && !(isOn && !S.view && !S.drawer && !S.shade && S.chat !== "sheet" && S.chat !== "full"),
       toast: S.toast, toastOn: !!S.toast, toastUndo: !!S.toastUndo, toastPadR: S.toastUndo ? 5 : 18, doUndo: function () { var f = self.undoFn; self.undoFn = null; self.clear("t"); self.setState({ toast: "", toastUndo: false }); if (f) f(); },

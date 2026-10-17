@@ -14,10 +14,10 @@ test('encoded Gmail previews render punctuation as text without loading markup',
  await expect(row.locator('img,script,iframe')).toHaveCount(0);expect(requests).toBe(0);
 });
 test('Gmail draft previews decode entities',async({page})=>{
- await setup(page);await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('drafts');
+ await setup(page);await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();
  await expect(page.getByRole('button',{name:/^Gmail draft,/})).toContainText('It\'s a Gmail draft & preview.');
 });
 test('text typed into a local draft remains literal',async({page})=>{
  await setup(page);await page.getByRole('button',{name:'Compose',exact:true}).click();await page.getByRole('textbox',{name:'Message',exact:true}).fill('My literal &amp; example');await page.getByRole('button',{name:'Back from draft',exact:true}).click();
- await page.getByRole('combobox',{name:'Other mail folders',exact:true}).selectOption('drafts');await expect(page.getByRole('button',{name:/^Local draft,/})).toContainText('My literal &amp; example');
+ await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();await expect(page.getByRole('button',{name:/^Local draft,/})).toContainText('My literal &amp; example');
 });

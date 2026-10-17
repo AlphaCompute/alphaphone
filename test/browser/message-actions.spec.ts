@@ -18,7 +18,7 @@ async function conversation(page:Page,theme='light',reply=answer){
 for(const theme of ['light','dark'])test(`tap reveals quiet actions and copies exact message: ${theme}`,async({page},info)=>{
  await conversation(page,theme);await expect(menu(page)).toHaveCount(0);await expect(page.getByText('Listen with Cloud',{exact:true})).toHaveCount(0);await expect(page.getByText('Listen on phone',{exact:true})).toHaveCount(0);
  const bounds=await agent(page).boundingBox();await page.touchscreen.tap(bounds!.x+20,bounds!.y+10);await expect(menu(page)).toBeVisible();
- await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe(answer);await expect(page.getByRole('status').filter({hasText:'Copied.'})).toBeVisible();
+ await menu(page).getByRole('menuitem',{name:'Copy',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).copiedMessage)).toBe(answer);await expect(page.locator('.alpha-message-action-announcement')).toHaveText('Copied.');
  await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true}).locator('[data-alpha-icon]')).toHaveAttribute('data-alpha-icon','/icons/lucide/copy.svg');
  await page.screenshot({path:info.outputPath('message-actions-'+theme+'.png'),animations:'disabled'});
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).click();await expect(menu(page)).toHaveCount(0);
@@ -117,14 +117,14 @@ test('chat brand Home preserves the existing conversation and unsent draft',asyn
  // independent of runner speed; timers and browser actionability still run.
  await page.clock.setFixedTime(new Date());await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Unsent after the original response');await page.getByRole('button',{name:'Go Home',exact:true}).click();
- await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toHaveValue('Unsent after the original response');await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ await expect(page.locator('html')).toHaveAttribute('data-active-view','home');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Unsent after the original response');await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await expect(agent(page)).toHaveText(answer);await expect(page.locator('[data-alpha-message-text]').filter({hasText:'My original request'})).toHaveText('My original request');await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue('Unsent after the original response');
 });
 test('transcript reading position survives a keyboard resize, Back from full and HOME then reopen; bottom-follow holds at the bottom',async({page})=>{
  test.setTimeout(90_000);
  await conversation(page);await page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');const {LocalAgentProtocol:P}=await import('/src/runtime/local-agent.ts');const rows=Array.from({length:48},(_,i)=>({id:crypto.randomUUID(),role:i%2?'assistant':'user',text:`Historical ${i}: complete synthetic text for scroll continuity. More text stays on this message.`}));P.prototype.messages=async()=>({messages:structuredClone(rows)});P.prototype.listConversations=async()=>[{id:(window as any).messageActionsRoom,title:'Synthetic scroll fixture'}];await c.restoreHistory((window as any).messageActionsRoom);});
  const transcript=page.locator('[data-alpha-transcript]'),layer=page.locator('[data-alpha-layer="conversation"]');await expect(transcript.locator('[data-alpha-message-id]')).toHaveCount(48);
- const settle=async()=>{await layer.evaluate(element=>Promise.all(element.getAnimations({subtree:true}).map(animation=>animation.finished.catch(()=>{}))));await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));};
+ const settle=async()=>{await layer.evaluate(element=>Promise.all(element.getAnimations({subtree:true}).filter(animation=>animation.timeline===document.timeline&&Number.isFinite(animation.effect?.getTiming().iterations)).map(animation=>animation.finished.catch(()=>{}))));await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));};
  await expect(page.getByRole('button',{name:'Shrink chat',exact:true})).toBeVisible();await settle();
  // Offset of a message from the top of the visible transcript, and the distance from the bottom.
  const offset=(id:string)=>transcript.evaluate((element,id)=>element.querySelector(`[data-alpha-message-id="${id}"]`)!.getBoundingClientRect().top-element.getBoundingClientRect().top,id);

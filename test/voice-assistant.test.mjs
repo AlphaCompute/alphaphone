@@ -572,7 +572,7 @@ test('one result per closed segment: an unavailable route (503) is fatal after a
   assert.ok(quiet.posts.every(body => !(body.frames ?? []).some(f => f.timestamp === 2)), 'audio after cancel is never forwarded');
 });
 
-test('sources: no Web Speech, storage or logging in the assistant path; the adapter wires both controls separately', () => {
+test('sources: no Web Speech, storage or logging in the assistant path; the adapter keeps dictation separate behind one chat voice launcher', () => {
   const files = ['apps/app/src/runtime/voice-assistant.ts', 'apps/app/src/runtime/live-segment-stream.ts', 'apps/app/src/runtime/native-live-voice.ts'];
   for (const file of files) {
     const source = fs.readFileSync(new URL('../' + file, import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, '');
@@ -588,8 +588,8 @@ test('sources: no Web Speech, storage or logging in the assistant path; the adap
   assert.match(native, /nativeAssistantListener[\s\S]{0,300}echoCancel: true/);
   assert.match(native, /createNativeLiveDictation[\s\S]{0,1500}echoCancel: false/);
   const template = fs.readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
-  assert.match(template, /aria-label="Transcribe" title="Transcribe into draft" onClick="\{\{startTranscription\}\}"/);
-  assert.match(template, /title="Voice assistant" aria-label="Talk" onClick="\{\{startVoice\}\}"/);
+  assert.doesNotMatch(template, /aria-label="Transcribe" title="Transcribe into draft"/);
+  assert.match(template, /title="Voice assistant" aria-label="Talk" onPointerDown="\{\{chatControlPointer\}\}" onClick="\{\{startVoice\}\}"/);
   assert.match(template, /chatRecorder\.canInterrupt[\s\S]{0,200}Stop speaking/);
   assert.match(template, /aria-pressed="\{\{chatRecorder\.muted\}\}"/);
 });

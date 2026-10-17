@@ -169,11 +169,12 @@ final class PermittedMediaCatalog implements AutoCloseable {
   }
   current(snapshot,volumes);JSObject result=new JSObject();result.put("items",items);result.put("next",next);result.put("access",access());return result;
  }
- JSObject read(String id,String expectedRevision,boolean pixels)throws Exception{
+ JSObject read(String id,String expectedRevision,boolean pixels)throws Exception{return read(id,expectedRevision,pixels,false);}
+ JSObject read(String id,String expectedRevision,boolean pixels,boolean trashed)throws Exception{
   MediaLibraryKey key=MediaLibraryKey.parse(id);List<String> volumes=volumes();String snapshot=snapshot(volumes);if(!volumes.contains(key.volume))throw new IllegalArgumentException("Media volume unavailable");
-  JSObject result=inspect(key);String revision=result.getString("revision");if(expectedRevision!=null&&!expectedRevision.equals(revision))throw new IllegalStateException("Selected media changed");
+  JSObject result=inspect(key,trashed);if(trashed&&!Boolean.TRUE.equals(result.getBoolean("trashed")))throw new IllegalStateException("Selected media is no longer deleted");String revision=result.getString("revision");if(expectedRevision!=null&&!expectedRevision.equals(revision))throw new IllegalStateException("Selected media changed");
   if(pixels)result.put("image",thumbnail(key,1024));
-  if(!revision.equals(inspect(key).getString("revision")))throw new IllegalStateException("Selected media changed");current(snapshot,volumes);return result;
+  if(!revision.equals(inspect(key,trashed).getString("revision")))throw new IllegalStateException("Selected media changed");current(snapshot,volumes);return result;
  }
  private JSObject inspect(MediaLibraryKey key){return inspect(key,false);}
  private JSObject inspect(MediaLibraryKey key,boolean includeTrash){
@@ -243,6 +244,21 @@ final class PermittedMediaCatalog implements AutoCloseable {
   if(resolver.update(uri(key),values,update)!=1)throw new IllegalStateException("stale");
   JSObject after=inspect(key,true);if(Boolean.TRUE.equals(after.getBoolean(favorite?"favorite":"trashed"))!=desired||!before.getString("identity").equals(after.getString("identity")))throw new IllegalStateException("unverified");
   after.put("status",favorite?(desired?"favorited":"unfavorited"):(desired?"trashed":"restored"));invalidate();return after;
+ }
+ /** Permanent removal is restricted to an explicitly reviewed deleted revision. */
+ JSObject deleteTrashed(String id,String expected)throws Exception{
+  if(Build.VERSION.SDK_INT<30)throw new UnsupportedOperationException("Reviewed media removal requires Android 11 or later");
+  JSObject before=mutationSource(id,expected);if(!Boolean.TRUE.equals(before.getBoolean("trashed")))throw new IllegalStateException("stale");
+  MediaLibraryKey key=MediaLibraryKey.parse(id);Bundle query=new Bundle();query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);
+  query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0 AND is_trashed=1");query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
+  long generation,added;
+  try(Cursor row=query(key.volume,key.video,query)){if(row==null||!row.moveToFirst()||!expected.equals(revision(row,key.volume)))throw new IllegalStateException("stale");generation=row.getLong(9);added=row.getLong(8);}
+  unlocked();Bundle removal=new Bundle(query);removal.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=? AND is_pending=0 AND is_trashed=1 AND generation_modified=? AND generation_added=?");
+  removal.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id),Long.toString(generation),Long.toString(added)});
+  if(resolver.delete(uri(key),removal)!=1)throw new IllegalStateException("stale");
+  Bundle absence=new Bundle();absence.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_INCLUDE);absence.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,"_id=?");absence.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{Long.toString(key.id)});
+  try(Cursor row=query(key.volume,key.video,absence)){if(row==null||row.moveToFirst())throw new IllegalStateException("unverified");}
+  invalidate();JSObject result=new JSObject();result.put("id",id);result.put("status","deleted");return result;
  }
  @Override public void close(){synchronized(this){closed=true;watchers.clear();}invalidate();watch(false);context.unregisterReceiver(screenOff);}
 }

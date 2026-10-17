@@ -1,3 +1,4 @@
+import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import { Capacitor } from '@capacitor/core';
 import { speakLocalText } from '../local-speech-playback';
 import { markVoiceTiming, abandonVoiceTurn, finishVoiceTurn } from '../runtime/voice-timing';
@@ -94,10 +95,23 @@ const replyDeadlineMs = 5 * 60 * 1000;
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
   const states = new WeakMap<object, Reading>();
-  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; focus: boolean; binding: string }>();
+  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; announcement?:string; focus: boolean; binding: string }>();
   const holds = new WeakMap<object, { timer?: ReturnType<typeof setTimeout>; x: number; y: number; opened?:boolean; selecting?:boolean; start?:{node:Node;offset:number} }>();
   const suppressedClicks = new WeakMap<object, string>();
   const listeners = new WeakMap<object, () => void>();
+  const transcriptObservers=new WeakMap<object,{element:HTMLElement;observer?:ResizeObserver}>();
+  function syncTranscriptFade(shell:Shell){
+    const element=document.querySelector<HTMLElement>('[data-alpha-transcript]'),previous=transcriptObservers.get(shell);
+    if(previous?.element!==element){previous?.observer?.disconnect();transcriptObservers.delete(shell);}
+    if(!element)return;
+    const sync=()=>{element.dataset.alphaScrollOverflow=String(element.scrollHeight>element.clientHeight+1);};
+    if(!transcriptObservers.has(shell)){
+      const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(sync);
+      observer?.observe(element);transcriptObservers.set(shell,{element,observer});
+    }
+    sync();
+  }
+
   const cancelHold = (shell: Shell) => { const hold = holds.get(shell); if (hold) clearTimeout(hold.timer); holds.delete(shell); };
   const caret=(x:number,y:number)=>{
     const point=document.caretPositionFromPoint?.(x,y),range=point?null:document.caretRangeFromPoint?.(x,y);
@@ -138,7 +152,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if(retiring){await retiring;if(!current())return;}
       if(previousSpeech){await previousSpeech;if(!current())return;}
       if(!current())return;
-      if (cloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
+      if (cloud && !developmentCloudVoiceEnabled && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
       const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
       state.message=cloud?'Preparing audio…':'Preparing audio on this phone…';refresh(shell);
       if ('playbackReady' in voice) {
@@ -221,10 +235,11 @@ export function installLocalSpeechPlayback(Component: Shell) {
         closeMessageActions: (event: MouseEvent) => closeMenu(this, event.detail===0), menuKey: (event: KeyboardEvent) => menuKey(this, event),
         copyMessage: async () => {
           if (!menu || menus.get(this) !== menu || menu.binding !== JSON.stringify(connectionController.getSnapshot().session)) return;
-          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = 'Copied.'; refresh(this); } }
-          catch { if (menus.get(this) === menu) { menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
+          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = ''; menu.announcement = 'Copied.'; refresh(this); } }
+          catch { if (menus.get(this) === menu) { menu.announcement = ''; menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
         },
         messageActionsNotice: opened && menu ? menu.notice : '',
+        messageActionsAnnouncement: opened && menu ? menu.announcement || '' : '',
         localSpeechAvailable: available && entry.from === 'agent', localSpeechLabel: selected && state?.controller ? 'Stop reading' : 'Read aloud',
         localSpeechMessage: selected ? state?.message : '',
         localSpeech: () => { void listen(this, entry.id, entry.text); }
@@ -240,7 +255,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     document.addEventListener('selectionchange',selection);
     document.addEventListener('touchmove',touchMove,{passive:false});
     listeners.set(this, () => {document.removeEventListener('pointerdown', outside, true);document.removeEventListener('selectionchange',selection);document.removeEventListener('touchmove',touchMove);});
-    return mount?.apply(this, args);
+    const result=mount?.apply(this, args);syncTranscriptFade(this);return result;
   };
   p.componentDidUpdate = function (...args: unknown[]) {
     const state = states.get(this), value = this.S(), menu = menus.get(this);
@@ -249,7 +264,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
     else if (menu?.focus) { menu.focus = false; document.querySelector<HTMLElement>('[data-alpha-message-actions] [role="menuitem"]')?.focus(); }
     if (state && (state.current&&!state.current()||!['sheet', 'full'].includes(value.chat) || !(value.msgs || []).some((m: Shell) => m.id === state.id && m.text === state.text))) { stop(this); refresh(this); }
     followVoiceTurn(this);
-    return update?.apply(this, args);
+    const result=update?.apply(this, args);syncTranscriptFade(this);return result;
   };
-  p.componentWillUnmount = function (...args: unknown[]) { cancelHold(this); menus.delete(this); listeners.get(this)?.(); listeners.delete(this); stop(this);stopSpeaking();voiceTurn=undefined; return unmount?.apply(this, args); };
+  p.componentWillUnmount = function (...args: unknown[]) { cancelHold(this); transcriptObservers.get(this)?.observer?.disconnect();transcriptObservers.delete(this); menus.delete(this); listeners.get(this)?.(); listeners.delete(this); stop(this);stopSpeaking();voiceTurn=undefined; return unmount?.apply(this, args); };
 }

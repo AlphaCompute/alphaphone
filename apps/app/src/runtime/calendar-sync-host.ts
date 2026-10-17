@@ -214,9 +214,11 @@ function message(error: unknown) {
 async function work<T>(
 	action: () => Promise<T>,
 	success: (result: T) => string,
+	progress: string,
 ) {
 	if (running) throw Error("Calendar sync is already running.");
 	running = true;
+	status = progress;
 	changed();
 	try {
 		const result = await action();
@@ -301,7 +303,7 @@ export const calendarSyncHost = {
 		);
 	},
 	destination: () => ({ ...destination }),
-	review: () => work(async()=>{nativePermissionReview=true;try{return await controller.review();}finally{nativePermissionReview=false;}},review=>`Ready to link ${review.events.length} Alpha events.`),
+	review: () => work(async()=>{nativePermissionReview=true;try{return await controller.review();}finally{nativePermissionReview=false;}},review=>`Ready to link ${review.events.length} Alpha events.`,"Reviewing calendar…"),
 	enable: async (review: CalendarSyncReview) => {
 		await work(async()=>{
 			if(Capacitor.isNativePlatform()){
@@ -309,10 +311,10 @@ export const calendarSyncHost = {
 				await nativeCalendarSync.enable(()=>!document.hidden&&review.reviewIdentity===identity());
 				try{const refreshed=await controller.review();await controller.enable(refreshed);}catch(error){await nativeCalendarSync.pause();throw error;}
 			}else await controller.enable(review);
-		},()=>"Sync enabled.");
+		},()=>"Sync enabled.","Enabling sync…");
 		return calendarSyncHost.sync();
 	},
-	sync: () => work(() => controller.sync(), report),
+	sync: () => work(() => controller.sync(), report,"Syncing…"),
 	pause: async () => {
 		controller.cancel();
 		if(Capacitor.isNativePlatform())await nativeCalendarSync.pause();

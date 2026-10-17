@@ -36,6 +36,7 @@ public class AlphaPhotosPlugin extends Plugin {
  static final OwnedMediaConfig MEDIA_CONFIG=OwnedMediaConfig.builder("alpha")
    .edits("Pictures/Alpha Phone/Edits/", "Alpha-edit-").captures("Pictures/", "SCAN_").build();
  private OwnedPhotoEdits edits;
+ private VideoCopyEdits videoCopies;
  private OwnedCaptures captures;
  private android.content.SharedPreferences mediaVersions;
  private volatile boolean destroyed;
@@ -76,7 +77,7 @@ public class AlphaPhotosPlugin extends Plugin {
  }
  @PluginMethod public void listPermitted(PluginCall call){submitRead(call,()->permitted.list(call.getString("before",""),call.getString("query",""),call.getString("kind","all"),call.getBoolean("thumbnails",true),call.getString("filter","all")));}
  @PluginMethod public void readPermitted(PluginCall call){submitRead(call,()->permitted.read(call.getString("id"),call.getString("revision"),call.getBoolean("pixels",true)));}
- @Override protected void handleOnPause(){if(permitted!=null){permitted.watch("photos",false);permitted.foreground(false);}if(playback!=null)playback.clear();}
+ @Override protected void handleOnPause(){if(videoCopies!=null)videoCopies.cancel(null);if(permitted!=null){permitted.watch("photos",false);permitted.foreground(false);}if(playback!=null)playback.clear();}
  @Override protected void handleOnResume(){if(permitted!=null)permitted.foreground(true);notifyListeners("libraryChanged",new JSObject());}
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private String owned(){return owned(false);}
@@ -117,8 +118,31 @@ public class AlphaPhotosPlugin extends Plugin {
  @PluginMethod public void beginEdit(PluginCall call){submit(call,()->{try{call.resolve(edits.begin(call.getString("id"),call.getString("revision")));}catch(Exception e){call.reject(e.getMessage()==null?"Photo editor unavailable":e.getMessage());}});}
  @PluginMethod public void previewEdit(PluginCall call){submit(call,()->{try{call.resolve(edits.preview(call.getString("sessionId"),call.getInt("rotation",0),call.getBoolean("crop",false),call.getString("filter","none")));}catch(Exception e){call.reject(e.getMessage()==null?"Preview unavailable":e.getMessage());}});}
  @PluginMethod public void saveEdit(PluginCall call){submit(call,()->{try{call.resolve(edits.save(call.getString("sessionId"),call.getInt("rotation",0),call.getBoolean("crop",false),call.getString("filter","none")));}catch(Exception e){call.reject(e.getMessage()==null?"Save outcome unknown; inspect Photos before retrying":e.getMessage());}});}
- @PluginMethod public void editResult(PluginCall call){submit(call,()->{try{call.resolve(edits.result(call.getString("operationId")));}catch(Exception e){call.reject("Saved-copy outcome could not be confirmed");}});}
+ @PluginMethod public void editResult(PluginCall call){if(VideoCopyEdits.isVideoOperation(call.getString("operationId"))){try{videoCopies().result(call.getString("operationId"),call);}catch(Exception unavailable){call.reject("Saved-copy outcome could not be confirmed");}return;}submit(call,()->{try{call.resolve(edits.result(call.getString("operationId")));}catch(Exception e){call.reject("Saved-copy outcome could not be confirmed");}});}
  @PluginMethod public void cancelEdit(PluginCall call){edits.cancel(call.getString("sessionId"));submit(call,()->{edits.releaseCancelled();call.resolve();});}
+ private synchronized VideoCopyEdits videoCopies()throws java.io.IOException{if(destroyed)throw new java.io.IOException("Photo library closed");if(videoCopies==null)videoCopies=new VideoCopyEdits(getContext(),new VideoCopyEdits.Sources(){@Override public VideoCopyEdits.Source read(String key,String expected)throws Exception{return videoSource(key,expected,true);}@Override public VideoCopyEdits.Source recheck(String key,String expected)throws Exception{return videoSource(key,expected,false);}},()->!destroyed&&getActivity()!=null&&getActivity().hasWindowFocus());return videoCopies;}
+ // Native-only reviewed recovery; deliberately absent from the Capacitor/JS API.
+ void preserveClosedVideoCopy(String operationId,String expectedRecordHash,PluginCall call){
+  if(destroyed||getActivity()==null||!getActivity().hasWindowFocus()){call.reject("Video copy preservation refused");return;}
+  try{videoCopies().preserveClosedFailure(operationId,expectedRecordHash,call);}catch(Exception refused){call.reject("Video copy preservation refused");}
+ }
+ /** The renderer supplies an existing catalog identity/revision, never a URI or file path. */
+ /** {@code opening}: an editor is being opened, so Photos must have window focus. Later rechecks keep every
+  * identity, access and revision check but not focus, so a shade pulled down mid-export keeps the export. */
+ private VideoCopyEdits.Source videoSource(String key,String expected,boolean opening)throws Exception{
+  if(destroyed||getActivity()==null||opening&&!getActivity().hasWindowFocus()||expected==null)throw new IllegalStateException("Return to Photos and reopen the video");
+  JSObject record;Uri source;
+  if(key!=null&&key.startsWith("m:")){MediaLibraryKey media=MediaLibraryKey.parse(key);if(!media.video)throw new IllegalArgumentException("Choose a video");record=permitted.read(key,null,false,false);source=permitted.uri(media);}
+  else{
+   if(key==null||!key.startsWith("v:"))throw new IllegalArgumentException("Choose a video");long mediaId=id(key);source=uri(mediaId,true);
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,owned(false)+" AND _id=? AND media_type=3");query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{getContext().getPackageName(),Long.toString(mediaId)});
+   try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),query,null)){if(row==null||!row.moveToFirst())throw new IllegalArgumentException("Video is no longer available");record=metadata(row);}
+  }
+  String revision=record.getString("mutationRevision");if(!expected.equals(revision))throw new IllegalArgumentException("Video changed. Close and reopen the editor.");return new VideoCopyEdits.Source(source,revision);
+ }
+ @PluginMethod public void beginVideoEdit(PluginCall call){try{videoCopies().begin(call.getString("id"),call.getString("revision"),call);}catch(Exception unavailable){call.reject("Video editor is unavailable. Original unchanged.");}}
+ @PluginMethod public void saveVideoEdit(PluginCall call){try{videoCopies().save(call.getString("sessionId"),call.getDouble("start",Double.NaN),call.getDouble("end",Double.NaN),call.getInt("rotation",-1),call.getBoolean("crop",false),call);}catch(Exception unavailable){call.reject("Video edit could not start. Original unchanged.");}}
+ @PluginMethod public void cancelVideoEdit(PluginCall call){if(videoCopies!=null)videoCopies.cancel(call.getString("sessionId"));call.resolve();}
  @PluginMethod public void list(PluginCall call){submit(call,()->{
   try{
    boolean trashed=call.getBoolean("trashed",false);if(trashed&&Build.VERSION.SDK_INT<30){call.reject("Android trash requires Android 11 or later");return;}
@@ -146,13 +170,15 @@ public class AlphaPhotosPlugin extends Plugin {
  });}
  @PluginMethod public void read(PluginCall call){submit(call,()->{
   try{
+   boolean trashed=Boolean.TRUE.equals(call.getBoolean("includeTrashed",false));
    if(call.getString("id","").startsWith("m:")){
-    String key=call.getString("id");JSObject result=permitted.read(key,call.getString("revision"),true);MediaLibraryKey media=MediaLibraryKey.parse(key);String revision=result.getString("revision");
-    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);return;
+    String key=call.getString("id");JSObject result=permitted.read(key,call.getString("revision"),true,trashed);MediaLibraryKey media=MediaLibraryKey.parse(key);String revision=result.getString("revision");
+    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false,trashed);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);return;
    }
    String key=call.getString("id","");long id=id(key);boolean video=key.startsWith("v:");
    Uri uri=uri(id,video);JSObject result;
-   try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),owned()+" AND _id=? AND media_type=?",new String[]{getContext().getPackageName(),Long.toString(id),video?"3":"1"},null)){
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,owned(trashed)+" AND _id=? AND media_type=?");query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{getContext().getPackageName(),Long.toString(id),video?"3":"1"});if(Build.VERSION.SDK_INT>=30)query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,trashed?MediaStore.MATCH_ONLY:MediaStore.MATCH_EXCLUDE);
+   try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),query,null)){
     if(row==null||!row.moveToFirst())throw new IllegalArgumentException();result=metadata(row);
    }
    result.put("image",image(id,video,1024));if(video)result.put("path",playback.authorize(uri));call.resolve(result);
@@ -234,6 +260,10 @@ public class AlphaPhotosPlugin extends Plugin {
   try{Boolean desired=call.getBoolean(favorite?"favorite":"trashed");if(desired==null)throw new IllegalArgumentException();if(call.getString("id","").startsWith("m:")){mediaReview.request(call,java.util.List.of(call.getString("id")),java.util.List.of(call.getString("revision")),favorite,desired,false);return;}call.resolve(changeFlag(call.getString("id"),call.getString("revision"),favorite,desired));}
   catch(Exception failure){call.reject("This media changed or could not be verified. Refresh Photos before trying again.");}
  });}
+ @PluginMethod public void deletePermittedTrash(PluginCall call){submit(call,()->{
+  try{JSArray items=call.getArray("items");if(items==null||items.length()<1||items.length()>20)throw new IllegalArgumentException();java.util.List<String> ids=new java.util.ArrayList<>(),revisions=new java.util.ArrayList<>();for(int i=0;i<items.length();i++){org.json.JSONObject item=items.getJSONObject(i);String id=item.getString("id");MediaLibraryKey.parse(id);ids.add(id);revisions.add(item.getString("revision"));}mediaReview.deleteTrashed(call,ids,revisions);}
+  catch(Exception invalid){call.reject("Select 1–20 unchanged deleted items again.");}
+ });}
  /** A bounded partial operation, never an atomic all-or-nothing promise. */
  @PluginMethod public void changeMany(PluginCall call){submit(call,()->{
   try{
@@ -273,11 +303,16 @@ public class AlphaPhotosPlugin extends Plugin {
  @PluginMethod public void prepareDeleteTrash(PluginCall call){submit(call,()->{
   if(Build.VERSION.SDK_INT<30){call.reject("Android trash requires Android 11 or later");return;}
   try{
-   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,owned(true)+MEDIA);query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,new String[]{getContext().getPackageName()});query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);query.putInt(ContentResolver.QUERY_ARG_LIMIT,501);
+   JSArray requested=call.getArray("items");java.util.Map<String,String> wanted=new java.util.HashMap<>();
+   if(call.getData().has("items")){if(requested==null||requested.length()<1||requested.length()>20)throw new IllegalArgumentException();for(int i=0;i<requested.length();i++){org.json.JSONObject item=requested.getJSONObject(i);String key=item.getString("id"),version=item.getString("revision");if(!key.matches("(?:v:)?[1-9][0-9]*")||version.isEmpty()||wanted.put(key,version)!=null)throw new IllegalArgumentException();}}
+   String selection=owned(true)+MEDIA;java.util.List<String> args=new java.util.ArrayList<>();args.add(getContext().getPackageName());
+   if(requested!=null){StringBuilder ids=new StringBuilder();for(String key:wanted.keySet()){if(ids.length()>0)ids.append(',');ids.append('?');args.add(Long.toString(id(key)));}selection+=" AND _id IN ("+ids+")";}
+   Bundle query=new Bundle();query.putString(ContentResolver.QUERY_ARG_SQL_SELECTION,selection);query.putStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,args.toArray(new String[0]));query.putInt(MediaStore.QUERY_ARG_MATCH_TRASHED,MediaStore.MATCH_ONLY);query.putInt(ContentResolver.QUERY_ARG_LIMIT,501);
    java.util.List<TrashItem> items=new java.util.ArrayList<>();
    try(Cursor rows=getContext().getContentResolver().query(CATALOG,fields(),query,null)){
-    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(items.size()>=500){call.reject("More than 500 owned items are in trash. Manage a smaller batch in Android Photos.");return;}items.add(new TrashItem((rows.getInt(5)==3?"v:":"")+rows.getLong(0),rows.getLong(9)));}
+    if(rows==null)throw new IllegalStateException();while(rows.moveToNext()){if(items.size()>=500){call.reject("More than 500 owned items are in trash. Manage a smaller batch in Android Photos.");return;}String key=(rows.getInt(5)==3?"v:":"")+rows.getLong(0);if(requested!=null){if(!wanted.containsKey(key))continue;if(!mutationRevision(rows).equals(wanted.get(key)))throw new IllegalArgumentException();}items.add(new TrashItem(key,rows.getLong(9)));}
    }
+   if(requested!=null&&items.size()!=wanted.size())throw new IllegalArgumentException();
    confirmations.entrySet().removeIf(entry->entry.getValue().until<android.os.SystemClock.elapsedRealtime());while(confirmations.size()>=4)confirmations.remove(confirmations.keySet().iterator().next());
    String token=java.util.UUID.randomUUID().toString();confirmations.put(token,new TrashConfirmation(items));JSObject result=new JSObject();result.put("confirmation",token);result.put("count",items.size());call.resolve(result);
   }catch(Exception failure){call.reject("Trash could not be prepared for confirmation");}
@@ -385,5 +420,5 @@ public class AlphaPhotosPlugin extends Plugin {
   }catch(IllegalArgumentException failure){call.reject(failure.getMessage());}catch(Exception failure){call.reject("Album could not be saved. Reload albums before trying again");}
   }
  });}
- @Override protected void handleOnDestroy(){destroyed=true;if(mediaReview!=null)mediaReview.close();if(permitted!=null)permitted.close();if(edits!=null)edits.cancel(null);PluginWorkers.submit(worker,()->{if(edits!=null)edits.close();},()->{/* Already stopped: nothing left to close on it. */});worker.shutdown();if(playback!=null)playback.clear();}
+ @Override protected void handleOnDestroy(){destroyed=true;if(videoCopies!=null)videoCopies.close();if(mediaReview!=null)mediaReview.close();if(permitted!=null)permitted.close();if(edits!=null)edits.cancel(null);PluginWorkers.submit(worker,()->{if(edits!=null)edits.close();},()->{/* Already stopped: nothing left to close on it. */});worker.shutdown();if(playback!=null)playback.clear();}
 }

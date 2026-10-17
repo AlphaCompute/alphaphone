@@ -3,8 +3,8 @@
 Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, Contacts and SMS/MMS are
-AOSP-only capabilities; standalone APKs do not expose them. Wallet is outside MVP. Production Android onboarding requires an Eliza Cloud account with a plan
-(a subscription code can grant one), then offers microphone and notification setup. The agent runs on the phone. Eliza Cloud supplies text inference, subscriptions, Gmail
+AOSP-only capabilities; standalone APKs do not expose them. Wallet is outside MVP. Production Android onboarding requires an Eliza Cloud account with supported billing
+(Cloud credits or a subscription; codes depend on Cloud support), then offers microphone and notification setup. The agent runs on the phone. Eliza Cloud supplies text inference, subscriptions, Gmail
 and shared Maps services; STT/TTS run locally through the native speech integration.
 Local speech qualification and complete voice/device acceptance remain open. Remote pairing and hosted agents are unavailable in every production build. Explicit test-mocks tooling
 retains remote connections as non-product development infrastructure. Mock mode, prototype
@@ -50,7 +50,9 @@ The [implementation plan](docs/implementation-plan.md) and
 [32 implementation TODOs](docs/owner-approved-mvp-plan-2026-10-12.md) supersede older
 scope wording above. Agent execution is local only; Eliza Cloud provides inference,
 subscription billing, Gmail and shared Maps. All STT/TTS must move to the native
-on-device route. Dictation and interruptible voice assistant are separate controls.
+on-device route. Chat has one microphone control for the interruptible voice assistant. Active chat
+shows the inline blue synth, Mute/Unmute and Stop. Notes dictation remains separate;
+the retained chat-dictation API is not a second user-facing chat control.
 Always-on listening is required in the Pixel 10a / Android 17 AOSP MVP. Phone,
 Contacts and SMS are AOSP-only; Wallet is removed. Full permitted Photos access and
 reset-only data management are planned. These are requirements, not claims that the

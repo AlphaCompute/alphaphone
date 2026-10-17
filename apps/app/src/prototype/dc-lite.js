@@ -4,7 +4,7 @@ import templateHtml from "./template.html?raw";
 /* Minimal renderer for the prototype's .dc.html template: {{holes}}, sc-if, sc-for, events, refs. */
 
   var h = React.createElement;
-  var EVENTS = { onload:"onLoad", onfocuscapture: "onFocusCapture", onclick: "onClick", oncontextmenu: "onContextMenu", onpointermove: "onPointerMove", onpointerdown: "onPointerDown", onpointerup: "onPointerUp", onpointerleave: "onPointerLeave", onpointercancel: "onPointerCancel", onlostpointercapture: "onLostPointerCapture", onchange: "onChange", onkeydown: "onKeyDown", oninput: "onInput" };
+  var EVENTS = { onsubmit:"onSubmit", onerror:"onError", onload:"onLoad", onfocuscapture: "onFocusCapture", onclick: "onClick", oncontextmenu: "onContextMenu", onpointermove: "onPointerMove", onpointerdown: "onPointerDown", onpointerup: "onPointerUp", onpointerleave: "onPointerLeave", onpointercancel: "onPointerCancel", onlostpointercapture: "onLostPointerCapture", onchange: "onChange", onkeydown: "onKeyDown", oninput: "onInput" };
   var HOLE = /\{\{\s*([^}]+?)\s*\}\}/g;
   var WHOLE = /^\{\{\s*([^}]+?)\s*\}\}$/;
 
@@ -67,6 +67,10 @@ import templateHtml from "./template.html?raw";
       else if (n === "viewbox") n = "viewBox";
       else if (n === "srcdoc") n = "srcDoc";
       else if (n === "referrerpolicy") n = "referrerPolicy";
+      else if (n === "enterkeyhint") n = "enterKeyHint";
+      else if (n === "autocomplete") n = "autoComplete";
+      else if (n === "popovertarget") n = "popoverTarget";
+      else if (n === "popovertargetaction") n = "popoverTargetAction";
       else if (n === "tabindex") n = "tabIndex";
       else if (n === "maxlength") n = "maxLength";
       else if (n === "minlength") n = "minLength";
@@ -90,6 +94,9 @@ import templateHtml from "./template.html?raw";
     if (n.nodeType === 3) {
       var t = n.nodeValue;
       if (!t.trim() && /\n/.test(t)) return null;
+      var whole = t.match(WHOLE);
+      var value = whole ? lookup(whole[1], scope) : null;
+      if (React.isValidElement(value)) return h(React.Fragment, { key: key }, value);
       return t.indexOf("{{") >= 0 ? interp(t, scope) : t;
     }
     if (n.nodeType !== 1) return null;

@@ -117,8 +117,9 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       await expect.poll(()=>page.evaluate(()=>(window as any).recoveryFixture.posts)).toBe(1);
       await expect(voice).toHaveAttribute('data-voice-state','error');
       expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
-      await voice.getByRole('button',{name:'Close voice conversation',exact:true}).click();
-      await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+      await voice.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
+      await expect(voice).toHaveCount(0);
+      await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();
       expect(await page.evaluate(()=>({uploads:(window as any).recoveryFixture.cloudUploads,local:(window as any).recoveryFixture.localProbes,channel:(window as any).calendarSent.channelType}))).toEqual({uploads:1,local:0,channel:'VOICE_DM'});
     }
     else {await input.fill(mode==='show'?'Show my alarms':mode==='snooze'?'Snooze ringing alarms for ten minutes':mode==='dismiss'?'Dismiss the ringing alarm':'Set an alarm for 07:00; await my review.');await input.press('Enter');}

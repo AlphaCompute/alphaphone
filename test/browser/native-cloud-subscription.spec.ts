@@ -54,7 +54,7 @@ async function entitlements(overrides:Record<string,unknown>={}){
 }
 
 type Fixture={plan?:string;route?:'signed'|'absent'|'503'|'401'|'offline';limits?:'active'|'none'|'canceled'|'absent'|'503';identity?:'ok'|'offline'|'401';
- redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;storage?:Record<string,string>};
+ redeem?:'ok'|'invalid'|'rate'|'already'|'transport-once';redeemPlan?:string;saved?:boolean;expiresAt?:number;holdProvider?:boolean;providerFailure?:string;storage?:Record<string,string>};
 async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;keys?:unknown[]}={}){
  page.on('pageerror',(error:Error)=>console.error('Composition page error:',error.message));
  await page.route('https://**',route=>route.abort());
@@ -68,7 +68,7 @@ async function boot(page:Page,initial:Fixture&{tokens?:Record<string,string>;key
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:undefined,url:input?.url,httpMethod:input?.method});
    if(plugin==='Agent'){
     if(method==='getStatus')return {packaged:true,state:'stopped',serviceActive:false,socketListening:false};
-    if(method==='configureCloudProvider'){if(f.holdProvider)await new Promise<void>(resolve=>f.releaseProvider=resolve);return {};}
+    if(method==='configureCloudProvider'){if(f.providerFailure)throw Error(f.providerFailure);if(f.holdProvider)await new Promise<void>(resolve=>f.releaseProvider=resolve);return {};}
     // Unbinding removes the stored provider; native confirms it (provider status reads unconfigured).
     if(method==='clearProvider')return {configured:false};
     if(method==='providerStatus')return {provider:'elizacloud',configured:false};
@@ -148,7 +148,7 @@ test.describe('first run requires Eliza Cloud sign-in while the agent runs',()=>
   const dialog=agentDialog(page);await expect(dialog).toBeVisible();
   await started(page);
   await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();
-  await expect(page.getByText('Alpha Phone needs an Eliza Cloud account with a plan. Your agent runs on this phone meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
+  await expect(page.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/Close/})).toHaveCount(0);
   // Back and Escape cannot dismiss the sign-in.
@@ -288,7 +288,7 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
  });
 });
 
-test.describe('entitlement route unavailable: billing snapshot fallback, never credits',()=>{
+test.describe('entitlement route unavailable: authenticated billing mode fallback',()=>{
  for(const limits of ['active','past_due'] as const)test(`a ${limits} billing snapshot admits the agent`,async({page})=>{
   await boot(page,{route:'absent',limits});
   await admitted(page);await openAgent(page);
@@ -298,9 +298,21 @@ test.describe('entitlement route unavailable: billing snapshot fallback, never c
   expect(routes).not.toContain('/api/v1/credits/balance');
   await release(page);
  });
- for(const [limits,heading] of [['none','Choose a plan'],['canceled','Your plan has ended']] as const)test(`a billing snapshot with plan ${limits} needs a plan`,async({page})=>{
+ for(const [limits,heading] of [['canceled','Your plan has ended']] as const)test(`a billing snapshot with plan ${limits} needs a plan`,async({page})=>{
   await boot(page,{route:'absent',limits});void heading;
   await needsPlan(page);await started(page);expect(await configured(page)).toBe(0);
+ });
+ test('organization credits bind the verified account without inventing a subscription',async({page})=>{
+  await boot(page,{route:'absent',limits:'none'});await admitted(page);
+  await page.evaluate(()=>(window as any).planController.openPlan());
+  const panel=page.getByRole('dialog',{name:'Eliza Cloud account',exact:true});await expect(panel).toBeVisible();
+  await expect(panel.getByText('Eliza Cloud credits',{exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Manage billing in Eliza Cloud',exact:true})).toBeVisible();
+  await expect(panel.getByRole('button',{name:'Redeem code',exact:true})).toHaveCount(0);
+  const routes=(await calls(page)).filter(c=>c.method==='request').map(c=>c.path);expect(routes).not.toContain('/api/v1/credits/balance');
+  expect(await configured(page)).toBe(1);
+  const record=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.plan-admission.v1')||'null'));
+  expect(record.status).toBe('credit-funded');expect(record.userId).toBe(USER);await release(page);
  });
  test('no plan source at all is unknown: needs plan with a retry, never admitted',async({page})=>{
   await boot(page,{route:'absent',limits:'absent'});
@@ -512,4 +524,16 @@ test.describe('account, plan and sign-in expiry',()=>{
   await expect(page.getByRole('button',{name:'Approve this phone again',exact:true})).toHaveCount(0);
   await release(page);
  });
+});
+
+test('failed native provider binding reports AI off and exposes the error before history',async({page})=>{
+ await boot(page,{...await entitlements(),holdProvider:false,providerFailure:'Synthetic account verification failure'});await started(page);await idle(page);
+ const dialog=agentDialog(page);await expect(dialog).toBeVisible();
+ await expect(dialog.getByText('AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.',{exact:true})).toBeVisible();
+ await expect(dialog.getByText('Your agent uses Eliza Cloud for AI.',{exact:true})).toHaveCount(0);
+ const error=dialog.getByRole('alert').filter({hasText:'Synthetic account verification failure'});await expect(error).toBeVisible();
+ const history=dialog.getByText('Conversation history',{exact:true});await expect(history).toBeVisible();
+ expect(await error.evaluate((node,other)=>(node.compareDocumentPosition(other!)&Node.DOCUMENT_POSITION_FOLLOWING)!==0,await history.elementHandle())).toBe(true);
+ expect(await configured(page)).toBe(1);
+ expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentInference)).toBe('unavailable');
 });

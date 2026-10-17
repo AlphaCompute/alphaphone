@@ -1,3 +1,4 @@
+import {mailSenderImage} from '../apps/app/src/runtime/mail-sender-image.ts';
 import {decodeMailPreview} from '../apps/app/src/runtime/mail-preview.ts';
 import {readGmailAccountChoice,saveGmailAccountChoice} from '../apps/app/src/runtime/gmail-account-selection.ts';
 import {GmailReadAhead} from '../apps/app/src/runtime/gmail-read-ahead.ts';
@@ -61,9 +62,9 @@ function scenario({caps={},accounts=null}={}){
   readSelected:async({selectionId})=>{const f=files[Number(selectionId.slice(4))%3];return {name:f.name,mimeType:f.mimeType,dataBase64:b64(f.text),size:f.text.length,sha256:await digest(f.text)};}};
  class FixedDate extends Date{constructor(...a){super(...(a.length?a:[clock]));}static now(){return clock;}}
  const windowFixture={addEventListener(){},removeEventListener(){},dispatchEvent(){return true;},confirm:text=>{confirms.push(text);return confirmAnswer;}};
- const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',edit(){},clear:async()=>{},retire(){},resume(){}});
+ const inboxUnsaved=()=>({ready:Promise.resolve(),available:false,conflict:false,error:false,status:'',peek:()=>null,edit(){},clear:async()=>{},retire(){},resume(){}});
  const mailNotices={tap:null,withdrawals:0,consumed:[],listener:null,agent:null,review:null,released:0,drafts:[]};
- const sandbox={decodeMailPreview,cachedDevicePreferences:()=>({autoLoadMailImages:true}),initializeDevicePreferences:()=>{},alphaClient:{getState:()=>({context:{sensitive:false}})},reviewOwnNoticeQuestion:options=>{mailNotices.review=options;return ()=>{};},releaseGmailQuestion:async()=>{mailNotices.released++;mailNotices.tap=null;},configureGmailBackground:async()=>{},withdrawGmailBackground:async()=>{mailNotices.withdrawals++;},pendingGmailNotice:async()=>mailNotices.tap,consumeGmailNotice:async token=>{mailNotices.consumed.push(token);mailNotices.tap=null;},onGmailNotice:async fn=>{mailNotices.listener=fn;return {remove:async()=>{}};},prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
+ const sandbox={mailSenderImage,serviceReadCache:async()=>null,decodeMailPreview,cachedDevicePreferences:()=>({autoLoadMailImages:true}),initializeDevicePreferences:()=>{},alphaClient:{getState:()=>({context:{sensitive:false}})},reviewOwnNoticeQuestion:options=>{mailNotices.review=options;return ()=>{};},releaseGmailQuestion:async()=>{mailNotices.released++;mailNotices.tap=null;},configureGmailBackground:async()=>{},withdrawGmailBackground:async()=>{mailNotices.withdrawals++;},pendingGmailNotice:async()=>mailNotices.tap,consumeGmailNotice:async token=>{mailNotices.consumed.push(token);mailNotices.tap=null;},onGmailNotice:async fn=>{mailNotices.listener=fn;return {remove:async()=>{}};},prepareMailHtml:()=>{throw Error("HTML uses the rendered browser test");},readGmailAccountChoice,saveGmailAccountChoice,GmailReadAhead,URL,Date:FixedDate,inboxUnsaved,InboxOperation,composerKind,composerContent,reviewBinding,reviewBindingRefusal,reviewMailAttachment,reviewOpaqueAttachment,checkOutgoingAttachments,outgoingAttachmentLimits, attachmentBytes,safeMailLink,reviewMailContext,validateMailContext,...mailbox,...googleAccounts,...grants,Event,googleConnectionController:{open(){throw Error('Explicit Google authorization not exercised by this read fixture');}},
   registerPlugin:()=>native,crypto:globalThis.crypto,TextEncoder,structuredClone,
   secureConnectionStore:{read:async key=>structuredClone(slots.get(key)??null),compareExchange:async(key,prior,next)=>{if(JSON.stringify(slots.get(key)??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)slots.delete(key);else slots.set(key,structuredClone(next));return {status:'saved'};}},
   connectionController:controller,
@@ -253,7 +254,7 @@ deq(t.prepared.at(-1).attachments.map(a=>a.name),['c.txt','a.txt']);assert.equal
 {
  const t=await boot();t.mount();t.setActive(true);t.render();await t.tick();
  const inbox=t.views.inbox;
- t.render().compose();t.render().c.onBody({target:{value:'Saved words'}});t.render().c.save();await t.tick();
+ t.render().compose();await t.tick();t.render().c.onBody({target:{value:'Saved words'}});t.render().c.save();await t.tick();
  // Signing out and back in reloads the account's saved draft without opening it.
  t.setSession(null);await t.tick();t.setSession('session-a');await t.tick();t.render();await t.tick();
  const saved=JSON.parse(JSON.stringify(inbox.emailTarget()));

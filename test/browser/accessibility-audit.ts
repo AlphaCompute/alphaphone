@@ -95,6 +95,8 @@ export async function auditPage(page: Page, options: PageAuditOptions = {}): Pro
     const shown = (el: Element) => {
       if (!(el instanceof HTMLElement || el instanceof SVGElement)) return false;
       if (!el.getClientRects().length) return false;
+      // Chromium retains geometry inside closed <details>; those descendants are not painted.
+      if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return false;
       const style = getComputedStyle(el);
       return style.visibility === 'visible' && style.display !== 'none';
     };

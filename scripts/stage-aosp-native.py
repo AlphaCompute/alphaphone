@@ -35,6 +35,14 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def sha_stream(stream):
+    """Hash archive bytes with at most a 1 MiB read buffer on Python 3.10+."""
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def unique_object(pairs):
     result = {}
     for key, value in pairs:
@@ -71,7 +79,7 @@ def verify_runtime(archive, runtime_names):
         if entry.file_size != item['size_bytes'] or not 0 < entry.file_size <= 1024 ** 3:
             raise ValueError('Runtime size mismatch: ' + name)
         with archive.open(entry) as stream:
-            if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
+            if sha_stream(stream) != expected:
                 raise ValueError('Runtime hash mismatch: ' + name)
     required = {*('assets/agent/' + n for n in REQUIRED_AGENT_ASSETS),
                 *('lib/arm64-v8a/' + n for n in RUNTIME_MODES),
@@ -139,7 +147,7 @@ def verify_runtime(archive, runtime_names):
         if total > 64 * 1024 * 1024:
             raise ValueError('Workflow worker exceeds 64 MiB')
         with archive.open(entry) as stream:
-            if hashlib.file_digest(stream, 'sha256').hexdigest() != expected:
+            if sha_stream(stream) != expected:
                 raise ValueError('Workflow worker hash mismatch: ' + name)
     index_files = {**files, 'manifest.json': sha(archive.read(prefix + 'manifest.json'))}
     if archive.getinfo(prefix + 'files.sha256').file_size > 1024 * 1024:

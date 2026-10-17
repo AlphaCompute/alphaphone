@@ -265,3 +265,11 @@ test('drawer scrolls under the dock and rejects unreachable final controls',asyn
  await load(page,drawer(0));await page.locator('[data-alpha-app-scroll="drawer"]').evaluate(el=>{el.scrollTop=el.scrollHeight;});
  expect(rules(format(await auditPage(page,{dock:true})))).toEqual(['obscured-by-dock']);
 });
+
+test('closed message details are not painted under the dock; opening the same content exposes the real overlap',async({page})=>{
+ await page.setViewportSize({width:400,height:600});
+ await load(page,phone(`<div data-alpha-layer="app" data-alpha-subview="inbox-detail" style="position:absolute;inset:0;z-index:10"><details style="position:absolute;top:500px;left:150px"><summary>Message details</summary><dl style="display:grid;margin:0"><dt>To</dt><dd style="margin:0">owner@example.test</dd></dl></details></div>${pill}`));
+ expect(format(await auditPage(page,{dock:true}))).toEqual([]);
+ await page.locator('details').evaluate(el=>(el as HTMLDetailsElement).open=true);
+ expect(rules(format(await auditPage(page,{dock:true})))).toContain('obscured-by-dock');
+});

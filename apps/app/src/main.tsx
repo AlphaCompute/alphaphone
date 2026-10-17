@@ -1,3 +1,6 @@
+// Register browser implementations before any runtime module claims plugin identity.
+import './browser/register';
+import {installCalendarApprovalAdapter} from './prototype/calendar-approval-adapter';
 import {bindBrowserDeletionOwner} from './runtime/deletion-owner';
 import {DEFAULT_PULL_DISTANCE,DEFAULT_PULL_VELOCITY} from "../../../.eliza/client-features/packages/ui/src/gestures/constants";
 import {usePullGesture} from "../../../.eliza/client-features/packages/ui/src/components/shell/use-pull-gesture";
@@ -6,8 +9,7 @@ import {installSubviewAccessibility,keepFocusOnScreen} from './prototype/subview
 import {installCalendarMonthFocus} from './prototype/calendar-month-focus';
 import {installCalendarEditDraftAdapter} from './prototype/calendar-edit-draft-adapter';
 import {installCalendarFormDraftAdapter} from './prototype/calendar-form-draft-adapter';
-// Register browser implementations before any runtime module claims plugin identity.
-import './browser/register';
+import { browserApps } from './browser/apps';
 import { installSmsAdapter } from './prototype/sms-adapter';
 import { installContactsAdapter } from './prototype/contacts-adapter';
 import { admitImageContacts } from './prototype/mvp-features';
@@ -114,6 +116,7 @@ if (!fixture) {
   if(systemShade==='simulated')installNotificationsAdapter(Component);
   installContextSelection(Component);
   installPrototypeVoiceAdapter(Component, VIEWS);
+  installCalendarApprovalAdapter(Component);
   installNotesDocumentAdapter(Component, VIEWS);
   installNotesTrashAdapter(Component, VIEWS);
   installNoteSourceAdapter(VIEWS);
@@ -146,7 +149,9 @@ installSystemShade(Component,{native:isAndroid});
 installClockAdapter(Component, VIEWS, { simulated: testMocksEnabled && fixture, browser: !isAndroid });
 // Installed apps come from Android (or the browser device's app list); outermost so its drawer
 // state composes with every Home binding above.
-installHomeLauncher(Component, DeviceApps, { icons: isAndroid, follow: deviceAppsListens });
+installHomeLauncher(Component, DeviceApps, { icons: isAndroid, follow: deviceAppsListens,
+  aliases: isAndroid ? undefined : Object.fromEntries(browserApps.map(app => [app.packageName, `alpha:${app.view}`])),
+});
 /** A browser cannot read or change radios and sensors; show that instead of fixture toggles. */
 function installBrowserCapabilityTiles(Component:any){
   const p=Component.prototype,render=p.renderVals;

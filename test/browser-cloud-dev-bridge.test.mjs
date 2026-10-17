@@ -324,6 +324,42 @@ test('Maps capability discovery is a bare authenticated read, not a location or 
  }finally{await f.close();}
 });
 
+test('Calendar sync bridge forwards only exact owner-bound versioned operations',async()=>{
+ const f=await fixture(),grant=randomUUID(),root='/api/v1/eliza/google/calendar/sync-v1/';try{
+  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
+  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+root+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
+  const selection={grantId:grant,calendarId:'primary',accountId:'google-user'},event={title:'Synthetic event'};
+  for(const [route,method,body] of [
+   ['capabilities?'+new URLSearchParams({grantId:grant,calendarId:'primary'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,idempotencyKey:'stable'}),'GET'],
+   ['event','POST',{...selection,idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'"1"'}),'DELETE'],
+  ])assert.equal((await call(route,method,body)).data.status,200,method+' '+route);
+  const before=f.calls.length;
+  for(const [route,method,body] of [
+   ['event','POST',{grantId:grant,calendarId:'primary',idempotencyKey:'stable',event}],
+   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'*',event}],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',idempotencyKey:'stable'}),'GET'],
+   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'*'}),'DELETE'],
+   ['event','PUT',{...selection,event}],
+   ['event/','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
+  ])assert.ok([400,403].includes((await call(route,method,body)).status));
+  assert.equal(f.calls.length,before,'rejected routes never reach Cloud');
+ }finally{await f.close();}
+});
+
+test('agent Calendar transport admits only canonical scoped sync operations',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({version:1,calendarId:'owner@example.test',accountId:'account',read:true,write:true,idempotentCreate:true,conditionalWrites:true,providerExactlyOnce:false}));
+  const url='https://api.eliza.app/api/v1/eliza/google/calendar/sync-v1/capabilities?grantId=11111111-1111-4111-8111-111111111111&calendarId=owner%40example.test';
+  const result=await f.host().agentCalendarOperation({url,method:'GET',credentialReference:reference,signal:new AbortController().signal});
+  assert.equal(result.status,200);assert.equal(result.data.write,true);
+  const count=f.calls.length;
+  await assert.rejects(f.host().agentCalendarOperation({url:url.replace('api.eliza.app','attacker.invalid'),method:'GET',credentialReference:reference,signal:new AbortController().signal}),/agent-calendar-route-refused/);
+  assert.equal(f.calls.length,count);
+ }finally{await f.close();}
+});
 test('Maps POST data routes forward one bounded request identity and reject foreign headers, routes and bodies',async()=>{
  const f=await fixture();try{
   f.setResponse(async()=>Response.json({ok:true}));
@@ -356,29 +392,4 @@ test('Maps data returning after a Cloud owner switch is discarded',async()=>{
   await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
   const result=await pending;assert.notEqual(result.status,200);assert.equal(JSON.stringify(result).includes('Previous owner result'),false);
  }finally{release?.();await f.close();}
-});
-
-test('Calendar sync bridge forwards only exact owner-bound versioned operations',async()=>{
- const f=await fixture(),grant=randomUUID(),root='/api/v1/eliza/google/calendar/sync-v1/';try{
-  f.setResponse(async(_url,input)=>Response.json({forwarded:input.body?JSON.parse(input.body):null}));
-  const call=(route,method='GET',body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+root+route,method,headers:{Accept:'application/json'},credentialReference:reference,...(body===undefined?{}:{body:JSON.stringify(body)})}});
-  const selection={grantId:grant,calendarId:'primary',accountId:'google-user'},event={title:'Synthetic event'};
-  for(const [route,method,body] of [
-   ['capabilities?'+new URLSearchParams({grantId:grant,calendarId:'primary'}),'GET'],
-   ['event?'+new URLSearchParams({...selection,idempotencyKey:'stable'}),'GET'],
-   ['event','POST',{...selection,idempotencyKey:'stable',event}],
-   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
-   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'"1"'}),'DELETE'],
-  ])assert.equal((await call(route,method,body)).data.status,200,method+' '+route);
-  const before=f.calls.length;
-  for(const [route,method,body] of [
-   ['event','POST',{grantId:grant,calendarId:'primary',idempotencyKey:'stable',event}],
-   ['event','PATCH',{...selection,eventId:'saved',expectedEtag:'*',event}],
-   ['event?'+new URLSearchParams({...selection,eventId:'saved',idempotencyKey:'stable'}),'GET'],
-   ['event?'+new URLSearchParams({...selection,eventId:'saved',expectedEtag:'*'}),'DELETE'],
-   ['event','PUT',{...selection,event}],
-   ['event/','PATCH',{...selection,eventId:'saved',expectedEtag:'"1"',event}],
-  ])assert.ok([400,403].includes((await call(route,method,body)).status));
-  assert.equal(f.calls.length,before,'rejected routes never reach Cloud');
- }finally{await f.close();}
 });

@@ -62,11 +62,20 @@ export const MAVEN_FAMILIES = [
   {prefix: 'org.jetbrains.kotlinx', name: 'Kotlin coroutines', license: 'Apache-2.0', source: 'https://github.com/Kotlin/kotlinx.coroutines'},
   {prefix: 'org.jetbrains.kotlin', name: 'Kotlin standard library', license: 'Apache-2.0', source: 'https://github.com/JetBrains/kotlin'},
   {prefix: 'org.jetbrains', exact: true, name: 'JetBrains Java annotations', license: 'Apache-2.0', source: 'https://github.com/JetBrains/java-annotations'},
-  {prefix: 'com.google.guava', name: 'Guava ListenableFuture', license: 'Apache-2.0', source: 'https://github.com/google/guava'},
+  {prefix: 'com.google.guava', name: 'Guava and ListenableFuture', license: 'Apache-2.0', source: 'https://github.com/google/guava'},
   {prefix: 'com.google.auto.value', name: 'AutoValue annotations', license: 'Apache-2.0', source: 'https://github.com/google/auto'},
   {prefix: 'org.jspecify', name: 'JSpecify annotations', license: 'Apache-2.0', source: 'https://github.com/jspecify/jspecify'},
   {prefix: 'org.apache.cordova', name: 'Apache Cordova Android framework (Capacitor compatibility layer)', license: 'Apache-2.0', source: 'https://github.com/apache/cordova-android'},
+  // Exact Media3 transitive artifacts reviewed against their published POMs.
+  // Checker qualifiers also carry their own MIT copyright/licence in the JAR.
+  {prefix: 'com.google.code.findbugs', exact:true, artifact:'jsr305', versions:['3.0.2'], name:'JSR-305 annotations', license:'Apache-2.0', source:'https://repo.maven.apache.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom'},
+  {prefix: 'com.google.errorprone', exact:true, artifact:'error_prone_annotations', versions:['2.28.0'], name:'Error Prone annotations', license:'Apache-2.0', source:'https://github.com/google/error-prone'},
+  {prefix: 'com.google.j2objc', exact:true, artifact:'j2objc-annotations', versions:['3.0.0'], name:'J2ObjC annotations', license:'Apache-2.0', source:'https://github.com/google/j2objc'},
+  {prefix: 'org.checkerframework', exact:true, artifact:'checker-qual', versions:['3.43.0'], name:'Checker Framework qualifiers', license:'MIT', licenseFile:'licenses/checker-qual-3.43.0-LICENSE.txt', source:'https://github.com/typetools/checker-framework'},
 ];
+export function mavenFamily(group,artifact,version){
+ return MAVEN_FAMILIES.find(f => (f.exact ? group === f.prefix : group.startsWith(f.prefix))&&(!f.artifact||f.artifact===artifact)&&(!f.versions||f.versions.includes(version)));
+}
 
 /** pdf.js ships decoders, fonts and CMaps beside the viewer; each has its own license file. */
 const PDFJS_COMPONENTS = [
@@ -578,14 +587,14 @@ function androidEntries(root, templates, errors) {
   const families = new Map();
   const unknown = [];
   for (const coord of snapshot.coordinates) {
-    const [group] = coord.split(':');
-    const family = MAVEN_FAMILIES.find(f => f.exact ? group === f.prefix : group.startsWith(f.prefix));
+    const [group,artifact,version] = coord.split(':');
+    const family = mavenFamily(group,artifact,version);
     if (!family) { unknown.push(coord); continue; }
     if (!families.has(family)) families.set(family, []);
     families.get(family).push(coord);
   }
   return [
-    ...[...families].map(([family, coords]) => ({name: family.name, version: coords.join('\n'), license: family.license, source: family.source, text: templates.apache})),
+    ...[...families].map(([family, coords]) => ({name: family.name, version: coords.join('\n'), license: family.license, source: family.source, text: family.licenseFile?read(root,family.licenseFile):templates.canonical(family.license)})),
     // A Maven group with no recorded licence is listed and flagged, never dropped.
     ...unknown.map(coord => {
       const [group, artifact, version] = coord.split(':');

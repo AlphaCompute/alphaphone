@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "description": "On-device voice host: libelizainference (llama.cpp/ggml; Paradee-8M TTS with native misaki G2P and eSpeak NG out-of-lexicon fallback, Phonon-2 parakeet-tdt ASR with batch and streaming decode, Silero VAD) through the shared paradee-voice Java API (ai.eliza.voice) and RegisterNatives JNI. The only on-device speech engine; llama.cpp-based, no other neural runtime. These are the exact bytes scripts/android-stage-voice-models.mjs may stage; nothing here claims emulator, device or user acceptance.",
-  "pin": "08703642627ca12167ad6f3b08516d352b7e3a0d",
+  "pin": "985322b5df96a91e9dc913c73280a97b82890642",
   "forkPin": "6e6a4401aae473723cb164a3190eebea6526ea6e",
   "identity": "ai.elizaresearch.alphaphone",
   "provider": "libelizainference-paradee",
@@ -19,7 +19,7 @@
     "paths": [
       "asr/phonon-2-fv5.gguf"
     ],
-    "current": "Phonon-2 (Parakeet-TDT 0.6B, five-value weights), elizaOS/eliza#36212 (d06a1aa9c9), consumed at this pin; ELIZA_ASR_BACKEND=parakeet is the APK default (BuildConfig)"
+    "current": "Pinned Phonon-2/parakeet-tdt model; current native loader selects the in-tree ggml backend. Model architecture and backend registry override are separate."
   },
   "abis": [
     {
@@ -28,8 +28,8 @@
       "libraries": [
         {
           "name": "libelizainference.so",
-          "sha256": "a163693d49473b5c5bc4cdc8e5b4e6b756059ed96dffe4b6128202bf0c6c7466",
-          "bytes": 8006376
+          "sha256": "2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b",
+          "bytes": 8006192
         },
         {
           "name": "libc++_shared.so",
@@ -43,10 +43,11 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "sourcePin": "afd44a8544b4aed3bae7824be5d261270a69540e",
-            "sha256": "072ec0c429fb9b89cc56fd49a3cce75cd685d0d163eb95c196feab584bebd7f1",
-            "bytes": 364976,
-            "note": "Release voice-subset JNI bridge (merged, unstripped) built by Gradle :local-speech:assembleRelease with NDK 28.2 at Eliza afd44a8544b4 / llama.cpp 6e6a4401aae4; exports only JNI_OnLoad, 16 KiB LOAD alignment; not executed on Android."
+            "sourcePin": "33a6d19c024a4ec130710f0808df25588266d542",
+            "sha256": "4337795046fcf5279525ade36fc42617054c8500e12ddbc27d809903e5053d15",
+            "bytes": 373136,
+            "variant": "debugqualification",
+            "note": "Exact debug qualification-app voice subset bridge; batch and streaming/cancel/ASRstream executed onSeeker ARM64 andAPI35x86. Distribution bridge is rebuilt byGradle from the same pinnedsource."
           }
         },
         "app": {
@@ -54,10 +55,10 @@
           "class": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
           "builtBy": "upstream elizavoice-jni CMake with -DELIZA_VOICE_JNI_CLASS=ai/elizaresearch/alphaphone/ElizaVoiceNative (full subset, no source rewrite); packaged through the embedding host record",
           "referenceBuild": {
-            "sha256": "a8f28721eb5e939572067973d242f70e6b7bd51c5a0016f7c125afbe5ea9919b",
-            "bytes": 1191384,
-            "sourcePin": "afd44a8544b4aed3bae7824be5d261270a69540e",
-            "note": "Release full JNI bridge built with NDK 28.2 and build-path remapping at Eliza afd44a8544b4 / llama.cpp 6e6a4401aae4; registers nativeParadeeSynthesizeStream; symbol and alignment inspection passed; not executed on Android."
+            "sourcePin": "33a6d19c024a4ec130710f0808df25588266d542",
+            "sha256": "49f59561bf022650f813d79cf0ab0be84f53f37f908c679e05d80ce4e444a491",
+            "bytes": 1190824,
+            "note": "Current full JNI bridge built in Release with NDK28.2 and fixed-path remapping; ARM64 exact bridge executed BGE twice onSeeker. This is not full Alpha acceptance."
           }
         }
       },
@@ -73,8 +74,8 @@
       "libraries": [
         {
           "name": "libelizainference.so",
-          "sha256": "ade864c7c34c4170600e40aafb1f4859f6be9ec5d48a913eae1773b24eb8fadf",
-          "bytes": 8624408
+          "sha256": "adf0dd436f2397e277610b5505dc00cd3fb464485aa301b54e699f18870f5518",
+          "bytes": 8624224
         },
         {
           "name": "libc++_shared.so",
@@ -88,10 +89,11 @@
           "class": "ai/eliza/voice/VoiceNative",
           "builtBy": "Gradle :local-speech externalNativeBuild from the pinned elizavoice-jni source (voice subset); only JNI_OnLoad is exported (RegisterNatives)",
           "referenceBuild": {
-            "sourcePin": "afd44a8544b4aed3bae7824be5d261270a69540e",
-            "sha256": "2114adae85020adf7f3cf62b998109593bb767a761d4e7e4a5842dfb22d41694",
-            "bytes": 349864,
-            "note": "Release voice-subset JNI bridge (merged, unstripped) built by Gradle :local-speech:assembleRelease with NDK 28.2 at Eliza afd44a8544b4 / llama.cpp 6e6a4401aae4; exports only JNI_OnLoad, 16 KiB LOAD alignment; not executed on Android."
+            "sourcePin": "33a6d19c024a4ec130710f0808df25588266d542",
+            "sha256": "97a21e8fc9bb8a6db1706470868a95e07eb0d0704ca8260b4df9e211a93afd9b",
+            "bytes": 356736,
+            "variant": "debugqualification",
+            "note": "Exact debug qualification-app voice subset bridge; batch and streaming/cancel/ASRstream executed onSeeker ARM64 andAPI35x86. Distribution bridge is rebuilt byGradle from the same pinnedsource."
           }
         },
         "app": {
@@ -99,10 +101,10 @@
           "class": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
           "builtBy": "upstream elizavoice-jni CMake with -DELIZA_VOICE_JNI_CLASS=ai/elizaresearch/alphaphone/ElizaVoiceNative (full subset, no source rewrite); packaged through the embedding host record",
           "referenceBuild": {
-            "sha256": "d496d04d94c6a15464f2d6e7844e347c49640cea6e17c763bdcaf8f97624a4f2",
-            "bytes": 1075376,
-            "sourcePin": "afd44a8544b4aed3bae7824be5d261270a69540e",
-            "note": "Release full JNI bridge built with NDK 28.2 and build-path remapping at Eliza afd44a8544b4 / llama.cpp 6e6a4401aae4; registers nativeParadeeSynthesizeStream; symbol and alignment inspection passed; not executed on Android."
+            "sourcePin": "33a6d19c024a4ec130710f0808df25588266d542",
+            "sha256": "8b55c7f0d3502e0d7b5750bd6664ae48bfcf037d27dd888ad2bb4c271a13ef08",
+            "bytes": 1074824,
+            "note": "Current full JNI bridge built in Release with NDK28.2 and fixed-path remapping; ARM64 exact bridge executed BGE twice onSeeker. This is not full Alpha acceptance."
           }
         }
       },
@@ -325,17 +327,53 @@
     }
   ],
   "evidence": {
-    "classes": "B (APK-input libraries built and symbol-checked on a development machine); no E/I/R/D",
-    "build": "Both Android ABIs built on 2026-10-16 from Eliza afd44a8544b4aed3bae7824be5d261270a69540e and llama.cpp 6e6a4401aae473723cb164a3190eebea6526ea6e with NDK 28.2.13676358 using prepare-embedding-host.mjs --build --remap-build-path. Engine and full JNI libraries passed ELF architecture, required symbol and 16 KiB alignment checks; voice ABI 19 with eliza_inference_paradee_supported, eliza_inference_paradee_stream_supported and eliza_inference_asr_supported all 1, 87 eliza_inference_* exports including six asr_stream_* and the Paradee stream exports. The full JNI registers nativeParadeeSynthesizeStream. Voice-subset JNI bridges built by Gradle :local-speech:assembleRelease export only JNI_OnLoad with 16 KiB alignment. Model, lexicon and voice data assets keep their recorded hashes. No host, Android emulator or device execution is claimed at this pin.",
-    "hostGates": "Not rerun at this pin (new engine, no host or Android execution). Earlier host evidence for the same Phonon-2 GGUF (elizaOS/eliza#36212, macOS arm64, an earlier engine): batch and streaming transcripts exact under -Xcheck:jni, Paradee to Phonon-2 round trip exact. Host evidence only; not Android execution.",
-    "emulatorDeviceExecuted": false,
-    "deviceExecuted": false,
-    "userAccepted": false
+    "classes": "B+E and automated physicalSeeker component execution; no humanD/fullAlphaacceptance",
+    "build": "BothABIs compiled from33a6d19c024a and engine6e6a4401 with NDK28.2.13676358,CMake4.0.3 and explicitfile-prefixremapping. Exactarchitecture,symbols/fullJNIregistration and16KiB loadalignment passed. Allmodel/lexicon/eSpeak/notice pins retained.",
+    "emulatorDeviceExecuted": true,
+    "deviceExecuted": true,
+    "userAccepted": false,
+    "seeker": "docs/evidence/native-google-33a6/SEEKER-VOICE-33A6-roundtrip-REPORT.json",
+    "stream": "docs/evidence/native-google-33a6/SEEKER-VOICE-33A6-stream-REPORT.json",
+    "emulator": "docs/evidence/native-google-33a6/API35-X86-VOICE-REPORT.json",
+    "scope": "25 synthetic roundtrips0/215errors onbothABIs, streamingcancellation/recovery andASRstream0/9errors. No microphone/speakerhardware,fullAlpha,heldoutASR corpus oruserapproval claimed."
   },
-  "acceptance": "Not qualified; needs human review. Requires on-device qualification on both ABIs (packages/app/scripts/paradee-voice/qualify: ASR WER and Paradee round trip with Phonon-2) and device/user acceptance before qualified may become true. Nothing in this repository sets it.",
+  "acceptance": "qualified remains false. Current component execution passed onbothABIs. Complete required ASR corpus, installed Alpha capture/playback and user/device acceptance before distribution qualification.",
   "sourceCompatibility": {
-    "admittedPin": "08703642627ca12167ad6f3b08516d352b7e3a0d",
-    "referenceBuildPin": "afd44a8544b4aed3bae7824be5d261270a69540e",
-    "basis": "Pin 08703642627c (eliza develop, 2026-10-16) adds the Alpha end-of-turn route (elizaOS/eliza#36546), heard-only assistant content (#36547), period-allowance resets in chat failures (#36549) and the Maps admission latency harness (#36556) above afd44a8544b4. The llama.cpp gitlink (6e6a4401aae4), every native build input, the elizavoice-jni Java class and bun.lock are byte-identical, so the engine and JNI bytes recorded here, built at afd44a8544b4, are the bytes this pin builds. Build inspection only; no host, emulator or device execution is claimed."
+    "admittedPin": "33a6d19c024a4ec130710f0808df25588266d542",
+    "referenceBuildPin": "33a6d19c024a4ec130710f0808df25588266d542",
+    "basis": "New native/JNI inputs and engine6e required new builds and exact component execution; no old3e native qualification transferred."
+  },
+  "sourceAdmission": {
+    "record": "docs/evidence/native-google-33a6/ARM64-EMBEDDING-33A6-REVIEWED-QUALIFICATION.json",
+    "previousPin": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
+    "nativeInputsUnchanged": false,
+    "nativeQualificationTransferred": false
+  },
+  "consumerPinUpdate": {
+    "previousPin": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
+    "currentPin": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+    "sharedChanges": [
+      "packages/app/src/mobile-agent-entry.ts",
+      "packages/app/src/runtime/native-managed-google-host.test.ts"
+    ],
+    "nativeVoiceSourceChanged": false,
+    "artifactBytesChanged": false,
+    "newDeviceQualification": false
+  },
+  "sourceEquivalence": {
+    "previousConsumerPin": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+    "mergedConsumerPin": "985322b5df96a91e9dc913c73280a97b82890642",
+    "newDeviceAcceptance": false,
+    "evidence": "elizaOS/eliza compare 6ef36b8d6aa1...985322b5df96 (develop tip after elizaOS/eliza#36598): 183 files, llama.cpp gitlink 6e6a4401aae4 unchanged, no native source, JNI class, build input or bun.lock change",
+    "nativeLibraryCompilationInputsChanged": false,
+    "runtimeTypeScriptChanged": true,
+    "previous": {
+      "previousConsumerPin": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+      "mergedConsumerPin": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+      "newDeviceAcceptance": false,
+      "evidence": "docs/evidence/sdk-native-source-merge-20261017.json",
+      "nativeLibraryCompilationInputsChanged": false,
+      "runtimeTypeScriptChanged": true
+    }
   }
 }

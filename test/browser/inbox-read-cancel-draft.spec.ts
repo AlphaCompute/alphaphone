@@ -1,3 +1,4 @@
+import {returnToApps} from './app-navigation';
 import {localDraftRow} from './inbox-draft-navigation';
 import {test,expect} from '@playwright/test';
 test.beforeEach(async({context})=>{await context.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
@@ -18,6 +19,7 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await page.getByRole('textbox',{name:'To',exact:true}).fill('fixture@example.invalid');
  await page.getByRole('textbox',{name:'To',exact:true}).press('Enter');
@@ -35,9 +37,9 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  }
  const before=await page.evaluate(()=>JSON.stringify((window as any).cancelMail.slots));
  await page.evaluate(()=>(window as any).cancelMail.hold=true);
- if(request==='Check connection')await page.evaluate(()=>window.dispatchEvent(new Event('alpha:google-accounts-changed')));else await page.getByRole('button',{name:request,exact:true}).click();
+ if(request==='Check connection')await page.evaluate(()=>window.dispatchEvent(new Event('alpha:google-accounts-changed')));else if(request==='Search Gmail')await page.getByPlaceholder('Search mail').press('Enter');else await page.getByRole('button',{name:request,exact:true}).click();
  await expect.poll(()=>page.evaluate(()=>typeof (window as any).cancelMail.release)).toBe('function');
- await page.getByRole('button',{name:'Back to apps',exact:true}).click();
+ await returnToApps(page);
  await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
  await page.evaluate(async()=>{(window as any).cancelMail.release();(window as any).cancelMail.hold=false;await new Promise(resolve=>setTimeout(resolve,0));});
  await expect(page.getByText('Must not appear',{exact:true})).toHaveCount(0);
@@ -59,7 +61,7 @@ test('Compose waits for the selected account draft read before accepting a click
   const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');
   const f=(window as any).draftAdmission={slots:{},release:null,waiting:false};
   s.read=async key=>{
-   if(key.startsWith('inbox-drafts:v1:')&&JSON.parse(key.slice('inbox-drafts:v1:'.length))[3]==='b'){
+   if(key.startsWith('inbox-drafts:v1:[')&&JSON.parse(key.slice('inbox-drafts:v1:'.length))[3]==='b'){
     f.waiting=true;await new Promise(resolve=>{f.release=resolve;});
    }
    return structuredClone(f.slots[key]??null);
@@ -71,6 +73,7 @@ test('Compose waits for the selected account draft read before accepting a click
  });
  await page.getByRole('button',{name:'Inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();
  await page.getByRole('button',{name:'Compose',exact:true}).click();
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Account a local draft');
  await page.getByRole('button',{name:'Save draft locally',exact:true}).click();

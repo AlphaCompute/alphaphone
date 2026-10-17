@@ -1,3 +1,6 @@
+import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
+import React from 'react';
+import {VoiceActivity} from './voice-activity';
 import {testMocksEnabled} from '../build-flags';
 import {developmentCartesiaConversation,developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-conversation';
 import {BatchVoiceConversation,type BatchVoiceState} from '@elizaos/ui/voice/batch-conversation';
@@ -203,7 +206,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     stopLocalSpeechPlayback(); cleanup(true,!chat); chatDestination=chat;reprepare = false; destination = target; saveId = target?.id || crypto.randomUUID(); stage = 'ready'; error = ''; failure = ''; recognized = undefined; draft = ''; selectedRoute = route;
     if(previousChat&&!chat)previousChat.shell.setState({chat:previousChat.chat});
     cloudMode = selected === 'cloud';
-    cloudConnectRequired = cloudMode && !(chat&&developmentCartesiaVoiceEnabled) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
+    cloudConnectRequired = cloudMode && !developmentCloudVoiceEnabled && !(chat&&developmentCartesiaVoiceEnabled) && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId);
     deviceOnly = !cloudMode && (browserDevProfile || localStorage.getItem('alpha.connection.selection.v1') !== null || !Capacitor.isPluginAvailable('DevelopmentAgent'));
     driver = cloudMode && !cloudConnectRequired ? createCloudVoice() : deviceOnly ? deviceVoice : voice;
     if (cloudConnectRequired) error = 'Sign in to Eliza Cloud to use voice.';
@@ -398,7 +401,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     // Only the claimed destination may transition before its React callback pins the exact ACK context.
     if(!contextCurrent&&owned&&view===owned.view&&conversationPrepared){try{const actual=chat.shell.voiceConversationContext(conversationPrepared.binding);contextCurrent=actual.view===owned.view&&(owned.context?JSON.stringify(actual)===JSON.stringify(owned.context):owned.view!==(chat.view||'home'));}catch{contextCurrent=false;}}
     return chat.shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open
-      &&['sheet','full'].includes(state.chat)&&((state.view||null)===chat.view||!!owned&&view===owned.view)&&String(state.draft||'')===chat.draft
+      &&(['sheet','full'].includes(state.chat)||chat.chat==='hidden'&&state.chat==='hidden')&&((state.view||null)===chat.view||!!owned&&view===owned.view)&&String(state.draft||'')===chat.draft
       &&chat.shell.messageReplyTarget===chat.reply&&chat.shell.messageEditTarget===chat.edit&&composerBinding()===chat.binding&&contextCurrent;
   }
   function navigationContinuation(chat:ChatDestination,token:number,turnId:string):import('../runtime/alpha-client').VoiceNavigationContinuation{
@@ -421,9 +424,9 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       },
     };
   }
-  function cancelChat(keyboard=false){
-    const chat=chatDestination;if(!chat){if(retirement)retirement.returnChat=keyboard?'input':retirement.returnChat;return;}if(!keyboard){chat.shell.pendingActionApproval?.abort();chat.shell.cancelReadReplyCompletions?.();}cleanup();
-    if(retirement&&retirement.shell===chat.shell){retirement.returnChat=keyboard?(chat.chat==='full'?'full':'input'):chat.chat;chat.shell.setState({chat:chat.shell.S().chat==='full'?'full':'sheet'});return;}
+  function cancelChat(keyboard=false,preserveChat=false){
+    const chat=chatDestination;if(!chat){if(retirement)retirement.returnChat=keyboard?'input':retirement.returnChat;return;}if(preserveChat)chat.chat=chat.shell.S().chat;if(!keyboard){chat.shell.pendingActionApproval?.abort();chat.shell.cancelReadReplyCompletions?.();}cleanup();
+    if(retirement&&retirement.shell===chat.shell){retirement.returnChat=keyboard?(chat.chat==='full'?'full':'input'):chat.chat;chat.shell.setState({chat:chat.shell.S().chat==='hidden'?'hidden':chat.shell.S().chat==='full'?'full':'sheet'});return;}
     chat.shell.setState({chat:keyboard?(chat.chat==='full'?'full':'input'):chat.chat},()=>{
       if(chat.shell.live===false||connectionController.getSnapshot().open||(chat.shell.S().view||null)!==chat.view)return;
       const opener=chat.opener?.isConnected?chat.opener:document.querySelector<HTMLElement>('[data-alpha-composer], [data-alpha-layer="pill"] button[aria-label="Talk"]');
@@ -484,14 +487,14 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   async function beginConversation(){
     const chat=chatDestination;if(!chat||!chatCurrent())return;
     const token=generation;
-    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
+    if(cloudConnectRequired&&!developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){conversationState={phase:'error'};error='Sign in to Eliza Cloud to use voice.';refresh();return;}
     const controller=new AbortController();readiness=controller;conversationReviewRequired=false;conversationState={phase:'starting'};error='';refresh();
     const current=()=>{controller.signal.throwIfAborted();if(token!==generation||chatDestination!==chat||!chatCurrent())throw new DOMException('Voice conversation changed','AbortError');};
     try{
       current();const prepared=await chat.shell.prepareVoiceConversation(controller.signal);current();conversationPrepared=prepared;current();
       const previous=conversationVoice;conversationVoice=undefined;await stopping;await previous?.stop();current();
-      if(developmentCartesiaVoiceEnabled){
-        const direct=await developmentCartesiaConversation({binding:prepared.binding,assertCurrent:current,onState:phase=>{if(token!==generation)return;conversationState={phase:phase==='connecting'?'starting':['listening','thinking','speaking'].includes(phase)?phase as 'listening'|'thinking'|'speaking':'idle'};refresh();},onPlaybackUnlockChange:()=>{if(token===generation)refresh();},onTranscript:text=>{if(token===generation){conversationLastTranscript=text;refresh();}},onError:failure=>{if(token===generation){error=failure.message;conversationState={phase:'error',error:failure};refresh();}}});
+      if(developmentCartesiaVoiceEnabled&&!developmentCloudVoiceEnabled){
+        const direct=await developmentCartesiaConversation({binding:prepared.binding,assertCurrent:current,onState:phase=>{if(token!==generation)return;conversationState={phase:phase==='connecting'?'starting':['listening','thinking','speaking'].includes(phase)?phase as 'listening'|'thinking'|'speaking':'idle'};refresh();},onPlaybackUnlockChange:()=>{if(token===generation)refresh();},onTranscript:text=>{if(token===generation){conversationLastTranscript=text;conversationInterim=text;refresh();}},onError:failure=>{if(token===generation){error=failure.message;conversationState={phase:'error',error:failure};refresh();}}});
         current();conversationVoice=direct;await direct.start();current();return;
       }
       const local = testMocksEnabled ? null : createOnDeviceVoice();
@@ -593,7 +596,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       conversationVoice=conversation;await conversation.start();current();
     }catch(failure){if(token!==generation||controller.signal.aborted)return;conversationState={phase:'error',error:failure};error=cloudVoiceFailure(failure)||(failure instanceof Error?failure.message:'Voice could not start.');refresh();}
   }
-  Component.prototype.stopVoiceConversation = function(){if(chatDestination?.shell===this){cancelChat();return stopping;}if(retirement&&retirement.shell===this)return retirement.promise;if(mediaUnconfirmed)return stopping;};
+  Component.prototype.stopVoiceConversation = function(){if(chatDestination?.shell===this){cancelChat(false,true);return stopping;}if(retirement&&retirement.shell===this)return retirement.promise;if(mediaUnconfirmed)return stopping;};
   Component.prototype.resumeReadReplyVoice=function(hint:import('../runtime/alpha-client').NativeNotesReadReplyHint,reply:import('../runtime/alpha-client').NativeNotesReadReply){
     if(chatDestination?.shell!==this||!chatCurrent()||document.querySelector('dialog[open]')||conversationState.phase!=='awaiting-user-input'||!conversationState.awaitingUserInput)return false;
     const pause=conversationState.awaitingUserInput;
@@ -627,13 +630,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const chat:ChatDestination={shell:this,view:state.view||null,chat:state.chat,draft:String(state.draft||''),reply:this.messageReplyTarget,edit:this.messageEditTarget,binding:composerBinding(),...(typeof HTMLElement!=='undefined'&&document.activeElement instanceof HTMLElement?{opener:document.activeElement}:{})};
     const readingStopped=stopLocalSpeechPlayback();
     enter(undefined,undefined,'default',chat);stopping=Promise.all([stopping,Promise.resolve(readingStopped)]).then(()=>{}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});conversationLastTranscript='';conversationLastReply='';const token=generation;
-    await new Promise<void>(resolve=>this.setState({chat:state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>('[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token)void beginConversation().finally(resolve);else resolve();}));
+    await new Promise<void>(resolve=>this.setState({chat:state.chat==='hidden'?'hidden':state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>(state.chat==='hidden'?'[data-alpha-pill-voice] button':'[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token)void beginConversation().finally(resolve);else resolve();}));
   };
   function conversationRecorderView(icons:Bag){
     const token=generation,chat=chatDestination,owned=()=>token===generation&&chatDestination===chat&&chatCurrent();
     const phase=conversationState.phase,live=phase==='listening',seconds=live?(Date.now()-started)/1000:(clip?.durationMs||0)/1000;
     const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:developmentCartesiaVoiceEnabled?'Listening · Cartesia development. Replies use the local agent’s direct Cerebras provider.':(testMocksEnabled?(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.'):(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed on this device and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed on this device and sent to this conversation; matching replies play aloud.')),transcribing:testMocksEnabled?'Transcribing your speech with Eliza Cloud…':'Transcribing your speech on this device…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':testMocksEnabled?'Preparing the matching reply with Eliza Cloud…':'Preparing the matching reply on this device…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
-    const primary=()=>{if(!owned())return;if(mediaUnconfirmed){cancelChat();return;}if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error'&&!conversationReviewRequired)void beginConversation();else cancelChat();};
+    const recover=()=>{if(!owned()||mediaUnconfirmed)return;if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error'&&!conversationReviewRequired)void beginConversation();else cancelChat(false,true);};
     const awaiting=phase==='awaiting-user-input'||conversationReviewRequired;
     const reviewing=conversationReview,reviewOwned=()=>owned()&&conversationReview===reviewing;
     if(reviewing&&!mediaUnconfirmed)return {regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:'review',flex:'1',clockSize:28,clock:'Review',live:false,levels:[],lines:[{t:(cloudMode?'Review what Eliza Cloud heard':'Review what was heard on this device')+' and edit it if needed. Nothing has been sent. Send adds it to this conversation; Discard closes voice without sending.'}],
@@ -650,7 +653,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     }
     const assistantControls=assistant&&phase!=='error'?{canMute:phase!=='awaiting-user-input',muted:assistant.muted?'true':'false',muteLabel:assistant.muted?'Unmute microphone':'Mute microphone',toggleMute:()=>{if(owned())void assistant.setMuted(!assistant.muted).finally(refresh);},canInterrupt:phase==='speaking',interrupt:()=>{if(owned()&&assistant.interruptSpeech())refresh();}}:{};
     const extra=assistant?assistantControls:direct?{canMute:true,muteLabel:direct.microphoneMuted?'Unmute microphone':'Mute microphone',muted:direct.microphoneMuted?'true':'false',toggleMute:()=>{if(owned()){direct.setMicrophoneMuted(!direct.microphoneMuted);refresh();}},needsPlaybackUnlock:direct.needsPlaybackUnlock,unlockPlayback:()=>{if(owned())void direct.unlockPlayback().then(refresh).catch(failure=>{error=failure instanceof Error?failure.message:'Playback could not unlock.';refresh();});}}:{};
-    return {...extra,regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:phase,flex:awaiting?'0 0 auto':'1',clockSize:awaiting?28:48,clock:awaiting?'Review':`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:conversationReviewRequired?'Microphone off. Review the phone action in this conversation. Switch to keyboard to continue; voice cannot resume this older request.':error||messages[phase]}],review:false,typeChoice:false,lastTranscript:awaiting?'':conversationLastTranscript,interimTranscript:awaiting||!['listening','transcribing'].includes(phase)?'':conversationInterim,lastReply:awaiting?'':conversationLastReply,primaryLabel:mediaUnconfirmed?'Stop voice conversation':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'&&!conversationReviewRequired?'Start voice conversation':'Stop voice conversation',primaryIcon:cloudConnectRequired?icons.user:phase==='error'&&!conversationReviewRequired?icons.mic:icons.stop,primaryDisabled:false,stop:primary,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
+    return {...extra,regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:phase,flex:awaiting?'0 0 auto':'1',clockSize:awaiting?28:48,clock:awaiting?'Review':`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:conversationReviewRequired?'Microphone off. Review the phone action in this conversation. Switch to keyboard to continue; voice cannot resume this older request.':error||messages[phase]},...(phase==='error'&&conversationLastTranscript?[{t:'Last transcript: '+conversationLastTranscript}]:[])],review:false,typeChoice:false,lastTranscript:awaiting?'':conversationLastTranscript,interimTranscript:awaiting||!['listening','transcribing'].includes(phase)?'':conversationInterim,lastReply:awaiting?'':conversationLastReply,primaryLabel:'Stop voice conversation',primaryIcon:icons.stop,primaryDisabled:false,stop:()=>{if(owned())cancelChat(false,true);},recoveryLabel:mediaUnconfirmed?'':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'&&!conversationReviewRequired?'Try voice again':'',recover,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
   }
   async function deletionReceipt(row:AudioDeletion,status:'removed'|'restored'){
     const result=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
@@ -1089,10 +1092,30 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     out.startTranscription=()=>this.startTranscription();
     const heldRetirement=retirement,hold=(cancelApproval=true)=>{if(!heldRetirement||retirement!==heldRetirement||heldRetirement.shell!==this)return;if(cancelApproval&&heldRetirement.approval&&this.pendingActionApproval===heldRetirement.approval){heldRetirement.approval.abort();if(heldRetirement.proposalId)this.cancelReadReplyCompletions?.(heldRetirement.proposalId);}this.toast('Voice media is still stopping. Close the app if it cannot finish.');};
     const awaiting=active&&!retiring&&chatDestination?.mode!=='dictation'&&(conversationState.phase==='awaiting-user-input'||conversationReviewRequired);
-    out.chatRecorder=retiring?{regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:retirement!.phase,flex:'1',clockSize:48,clock:'Voice',live:false,levels:[],lines:[{t:retirement!.phase==='error'?'Could not confirm voice media stopped. Close the app before starting voice again.':'Stopping the microphone and audio…'}],review:false,typeChoice:false,primaryLabel:'Stop voice conversation',primaryIcon:out.ic?.stop,primaryDisabled:false,stop:()=>hold(),discard:()=>hold(),keyboard:()=>{if(retirement&&retirement.shell===this){retirement.returnChat='input';hold(false);}}}:active?(chatDestination?.mode==='dictation'?{...recorderView(out.ic||{}),regionLabel:'Voice transcription',closeLabel:'Discard transcription',flex:'1',clockSize:48}:{...conversationRecorderView(out.ic||{}),awaiting}):null;out.showChatHistory=!active||awaiting;out.chatHistoryInert=active&&!awaiting;out.chatVoiceActive=active;out.chatHistoryStyle=active&&!awaiting?'display:none':'';
-    if(retiring){out.conversationHidden=false;out.panelOp=1;out.panelPE='auto';if(!out.panelH)out.panelH=560;}
+    out.chatRecorder=retiring?{regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:retirement!.phase,flex:'1',clockSize:48,clock:'Voice',live:false,levels:[],lines:[{t:retirement!.phase==='error'?'Could not confirm voice media stopped. Close the app before starting voice again.':'Stopping the microphone and audio…'}],review:false,typeChoice:false,primaryLabel:'Stop voice conversation',primaryIcon:out.ic?.stop,primaryDisabled:false,stop:()=>hold(),discard:()=>hold(),keyboard:()=>{if(retirement&&retirement.shell===this){retirement.returnChat='input';hold(false);}}}:active?(chatDestination?.mode==='dictation'?{...recorderView(out.ic||{}),regionLabel:'Voice transcription',closeLabel:'Discard transcription',flex:'1',clockSize:48}:{...conversationRecorderView(out.ic||{}),awaiting}):null;out.showChatHistory=true;out.chatHistoryInert=false;out.chatVoiceActive=active;out.chatHistoryStyle='';
+    const recorder=out.chatRecorder;
+    if(recorder){
+      const conversation=retiring||chatDestination?.mode!=='dictation';
+      recorder.closeControlLabel=conversation?'Stop voice conversation':recorder.closeLabel;
+      recorder.closeControlIcon=conversation?out.ic?.stop:out.ic?.x;
+      recorder.closeControl=conversation?(retiring?()=>hold():()=>cancelChat(false,true)):recorder.discard;
+      if(conversation){
+        // Stopping media and recovering a service connection are separate actions.
+        // A missing capture must never look like an enabled microphone control.
+        const controllable=!!recorder.canMute&&!retiring&&!recorder.review&&!awaiting&&['listening','thinking','preparing-speech','speaking'].includes(recorder.state);
+        recorder.muteDisabled=!controllable;
+        if(!controllable){const capturing=!retiring&&recorder.state==='listening',unconfirmed=retiring||!!conversationVoice&&['error','starting','connecting','idle'].includes(recorder.state);recorder.canMute=true;recorder.muted=unconfirmed?'mixed':capturing?'false':'true';recorder.muteLabel=unconfirmed?'Microphone status unconfirmed':capturing?'Microphone control unavailable':'Microphone off';recorder.toggleMute=()=>{};}
+      }
+    }
+    out.legacyChatRecorder=!!recorder&&(chatDestination?.mode==='dictation'||recorder.review);
+    out.inlineChatRecorder=!!recorder&&!out.legacyChatRecorder;
+    out.voiceInterim=recorder?.interimTranscript&&!out.msgs?.some((message:Bag)=>message.isUser&&message.text===recorder.interimTranscript)?recorder.interimTranscript:'';
+    if(recorder){const phase=recorder.muted==='true'?'paused':recorder.state==='starting'?'connecting':recorder.state==='preparing-speech'?'thinking':recorder.state==='awaiting-user-input'?'paused':recorder.state==='stopping'?'interrupting':recorder.state;recorder.activity=React.createElement(VoiceActivity,{phase,theme:this.S().theme==='dark'?'dark':'light'});recorder.problem=recorder.state==='error';recorder.muteAsset=recorder.muted==='true'?'/icons/lucide/mic-off.svg':'/icons/lucide/mic.svg';}
+    const pillVoice=active&&this.S().chat==='hidden'&&(retiring?retirement?.panelChat==='hidden':chatDestination?.chat==='hidden')&&!out.legacyChatRecorder;
+    out.pillVoiceInactive=!pillVoice;out.pillVoice=pillVoice?{...recorder,activity:React.createElement(VoiceActivity,{phase:recorder.muted==='true'?'paused':recorder.state,theme:this.S().theme==='dark'?'dark':'light',compact:true}),controlDown:(event:PointerEvent)=>event.stopPropagation(),stop:()=>retiring?hold():cancelChat()}:null;
+    if(retiring&&!pillVoice){out.conversationHidden=false;out.panelOp=1;out.panelPE='auto';if(!out.panelH)out.panelH=560;}
     if(active){
-      out.panelComposer=false;out.showSugg=false;out.showComposer=false;out.showPill=false;out.canStopReply=false;
+      out.panelComposer=false;out.showSugg=false;out.showComposer=false;out.showPill=!!pillVoice;out.canStopReply=false;
       out.closeChat=()=>retiring?hold():cancelChat();
     }
     return out;
@@ -1100,7 +1123,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
   const updated=Component.prototype.componentDidUpdate;
   Component.prototype.componentDidUpdate=function(...args:any[]){
     updated?.apply(this,args);
-    if(chatDestination?.shell===this){if(!chatCurrent()||!['sheet','full'].includes(this.S().chat))cleanup();else conversationVoice?.recheck();}
+    if(chatDestination?.shell===this){if(!chatCurrent())cleanup();else conversationVoice?.recheck();}
     // The first agent text of the turn being sent, as it streams into the conversation.
     const watch=conversationReplyWatch;
     if(watch&&chatDestination?.shell===this&&(this.S().msgs||[]).some((m:Bag)=>m.from==='agent'&&!watch.has(String(m.id))&&String(m.text||'').trim())){conversationReplyWatch=undefined;markVoiceTiming('first-token');}

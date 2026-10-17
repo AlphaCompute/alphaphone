@@ -80,12 +80,15 @@ function rendererSlots(){
   const text=readFileSync(file,'utf8'),where=relative(root,file);
   for(const match of text.matchAll(/([A-Za-z_.()]+)\.compareExchange(?:Raw)?\(\s*([^,]+),/g)){
    const receiver=match[1];
+   // Pure cache CAS exchanges a whole document; the platform factory's hashed slot is checked separately.
+   if(where.endsWith('runtime/service-read-cache.ts')&&receiver==='this.store')continue;
    if(browserOnly.has(receiver))continue;
    assert.ok(nativeReceivers.has(receiver),`${where}: classify compareExchange receiver ${receiver}`);
    // The capacity wrapper passes its caller's key through; the shared store's slot is checked below.
    if(where.endsWith('runtime/notes-secure-store.ts')&&match[2].trim()==='key')continue;
    // The Inbox local store passes its caller's slot through; its callers' slots are checked.
    if(where.endsWith('runtime/inbox-local-store.ts')&&match[2].trim()==='slot')continue;
+   if(where.endsWith('runtime/service-read-cache-store.ts')&&match[2].trim()==='slot'){found.push({slot:'connected-read-cache:v1:'+SAMPLE,where});assert.ok(text.includes("slot='connected-read-cache:v1:'+hash"));continue;}
    // The Calendar adapter accepts only this exact owner/source-derived namespace.
    if(where.endsWith('runtime/calendar-linked-storage.ts')&&match[2].trim()==='slot'){
     assert.ok(text.includes('calendar-linked-sync:v1:[a-f0-9]{64}'));

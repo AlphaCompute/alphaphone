@@ -95,7 +95,6 @@ public final class NativeVoiceLatencyInstrumentedTest {
   Instrumentation instrumentation=InstrumentationRegistry.getInstrumentation();
   app=instrumentation.getTargetContext();
   instrumentation.getUiAutomation().grantRuntimePermission(app.getPackageName(),Manifest.permission.RECORD_AUDIO);
-  AlphaParadeeSpeech.exportAsrBackend();
   bundle=VoiceAssets.install(app);
   assertTrue("the live capture's VAD is usable",AlphaLiveVoiceCapture.vadAvailable(app));
   AlphaVoiceLatencyProbe.TRIALS.clear();

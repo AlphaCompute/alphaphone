@@ -307,8 +307,8 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
  await page.evaluate(()=>{(window as any).mic.gain.gain.value=0;});
  await expect(voice).toHaveAttribute('data-voice-state','speaking',{timeout:30_000});
  // The transcript and the matching reply are shown; the reply, and only the reply, is spoken.
- await expect(voice).toContainText(SPOKEN);
- await expect(voice).toContainText(REPLY);
+ await expect(bubble(page,SPOKEN)).toBeVisible();
+ await expect(bubble(page,REPLY)).toBeVisible();
  expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
  let stored=await agentDocument(page);
  expect(stored).toHaveLength(1);
@@ -323,11 +323,13 @@ test('journey A: a spoken request is transcribed, sent once, answered once and r
  expect(await cloud()).toEqual({transcriptions:1,speech:[REPLY]});
  expect(await agentDocument(page)).toEqual(stored);
 
- // Stop returns to where Talk was pressed: Home with the conversation minimized. Opened, the typed
- // conversation holds the same turn, once.
+ // Stop retires voice while keeping the conversation visible. Explicitly minimizing
+ // and reopening it retains the same accepted turn exactly once.
  await voice.getByRole('button',{name:'Stop voice conversation',exact:true}).click();
  await expect(voice).toHaveCount(0);
- await expect(page.getByRole('textbox',{name:'Ask Alpha',exact:true})).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
+ await expect(page.getByRole('group',{name:'Assistant controls',exact:true})).toBeVisible();
  await expect(bubble(page,SPOKEN)).toHaveCount(0);
  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await expect(bubble(page,SPOKEN)).toHaveCount(1);

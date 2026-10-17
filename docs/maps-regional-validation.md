@@ -110,4 +110,4 @@ Evidence: `scripts/test-maps-device-navigation.mjs` (through `test/adapter-contr
 
 Alpha restores the existing host-selected OpenFreeMap basemap independently of the Cloud search and routing service. It loads real public imagery and retains attribution and the map privacy disclosure. Opening Maps does not request device location. Coordinates enter the map only through an explicit location request, a selected saved place, or manual entry. Directions are offered only when the configured provider reports a supported mode.
 
-From pin `08703642627c` the upstream pin carries the qualified global renderer (`plugins/plugin-maps/src/client/map-plane.ts`, elizaOS/eliza#36314) byte for byte, so `prepare-client-features.mjs` takes it from the authenticated pin and no longer applies a carried patch.
+The current upstream pin includes the global renderer. Its bytes match the former carried projection exactly, so client preparation uses that canonical source directly. This source check is separate from Cloud Maps deployment and native or user acceptance.

@@ -5,12 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {nativeViewPolicyPath} from './native-view-policy.mjs';
+import {verifyNativeGoogleHostArtifact} from './native-google-host-artifact.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const source=sourceDirectory(root);
 if(!fs.existsSync(path.join(source,'.alpha-runtime-source.json')))throw Error('Run npm run agent:prepare first.');
 execFileSync(process.execPath,[path.join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
 verifyWorkerArtifact(workerArtifactDirectory(root),
  {sourceStampSha256:workerHash(fs.readFileSync(path.join(source,'.alpha-runtime-source.json'))),lockSha256:workerHash(fs.readFileSync(path.join(source,'bun.lock')))});
+verifyNativeGoogleHostArtifact(root,workerArtifactDirectory(root));
 // Children run inside the immutable prepared source; keep turbo from editing its AGENTS.md.
 const env=preparedSourceEnv(process.env,{ELIZA_ANDROID_TARGET_ABIS:'arm64-v8a,x86_64'});
 execFileSync(process.env.ALPHA_BUN||'bun',['run','--cwd','packages/agent','build:mobile','--target=android'],{cwd:source,env,stdio:'inherit'});

@@ -82,6 +82,7 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/ui/src/platform/browser-document-store.ts',
   'packages/contracts/src/native-notes-query.ts',
   'packages/contracts/src/device-reviews.ts',
+  'packages/contracts/src/calendar-linked-sync.ts',
   'plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts',
   'plugins/plugin-assistant/src/services/device-actions/sms-contract.ts',
   'plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts',
@@ -106,7 +107,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== '08703642627ca12167ad6f3b08516d352b7e3a0d') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== '985322b5df96a91e9dc913c73280a97b82890642') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',
@@ -127,10 +128,12 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   source.delete('packages/core/src/logger.ts');
   project('alpha-voice-core-types.ts',loggerTypes.slice(start,end));
   project('alpha-voice-core-protocol.ts','export {ElizaError} from "./packages/core/src/errors";\nexport {redactTrailingArgs} from "./packages/core/src/security/log-redaction";\nexport {parseViewInteractionClientId} from "./packages/core/src/views/view-interact-protocol";\n');
+  // The pinned upstream global renderer is byte-identical to the carried projection.
+
 
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?3:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?4:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');

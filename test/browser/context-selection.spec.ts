@@ -42,7 +42,7 @@ test.describe('folder',()=>{
  });
  test('a folder question reviews only that folder\'s entry names and places the reviewed draft',async({page})=>{
   await seedFolder(page);await openFolder(page,'Review scope');await askFolder(page);
-  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Source: folder Review scope');
+  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('folder Review scope');
   const excerpt=dialog.getByRole('textbox',{name:'Content excerpt'});
   await expect(excerpt).toHaveValue(/^Folder: Review scope\n3 entries listed by name and type\. File contents and subfolder contents are not included\./);
   const value=await excerpt.inputValue();expect(value).toContain('- alpha.txt (Text)');expect(value).toContain('- inner (Folder)');expect(value).not.toMatch(/deep\.txt|CANARY|neighbor/);
@@ -93,7 +93,7 @@ test.describe('notification',()=>{
   await page.locator('.alpha-shade-list > div',{hasText:'Call the clinic'}).getByRole('button',{name:/^Ask Alpha/}).click();
   // Pressing the row selects exactly that notification as opaque context while the shade is open.
   expect(await selectedObject(page)).toMatchObject({kind:'notification',id:'context-first',accountId:'own'});
-  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Source: Alpha Phone notification');
+  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Alpha Phone notification');
   await expect(dialog.getByRole('textbox',{name:'Content excerpt'})).toHaveValue('Call the clinic\nAsk about Tuesday');
   // Verification codes are not placed in a draft.
   await dialog.getByRole('textbox',{name:'Content excerpt'}).fill('Your verification code is 481516');await dialog.getByRole('button',{name:'Use in conversation',exact:true}).click();
@@ -254,9 +254,9 @@ test.describe('capture',()=>{
   await page.getByRole('button',{name:'Photos',exact:true}).click();await page.getByRole('button',{name:/Captured photo/}).first().click();
   await expect.poll(async()=>(await selectedObject(page))?.kind).toBe('photo');const selected=await selectedObject(page);
   await page.getByRole('button',{name:'Ask Alpha about this photo',exact:true}).click();
-  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Source: Selected photo');await expect(dialog.getByRole('img')).toBeVisible();
+  const dialog=review(page);await expect(dialog.getByRole('heading')).toHaveText('Ask Alpha');await expect(dialog.getByLabel('Selected source',{exact:true})).toHaveText('Selected photo');await expect(dialog.getByRole('img')).toBeVisible();
   await dialog.getByRole('textbox',{name:'Content excerpt'}).fill('A reviewed description');await dialog.getByRole('button',{name:'Use in conversation',exact:true}).click();
-  await expect(composer(page)).toHaveValue('Help me understand this image text or description.\n\nSource: Selected photo\n\nA reviewed description');
+  await expect(composer(page)).toHaveValue('What does this mean?\n\nSource: Selected photo\n\nA reviewed description');
   // The envelope still names the same item at the same revision; no content is in it, and the
   // revision is a session-local counter rather than the library's own revision.
   expect(await selectedObject(page)).toEqual(selected);expect(Object.keys(selected!).sort()).toEqual(['id','kind','revision']);

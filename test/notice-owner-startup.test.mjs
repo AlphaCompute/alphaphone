@@ -1,3 +1,4 @@
+import {resolveCloudEnvironment} from '../apps/app/src/runtime/cloud-environment-selection.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
@@ -6,11 +7,11 @@ import vm from 'node:vm';
 import {EntitlementError} from '../apps/app/src/runtime/subscription-entitlement.ts';
 import * as cloudSignInModule from '../apps/app/src/runtime/cloud-sign-in.ts';
 const coordinatorSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/notice-owner-coordinator.ts','utf8'),{mode:'transform'}).replace(/export /g,'');
-const controllerSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].replace(/^import .*;\n/gm,'').replace(/export /g,''),{mode:'transform'});
+const controllerSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].replace(/^import .*;\n/gm,'').replace(/export /g,'').replaceAll('import.meta.env','fixtureViteEnv'),{mode:'transform'});
 function fixture({offline=false,credential=null,fail=false}={}){
  let release;const read=new Promise(resolve=>release=resolve),transitions=[];
  const memory=new Map(offline?[['alpha.connection.selection.v1',JSON.stringify({kind:'offline',localApps:true})]]:[]);
- const box={EntitlementError,...cloudSignInModule,cloudSignIn:undefined,cloudSignInGoogle:false,devSurfacesEnabled:false,devProfileQuery:false,testMocksEnabled:false,isAndroid:true,browserLocalAgentEnabled:false,registerPlugin:()=>({}),pauseHostedBackground:async()=>{},retireClockReviews:async()=>{},CloudProtocol:class{},nativeCloudRequest:()=>{throw Error('No provider request');},openConnectionBrowser:()=>{throw Error('No browser');},cloudCredentialStore:{read:async()=>{await read;return credential;}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},URL,URLSearchParams,AbortController,DOMException,console,transitions,fail};
+ const box={resolveCloudEnvironment,fixtureViteEnv:{DEV:false},EntitlementError,...cloudSignInModule,cloudSignIn:undefined,cloudSignInGoogle:false,devSurfacesEnabled:false,devProfileQuery:false,testMocksEnabled:false,isAndroid:true,browserLocalAgentEnabled:false,registerPlugin:()=>({}),pauseHostedBackground:async()=>{},retireClockReviews:async()=>{},CloudProtocol:class{},nativeCloudRequest:()=>{throw Error('No provider request');},openConnectionBrowser:()=>{throw Error('No browser');},cloudCredentialStore:{read:async()=>{await read;return credential;}},localStorage:{getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,v),removeItem:k=>memory.delete(k)},URL,URLSearchParams,AbortController,DOMException,console,transitions,fail};
  // Only resident transport admission is synthetic. Real initialize/work/update/subscribe and the
  // real coordinator run together; no live credential or provider is involved.
  vm.runInNewContext(coordinatorSource+'\n'+controllerSource+`\nconnectResident=async()=>{await cloudCredentialStore.read();if(fail)throw Error('revoked');update({session:{sessionId:'A',origin:'https://a.invalid',ownerId:'A',agentId:'agent'}});};
