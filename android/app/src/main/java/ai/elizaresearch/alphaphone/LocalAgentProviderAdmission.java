@@ -236,7 +236,8 @@ final class LocalAgentProviderAdmission {
    if(!CLOUD_PROVIDER_MODEL.equals(model)||!"production".equals(selected.optString("environment","production")))throw new IllegalArgumentException();
    String id=selected.getString("credentialId");
    JSONArray credentialIdentity=cloudIdentity(cloud,id);
-   for(int index=0;index<credentialIdentity.length();index++)identity.put(credentialIdentity.get(index));
+   // Native sign-in omits optional account metadata; get() rejects those null slots.
+   for(int index=0;index<credentialIdentity.length();index++)identity.put(credentialIdentity.opt(index));
    JSONObject verified=cloudIdentity(selected);
    identity.put(verified.getString("userId")).put(verified.opt("organizationId"));
   }else if("cerebras".equals(kind)){
