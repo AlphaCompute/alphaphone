@@ -1,0 +1,12 @@
+{
+  "baseCommit": "5729cf0f1d7490d59671d298fb68af353d2408e7",
+  "paths": [
+    {
+      "path": "packages/ui/src/voice/voice-session-mic-capture.ts",
+      "beforeSha256": "e75703efee99748972295ed1ffadc2eab73924514f353c904c069b5eb10885b6",
+      "afterSha256": "8cd5465d8b7df4597419c7763100a5cb8b26ede5e6ed42d1b70eed8f85f896e6"
+    }
+  ],
+  "patchSha256": "321aa2defe7b8dc3c73a1de3b28fd4e65a255fb2c2541e7083c5d4c4b1fa34c8",
+  "sourceScope": "Surface failed microphone AudioContext startup and resume; keep capture suspended until the graph is running and ignore late resume after stop."
+}
