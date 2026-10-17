@@ -63,7 +63,7 @@ test('host launcher defaults upstream secret and PII swaps off',()=>{
  }
 });
 test('local host uses the product-owned native route policy rather than inherited caller environment',()=>{
- const r=launch({swaps:{ELIZA_NATIVE_VIEW_DECLARATIONS:JSON.stringify([{id:'wallet',label:'Wallet',path:'/wallet'}])}});assert.equal(r.status,0,r.error);assert.deepEqual(r.child.nativeViews,JSON.parse(readFileSync(resolve('config/native-view-declarations.json'),'utf8')));assert.deepEqual(r.child.nativeViews.map(view=>view.id),['photos','maps','camera']);
+ const r=launch({swaps:{ELIZA_NATIVE_VIEW_DECLARATIONS:JSON.stringify([{id:'wallet',label:'Wallet',path:'/wallet'}])}});assert.equal(r.status,0,r.error);assert.deepEqual(r.child.nativeViews,JSON.parse(readFileSync(resolve('config/native-view-declarations.json'),'utf8')));assert.deepEqual(r.child.nativeViews.map(view=>view.id),['photos','maps','camera','notes','calendar','inbox']);
 });
 
 test('local host owns a fresh nonsecret retirement revision on each launch of the same profile',()=>{

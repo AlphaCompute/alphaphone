@@ -70,7 +70,7 @@ export interface WorkflowNoticeRoute {scope:string;origin:string;ownerId:string;
 export interface DeviceJournalIdentity {scope:string;proposalId:string}
 export type DeviceExecutor = (operation: DeviceOperation, operationId: string, context: ContextEnvelope, signal: AbortSignal, bindingHash: string, workflowRoute?:WorkflowNoticeRoute,journalIdentity?:DeviceJournalIdentity) => Promise<{ status: 'succeeded' | 'failed' | 'unknown'; summary: string; readResult?: WorkflowReadResult; calendarResult?:CalendarResult; notesResult?:NotesResult|NotesQueryResult; reminderResult?:ReminderResult|ReminderCreateResult; mapsResult?:MapsResult;clockResult?:ClockHandoffResult;photoLibraryResult?:LibraryAgentResult;smsResult?:SmsSendResult }>;
 export type DeviceRecovery = (operation:DeviceOperation,operationId:string,bindingHash:string,signal:AbortSignal)=>Promise<{status:string;reminderResult?:ReminderResult|ReminderCreateResult;smsResult?:SmsSendResult}>;
-interface Proposal { id: string; digest: string; state: string; expiresAt: number; operation: ReviewableDeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string;providerIdempotencyKey?:string;readReplyOrigin?:NativeNotesReadReplyOrigin }
+interface Proposal { requestMessageId?: string; id: string; digest: string; state: string; expiresAt: number; operation: ReviewableDeviceOperation; workflow?:WorkflowDeviceBinding; attemptId?: string;providerIdempotencyKey?:string;readReplyOrigin?:NativeNotesReadReplyOrigin }
 const views = new Set(['home','notes','reminders','browser','calendar','files','photos','camera','maps','inbox','settings','workflows']);
 function object(value: unknown): Record<string, any> { if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid device action response'); return value as Record<string, any>; }
 function text(value: unknown, max = 128): string { if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw new Error('Invalid device action field'); return value; }
@@ -219,7 +219,7 @@ export class DeviceActions {
     if((['read_selected_notes','read_calendar_range','post_notification','speak_text'].includes(op.type))&&!workflow)throw new Error('Workflow binding required for phone reads');
     const readReplyOrigin=p.readReplyOrigin===undefined?undefined:validateNativeNotesReadReplyOrigin(p.readReplyOrigin);
     if(readReplyOrigin&&(workflow||!isNativeNotesQuery(op)&&op.type!=='notes_read_selected'))throw Error('Unexpected original Notes reply');
-    return { id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.providerIdempotencyKey ? {providerIdempotencyKey:id(p.execution.providerIdempotencyKey)}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}),...(readReplyOrigin?{readReplyOrigin}:{}) };
+    return { ...(payload.requestMessageId===undefined?{}:{requestMessageId:id(payload.requestMessageId)}), id: id(p.id), digest, state: text(p.state, 32), expiresAt, operation:op,...(workflow?{workflow}:{}), ...(p.execution?.providerIdempotencyKey ? {providerIdempotencyKey:id(p.execution.providerIdempotencyKey)}:{}), ...(p.execution?.attemptId ? { attemptId: id(p.execution.attemptId) } : {}),...(readReplyOrigin?{readReplyOrigin}:{}) };
   }
   /** Each proposal is parsed on its own: one invalid proposal never hides valid siblings. */
   private async listing(signal: AbortSignal): Promise<{ valid: Proposal[]; invalid: { pending: boolean; error: Error }[] }> {
@@ -275,6 +275,19 @@ export class DeviceActions {
     const proposals = items.flatMap(item => item.proposal ? [item.proposal] : []);
     if (!proposals.length && failures.length) throw failures[0];
     return proposals;
+  }
+  /** Only proposals bound by the host to this exact freshly sent user message may run.
+   * Recovery, workflows and old hosts remain review-only; ordinary OS permissions still apply. */
+  async performRequested(messageId:string,context:ContextEnvelope,signal:AbortSignal,allowed:()=>Promise<boolean>):Promise<OperationReceipt[]> {
+    const results:OperationReceipt[]=[];
+    for(const [id,entry] of [...this.proposals]) {
+      if(results.length>=4||entry.proposal.workflow||entry.proposal.requestMessageId!==messageId)continue;
+      if(!await allowed())break;
+      signal.throwIfAborted();
+      const result=await this.approve(id,context,signal);results.push(result);
+      if(result.status!=='succeeded')break;
+    }
+    return results;
   }
   /** Notice restoration validates pending metadata without creating an executable foreground review. */
   async pendingWorkflowNotice(review:WorkflowPhoneReview,signal:AbortSignal):Promise<Array<{id:string;expiresAt:number}>> {

@@ -5,7 +5,7 @@ import { browserFullReload } from './scripts/browser-full-reload.ts';
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { localAgentDevBridge } from './scripts/local-agent-dev-bridge.ts';
 
@@ -130,7 +130,8 @@ export default defineConfig({
   build: { outDir: "../../web-dist", emptyOutDir: true, sourcemap: false },
   server: { fs: { allow: [
     fileURLToPath(new URL('./apps/app', import.meta.url)),
-    fileURLToPath(new URL('./.eliza/client-features', import.meta.url)),
+    // Vite emits worklet URLs using real paths when this prepared tree is shared by a worktree.
+    realpathSync(fileURLToPath(new URL('./.eliza/client-features', import.meta.url))),
     fileURLToPath(new URL('./.eliza/patched', import.meta.url)),
     fileURLToPath(new URL('./node_modules', import.meta.url)),
     fileURLToPath(new URL('./vendor/eliza/plugins/plugin-native-system', import.meta.url)),

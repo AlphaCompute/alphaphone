@@ -9,7 +9,7 @@ const run=(...args)=>spawnSync(process.execPath,['scripts/prepare-embedding-host
 test('native preparation refuses writes into vendor or prepared runtime source',()=>{
  for(const output of ['vendor/eliza/.forbidden-embedding-host','artifacts/forbidden-embedding-host']){
   const result=run('--fork',root,'--output',path.join(root,output));
-  assert.notEqual(result.status,0);assert.match(result.stderr,/Output must be outside/);assert.equal(fs.existsSync(path.join(root,output)),false);
+  assert.notEqual(result.status,0);assert.match(result.stderr,/Output must be outside|Output must not traverse a symlink/);assert.equal(fs.existsSync(path.join(root,output)),false);
  }
 });
 test('native preparation preserves an existing artifact and rejects symlink output parents',()=>{

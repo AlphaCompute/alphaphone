@@ -219,7 +219,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   }
   function proposalCard(proposal:import('../runtime/alpha-client').ActionProposal){
     const home=proposal.reviewDestination==='home';
-    return {type:'generic',icon:'check',title:home?'Review Notes on Home':'Approve: '+proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
+    return {type:'generic',icon:'check',title:home?'Review Notes on Home':proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':proposal.description,proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
   }
   p.cancelReadReplyCompletions=function(onlyProposalId?:string){
     for(const [proposalId,lease] of this.readReplyLeases||[]){
@@ -999,8 +999,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const message=live.find(item=>item.card===c);if(!message)return m;
       const ic=out.ic||{},busy=!!this.decliningProposal||!!this.pendingActionApproval;
       return {...m,cGeneric:false,cDigest:true,rows:[
-        {ini:'',who:c.title,text:c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
-        {ini:'',who:'Decline',text:this.decliningProposal===c.proposalId?'Declining…':'Reject this proposal. Nothing runs.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
+        {ini:'',who:busy?'Working…':c.title,text:c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
+        {ini:'',who:this.decliningProposal===c.proposalId?'Cancelling…':'Cancel',text:'Keep things as they are.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
       ]};
     });
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
@@ -1074,6 +1074,23 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     await this.connectAgent();signal.throwIfAborted();
     if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
     return {binding,context:alphaClient.getState().context};
+  };
+  // An authenticated voice socket carries only navigation targets, never record parameters.
+  // Reuse the same shell projection and post-React context fence as completed chat actions.
+  p.applyRealtimeVoiceNavigation = async function(input:import("../runtime/development-cartesia-conversation").RealtimeVoiceNavigation & {binding:import('../runtime/alpha-client').VoiceConversationBinding;assertCurrent:()=>void;navigation:import('../runtime/alpha-client').VoiceNavigationContinuation}){
+    input.assertCurrent();const target=input.viewId==='chat'?'home':input.viewId==='automations'?'workflows':input.viewId==='reminders'?'calendar':input.viewId;
+    if(input.subview||!['home','notifications'].includes(target)&&!isMvpView(target)||input.viewPath&&!['/'+input.viewId,'/apps/'+input.viewId,...(target==='home'?['/']:[])].includes(input.viewPath))throw Error('That voice screen is not available.');
+    const current=()=>{input.assertCurrent();if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(input.binding))throw Error('The voice conversation changed.');};
+    let delivered=false;try{
+      const prepared=Object.hasOwn(input,'navigationPrepared')||Object.hasOwn(input,'navigationBinding')||Object.hasOwn(input,'completedActionHandoffId');
+      if(prepared){
+        const capture=connectionController.captureViewNavigation(this.voiceConversationContext(input.binding));
+        const result={actionName:'VIEWS_SHOW',success:true,values:{mode:'show',viewId:input.viewId,...(input.viewPath?{viewPath:input.viewPath}:{}),...(input.subview?{subview:input.subview}:{}),navigationPrepared:input.navigationPrepared,navigationBinding:input.navigationBinding,completedActionHandoffId:input.completedActionHandoffId}};
+        delivered=await deliverChatNavigation(this,capture,[result],current,input.navigation);
+        if(!delivered)throw Error('The voice screen change could not be confirmed.');
+        return true;
+      }
+      delivered=await input.navigation.apply(target,current,(chat,onCommitted)=>new Promise<boolean>((resolve,reject)=>{try{current();if(!openInternalView(this,target,chat)){resolve(false);return;}this.setState({},()=>{try{current();context(this);const switched=(this.S().view||'home')===target&&!alphaClient.getState().context.sensitive;if(switched)onCommitted(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}}));return delivered;}finally{input.navigation.finish(delivered);}
   };
   p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void;navigation?:import('../runtime/alpha-client').VoiceNavigationContinuation}){
     const {text,turnId,signal,binding}=input;let acceptedContext=input.context;
@@ -1288,7 +1305,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
         this.pendingActionApprovalProposalId=card.proposalId;
-        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
+        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;this.setState({});
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
@@ -1311,7 +1328,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           else this.agentSay(receipt.summary);
         }
       } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||readLease.phase!=='cancelled'&&connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
-      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live)context(this);}
+      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live){context(this);this.setState({});}}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {

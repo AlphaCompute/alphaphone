@@ -1,6 +1,7 @@
 /** Renderer contract for attaching to an admitted running resident. Synthetic bridge; not device evidence. */
 import assert from 'node:assert/strict';
-import {LocalAgentProtocol,residentAttachable,bindResidentCloudProvider} from '../apps/app/src/runtime/local-agent.ts';
+import {loadBrowserModule} from '../test/fixtures/browser-source.mjs';
+const {LocalAgentProtocol,residentAttachable,bindResidentCloudProvider}=await loadBrowserModule('apps/app/src/runtime/local-agent.ts');
 
 const credential='11111111-1111-4111-8111-111111111111';
 // The native answer is trusted only as an exact boolean, only on the native platform.
