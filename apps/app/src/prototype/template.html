@@ -4173,7 +4173,7 @@
   </sc-if>
   <sc-if value="{{inlineChatRecorder}}">
     <section data-alpha-chat-recorder data-voice-state="{{chatRecorder.state}}" class="alpha-voice-composer" role="region" aria-label="Voice conversation">
-      <div class="alpha-voice-input"><div role="status" aria-label="Voice conversation status" class="alpha-voice-status-hidden"><sc-for list="{{chatRecorder.lines}}" as="line"><span>{{line.t}}</span></sc-for></div><div class="alpha-voice-waveform" role="img" aria-label="Voice activity">{{chatRecorder.activity}}</div></div>
+      <div class="alpha-voice-input"><div role="status" aria-label="Voice conversation status" class="{{chatRecorder.statusClass}}"><sc-for list="{{chatRecorder.lines}}" as="line"><span>{{line.t}}</span></sc-for></div><div class="alpha-voice-waveform" role="img" aria-label="Voice activity">{{chatRecorder.activity}}</div></div>
       <sc-if value="{{chatRecorder.canMute}}"><button class="ib" aria-label="{{chatRecorder.muteLabel}}" disabled="{{chatRecorder.muteDisabled}}" aria-pressed="{{chatRecorder.muted}}" onClick="{{chatRecorder.toggleMute}}"><span aria-hidden="true" class="mail-toolbar-icon" style="mask-image:url('{{chatRecorder.muteAsset}}');-webkit-mask-image:url('{{chatRecorder.muteAsset}}')"></span></button></sc-if>
       <button class="alpha-voice-primary" aria-label="{{chatRecorder.primaryLabel}}" disabled="{{chatRecorder.primaryDisabled}}" onClick="{{chatRecorder.stop}}"><svg class="i" viewBox="0 0 24 24"><path d="{{chatRecorder.primaryIcon}}"></path></svg></button>
     </section>
@@ -4220,6 +4220,7 @@
     <button class="ib" title="Voice assistant" aria-label="Talk" onClick="{{startVoice}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
     <sc-if value="{{pillVoice}}"><div data-alpha-pill-voice class="alpha-pill-voice-controls" onPointerDown="{{pillVoice.controlDown}}">
       <button class="alpha-pill-voice-synth" aria-label="Open conversation" onClick="{{openSheet}}"><span class="alpha-voice-waveform">{{pillVoice.activity}}</span></button>
+      <sc-if value="{{pillVoice.connecting}}"><span class="alpha-voice-connecting" role="status">Connecting to voice…</span></sc-if>
       <sc-if value="{{pillVoice.canMute}}"><button class="ib" aria-label="{{pillVoice.muteLabel}}" disabled="{{pillVoice.muteDisabled}}" aria-pressed="{{pillVoice.muted}}" onClick="{{pillVoice.toggleMute}}"><span aria-hidden="true" class="mail-toolbar-icon" style="mask-image:url('{{pillVoice.muteAsset}}');-webkit-mask-image:url('{{pillVoice.muteAsset}}')"></span></button></sc-if>
       <button class="alpha-pill-voice-stop" aria-label="Stop voice conversation" onClick="{{pillVoice.stop}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.stop}}"></path></svg></button>
     </div></sc-if>
