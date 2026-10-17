@@ -167,7 +167,7 @@ public final class VideoCopyPreservationInstrumentedTest {
     });boolean verified=false;
     try{
      String before=metadata(p.uri);Response call=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),call);refused(call);assertTrue(injected.get());assertNull(actorError.get());assertNotNull(sentinel.get());assertTrue(call.error.contains("complete/ErrnoException"));assertArrayEquals(sentinel.get(),Files.readAllBytes(complete.toPath()));
-     JSONObject incomplete=new JSONObject(Files.readString(new File(p.directory(),"INCOMPLETE.json").toPath()));assertEquals(android.system.OsConstants.EEXIST,incomplete.getInt("errno"));assertNull("Existing full or partial filenames never authorize success",call.value);unchanged(p,before);verified=true;
+     JSONObject incomplete=new JSONObject(new String(Files.readAllBytes(new File(p.directory(),"INCOMPLETE.json").toPath()),StandardCharsets.UTF_8));assertEquals(android.system.OsConstants.EEXIST,incomplete.getInt("errno"));assertNull("Existing full or partial filenames never authorize success",call.value);unchanged(p,before);verified=true;
     }finally{editor.close();if(verified)dispose(p);}
    }
   }
