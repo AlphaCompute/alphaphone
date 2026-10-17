@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T07:08:06.445245+00:00",
+  "updatedAt": "2026-10-17T07:19:10.061106+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -1071,11 +1071,12 @@
       "scope": "MVP",
       "implementation": "Native Media3 edit-copy, source snapshot/CAS/digest fences, audio preservation, durable receipts and cancellation are implemented on this branch. Normal resident four-variant build and full Alpha UI acceptance remain required.",
       "preview": "33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior.",
-      "seeker": "Two actual offline Seeker component tests pass: decoded audio, original bytes/revision, physical trim samples, publish-receipt recovery, no duplicate, changed binding/source refusal and background cancellation. Full Alpha UI/revocation/process-death qualification remains pending.",
+      "seeker": "Installed2446 ONE actual Save copy trim1..3s/Rotate90 failed at pending-write/code0; pending output640 retained, journalfailed. Source639 bytes/hash/generation unchanged. Original exception missing; pending-recovery false-absence defect fixed in candidatef3b88d32, not built/tested/installed. No retry.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/native-video-component-20261017.json",
-        "docs/evidence/native-video-callback-20261017.json"
+        "docs/evidence/native-video-callback-20261017.json",
+        "docs/evidence/seeker-video-save-failure-20261017.json"
       ],
       "notes": "Current 8b12bbb2 production exporter sources passed all3 isolated offline Seeker tests (59.198s), including late callback after worker shutdown, with installed fixture APK SHA joined to staged production sources. See docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain pending."
     },
