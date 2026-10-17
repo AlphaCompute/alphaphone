@@ -104,6 +104,7 @@ public final class VideoCopyInstrumentedTest {
 
  @Test public void realTrimRotateCropAudioRecoveryCancellationAndOriginalPreservation()throws Exception {
   JSONObject report=new JSONObject().put("layer","physical native exporter component; not full Alpha UI acceptance").put("networkPermission",false).put("source","generated four-quadrant video with timestamp markers and four audio tones");
+  boolean verified=false;
   try(ActivityScenario<VideoFixtureActivity> scene=ActivityScenario.launch(VideoFixtureActivity.class)){
    AtomicReference<VideoFixtureActivity> activity=new AtomicReference<>();scene.onActivity(activity::set);InstrumentationRegistry.getInstrumentation().waitForIdleSync();assertTrue("Unlock the device and leave the QA activity visible",activity.get().hasWindowFocus());
    Uri original=source();String initial=revision(original);byte[] originalBytes=digest(original);String sourceId=UUID.randomUUID().toString();
@@ -116,8 +117,8 @@ public final class VideoCopyInstrumentedTest {
    Response duplicate=new Response();editor.save(token,1.2,2.8,90,true,duplicate);assertEquals(saved.getString("id"),duplicate.await().getString("id"));assertEquals(1,copies(token));
    Response changed=new Response();editor.save(token,1.3,2.8,90,true,changed);assertTrue(changed.done.await(10,TimeUnit.SECONDS));assertNotNull(changed.error);assertEquals(1,copies(token));
    Response again=new Response();editor.begin(sourceId,initial,again);String cancelled=again.await().getString("sessionId");editor.cancel(cancelled);Response cancellation=new Response();editor.result(cancelled,cancellation);assertEquals("not-started",cancellation.await().getString("status"));assertEquals(0,copies(cancelled));assertArrayEquals(originalBytes,digest(original));
-   report.put("trimRotateCropAndAudioTrack",true).put("videoTimestampMarkersMatchOriginal",true).put("physicalVideoSampleCountAndNoPreRoll",true).put("decodedAudioTonesPreserved",true).put("originalBytesAndRevisionUnchanged",true).put("publishedCopyRecoveredWithoutDuplicate",true).put("duplicateSaveReturnedSameCopy",true).put("changedBindingRefused",true).put("cancelCreatedNoCopy",true).put("passed",true);
-  }finally{cleanup();try(java.io.FileOutputStream out=context.openFileOutput("video-qa-result.json",Context.MODE_PRIVATE)){out.write(report.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}
+   report.put("trimRotateCropAndAudioTrack",true).put("videoTimestampMarkersMatchOriginal",true).put("physicalVideoSampleCountAndNoPreRoll",true).put("decodedAudioTonesPreserved",true).put("originalBytesAndRevisionUnchanged",true).put("publishedCopyRecoveredWithoutDuplicate",true).put("duplicateSaveReturnedSameCopy",true).put("changedBindingRefused",true).put("cancelCreatedNoCopy",true).put("passed",true);verified=true;
+  }finally{if(verified)cleanup();try(java.io.FileOutputStream out=context.openFileOutput("video-qa-result.json",Context.MODE_PRIVATE)){out.write(report.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}
  }
  private void encoding(String token,Response save)throws Exception {
   java.io.File output=new java.io.File(context.getCacheDir(),"alpha-video-edits/"+token+"-output.mp4");long deadline=android.os.SystemClock.elapsedRealtime()+10000;
@@ -158,22 +159,24 @@ public final class VideoCopyInstrumentedTest {
  @Test public void failedReceiptRetainsPendingProviderOutput()throws Exception {
   String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
   VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{throw new AssertionError("Recovery must not open another source");});
+  boolean verified=false;
   try{
    ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);
    Uri pending=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(pending);owned.add(pending);
    try(InputStream input=context.getAssets().open("qa-source.mp4");OutputStream output=context.getContentResolver().openOutputStream(pending,"w")){assertNotNull(output);byte[] chunk=new byte[8192];int n;while((n=input.read(chunk))!=-1)output.write(chunk,0,n);}
    byte[] original=digest(pending);String record=new JSONObject().put("status","failed").put("createdAt",System.currentTimeMillis()).put("binding","1000:3000:90:false:240:320").toString();assertTrue(journal.edit().putString(token,record).commit());
    for(int attempt=0;attempt<2;attempt++){Response result=new Response();editor.result(token,result);assertTrue(result.done.await(10,TimeUnit.SECONDS));assertEquals("Pending video copy needs recovery review",result.error);assertNull(result.value);assertEquals(record,journal.getString(token,null));assertArrayEquals(original,digest(pending));}
-   try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(pending),new String[]{"_id","is_pending"},null,null,null)){assertNotNull(row);assertTrue(row.moveToFirst());assertEquals(ContentUris.parseId(pending),row.getLong(0));assertEquals(1,row.getInt(1));assertFalse(row.moveToNext());}
-  }finally{editor.close();assertTrue(journal.edit().remove(token).commit());cleanup();}
+   try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(pending),new String[]{"_id","is_pending"},null,null,null)){assertNotNull(row);assertTrue(row.moveToFirst());assertEquals(ContentUris.parseId(pending),row.getLong(0));assertEquals(1,row.getInt(1));assertFalse(row.moveToNext());}verified=true;
+  }finally{editor.close();if(verified){assertTrue(journal.edit().remove(token).commit());cleanup();}}
  }
  @Test public void recordedMissingPendingOutputCannotBecomeFalseFailure()throws Exception {
   String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
   VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{throw new AssertionError("Recovery must not open another source");});
+  boolean verified=false;
   try{
    String record=new JSONObject().put("status","exporting").put("createdAt",System.currentTimeMillis()).put("pendingId","9223372036854775806").toString();assertTrue(journal.edit().putString(token,record).commit());
-   Response result=new Response();editor.result(token,result);assertTrue(result.done.await(10,TimeUnit.SECONDS));assertEquals("Recorded video copy needs recovery review",result.error);assertNull(result.value);assertEquals(record,journal.getString(token,null));
-  }finally{editor.close();assertTrue(journal.edit().remove(token).commit());}
+   Response result=new Response();editor.result(token,result);assertTrue(result.done.await(10,TimeUnit.SECONDS));assertEquals("Recorded video copy needs recovery review",result.error);assertNull(result.value);assertEquals(record,journal.getString(token,null));verified=true;
+  }finally{editor.close();if(verified)assertTrue(journal.edit().remove(token).commit());}
  }
 
  @Test public void beginRetainsFailedMissingOrMismatchedOutputCustody()throws Exception {
@@ -181,6 +184,7 @@ public final class VideoCopyInstrumentedTest {
    String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
    java.util.concurrent.atomic.AtomicBoolean sourceRead=new java.util.concurrent.atomic.AtomicBoolean();
    VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{sourceRead.set(true);throw new AssertionError("Custody hold must happen before source read/export");});
+   boolean verified=false;
    java.io.File directory=new java.io.File(context.getCacheDir(),"alpha-video-edits"),input=new java.io.File(directory,token+"-input.mp4"),output=new java.io.File(directory,token+"-output.mp4");
    if(!directory.isDirectory())assertTrue(directory.mkdirs());
    byte[] inputBytes=new byte[]{11,22,33,44},outputBytes=new byte[]{55,66,77,88};
@@ -190,8 +194,8 @@ public final class VideoCopyInstrumentedTest {
     if(mismatch){ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);Uri found=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(found);owned.add(found);assertNotEquals("9223372036854775806",Long.toString(ContentUris.parseId(found)));}
     String record=new JSONObject().put("status","failed").put("createdAt",System.currentTimeMillis()).put("pendingId","9223372036854775806").toString();assertTrue(journal.edit().putString(token,record).commit());
     Response begin=new Response();editor.begin("not-admitted-source","not-read",begin);assertTrue(begin.done.await(10,TimeUnit.SECONDS));assertEquals("Recorded video copy needs recovery review",begin.error);assertNull(begin.value);assertFalse(sourceRead.get());
-    assertEquals(record,journal.getString(token,null));assertArrayEquals(inputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(input.toPath())));assertArrayEquals(outputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(output.toPath())));
-   }finally{editor.close();assertTrue(journal.edit().remove(token).commit());if(input.exists())assertTrue(input.delete());if(output.exists())assertTrue(output.delete());cleanup();}
+    assertEquals(record,journal.getString(token,null));assertArrayEquals(inputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(input.toPath())));assertArrayEquals(outputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(output.toPath())));verified=true;
+   }finally{editor.close();if(verified){assertTrue(journal.edit().remove(token).commit());if(input.exists())assertTrue(input.delete());if(output.exists())assertTrue(output.delete());cleanup();}}
   }
  }
 
