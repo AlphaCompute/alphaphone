@@ -1,8 +1,6 @@
-import {expect,type Page} from '@playwright/test';
-import {flagOffAndroid,residentHome,fenceNetwork,button} from './flag-off-android';
-// Synthetic native live capture for production UI and explicit source-level API tests. Synthetic ports only: the AlphaVoiceCloud live capture
-// (frames and Silero VAD edges), the resident agent's live ASR route and local playback. This is
-// routing, lifecycle and accounting evidence, not microphone, echo, JNI, model or device evidence.
+import {type Page} from '@playwright/test';
+import {flagOffAndroid,residentHome,fenceNetwork} from './flag-off-android';
+// Synthetic native ports: routing and lifecycle evidence only.
 export async function setupLiveAssistant(page:Page){
  const foreign=await fenceNetwork(page);await flagOffAndroid(page);
  await page.addInitScript(()=>{
@@ -15,7 +13,7 @@ export async function setupLiveAssistant(page:Page){
    }
    return emit(plugin,event,value);
   };
-  const f=w.live={noCanceller:false,captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
+  const f=w.live={eot:{available:false,reason:'voice-not-started'} as any,eotCalls:[] as string[],heard:[] as any[],noCanceller:false,captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
   const events:Array<{event:string;callback:(value:any)=>void}>=[];
   f.emit=(event:string,value:any)=>{for(const row of events)if(row.event===event)row.callback(value);};
   f.frame=(timestamp:number)=>({pcm16:btoa(String.fromCharCode(...new Uint8Array(1024))),sampleRate:16000,channels:1,samples:512,timestamp});
@@ -25,6 +23,14 @@ export async function setupLiveAssistant(page:Page){
   header.methods=[...['checkPermissions','localSpeechStatus','liveCaptureStatus','startLiveCapture','stopLiveCapture','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech','cancelRecording'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
   const callback=c.nativeCallback;c.nativeCallback=(plugin:string,method:string,input:any,fn:any)=>{if(plugin==='AlphaVoiceCloud'&&method==='addListener'){events.push({event:input.eventName,callback:fn});return String(events.length);}return callback(plugin,method,input,fn);};
   c.nativePromise=async(plugin:string,method:string,input:any)=>{
+   if(plugin==='Agent'&&method==='request'&&input.path==='/api/asr/local-inference/end-of-turn'){
+    if(input.method!=='POST')throw Error('Unsupported local agent request.');
+    f.eotCalls.push(JSON.parse(input.body).transcript);return {status:200,body:JSON.stringify(f.eot)};
+   }
+   if(plugin==='Agent'&&method==='request'&&/^\/api\/conversations\/[^/]+\/messages\/[0-9a-f-]{36}\/heard$/.test(String(input.path))){
+    const body=JSON.parse(input.body),messageId=String(input.path).split('/')[5];f.heard.push({path:input.path,heardText:body.heardText,ownerId:input.ownerId});
+    return {status:200,body:JSON.stringify({ok:true,messageId,text:body.heardText,truncated:true,changed:true})};
+   }
    if(plugin==='Agent'&&method==='request'&&String(input.path).startsWith('/api/asr/local-inference/live')){
     if(input.path==='/api/asr/local-inference/live/status')return {status:200,body:JSON.stringify({ready:true,streaming:true,sessions:0,maxSessions:4})};
     const body=JSON.parse(input.body);f.routes.push(body);

@@ -22,8 +22,10 @@ import { voiceFailure, transcriptProvenance, deniedSettingsChoice, DENIED_SETTIN
 import { createPairedVoice } from '../runtime/paired-voice';
 import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
 import { selectVoiceRoute, voiceSendPolicy } from '../runtime/voice-selection';
-import { beginVoiceTurn, markVoiceTiming, abandonVoiceTurn, finishVoiceTurn, sendVoiceEntry, recordLiveVoiceTiming } from '../runtime/voice-timing';
+import { beginVoiceTurn, markVoiceTiming, abandonVoiceTurn, finishVoiceTurn, sendVoiceEntry, recordLiveVoiceTiming, recordEndpointVoiceTiming, recordHeardVoiceTiming, activeVoiceTurn } from '../runtime/voice-timing';
+import { residentEndpoint, createHeardReporter } from '../runtime/voice-turn-routes';
 import { createNativeLiveDictation, nativeAssistantListener, nativeLiveVoiceReady, type NativeLiveDictation } from '../runtime/native-live-voice';
+import { installNativeVoiceTurnMarks } from '../runtime/native-voice-turn';
 import { VoiceAssistantSession, type AssistantState } from '../runtime/voice-assistant';
 import { shouldRespondToVoiceTurn, buildVoiceTurnSignal } from '@elizaos/voice/turn';
 import { toSpeakableText } from '@elizaos/ui/voice/voice-chat-playback';
@@ -63,6 +65,7 @@ function noteSpeechText(note: Bag | undefined): string {
 /** One owned recorder, shared by Notes dictation and the chat voice mode. */
 export function installPrototypeVoiceAdapter(Component: any, views: Record<string, Bag>) {
   installLocalSpeechPlayback(Component);
+  installNativeVoiceTurnMarks();
   const notes = views.notes, render = notes.render, back = notes.back, leave = notes.onLeave;
   let closeTranscriptQuestion:(()=>void)|undefined;
   const originalApi = Component.prototype.api;
@@ -518,33 +521,50 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         if(result.complete){markVoiceTiming('first-token');markVoiceTiming('final-reply');}
         conversationLastTranscript=sent.text;conversationLastReply=result.text;conversationReviewRequired=result.reviewRequired===true&&!result.awaitingUserInput;return result;
       };
-      const voiceStopped=(value:BatchVoiceState)=>cloudVoiceFailure(value.error)||((value.error as {code?:unknown})?.code==='no-speech'?(cloudDriver?'Eliza Cloud heard no speech, so nothing was sent. Start the voice conversation again, or switch to the keyboard.':'No speech was heard, so nothing was sent. Start the voice conversation again, or switch to the keyboard.'):(value.error as {code?:unknown})?.code==='live-asr'?'On-device transcription stopped. Start the voice conversation again, or switch to the keyboard.':(value.error as {code?:unknown})?.code==='capture'?'The microphone stopped. Start the voice conversation again, or switch to the keyboard.':'Voice stopped. Check your connection and conversation history before trying again.');
+      const voiceStopped=(value:BatchVoiceState)=>cloudVoiceFailure(value.error)||((value.error as {reason?:unknown})?.reason==='call-active'?'Voice paused for a phone call. Start the voice conversation again after the call, or switch to the keyboard.':null)||((value.error as {code?:unknown})?.code==='no-speech'?(cloudDriver?'Eliza Cloud heard no speech, so nothing was sent. Start the voice conversation again, or switch to the keyboard.':'No speech was heard, so nothing was sent. Start the voice conversation again, or switch to the keyboard.'):(value.error as {code?:unknown})?.code==='live-asr'?'On-device transcription stopped. Start the voice conversation again, or switch to the keyboard.':(value.error as {code?:unknown})?.code==='capture'?'The microphone stopped. Start the voice conversation again, or switch to the keyboard.':'Voice stopped. Check your connection and conversation history before trying again.');
       // Voice assistant (#423): one echo-cancelled native capture for the whole conversation, VAD
       // endpointing, barge-in and heard-content accounting, when the native VAD capture and the
       // agent's streaming route are both ready. Otherwise the half-duplex recorded-clip loop below.
       // Both transcribe and speak on this device.
       if(!cloudDriver&&local&&await nativeLiveVoiceReady(controller.signal)){
         current();
+        // The resident's end-of-turn and heard routes (voice-turn-routes.ts), fenced to this
+        // conversation's binding: owner session, connection epoch and conversation.
+        const binding=prepared.binding;
+        const residentRequest=()=>{const resident=connectionController.getResidentLiveVoice();return resident&&connectionController.voiceConversationCurrent(binding,false)?resident.request:null;};
+        const semanticEndpoint=residentEndpoint(residentRequest);
+        const heardReporter=createHeardReporter({
+          request:residentRequest,
+          current:conversationId=>conversationId===binding.conversationId&&connectionController.voiceConversationCurrent(binding,false),
+          isAssistantReply:(conversationId,messageId)=>conversationId===binding.conversationId&&(chat.shell.S().msgs||[]).some((m:Bag)=>m.id===messageId&&m.from==='agent'),
+        });
+        // Voice timing record of each submitted turn, for its later heard outcome (ids only).
+        const timingTurns=new Map<string,string>();
         const assistant:VoiceAssistantSession=new VoiceAssistantSession({
           conversationId:prepared.binding.conversationId,
           assertCurrent:current,
           // Each utterance is sent with the screen context current when the user began speaking.
           beginUtterance:()=>{current();conversationPrepared={...conversationPrepared!,context:chat.shell.voiceConversationContext(prepared.binding)};current();},
           listen:nativeAssistantListener({onLatency:recordLiveVoiceTiming,onInterim:text=>{if(token!==generation||chatDestination!==chat)return;conversationInterim=text;refresh();}}),
+          // After the short gap: the resident's scorer. Unavailable, slow or failing: the long gap decides.
+          endpoint:(text,signal)=>{current();return semanticEndpoint(text,signal);},
           shouldRespond:(text,context)=>shouldRespondToVoiceTurn(text,context),
           turnSignal:text=>buildVoiceTurnSignal(text),
           send:sendTurn,
           speakable:text=>toSpeakableText(text),
           speak:async input=>{input.signal.throwIfAborted();current();const pending=local.speak(input.text,input.signal,()=>{current();input.onStarted();},true);conversationSpeech=pending;try{await pending;input.signal.throwIfAborted();current();}catch(failure){if((failure as {code?:string})?.code==='speech-cleanup-unconfirmed'){mediaUnconfirmed=failure;stopping=Promise.reject(failure);void stopping.catch(()=>{});}throw failure;}finally{if(conversationSpeech===pending)conversationSpeech=undefined;}},
-          // Only what was played stays in this conversation's reply; the rest is marked unheard.
+          // Only what was played stays in this conversation's reply; the rest is marked unheard, and
+          // the agent is asked to keep only the played prefix (nothing when it was fully heard).
           onHeard:heard=>{
             if(token!==generation||chatDestination!==chat)return;
             if(!heard.interrupted)return;
+            const timing=timingTurns.get(heard.turnId);timingTurns.delete(heard.turnId);
+            void heardReporter.report({conversationId:binding.conversationId,replyId:heard.replyId,heard:heard.heard,unheard:heard.unheard,interrupted:true}).then(outcome=>{recordHeardVoiceTiming(timing,outcome);});
             conversationLastReply=heard.heard;
             const note=heard.heard?'(Interrupted. The rest of this reply was not played.)':'(Interrupted before this reply was played.)';
             chat.shell.setState((state:Bag)=>({msgs:(state.msgs||[]).map((m:Bag)=>m.id===heard.replyId&&m.from==='agent'?{...m,text:heard.heard?`${heard.heard}\n\n${note}`:note,interrupted:true,voiceHeard:heard.heard}:m)}));
           },
-          onTurn:(event,turnId)=>{if(token!==generation)return;if(event==='submitted'){recordingEnded(`live:${turnId}`,'conversation');markVoiceTiming('transcript-ready');}else if(event==='first-audio')markVoiceTiming('first-audio');else if(event==='finished')finishVoiceTurn();else abandonVoiceTurn();},
+          onTurn:(event,turnId,detail)=>{if(token!==generation)return;if(event==='submitted'){recordingEnded(`live:${turnId}`,'conversation');markVoiceTiming('transcript-ready');if(detail)recordEndpointVoiceTiming(detail.endpoint);const timing=activeVoiceTurn();if(timing){timingTurns.set(turnId,timing);if(timingTurns.size>32)timingTurns.delete(timingTurns.keys().next().value!);}}else if(event==='first-audio')markVoiceTiming('first-audio');else if(event==='finished')finishVoiceTurn();else abandonVoiceTurn();},
           onLevel:peak=>{if(token!==generation)return;conversationLevels=[...conversationLevels.slice(-43),peak];},
           onState:value=>{
             if(token!==generation||chatDestination!==chat||conversationVoice!==assistant)return;

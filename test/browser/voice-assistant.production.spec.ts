@@ -41,6 +41,14 @@ test('barge-in stops playback, keeps only the played sentence and sends the new 
  await expect(page.getByText('(Interrupted. The rest of this reply was not played.)')).toBeVisible();
  await expect(page.getByText('starts at nine with Priya')).toHaveCount(0);
  await expect(page.getByText('Tomorrow is clear.')).toBeVisible();
+ // The agent is asked to keep exactly the played sentence of that reply; the fully heard reply is untouched.
+ const heard=await live(page,f=>f.heard);
+ expect(heard.map((row:any)=>[row.path.split('/')[5],row.heardText])).toEqual([['11111111-1111-4111-8111-111111111111','You have two meetings today.']]);
+ expect(heard[0].ownerId).toBeTruthy();
+ // With the scorer unavailable both turns were submitted by the long gap.
+ expect(await live(page,f=>f.eotCalls)).toEqual(['What is on my calendar today','and tomorrow']);
+ const endpoints=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:voice-timing:v1')||'[]').filter((row:any)=>row.endpoint).map((row:any)=>[row.endpoint.by,row.endpoint.semantic,row.endpoint.reason,row.heard??null]));
+ expect(endpoints).toEqual([['gap','unavailable','voice-not-started','recorded'],['gap','unavailable','voice-not-started',null]]);
  await clean(page,foreign);
 });
 
@@ -65,6 +73,8 @@ test('Mute controls capture and Stop retires playback without a separate interru
  await expect.poll(()=>live(page,f=>f.stopped)).toBeGreaterThan(0);
  await expect(page.getByText('(Interrupted before this reply was played.)')).toBeVisible();
  expect(await posts(page)).toEqual(['How is the weather']);
+ // Nothing was heard: the route needs a non-empty prefix, so nothing is sent.
+ expect(await live(page,f=>f.heard)).toEqual([]);
  await clean(page,foreign);
 });
 
@@ -99,5 +109,30 @@ test('stopping before the pause discards the unsent utterance and late transcrip
  await page.waitForTimeout(1600);
  expect(await posts(page)).toEqual([]);
  expect(await live(page,f=>f.routes.at(-1).close)).toBe(true);
+ await clean(page,foreign);
+});
+
+test('semantic endpointing: a complete score submits after the short gap; an incomplete one waits for the long gap',async({page})=>{
+ const foreign=await setup(page);
+ await page.evaluate(()=>{(window as any).live.eot={available:true,endOfTurnProbability:.93,complete:true,commitThreshold:.7,nextSpeaker:'agent',source:'eliza-1-drafter',model:'eliza-1',latencyMs:18};});
+ await button(page,'Talk').click();
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ await say(page,'What is on my calendar today');
+ await expect.poll(()=>posts(page)).toEqual(['What is on my calendar today']);
+ await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
+ await page.evaluate(()=>(window as any).live.finishPlayback());
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ await page.evaluate(()=>{(window as any).live.eot={available:true,endOfTurnProbability:.2,complete:false,commitThreshold:.7,nextSpeaker:'user',source:'eliza-1-drafter',model:'eliza-1',latencyMs:15};});
+ await say(page,'and remind me to');
+ await expect.poll(()=>live(page,f=>f.eotCalls.length)).toBe(2);
+ await page.waitForTimeout(500);
+ expect(await posts(page)).toEqual(['What is on my calendar today'],'not complete: no early submit');
+ await expect.poll(()=>posts(page)).toEqual(['What is on my calendar today','and remind me to']);
+ const endpoints=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:voice-timing:v1')||'[]').filter((row:any)=>row.endpoint).map((row:any)=>row.endpoint));
+ expect(endpoints).toEqual([{by:'semantic',semantic:'complete',latencyMs:18},{by:'gap',semantic:'incomplete',latencyMs:15}]);
+ expect(JSON.stringify(endpoints)).not.toContain('calendar');
+ // The reply was fully heard: no heard request.
+ expect(await live(page,f=>f.heard)).toEqual([]);
+ await button(page,'Stop voice conversation').click();
  await clean(page,foreign);
 });

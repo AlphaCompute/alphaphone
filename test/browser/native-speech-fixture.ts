@@ -1,7 +1,6 @@
-import {expect,type Page} from '@playwright/test';
-import {flagOffAndroid,residentHome,fenceNetwork,button} from './flag-off-android';
-// Flag-off renderer, with synthetic native speech/agent ports. This exercises routing and
-// lifecycle only; it is not JNI, microphone, audible playback or model qualification.
+import {type Page} from '@playwright/test';
+import {flagOffAndroid,residentHome,fenceNetwork} from './flag-off-android';
+// Synthetic native ports: routing and lifecycle evidence only.
 export async function setupNativeSpeech(page:Page){
  const foreign=await fenceNetwork(page);await flagOffAndroid(page);
  await page.addInitScript(()=>{
@@ -15,10 +14,10 @@ export async function setupNativeSpeech(page:Page){
    }
    return emit(plugin,event,value);
   };
-  const f=w.nativeSpeech={ready:true,peak:0,starts:0,stops:0,transcripts:0,spoken:[] as string[],plays:0,cancels:[] as string[],stopped:0,forbidden:[] as string[],active:null as string|null,holdTranscript:false};
+  const f=w.nativeSpeech={ready:true,peak:0,starts:0,stops:0,transcripts:0,spoken:[] as string[],plays:0,cancels:[] as string[],stopped:0,forbidden:[] as string[],active:null as string|null,holdTranscript:false,stages:[] as string[],turns:[] as Array<string|undefined>};
   const events:Array<{event:string;callback:(value:any)=>void}>=[];
   const header=c.PluginHeaders.find((p:any)=>p.name==='AlphaVoiceCloud');
-  header.methods=[...['checkPermissions','localSpeechStatus','startRecording','stopRecording','getRecordingMetrics','cancelRecording','transcribeLocalRecording','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
+  header.methods=[...['checkPermissions','localSpeechStatus','startRecording','stopRecording','getRecordingMetrics','cancelRecording','transcribeLocalRecording','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech','markVoiceTurn'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
   const callback=c.nativeCallback;c.nativeCallback=(plugin:string,method:string,input:any,fn:any)=>{if(plugin==='AlphaVoiceCloud'&&method==='addListener'){events.push({event:input.eventName,callback:fn});return String(events.length);}return callback(plugin,method,input,fn);};
   c.nativePromise=async(plugin:string,method:string,input:any)=>{
    if(plugin!=='AlphaVoiceCloud')return prior(plugin,method,input);
@@ -29,7 +28,9 @@ export async function setupNativeSpeech(page:Page){
    if(method==='stopRecording'){f.stops++;const recordingId=f.active;f.active=null;return {recordingId,durationMs:1500};}
    if(method==='cancelRecording'){f.active=null;return {};}
    if(method==='transcribeLocalRecording'){f.transcripts++;if(f.holdTranscript)await new Promise(resolve=>f.releaseTranscript=resolve);return {text:'Local spoken request',local:true,execution:'device'};}
-   if(method==='synthesizeLocal'){f.spoken.push(input.text);return {playbackId:'play-'+f.spoken.length,execution:'device'};}
+   // Issue #395: the native collector binds renderer stages to one live turn id (ids only, no text).
+   if(method==='markVoiceTurn'){f.stages.push(input.stage+(input.voiceTurnId?':linked':''));return {marked:true,voiceTurnId:'7d3c1a52-6d5e-4e0f-9a43-5c1d2e3f4a5b'};}
+   if(method==='synthesizeLocal'){f.spoken.push(input.text);f.turns.push(input.voiceTurnId);return {playbackId:'play-'+f.spoken.length,execution:'device'};}
    if(method==='play'){f.plays++;return {};}
    if(method==='stopPlayback'){f.stopped++;return {};}
    if(method==='cancel'){f.cancels.push(input.requestId);return {};}

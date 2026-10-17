@@ -29,18 +29,23 @@ import org.json.JSONObject;
  *     captured, not where the read returned. When the platform has no timestamp the read-return time
  *     is used and the trial says so ({@code read-return}): that is later than capture, so the
  *     latency it yields is a lower bound and never acceptance evidence.</li>
- * <li>Playback: local replies play through MediaPlayer (AlphaVoiceCloudPlugin.play). {@code first-pcm}
+ * <li>Streamed playback (issue #397, engines with Paradee streaming): {@code first-pcm} is the first
+ *     AudioTrack write of the reply and {@code audible-playback} the AudioTrack.getTimestamp
+ *     (CLOCK_MONOTONIC) presentation time of the first non-silent sample ({@code audiotrack-timestamp});
+ *     the playback head crossing it is only a labelled fallback ({@code audiotrack-head-position}).
+ *     See {@link StreamingSpeechPlayback}.</li>
+ * <li>Whole-sentence playback: local replies play through MediaPlayer (AlphaVoiceCloudPlugin.play). {@code first-pcm}
  *     is MediaPlayer.start(); {@code audible-playback} is the presentation time of the first
  *     non-silent sample from MediaPlayer.getTimestamp (backed by the AudioTrack's output timestamp),
  *     read once the media clock has run {@link #AUDIBLE_ANCHOR_US} (or half of a shorter clip) so the anchor comes from rendered
  *     audio rather than the start estimate. It is the output pipeline's time, not an acoustic one.</li>
  * </ul>
  * Records hold numbers and fixed labels plus the build and model identity; nothing is written to
- * storage or logged. {@link #export} is the {@code alpha-native-voice-timing-v2} document
+ * storage or logged. {@link #export} is the {@code alpha-native-voice-timing-v3} document
  * scripts/native-voice-latency.mjs reads.
  */
 final class AlphaVoiceLatencyProbe {
- static final String FORMAT="alpha-native-voice-timing-v2";
+ static final String FORMAT="alpha-native-voice-timing-v3";
  static final VoiceLatencyTrials TRIALS=new VoiceLatencyTrials(System::nanoTime);
  /** Media time after which the MediaPlayer anchor is taken from rendered output. */
  static final long AUDIBLE_ANCHOR_US=200_000;
@@ -165,7 +170,7 @@ final class AlphaVoiceLatencyProbe {
   Thread thread=new Thread(()->{try{identity(app);}catch(Exception unavailable){/* export computes it again and reports the failure */}},"alpha-voice-identity");
   thread.setDaemon(true);thread.start();
  }
- /** Every finished trial as one alpha-native-voice-timing-v2 document. */
+ /** Every finished trial as one alpha-native-voice-timing-v3 document. */
  static JSONObject export(Context context)throws Exception{
   JSONObject id=identity(context);
   JSONArray records=new JSONArray();
@@ -176,7 +181,7 @@ final class AlphaVoiceLatencyProbe {
   JSONObject marks=new JSONObject();
   for(int i=0;i<VoiceLatencyTrials.MARKS.length;i++)if(trial.marks[i]!=VoiceLatencyTrials.UNSET)marks.put(VoiceLatencyTrials.MARKS[i],trial.marks[i]/1e6);
   JSONObject row=new JSONObject().put("id",identity.optString("sourceCommit","").substring(0,Math.min(12,identity.optString("sourceCommit","").length()))+"-"+processTag()+"-"+trial.sequence)
-   .put("pipeline",trial.pipeline).put("clock","native-monotonic-ms").put("captureClock",trial.captureClock).put("cold",trial.cold).put("outcome",trial.outcome).put("identity",identity).put("marks",marks);
+   .put("turnId",trial.turnId).put("pipeline",trial.pipeline).put("clock","native-monotonic-ms").put("captureClock",trial.captureClock).put("cold",trial.cold).put("outcome",trial.outcome).put("identity",identity).put("marks",marks);
   if(trial.coldReason!=null)row.put("coldReason",trial.coldReason);
   if(trial.reason!=null)row.put("reason",trial.reason);
   if(trial.audibleClock!=null)row.put("audibleClock",trial.audibleClock);

@@ -36,6 +36,31 @@ final class AlphaParadeeSpeech implements AlphaLocalSpeechEngine.Backend {
    accepted=true;return new AlphaLocalSpeechEngine.Audio(audio.samples,audio.sampleRate);
   }finally{if(!accepted)Arrays.fill(audio.samples,0);}
  }
+ @Override public boolean supportsStreaming(){try{return voice.supportsStreaming();}catch(LinkageError|RuntimeException unavailable){return false;}}
+ /**
+  * Issue #397: per-chunk validation of the shared Paradee stream. The sink never reenters the voice;
+  * its exceptions are held and rethrown after the native call returns, so nothing propagates through
+  * JNI. A rejected chunk is zeroed.
+  */
+ @Override public void synthesizeStream(String text,BooleanSupplier cancelled,AlphaLocalSpeechEngine.ChunkSink sink)throws Exception{
+  if(text==null||text.isBlank()||text.length()>5000||text.indexOf('\0')>=0)throw new IllegalArgumentException("Invalid reviewed speech text");
+  if(cancelled.getAsBoolean())throw new CancellationException();
+  if(voice.sampleRate()!=AlphaLocalSpeechEngine.STREAM_RATE)throw new IllegalStateException("Invalid speech output");
+  SpeechStreamValidation state=new SpeechStreamValidation();
+  voice.synthesizeStream(text,1f,(samples,complete)->{
+   try{
+    if(cancelled.getAsBoolean()){state.cancelled=true;zero(samples);return false;}
+    state.accept(samples,complete);
+    if(!sink.accept(samples,complete)){state.cancelled=true;return false;}
+    return true;
+   }catch(Exception|Error failure){zero(samples);state.failure=failure;return false;}
+  });
+  if(state.failure instanceof Exception)throw (Exception)state.failure;
+  if(state.failure instanceof Error)throw (Error)state.failure;
+  if(state.cancelled||cancelled.getAsBoolean())throw new CancellationException();
+  if(!state.complete)throw new IllegalStateException("Speech stream ended early");
+ }
+ private static void zero(float[] samples){if(samples!=null)Arrays.fill(samples,0);}
  public void cancel(){try{asr.cancel();}finally{voice.cancel();}}
  public void close(){try{asr.close();}finally{voice.close();}}
 }

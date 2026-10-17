@@ -7,6 +7,9 @@ async function noCloud(page:Page,foreign:string[]){expect(await page.evaluate(()
 test('production chat captures locally, transcribes locally, plays local reply and cancels playback',async({page})=>{
  const foreign=await setup(page);await button(page,'Talk').click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');await expect(voice(page)).toContainText('transcribed on this device');await utterance(page);await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
  expect(await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {starts:f.starts,stops:f.stops,transcripts:f.transcripts,spoken:f.spoken,plays:f.plays,posts:(window as any).flagOff.posts.map((text:string)=>text.split('[USER MESSAGE]\n').at(-1))};})).toEqual({starts:1,stops:1,transcripts:1,spoken:['Resident reply 1'],plays:1,posts:['Local spoken request']});
+ // Issue #395: transcript, request and first token reach the native collector; later stages and the reply's synthesis carry its turn id.
+ const linked=await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {stages:f.stages,turns:f.turns};});
+ expect(linked.stages.slice(0,2)).toEqual(['asr-final','request:linked']);expect(linked.turns).toEqual(['7d3c1a52-6d5e-4e0f-9a43-5c1d2e3f4a5b']);
  await button(page,'Stop voice conversation').click();await expect(voice(page)).toHaveCount(0);await expect.poll(()=>page.evaluate(()=>(window as any).nativeSpeech.stopped)).toBeGreaterThan(0);await noCloud(page,foreign);
 });
 test('unavailable local speech offers keyboard without trying network speech',async({page})=>{
@@ -36,4 +39,23 @@ test('Maps local speech adapter cancels owned guidance and refuses local-unready
 
 test('production chat exposes one voice mic and no duplicate dictation launcher',async({page})=>{
  const foreign=await setup(page);await expect(button(page,'Talk')).toHaveCount(1);await expect(button(page,'Transcribe')).toHaveCount(0);await noCloud(page,foreign);
+});
+
+// Offline: every request that would leave the device is aborted (fenceNetwork) and the renderer sees
+// navigator.onLine false. The preview server stays reachable only as the stand-in for the APK's
+// bundled assets, which a phone loads without a network. Speech capture, transcription and
+// read-aloud still run on this device; only the agent's network inference is refused, honestly,
+// and no Cloud speech route is tried.
+test('offline and fenced, speech still captures, transcribes and reads aloud on this device',async({page})=>{
+ await page.addInitScript(()=>{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get:()=>false});});
+ const foreign=await setup(page);await page.evaluate(()=>window.dispatchEvent(new Event('offline')));
+ expect(await page.evaluate(()=>navigator.onLine)).toBe(false);
+ await button(page,'Talk').click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');await expect(voice(page)).toContainText('transcribed on this device');await utterance(page);
+ await expect(voice(page)).toHaveAttribute('data-voice-state','error');await expect(voice(page)).toContainText('Local spoken request');
+ expect(await page.evaluate(()=>{const f=(window as any).nativeSpeech;return {starts:f.starts,transcripts:f.transcripts,spoken:f.spoken,posts:(window as any).flagOff.posts.length};})).toEqual({starts:1,transcripts:1,spoken:[],posts:0});
+ await button(page,'Close voice conversation').click();await expect(voice(page)).toHaveCount(0);
+ await button(page,'Notes').click();await button(page,'New note').click();await page.getByRole('textbox',{name:'Title',exact:true}).fill('Offline');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Still speaks.');await button(page,'Read aloud').click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).nativeSpeech.spoken)).toEqual(['Offline. Still speaks.']);
+ expect(await page.evaluate(()=>(window as any).nativeSpeech.turns)).toEqual([undefined]);
+ await noCloud(page,foreign);
 });

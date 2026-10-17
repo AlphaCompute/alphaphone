@@ -17,12 +17,19 @@ import java.util.List;
  * <li>{@code last-user-audio}: capture time of the last sample of the last window the gate still
  *     counted as speech (Silero P at or above {@link LiveVadGate#END});</li>
  * <li>{@code endpoint}: when the gate decided the turn ended (about 512 ms of trailing silence);</li>
- * <li>{@code asr-final}, {@code tts-start}, {@code tts-ready}: stage marks where this process sees
- *     them (diagnostic only, never summed into the result);</li>
- * <li>{@code first-pcm}: the response PCM was handed to the platform player;</li>
+ * <li>{@code asr-final}, {@code request}, {@code first-token}: the final transcript, the agent turn
+ *     dispatched and the first streamed reply token, stamped when the renderer reports them over the
+ *     bridge (AlphaVoiceCloudPlugin.markVoiceTurn), so they include the bridge hop;</li>
+ * <li>{@code tts-start}, {@code tts-ready}: synthesis began, and its first PCM (streamed) or whole
+ *     sentence (non-streaming engines) was ready. Stage marks are diagnostic only, never summed;</li>
+ * <li>{@code first-pcm}: the response PCM was handed to the platform player (first AudioTrack write
+ *     for streamed speech, MediaPlayer.start otherwise);</li>
  * <li>{@code audible-playback}: the platform's presentation time of the first non-silent response
  *     sample. This is the output pipeline's own estimate, not an acoustic measurement.</li>
  * </ul>
+ * Every trial carries a random {@code turnId} that links these stages across capture, the renderer's
+ * agent turn and playback: the renderer echoes it on later marks and on the reply's synthesis, so a
+ * stage or reply can only attach to the turn it belongs to.
  * The result is {@code audible-playback - last-user-audio}, and includes end-of-turn detection,
  * recognition, the reply, synthesis and playback buffering.
  *
@@ -32,8 +39,10 @@ import java.util.List;
  * fixed labels only: no audio, text or identifiers beyond a per-process sequence.
  */
 final class VoiceLatencyTrials {
- static final String[] MARKS={"last-user-audio","endpoint","asr-final","tts-start","tts-ready","first-pcm","audible-playback"};
- static final int LAST_USER_AUDIO=0,ENDPOINT=1,TTS_START=3,FIRST_PCM=5,AUDIBLE=6;
+ static final String[] MARKS={"last-user-audio","endpoint","asr-final","request","first-token","tts-start","tts-ready","first-pcm","audible-playback"};
+ static final int LAST_USER_AUDIO=0,ENDPOINT=1,TTS_START=5,FIRST_PCM=7,AUDIBLE=8;
+ /** Stages the renderer reports over the bridge. */
+ static final String[] RENDERER_STAGES={"asr-final","request","first-token"};
  static final long PENDING_LIMIT_NS=120_000_000_000L;
  static final int MAX_RECORDS=512;
  static final long UNSET=Long.MIN_VALUE;
@@ -41,6 +50,8 @@ final class VoiceLatencyTrials {
 
  static final class Trial {
   final long sequence;
+  /** Random per-turn link between capture, the agent turn and playback; no other meaning. */
+  final String turnId=java.util.UUID.randomUUID().toString();
   final String pipeline,captureClock;
   final long[] marks=new long[MARKS.length];
   boolean cold;
@@ -95,6 +106,9 @@ final class VoiceLatencyTrials {
  }
  /** The open turn, or null. */
  synchronized Trial pending(){expire();return pending;}
+ /** The open turn when its id is {@code turnId}; null for a stale, unknown or missing id. */
+ synchronized Trial forTurn(String turnId){expire();return pending!=null&&turnId!=null&&pending.turnId.equals(turnId)?pending:null;}
+ static boolean rendererStage(String name){for(String stage:RENDERER_STAGES)if(stage.equals(name))return true;return false;}
  /** Stamps a stage mark on its admitted turn once; stale owners and out-of-order stamps are ignored. */
  synchronized boolean mark(Trial owner,String name,long at){
   expire();int index=index(name);
@@ -126,6 +140,8 @@ final class VoiceLatencyTrials {
  /** The trial's outcome once settled, or null. */
  synchronized String outcome(Trial trial){expire();return trial.outcome;}
  synchronized void failed(Trial trial,String reason){if(trial!=null&&trial==pending)finish(trial,"failed",reason);}
+ /** Its playback was stopped (barge-in, stop, focus loss) after first-pcm and before an audible time. */
+ synchronized void stopped(Trial trial){if(trial!=null&&trial==pending&&trial.marks[FIRST_PCM]!=UNSET)finish(trial,"failed","playback-stopped");}
  synchronized void environment(Trial trial,String network,String thermal,float headroom){if(trial==null)return;trial.network=network;trial.thermal=thermal;trial.thermalHeadroom=headroom;}
  synchronized List<Trial> snapshot(){expire();return new ArrayList<>(finished);}
  synchronized int dropped(){return dropped;}

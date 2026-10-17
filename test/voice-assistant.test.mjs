@@ -32,7 +32,7 @@ function deferred() { let resolve, reject; const promise = new Promise((yes, no)
 
 function harness(options = {}) {
   const clock = fakeClock();
-  const log = {sends: [], spoken: [], heard: [], states: [], turns: [], captures: 0, cancelled: 0, closed: 0};
+  const log = {sends: [], spoken: [], heard: [], states: [], turns: [], endpoints: [], captures: 0, cancelled: 0, closed: 0};
   let mic, current = true;
   const replies = [];
   const speeches = [];
@@ -61,7 +61,7 @@ function harness(options = {}) {
     },
     onHeard: value => log.heard.push(value),
     onState: value => log.states.push(value),
-    onTurn: (event, turnId) => log.turns.push([event, turnId]),
+    onTurn: (event, turnId, detail) => { log.turns.push([event, turnId]); if (detail) log.endpoints.push(detail.endpoint); },
   };
   const session = new VoiceAssistantSession(ports, {clock, ...(options.timing ? {timing: options.timing} : {})});
   const answer = (index, text, extra = {}) => {
@@ -130,6 +130,115 @@ test('semantic endpoint: finished submits at the short gap; a slow or failing de
   await racing.clock.advance(300); racing.mic.onSpeechEnd(racing.clock.now()); racing.mic.onSegment('kitchen lights'); await flush();
   await racing.clock.advance(ASSISTANT_TIMING_DEFAULTS.longGapMs);
   assert.deepEqual(racing.log.sends.map(send => send.text), ['turn on the kitchen lights']);
+});
+
+test('semantic endpoint (#36546 route): complete submits early, incomplete and unavailable wait for the long gap, and each submission records its path', async () => {
+  const {residentEndpoint} = await import('../apps/app/src/runtime/voice-turn-routes.ts');
+  const {shortGapMs, longGapMs} = ASSISTANT_TIMING_DEFAULTS;
+  const scorer = response => {
+    const calls = [];
+    const request = (path, body, signal) => { calls.push({path, body, aborted: () => signal.aborted}); return typeof response === 'function' ? response(calls.length) : Promise.resolve(response); };
+    return {calls, endpoint: residentEndpoint(() => request)};
+  };
+
+  const complete = scorer({available: true, endOfTurnProbability: 0.92, complete: true, commitThreshold: 0.7, nextSpeaker: 'agent', source: 'eliza-1-drafter', model: 'eliza-1', latencyMs: 41});
+  const a = harness({endpoint: complete.endpoint});
+  await a.session.start();
+  await a.say('what is the weather in Lisbon');
+  await a.clock.advance(shortGapMs - 1);
+  assert.equal(complete.calls.length, 0, 'not asked before the short gap');
+  await a.clock.advance(1);
+  assert.deepEqual(complete.calls.map(call => [call.path, call.body]), [['/api/asr/local-inference/end-of-turn', {transcript: 'what is the weather in Lisbon'}]]);
+  assert.equal(a.log.sends.length, 1, 'complete submits at the short gap');
+  assert.deepEqual(a.log.endpoints, [{by: 'semantic', semantic: 'complete', latencyMs: 41}]);
+  assert.equal(JSON.stringify(a.log.endpoints).includes('Lisbon'), false, 'no transcript in diagnostics');
+
+  const incomplete = scorer({available: true, endOfTurnProbability: 0.2, complete: false, commitThreshold: 0.7, nextSpeaker: 'user', source: 'heuristic', model: null, latencyMs: 12});
+  const b = harness({endpoint: incomplete.endpoint});
+  await b.session.start();
+  await b.say('remind me to');
+  await b.clock.advance(longGapMs - 1);
+  assert.equal(b.log.sends.length, 0, 'scored as not complete: waits for the long gap');
+  assert.equal(incomplete.calls.length, 1, 'one call per utterance');
+  await b.clock.advance(1);
+  assert.equal(b.log.sends.length, 1);
+  assert.deepEqual(b.log.endpoints, [{by: 'gap', semantic: 'incomplete', latencyMs: 12}]);
+
+  for (const reason of ['voice-not-started', 'ffi-context-unloaded', 'scorer-unsupported', 'ram-pressure', 'unscored', 'timeout']) {
+    const unavailable = scorer({available: false, reason});
+    const c = harness({endpoint: unavailable.endpoint});
+    await c.session.start();
+    await c.say('turn off the lights');
+    await c.clock.advance(longGapMs - 1);
+    assert.equal(c.log.sends.length, 0, `unavailable (${reason}) is never complete`);
+    await c.clock.advance(1);
+    assert.equal(c.log.sends.length, 1);
+    assert.deepEqual(c.log.endpoints, [{by: 'gap', semantic: 'unavailable', reason}]);
+  }
+
+  // 502 scoring error: the request port rejects with the status.
+  const failing = scorer(() => Promise.reject(Object.assign(Error('Local agent request failed (HTTP 502).'), {status: 502})));
+  const d = harness({endpoint: failing.endpoint});
+  await d.session.start();
+  await d.say('call mom');
+  await d.clock.advance(longGapMs - 1);
+  assert.equal(d.log.sends.length, 0);
+  await d.clock.advance(1);
+  assert.deepEqual(d.log.endpoints, [{by: 'gap', semantic: 'error'}]);
+
+  // A scorer slower than the deadline: timeout, the call is aborted, the long gap submits.
+  const slow = scorer(() => new Promise(() => {}));
+  const e = harness({endpoint: slow.endpoint});
+  await e.session.start();
+  await e.say('play some music');
+  await e.clock.advance(shortGapMs + ASSISTANT_TIMING_DEFAULTS.endpointDeadlineMs);
+  assert.equal(slow.calls[0].aborted(), true, 'an expired call is aborted');
+  assert.equal(e.log.sends.length, 0);
+  await e.clock.advance(longGapMs);
+  assert.deepEqual(e.log.endpoints, [{by: 'gap', semantic: 'timeout'}]);
+
+  // No endpoint port: the gap path, not asked.
+  const f = harness();
+  await f.session.start();
+  await f.say('hello');
+  await f.clock.advance(longGapMs);
+  assert.deepEqual(f.log.endpoints, [{by: 'gap', semantic: 'not-asked'}]);
+
+  // An over-long transcript is never sent to the route.
+  const long = scorer({available: true, complete: true});
+  const g = harness({endpoint: long.endpoint});
+  await g.session.start();
+  await g.say('x'.repeat(4097));
+  await g.clock.advance(longGapMs);
+  assert.equal(long.calls.length, 0);
+  assert.deepEqual(g.log.endpoints, [{by: 'gap', semantic: 'unavailable', reason: 'too-long'}]);
+});
+
+test('semantic endpoint races: resumed speech aborts the call and drops a late complete; one call in flight per utterance; the next utterance is asked afresh', async () => {
+  const {shortGapMs, longGapMs} = ASSISTANT_TIMING_DEFAULTS;
+  const calls = [];
+  const h = harness({endpoint: (text, signal) => { const d = deferred(); calls.push({text, signal, d}); return d.promise; }});
+  await h.session.start();
+  await h.say('set a timer for');
+  await h.clock.advance(shortGapMs);
+  assert.equal(calls.length, 1);
+  h.mic.onSpeechStart(h.clock.now()); await flush();
+  assert.equal(calls[0].signal.aborted, true, 'resumed speech aborts the pending call');
+  calls[0].d.resolve({decision: 'finished', latencyMs: 5}); await flush();
+  assert.equal(h.log.sends.length, 0, 'a late complete for the earlier text never submits');
+  await h.clock.advance(400); h.mic.onSpeechEnd(h.clock.now()); h.mic.onSegment('ten minutes'); await flush();
+  await h.clock.advance(shortGapMs);
+  assert.deepEqual(calls.map(call => call.text), ['set a timer for', 'set a timer for ten minutes']);
+  // Muting finalizes and re-schedules the same utterance: the earlier call is replaced, not doubled.
+  await h.session.setMuted(true); await flush();
+  await h.clock.advance(shortGapMs);
+  assert.equal(calls.filter(call => !call.signal.aborted).length, 1, 'at most one call in flight');
+  calls.at(-1).d.resolve({decision: 'continue'}); await flush();
+  calls[1].d.resolve({decision: 'finished'}); await flush();
+  assert.equal(h.log.sends.length, 0, 'a superseded call is ignored');
+  await h.clock.advance(longGapMs);
+  assert.deepEqual(h.log.sends.map(send => send.text), ['set a timer for ten minutes']);
+  assert.deepEqual(h.log.endpoints, [{by: 'gap', semantic: 'incomplete', latencyMs: 300}], 'no reported latency: the client round trip');
 });
 
 test('barge-in during inference cancels the request, drops its late reply and sends the new speech as the next turn after the first settles', async () => {

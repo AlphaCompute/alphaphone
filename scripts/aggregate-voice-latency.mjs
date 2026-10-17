@@ -15,7 +15,7 @@
 //   speechToAudioIncludingReview  first-audio - recording-end
 // These renderer measures are legacy stage sums, one per boundary in `boundaries`, not end-to-end
 // voice-assistant latency, and are reported as diagnostics only. Only native audio-clock exports
-// (alpha-native-voice-timing-v2 from the Android collector, scripts/native-voice-latency.mjs) can
+// (alpha-native-voice-timing-v3, or diagnostic-only v2, from the Android collector, scripts/native-voice-latency.mjs) can
 // satisfy the approved issue #395 boundary: last captured speech sample to first audible response
 // sample, at least 50 successful simple-query trials (20 warm and 5 cold at least) per
 // source/engine/model/device/ABI/network cohort, p50/p95 per cold and warm, six-second upper budget.
@@ -31,7 +31,7 @@
 // Exit 3: sufficient samples fail the budget/reliability check.
 // Exit 1: bad input. Legacy exports remain readable.
 import fs from 'node:fs';
-import { aggregateNativeVoice, nativeTimingFormat } from './native-voice-latency.mjs';
+import { aggregateNativeVoice, nativeTimingFormats } from './native-voice-latency.mjs';
 
 const order = ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply', 'first-audio'];
 const routes = new Set(['on-device', 'browser', 'local-agent', 'eliza-cloud', 'paired-agent', 'development-agent', 'manual']);
@@ -98,8 +98,8 @@ export const complete = row => !row.outcome && order.slice(0, 5).every(key => ro
 
 export function aggregate(exports, requested = minimumSamples) {
   const required = { warm: Math.max(minimumSamples.warm, requested.warm ?? 0), cold: Math.max(minimumSamples.cold, requested.cold ?? 0) };
-  const native = aggregateNativeVoice(exports.filter(document => document?.format === nativeTimingFormat), required);
-  const collected = collectRecords(exports.filter(document => document?.format !== nativeTimingFormat)), invalid = collected.invalid;
+  const native = aggregateNativeVoice(exports.filter(document => nativeTimingFormats.includes(document?.format)), required);
+  const collected = collectRecords(exports.filter(document => !nativeTimingFormats.includes(document?.format))), invalid = collected.invalid;
   if (requested.entry != null && !voiceEntries.includes(requested.entry)) throw new Error('Unknown entry ' + requested.entry);
   const records = requested.entry ? collected.records.filter(row => row.entry === requested.entry) : collected.records;
   const bySource = {};

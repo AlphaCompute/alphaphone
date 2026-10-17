@@ -13,12 +13,23 @@ final class AlphaLocalSpeechEngine implements AutoCloseable {
   Audio synthesize(String text, BooleanSupplier cancelled) throws Exception;
   void cancel();
   void close();
+  /** Native streaming synthesis is available (issue #397); otherwise speech is synthesized whole. */
+  default boolean supportsStreaming(){return false;}
+  /**
+   * Streams validated mono PCM at {@link #STREAM_RATE} to {@code sink} as the model produces it. Each
+   * chunk is finite and bounded; the last call has complete=true. Throws CancellationException when
+   * cancelled (by the sink or {@link #cancel}) and IllegalStateException for invalid or silent output.
+   */
+  default void synthesizeStream(String text,BooleanSupplier cancelled,ChunkSink sink)throws Exception{throw new UnsupportedOperationException("Streaming speech unavailable");}
   default byte[] synthesizePassage(String text, BooleanSupplier cancelled) throws Exception {
    Audio audio=synthesize(text,cancelled);
    try { if(cancelled.getAsBoolean())throw new java.util.concurrent.CancellationException();return audio.wav(); }
    finally { Arrays.fill(audio.samples,0); }
   }
  }
+ static final int STREAM_RATE=24000;
+ /** Chunks of one streamed utterance; return false to cancel. May throw: the backend surfaces it. */
+ interface ChunkSink { boolean accept(float[] samples,boolean complete)throws Exception; }
  interface Factory { Backend create() throws Exception; }
  interface Operation<T> { T run(Backend backend) throws Exception; }
  private final Factory factory;

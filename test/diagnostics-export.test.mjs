@@ -62,7 +62,7 @@ test('redaction: content, keys, tokens, account and session ids, mail, URLs and 
  assert.deepEqual(report.connection,{kind:'starting',connected:false});
  // The uncaught entry survives as a class-free record; the bad exit reason and unknown source are dropped.
  assert.deepEqual(report.crashes.recent,[{at:now-3,source:'renderer',kind:'render',errorClass:'TypeError'},{at:now-1,source:'uncaught'}]);
- assert.deepEqual(Object.keys(report).sort(),['app','connection','crashes','format','generatedAt','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
+ assert.deepEqual(Object.keys(report).sort(),['app','connection','crashes','format','generatedAt','nativeVoiceTiming','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
 });
 
 test('crash entries keep classes only, are bounded and expire after 30 days',()=>{
@@ -115,4 +115,35 @@ test('voice timing: the export carries the timing records, aggregator-ready, and
  assert.deepEqual(buildDiagnostics({},now).voiceTiming,{format:'alpha-voice-timing-v1',marks:list('voiceTimingOrder'),records:[]});
  assert.deepEqual(buildDiagnostics({voiceTiming:{format:'other',records:rows}},now).voiceTiming.records,[]);
  timing.clearVoiceTiming();delete globalThis.localStorage;
+});
+
+test('native voice timing (#395): linked monotonic trials, hashes and labels only, aggregator-ready',async()=>{
+ const {aggregateNativeVoice,marks}=await import('../scripts/native-voice-latency.mjs');
+ const identity={sourceCommit:pin,sourceDirty:false,engineSha256:hash,modelSha256:'b'.repeat(64),models:{asr:'c'.repeat(64),tts:'d'.repeat(64),extra:secrets[0]},device:'Google Pixel 10a',environment:'device',abi:'arm64-v8a',sdk:36,build:'standalone-release',path:secrets[8]};
+ const row={id:pin.slice(0,12)+'-1a2b3c-1',turnId:'7d3c1a52-6d5e-4e0f-9a43-5c1d2e3f4a5b',pipeline:'live-voice',clock:'native-monotonic-ms',captureClock:'audiorecord-timestamp',cold:true,coldReason:'process-first-turn+tts-load',outcome:'passed',audibleClock:'audiotrack-timestamp',network:'offline',thermal:'none',thermalHeadroom:0.4,identity,
+  marks:{'last-user-audio':1000,endpoint:1550,'asr-final':1700,request:1720,'first-token':2900,'tts-start':3000,'tts-ready':3300,'first-pcm':3350,'audible-playback':3420,transcript:5},
+  transcript:secrets[0],reply:secrets[0],audio:'UklGRg==',accountId:secrets[3]};
+ const report=buildDiagnostics({generatedAt:now,platform:'android',nativeVoiceTiming:{format:'alpha-native-voice-timing-v3',dropped:2,records:[row,{...row,id:secrets[6]},{...row,turnId:secrets[4]+'x'},{...row,identity:{...identity,device:secrets[5]}},{...row,pipeline:'dictation'}]}},now);
+ const native=report.nativeVoiceTiming;
+ assert.equal(native.format,'alpha-native-voice-timing-v3');assert.equal(native.dropped,2);assert.deepEqual(native.marks,[...marks]);
+ assert.equal(native.records.length,1,'rows with free text, emails or unknown pipelines are dropped');
+ const kept=native.records[0];
+ assert.equal(kept.turnId,row.turnId);
+ assert.deepEqual(Object.keys(kept.marks),['last-user-audio','endpoint','asr-final','request','first-token','tts-start','tts-ready','first-pcm','audible-playback']);
+ assert.deepEqual(kept.identity.models,{asr:'c'.repeat(64),tts:'d'.repeat(64)});
+ assert.equal('path' in kept.identity,false);
+ const json=diagnosticsText(report);
+ for(const fragment of ['Dana','UklGRg','acct_','"transcript"','"reply"','"audio"','accountId','/data/'])assert.equal(json.includes(fragment),false,`leaked ${fragment}`);
+ // The section is itself a native export the aggregator reads.
+ const summary=aggregateNativeVoice([JSON.parse(json).nativeVoiceTiming]);
+ assert.equal(summary.invalid,0);assert.equal(summary.cohorts[0].linked,1);
+ // Web, missing or foreign input: an empty section.
+ assert.deepEqual(buildDiagnostics({},now).nativeVoiceTiming.records,[]);
+ assert.deepEqual(buildDiagnostics({nativeVoiceTiming:{format:'alpha-native-voice-timing-v2',records:[row]}},now).nativeVoiceTiming.records,[]);
+ // The renderer calls the native export on Settings > Export diagnostics.
+ const {readFileSync}=await import('node:fs');
+ const settings=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');
+ assert.match(settings,/readNativeVoiceTiming\(\)\]\);/);
+ assert.match(settings,/nativeVoiceTiming: nativeTiming\.status === 'fulfilled' \? nativeTiming\.value : null/);
+ assert.match(readFileSync(new URL('../apps/app/src/runtime/native-voice-turn.ts',import.meta.url),'utf8'),/plugin\(\)\.nativeVoiceTiming\(\)/);
 });

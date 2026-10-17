@@ -153,6 +153,9 @@ final class AlphaLiveVoiceCapture {
  void cancelPending(){running=false;resource.cancel();}
  /** Unblocks an already-open source; call off the UI thread. */
  void requestStop(){cancelPending();resource.requestStop();}
+ private volatile String interruption;
+ /** Stops capture because the platform took the microphone path (a phone call, issue #397); the end event reports {@code reason}. Off the UI thread. */
+ void interrupt(String reason){interruption=reason;requestStop();}
 
  /** Stops capture; returns the capture duration. The renderer closes an open segment itself. */
  long stop(){
@@ -213,7 +216,7 @@ final class AlphaLiveVoiceCapture {
    try{resource.release(recorder);}finally{ElizaVoiceNative.nativeVadClose(vad);}
    java.util.Arrays.fill(bytes,(byte)0);java.util.Arrays.fill(window,(short)0);java.util.Arrays.fill(pcm,0f);
    preroll.clear();
-   sink.ended(captureId,error);
+   sink.ended(captureId,error!=null?error:interruption);
   }
  }
 }

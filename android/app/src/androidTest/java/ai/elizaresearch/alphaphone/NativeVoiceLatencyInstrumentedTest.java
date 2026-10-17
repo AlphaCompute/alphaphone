@@ -55,7 +55,7 @@ import static org.junit.Assert.*;
  * {@code <files>/latency-feed/} (debug build: {@code adb exec-in run-as}; for emulators whose virtual microphone delivers silence); those
  * trials carry the {@code synthetic-feed} capture clock and measure from the fed last speech sample.
  * Every trial is recorded with pipeline {@code harness-no-inference}. Writes the
- * alpha-native-voice-timing-v2 export plus harness details (transcripts on an emulator only) to
+ * alpha-native-voice-timing-v3 export plus harness details (transcripts on an emulator only) to
  * {@code <external files>/native-voice-latency/}. Emulator results are not device latency.
  */
 @RunWith(AndroidJUnit4.class)
