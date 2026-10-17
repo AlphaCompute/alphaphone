@@ -19,11 +19,18 @@ export function CloudSignInPanel({ view, busy, google, message, error, actions, 
   const [now, setNow] = useState(() => Date.now());
   // Resend becomes available when the host's cooldown ends; the countdown is the only timer.
   useEffect(() => {
-    if (view.step !== 'code' || view.resendAt <= Date.now()) return;
+    if (view.step !== 'code') return;
+    // The owner may spend minutes entering an address before this panel reaches the code step.
+    // Start the displayed cooldown from the host's new deadline, not this component's mount time.
+    setNow(Date.now());
+    if (view.resendAt <= Date.now()) return;
     const timer = setInterval(() => { setNow(Date.now()); if (Date.now() >= view.resendAt) clearInterval(timer); }, 1000);
     return () => clearInterval(timer);
   }, [view]);
-  useEffect(() => { (view.step === 'code' || view.step === 'mfa' ? code : view.step === 'choose' ? email : null)?.current?.focus(); }, [view.step]);
+  useEffect(() => {
+    // Disabled inputs lose focus during verification. Restore it for a wrong-code retry too.
+    if (!busy) (view.step === 'code' || view.step === 'mfa' ? code : view.step === 'choose' ? email : null)?.current?.focus();
+  }, [view.step, busy]);
   const wait = view.step === 'code' ? Math.max(0, Math.ceil((view.resendAt - now) / 1000)) : 0;
   const submitCode = (event: FormEvent) => { event.preventDefault(); const input = code.current; const value = input?.value || ''; if (input) input.value = ''; actions.verify(value); };
   return <>

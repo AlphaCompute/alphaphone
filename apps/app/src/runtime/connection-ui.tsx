@@ -409,15 +409,18 @@ let inAppGoogle = false;
  * package and signing certificate, and Android's verification of the return host. Fail-safe: no
  * host, an error, a slow or malformed answer, or `inApp` not exactly true keeps the hand-off.
  */
-async function inAppSignInMethods(environment: CloudEnvironment): Promise<{ google: boolean } | null> {
+async function inAppSignInMethods(environment: CloudEnvironment, signal: AbortSignal): Promise<{ google: boolean } | null> {
   const port = cloudSignIn;
   if (!port?.status) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
   try {
-    const value = await Promise.race([port.status({ environment }), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), SIGN_IN_READINESS_WAIT_MS); })]);
+    signal.throwIfAborted();
+    const cancelled = new Promise<null>(resolve => { abort = () => resolve(null); signal.addEventListener('abort', abort, { once: true }); });
+    const value = await Promise.race([port.status({ environment }), cancelled, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), SIGN_IN_READINESS_WAIT_MS); })]);
     return signInReadiness(value);
   } catch { return null; }
-  finally { clearTimeout(timer); }
+  finally { clearTimeout(timer); if (abort) signal.removeEventListener('abort', abort); }
 }
 /** A failed or cancelled step leaves the stored sign-in and the running service as they were. */
 function signInFailed(environment: CloudEnvironment, keepStep = false) {
@@ -592,10 +595,14 @@ function queueResidentRebind() {
   residentRebindQueued = false;
   // An outcome the open dialog is showing (a sign-out, a cancelled sign-in) stays visible after the rebind.
   const shown = state.open ? { message: state.message, error: state.error } : null;
+  const signIn = state.signIn;
   void work('Updating your agent…', async signal => {
     retire();
     try { await connectResident(signal); }
     catch (error) { if (residentAlwaysPresent && !active) update({ kind: 'recovering' }); throw error; }
+    // Rebinding inference must not discard the sign-in screen just selected by readiness.
+    // Only the same still-active view is restored; a cancelled or completed sign-in stays closed.
+    if (signIn && state.signIn === signIn && signIn.environment === residentEnvironment()) update({ open: true });
     if (shown && state.open) update({ ...(shown.message && !state.message ? { message: shown.message } : {}), ...(shown.error && !state.error ? { error: shown.error } : {}) });
   }, true, true);
 }
@@ -1373,6 +1380,44 @@ async function pairedRequest(selected:Extract<Active,{kind:'remote'|'local'}>,se
 }
 const hosted = testMocksEnabled ? { pairedRequest, pair, restore: restoreHosted, inspectPersonal, cloudList, cloudManage, personalDecline, personalAccept, personalPoll, personalFinalize, personalRecoveryOpen, personalConnect } : null;
 
+/** Browser sign-in body shared by explicit browser login and readiness fallback in one operation. */
+async function residentBrowserLoginAction(signal: AbortSignal) {
+  // P-43: the resident keeps running while the owner signs in in the browser. A cancelled or
+  // failed first sign-in leaves it untouched; a sign-in kept on this phone is re-admitted then.
+  // (The native credential write itself stops a process whose provider depends on the replaced key.)
+  const kept=!!service||state.residentSavedCredential===true;
+  detachService();
+  update({residentSubscription:null,residentPlanNotice:null,redeemError:'',redeemNotice:''}); cloud=makeCloud(residentEnvironment());
+  // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
+  let login:Awaited<ReturnType<typeof cloud.login>>;
+  try{login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));}
+  // A cancelled or failed sign-in leaves the stored sign-in as it was: re-admit it afterwards.
+  catch(error){if(kept)residentRebindQueued=true;throw error;}
+  const issued=(await cloudCredentialStore.read(residentEnvironment()))?.credentialId;
+  // Admission binds the new sign-in: native attaches when the process already matches, otherwise
+  // it restarts the agent once (a process bound to the replaced key is stopped by the write).
+  signal.throwIfAborted(); retire();
+  try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});throw error;}
+  // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
+  // work; the agent keeps running without Cloud inference.
+  if(!state.cloudAccount&&state.residentPlanNotice!=='offline'&&issued&&(await cloudCredentialStore.read(residentEnvironment()).catch(()=>null))?.credentialId===issued){await cloudCredentialStore.clear(residentEnvironment());update({residentSavedCredential:false,open:true,error:'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.'});return;}
+  // Signed in but AI is not connected (the plan could not be checked or bound): keep the dialog open.
+  if(state.residentInference!=='cloud')update({open:true});
+  if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
+}
+async function browserCloudLoginAction(environment: CloudEnvironment, signal: AbortSignal) {
+  const accountOnly=state.purpose==='cloud-account';
+  // A login can replace the environment's secure token with a different
+  // account. Detach the old identity before any token can be replaced.
+  const replacingCloud = active?.kind === 'cloud' || selection()?.kind === 'cloud';
+  detachCloudTarget(); detachService(); if (replacingCloud) save({ kind: 'none' }); update({ agents: [] });
+  cloud = makeCloud(environment);
+  const login = await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
+  await verifyService(cloud, signal);
+  if (!active) save({ kind: 'none' });
+  if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
+}
+
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
  * subscribe/getSnapshot expose connection changes; send uses server-bound identity
  * and one persisted conversation per origin+owner+agent. It never executes proposals.
@@ -1782,13 +1827,23 @@ export const connectionController = {
    * enters an email; no Eliza Cloud web page is opened. */
   async beginSignIn(environment: CloudEnvironment = residentCloudFlow() ? residentEnvironment() : cloud.environment) {
     if (operation || !cloudEnvironmentAllowed(environment)) return;
-    const methods = await inAppSignInMethods(environment);
-    if (operation) return;
-    if (!methods) { await connectionController.signInBrowser(environment); return; }
-    inAppGoogle = methods.google;
-    if (cloud.environment !== environment) cloud = makeCloud(environment);
-    cloud.cancelLogin();
-    update({ open: true, ...(residentCloudFlow() && state.purpose !== 'cloud-account' ? { purpose: 'agent' as const } : {}), signIn: { step: 'choose', environment }, message: '', error: '' });
+    // Readiness may take six seconds on a fresh install. Keep that wait cancellable and prevent
+    // repeated taps from starting competing probes or opening a browser after the owner cancelled.
+    await work('Checking Eliza Cloud sign-in…', async signal => {
+      const methods = await inAppSignInMethods(environment, signal);
+      signal.throwIfAborted();
+      if (!methods) {
+        update({ signIn: null, message: 'Opening Eliza Cloud sign-in…' });
+        if (residentCloudFlow()) await residentBrowserLoginAction(signal);
+        else await browserCloudLoginAction(environment, signal);
+        return;
+      }
+      inAppGoogle = methods.google;
+      if (cloud.environment !== environment) cloud = makeCloud(environment);
+      cloud.cancelLogin();
+      update({ open: true, ...(residentCloudFlow() && state.purpose !== 'cloud-account' ? { purpose: 'agent' as const } : {}), signIn: { step: 'choose', environment }, message: '', error: '' });
+    });
+    await ensureResident();
   },
   /** Leaves the sign-in screen and burns any pending attempt. The stored sign-in is unchanged. */
   cancelSignIn() {
@@ -1882,30 +1937,7 @@ export const connectionController = {
     else await connectionController.browserCloudLogin(environment);
   },
   async residentBrowserLogin() {
-    await work('Opening Eliza Cloud sign-in…',async signal=>{
-      // P-43: the resident keeps running while the owner signs in in the browser. A cancelled or
-      // failed first sign-in leaves it untouched; a sign-in kept on this phone is re-admitted then.
-      // (The native credential write itself stops a process whose provider depends on the replaced key.)
-      const kept=!!service||state.residentSavedCredential===true;
-      detachService();
-      update({residentSubscription:null,residentPlanNotice:null,redeemError:'',redeemNotice:''}); cloud=makeCloud(residentEnvironment());
-      // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
-      let login:Awaited<ReturnType<typeof cloud.login>>;
-      try{login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));}
-      // A cancelled or failed sign-in leaves the stored sign-in as it was: re-admit it afterwards.
-      catch(error){if(kept)residentRebindQueued=true;throw error;}
-      const issued=(await cloudCredentialStore.read(residentEnvironment()))?.credentialId;
-      // Admission binds the new sign-in: native attaches when the process already matches, otherwise
-      // it restarts the agent once (a process bound to the replaced key is stopped by the write).
-      signal.throwIfAborted(); retire();
-      try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});throw error;}
-      // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
-      // work; the agent keeps running without Cloud inference.
-      if(!state.cloudAccount&&state.residentPlanNotice!=='offline'&&issued&&(await cloudCredentialStore.read(residentEnvironment()).catch(()=>null))?.credentialId===issued){await cloudCredentialStore.clear(residentEnvironment());update({residentSavedCredential:false,open:true,error:'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.'});return;}
-      // Signed in but AI is not connected (the plan could not be checked or bound): keep the dialog open.
-      if(state.residentInference!=='cloud')update({open:true});
-      if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
-    });
+    await work('Opening Eliza Cloud sign-in…', residentBrowserLoginAction);
     // A cancelled or failed sign-in never leaves the phone without its agent (P-43).
     await ensureResident();
   },
@@ -1968,18 +2000,7 @@ export const connectionController = {
     await connectionController.beginSignIn(environment);
   },
   async browserCloudLogin(environment: CloudEnvironment) {
-    const accountOnly=state.purpose==='cloud-account';
-    await work('Opening Eliza Cloud sign-in…', async signal => {
-      // A login can replace the environment's secure token with a different
-      // account. Detach the old identity before any token can be replaced.
-      const replacingCloud = active?.kind === 'cloud' || selection()?.kind === 'cloud';
-      detachCloudTarget(); detachService(); if (replacingCloud) save({ kind: 'none' }); update({ agents: [] });
-      cloud = makeCloud(environment);
-      const login = await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
-      await verifyService(cloud, signal);
-      if (!active) save({ kind: 'none' });
-      if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
-    });
+    await work('Opening Eliza Cloud sign-in…', signal => browserCloudLoginAction(environment, signal));
   },
   async cloudList(environment: CloudEnvironment) {
     if (!hosted) { update({ error: PAIRING_RETIRED }); return; }
@@ -2311,7 +2332,9 @@ export function ConnectionChooser() {
       // (--acct): the fill accent (--acc) is 2.4:1 against the dark background.
       for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(key === 'acc' ? '--acct' : `--${key}`));
     }
-    panel.current?.focus();
+    // A child form restores its input after verification. Updating the trap for busy state must
+    // preserve that focus, rather than moving it back to the dialog and dismissing the keyboard.
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
     const back = (event: Event) => { if(document.querySelector("dialog[open]"))return; event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };
     window.addEventListener('alpha-back', back, true);
     const key = (event: KeyboardEvent) => {

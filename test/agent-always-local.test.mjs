@@ -75,7 +75,7 @@ test('plan state never stops or withholds the on-device agent', () => {
   assert.ok(!login.includes('stopLocalAgent('));
   // In-app sign-in (owner directive 2026-10-14) once Cloud is ready; the browser hand-off until then.
   assert.ok(login.includes('async residentCloudLogin() { await connectionController.beginSignIn(residentEnvironment()); }'));
-  const browser = between(ui, 'async residentBrowserLogin()', 'async residentManagePlan()');
+  const browser = between(ui, 'async function residentBrowserLoginAction(', 'async function browserCloudLoginAction(');
   assert.ok(browser.indexOf('cloud.login(') >= 0 && browser.indexOf('connectResident(signal)') > browser.indexOf('cloud.login('), 'reconnect only after the browser sign-in returned');
   assert.match(browser, /catch\(error\)\{if\(kept\)residentRebindQueued=true;throw error;\}/, 'a cancelled sign-in re-admits a kept sign-in');
   const signedIn = between(ui, 'async function signedIn(', '/** The development hosted-agent client.');
