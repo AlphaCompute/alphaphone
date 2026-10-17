@@ -20,7 +20,7 @@ final class LocalAgentProviderAdmission {
  static final String CLOUD_PROVIDER_BASE="https://api.eliza.app/api/v1";
  static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
  /** Safe diagnostics never contain credential values, identities or response bodies. */
- static final class CloudReadFailure extends Exception {
+ static final class CloudReadFailure extends SecurityException {
   final int status;
   CloudReadFailure(int status){super("Cloud read unavailable");this.status=status>=100&&status<=599?status:0;}
  }
