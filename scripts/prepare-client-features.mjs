@@ -119,16 +119,23 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   for(const [name,digest] of Object.entries(projectionInputs))if(sourceFiles[name]!==digest)throw Error('Review changed voice projection input: '+name);
   const project = (name, text) => source.set(name, {bytes:Buffer.from(text),mode:'100644',sha256:hash(Buffer.from(text))});
   const text = name => source.get(name).bytes.toString();
+  // Preserve Alpha's existing explicit renderer claim/ack protocol through the
+  // canonical browser voice parser. This chooses delivery, never authority.
+  const voiceContextPath='packages/host/src/voice.ts';
+  project(voiceContextPath,text(voiceContextPath)
+    .replace('  uiBrowserSurface?: "native";', '  uiBrowserSurface?: "native";\n  /** Existing renderer claim/ack delivery protocol; not navigation authority. */\n  viewDelivery?: "completed-action";')
+    .replace('  if (source.uiClientId !== undefined) {', '  if (source.viewDelivery !== undefined) {\n    if (source.viewDelivery !== "completed-action") return null;\n    result.viewDelivery = "completed-action";\n  }\n  if (source.uiClientId !== undefined) {'));
   // Apply the reviewed shared voice delta before the existing injected-fetch projection.
   // This carries the capture lease fix and prepared navigation protocol together.
   const voicePatchRoot=path.join(root,'patches/eliza');
   for(const [patchName,expectedPaths] of [
     ['client-voice-prepared-navigation',['packages/ui/src/voice/voice-session-client.ts','packages/ui/src/voice/voice-session-protocol.ts']],
     ['client-voice-microphone-readiness',['packages/ui/src/voice/voice-session-mic-capture.ts']],
+    ['client-voice-requested-actions',['packages/host/src/voice.ts','packages/ui/src/voice/voice-session-protocol.ts']],
   ]){
   const voiceProjection=JSON.parse(fs.readFileSync(path.join(voicePatchRoot,patchName+'.json'),'utf8'));
   const voicePatch=path.join(voicePatchRoot,patchName+'.patch');
-  if(voiceProjection.baseCommit!==upstream.pin||hash(fs.readFileSync(voicePatch))!==voiceProjection.patchSha256||voiceProjection.paths.length!==expectedPaths.length||voiceProjection.paths.some(row=>!expectedPaths.includes(row.path)||sourceFiles[row.path]!==row.beforeSha256))throw Error('Review changed shared voice navigation projection input');
+  if(voiceProjection.baseCommit!==upstream.pin||hash(fs.readFileSync(voicePatch))!==voiceProjection.patchSha256||voiceProjection.paths.length!==expectedPaths.length||voiceProjection.paths.some(row=>!expectedPaths.includes(row.path)||source.get(row.path)?.sha256!==row.beforeSha256))throw Error('Review changed shared voice navigation projection input');
   const voiceStage=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-voice-navigation-projection-'));
   try{
     for(const row of voiceProjection.paths){const target=path.join(voiceStage,row.path);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,source.get(row.path).bytes);}
@@ -136,12 +143,6 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
     for(const row of voiceProjection.paths){const bytes=fs.readFileSync(path.join(voiceStage,row.path));if(hash(bytes)!==row.afterSha256)throw Error('Shared voice navigation projection output changed');project(row.path,bytes.toString());}
   }finally{fs.rmSync(voiceStage,{recursive:true,force:true});}
   }
-  // Preserve Alpha's existing explicit renderer claim/ack protocol through the
-  // canonical browser voice parser. This chooses delivery, never authority.
-  const voiceContextPath='packages/host/src/voice.ts';
-  project(voiceContextPath,text(voiceContextPath)
-    .replace('  uiBrowserSurface?: "native";', '  uiBrowserSurface?: "native";\n  /** Existing renderer claim/ack delivery protocol; not navigation authority. */\n  viewDelivery?: "completed-action";')
-    .replace('  if (source.uiClientId !== undefined) {', '  if (source.viewDelivery !== undefined) {\n    if (source.viewDelivery !== "completed-action") return null;\n    result.viewDelivery = "completed-action";\n  }\n  if (source.uiClientId !== undefined) {'));
   const clientPath='packages/ui/src/voice/voice-session-client.ts';
   const fallback='      const { fetchVoiceSession } = await import("./voice-session-fetch");\n      return fetchVoiceSession(url, init);';
   if(text(clientPath).split(fallback).length!==2)throw Error('Voice fetch projection source changed.');

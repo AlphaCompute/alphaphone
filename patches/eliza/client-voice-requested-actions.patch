@@ -1,0 +1,44 @@
+--- a/packages/host/src/voice.ts
++++ b/packages/host/src/voice.ts
+@@ -25,0 +26,2 @@
++  /** Current bound user preference; never grants system or provider permissions. */
++  agentActionMode?: "direct-request-v1";
+@@ -40,0 +43,9 @@
++  }
++  if (source.agentActionMode !== undefined) {
++    if (
++      source.agentActionMode !== "direct-request-v1" ||
++      result.viewDelivery !== "completed-action" ||
++      !result.uiClientId
++    )
++      return null;
++    result.agentActionMode = "direct-request-v1";
+--- a/packages/ui/src/voice/voice-session-protocol.ts
++++ b/packages/ui/src/voice/voice-session-protocol.ts
+@@ -171,0 +172 @@
++      userMessageId?: string;
+@@ -228,0 +230,24 @@
++  if (t === "reply_complete") {
++    const frame = parsed as Record<string, unknown>;
++    if (
++      typeof frame.traceId !== "string" ||
++      !frame.traceId ||
++      frame.traceId.length > 256
++    )
++      return null;
++    if (
++      frame.userMessageId !== undefined &&
++      (typeof frame.userMessageId !== "string" ||
++        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++          frame.userMessageId,
++        ))
++    )
++      return null;
++    return {
++      t,
++      traceId: frame.traceId,
++      ...(typeof frame.userMessageId === "string"
++        ? { userMessageId: frame.userMessageId }
++        : {}),
++    };
++  }
