@@ -1,9 +1,14 @@
 apply plugin: 'com.android.application'
+def fixturePackage = providers.gradleProperty('alphaVideoFixturePackage').getOrElse('ai.elizaresearch.alpha.videoqa')
+if (!(fixturePackage in ['ai.elizaresearch.alpha.videoqa', 'ai.elizaresearch.alpha.videoqa.preservation'])) {
+ throw new GradleException('Unsupported video qualification package')
+}
 android {
  namespace 'ai.elizaresearch.alpha.videoqa'
  compileSdk rootProject.ext.compileSdkVersion
  defaultConfig {
-  applicationId 'ai.elizaresearch.alpha.videoqa'
+  applicationId fixturePackage
+  testApplicationId fixturePackage + '.test'
   minSdk 29
   targetSdk rootProject.ext.targetSdkVersion
   versionCode 1
