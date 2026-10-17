@@ -137,6 +137,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   for(const [patchName,expectedPaths] of [
     ['client-voice-prepared-navigation',['packages/ui/src/voice/voice-session-client.ts','packages/ui/src/voice/voice-session-protocol.ts']],
     ['client-voice-microphone-readiness',['packages/ui/src/voice/voice-session-mic-capture.ts']],
+    ['client-voice-capture-lifecycle',['packages/ui/src/voice/voice-session-mic-capture.ts']],
     ['client-voice-requested-actions',['packages/host/src/voice.ts','packages/ui/src/voice/voice-session-protocol.ts']],
     ['client-voice-credit-terminal',['packages/ui/src/voice/voice-session-client.ts']],
     ['client-voice-context-loss',['packages/ui/src/voice/voice-session-client.ts']],
