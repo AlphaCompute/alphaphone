@@ -2,13 +2,15 @@
 
 Live preview: <http://127.0.0.1:5209/>. Functional source `2446a567`; Shared `6ef36b8d`, including the recorded main integration `f1d4baa6`. All13 prior conversations and228 messages survived the preview update; Cloud identity and fresh agent Gmail search passed. Seeker now has the same functional source, with its original UID/data retained. Test-only CI repairs are on `ab523907`. Updated October 17, 2026.
 
-The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
+The JSON companion tracks 173 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
 For each applicable flow check light/dark, compact portrait, landscape, large text, keyboard and safe areas, Back, reload/resume, empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
 Review order: latest preview → deployed backend/prompt proof → installed Seeker → your per-view approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
 
 Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, existing certificate, UID10250 and original install date preserved. Normal SDK/product verification, four variants, lint and APK checks passed. The valid saved credential now commits a provider binding; resident is now running with Cloud inference and connected Google permissions after all eight retired IPC directories were archived intact. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider result was observed. Native send and Calendar write were not attempted. See [native read evidence](evidence/seeker-cloud-read-20261017.json). Prior row evidence stays labeled by its observed build; human approval remains separate.
+
+Prepared update: source `b7ad020db6`, merging the current UI with the voice/action branch, retains SDK `985322b5`. Type checking and 70 focused source tests passed. It has not replaced the live 5209 preview or installed Seeker build; full verification and live acceptance remain pending.
 
 ## Shell and Home
 
@@ -286,3 +288,12 @@ Pending-video custody correction1d29 now passes both Java compiles, fixture APK 
 Exact1d29 real synthetic exporter component passed11.291s on Seeker: trim/rotate/crop/audio and timestamp markers, lost-publication-receipt recovery, same-operation duplicate identity, changed-binding refusal and cancel-without-copy. MainAlpha2446/source639/pending640/8e43 and11 prior fixture journal records unchanged. This is component proof; original mainAlpha writecause and normal SaveCopy acceptance remain open. See [exporter evidence](evidence/native-video-exporter-1d29-20261017.json).
 
 Observer coordination correctiond35dd318: renderer/native-bridge regression reproduced2libraryChanged notifications causing3nativecancellations duringpendingSave; fix keepsobserveractive and rechecks source/access while deferringvalidcatalogrefresh.8focusedbrowserchecks andnormalproduct1495pass/2existingskips/types/build/audit404pass. Nativequalification/install pending; mainSave remainsheldbyexact640preservationreview. Historical8e43cause is not proven bythe reproduction. See [observer evidence](evidence/native-video-library-observer-20261017.json).
+
+## Explicit agent capability gaps
+
+| ID | View / flow | Preview evidence | Seeker | Your approval |
+| --- | --- | --- | --- | --- |
+| shell-agent-app-navigation | Agent switches to every Home app | 11 route-delivery and 2 registry tests pass; merged live prompt sweep pending | Pending | Pending |
+| camera-agent-capture | Agent takes and saves one requested photo | Upstream VISION/native camera exist; Alpha bridge integration and saved-photo proof remain open | Pending | Pending |
+
+The separate 5219 voice trial reached server ready but produced no transcript or audio. Client state and microphone-resume fixes have local regression proof; they have not passed another live audio trial.
