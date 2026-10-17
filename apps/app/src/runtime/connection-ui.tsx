@@ -1394,6 +1394,17 @@ export const connectionController = {
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
   cancelViewNavigation(){active?.viewNavigation?.cancel();},
   setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
+  async performVoiceRequestedActions(binding:VoiceConversationBinding,messageId:string,signal:AbortSignal){
+    const selected=active,expected=navigationContext?.();
+    if(!selected?.actions||!expected||!validateUuid(messageId))return [];
+    const context=structuredClone(expected);
+    const current=()=>{signal.throwIfAborted();if(active!==selected||!this.voiceConversationCurrent(binding)||context.sensitive||JSON.stringify(navigationContext?.())!==JSON.stringify(context))throw Error('Voice action context changed');};
+    const allowed=async()=>{current();const preferences=await readDevicePreferences(signal);current();return !preferences.askBeforeAgentActions;};
+    if(!await allowed())return [];
+    await selected.actions.pendingReview(context,signal);current();
+    const receipts=await selected.actions.performRequested(messageId,context,signal,allowed);current();
+    return receipts;
+  },
   voiceRendererClientId(){return boundNavigation()?.clientId;},
   voiceRendererMetadata(context:ContextEnvelope){return boundNavigation()?.metadata(context)??{};},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
