@@ -429,7 +429,9 @@ test('shell Home and All apps use the same favorite order; product taps never ca
   await launcher.load();
   let rendered = shell.renderVals();
   assert.deepEqual(rendered.apps.map(a => a.label), ['Notes']);
-  assert.equal(rendered.launcher.rows.length, apps.length + 1);
+  assert.equal(rendered.launcher.rows.length, apps.length);
+  const shown=[...rendered.launcher.favorites,...rendered.launcher.rows].map(a=>a.key);
+  assert.equal(new Set(shown).size,shown.length,'Favorites and inventory never duplicate an entry');
   let notes = rendered.launcher.favorites.find(a => a.key === 'alpha:notes');
   await notes.open();
   assert.equal(opened, 1);
@@ -440,7 +442,7 @@ test('shell Home and All apps use the same favorite order; product taps never ca
   notes.later();
   rendered = shell.renderVals();
   assert.equal(rendered.apps[1].label, 'Notes', 'Moving later changes row-major Home order');
-  rendered.launcher.rows.find(a => a.key === 'alpha:notes').toggleFavorite();
+  rendered.launcher.favorites.find(a => a.key === 'alpha:notes').toggleFavorite();
   rendered = shell.renderVals();
   assert.equal(rendered.apps.some(a => a.label === 'Notes'), false);
   assert.equal(rendered.launcher.rows.some(a => a.label === 'Notes'), true);
