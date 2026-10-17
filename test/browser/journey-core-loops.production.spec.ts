@@ -500,8 +500,7 @@ test('loops D and F in the web build: digests and mail name the missing account 
   await expect(page.locator('[data-screen]')).toContainText('Connect Eliza Cloud to use Gmail');
   // No development mailbox: no fixture message, and Compose does not open a local "Sent locally" path.
   await expect(page.getByText('Dinner Friday?', { exact: true })).toHaveCount(0);
-  await button(page, 'Compose').click();
-  await expect(page.getByText('Connect a Gmail account first.', { exact: true })).toBeVisible();
+  await expect(button(page, 'Compose')).toBeDisabled();
   await expect(page.getByRole('textbox', {name: 'To', exact: true})).toHaveCount(0);
   await expect(button(page, 'Send email')).toHaveCount(0);
   await expectNoDevelopmentSurface(page);
