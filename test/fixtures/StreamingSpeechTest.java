@@ -18,7 +18,7 @@ public final class StreamingSpeechTest {
  private static boolean zero(float[] samples){for(float sample:samples)if(sample!=0f)return false;return true;}
 
  /** Plays instantly; timestamps place frame f at base + f/rate once anything was written. */
- static final class FakeOutput implements StreamingSpeechPlayback.Output {
+ static class FakeOutput implements StreamingSpeechPlayback.Output {
   final List<float[]> written=new ArrayList<>();final List<float[]> originals=new ArrayList<>();
   long frames;float volume=-1;boolean played,stopped,released,aborted,timestamps=true;
   CountDownLatch blockWrites;final CountDownLatch writing=new CountDownLatch(1);
@@ -86,6 +86,13 @@ public final class StreamingSpeechTest {
   check(output.written.size()==3&&output.written.get(1)[0]==.4f,"every chunk reached the output in order");
   check(zero(lead)&&zero(speech)&&zero(tail),"played chunks are zeroed after the write");
   check(output.played&&output.stopped&&output.released,"track played, stopped and released");
+
+  // A track that stalls before playing every queued frame failed: the sentence is never reported as heard.
+  FakeOutput stalled=new FakeOutput(){@Override public synchronized long playedFrames(){return Math.min(frames,1_000);}};Events stall=new Events();
+  StreamingSpeechPlayback stalling=new StreamingSpeechPlayback(48_000,24_000,.01f,()->stalled,stall,System::nanoTime);
+  stalling.start();check(stalling.offer(tone(2_400,.4f),false)&&stalling.offer(new float[0],true),"stalled utterance accepted");
+  check(stall.done.await(10,TimeUnit.SECONDS)&&stall.ended.get()==0&&stall.failed.get()==1&&"playback-failed".equals(stall.failure),"a drain timeout fails instead of ending");
+  check(stalling.join(2000),"the stalled writer exits");
 
   // Head-position fallback when the platform never gives a timestamp.
   FakeOutput untimed=new FakeOutput();untimed.timestamps=false;Events fallback=new Events();
