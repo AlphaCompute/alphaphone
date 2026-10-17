@@ -67,7 +67,8 @@ public final class VideoCopyPreservationInstrumentedTest {
    Pending p=new Pending(fixture);VideoCopyEdits editor=editor(()->activity.get().hasWindowFocus());boolean verified=false;
    try{String before=metadata(p.uri);Response call=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),call);com.getcapacitor.JSObject result=call.await();assertEquals("preserved",result.getString("status"));assertEquals(p.token,result.getString("artifactId"));assertEquals((long)p.bytes.length,result.getLong("bytes"));assertEquals(hash(p.bytes),result.getString("sha256"));assertFalse(result.has("path"));assertFalse(result.has("uri"));assertFalse(result.has("dataBase64"));
     assertArrayEquals(p.bytes,Files.readAllBytes(new File(p.directory(),"bytes.bin").toPath()));JSONObject manifest=new JSONObject(new String(Files.readAllBytes(new File(p.directory(),"COMPLETE.json").toPath()),StandardCharsets.UTF_8));assertTrue(manifest.getBoolean("forensicOnly"));assertEquals(manifest.getJSONObject("sourceBefore").toString(),manifest.getJSONObject("sourceAfter").toString());unchanged(p,before);
-    byte[] completed=Files.readAllBytes(new File(p.directory(),"COMPLETE.json").toPath());Response again=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),again);refused(again);assertArrayEquals(completed,Files.readAllBytes(new File(p.directory(),"COMPLETE.json").toPath()));unchanged(p,before);verified=true;
+    byte[] completed=Files.readAllBytes(new File(p.directory(),"COMPLETE.json").toPath());assertArrayEquals(Files.readAllBytes(new File(p.directory(),"COMPLETION.pending").toPath()),completed);android.system.StructStat sealed=Os.lstat(new File(p.directory(),"COMPLETION.pending").getAbsolutePath()),published=Os.lstat(new File(p.directory(),"COMPLETE.json").getAbsolutePath());assertEquals(1,sealed.st_nlink);assertEquals(1,published.st_nlink);assertNotEquals(sealed.st_ino,published.st_ino);
+    Response again=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),again);refused(again);assertArrayEquals(completed,Files.readAllBytes(new File(p.directory(),"COMPLETE.json").toPath()));unchanged(p,before);verified=true;
    }finally{editor.close();if(verified)dispose(p);}
    }
   }
@@ -151,6 +152,22 @@ public final class VideoCopyPreservationInstrumentedTest {
     try{
      String before=metadata(p.uri);Response call=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),call);refused(call);assertTrue("The final authority check must run after the sealed marker exists",sawSeal.get());assertTrue(complete.isFile());assertTrue(new File(p.directory(),"INCOMPLETE.json").isFile());assertNull("A sealed marker alone must not report success",call.value);
      assertEquals(p.record,journal.getString(p.token,null));assertEquals(before,metadata(p.uri));assertArrayEquals(p.bytes,bytes(p.uri));assertArrayEquals(p.bytes,Files.readAllBytes(new File(p.directory(),"bytes.bin").toPath()));verified=true;
+    }finally{editor.close();if(verified)dispose(p);}
+   }
+  }
+ }
+ @Test public void exclusiveCompletionRefusesExistingFullAndPartialMarkers()throws Exception{
+  try(ActivityScenario<VideoFixtureActivity> scene=ActivityScenario.launch(VideoFixtureActivity.class)){
+   AtomicReference<VideoFixtureActivity> activity=new AtomicReference<>();scene.onActivity(activity::set);
+   for(boolean partial:List.of(false,true)){
+    Pending p=new Pending(asset());File sealed=new File(p.directory(),"COMPLETION.pending"),complete=new File(p.directory(),"COMPLETE.json");AtomicBoolean injected=new AtomicBoolean();AtomicReference<byte[]> sentinel=new AtomicReference<>();AtomicReference<Exception> actorError=new AtomicReference<>();
+    VideoCopyEdits editor=editor(()->{
+     if(sealed.exists()&&injected.compareAndSet(false,true))try{byte[] value=partial?"{\"operationId\":".getBytes(StandardCharsets.UTF_8):Files.readAllBytes(sealed.toPath());Files.write(complete.toPath(),value,StandardOpenOption.CREATE_NEW,StandardOpenOption.WRITE);sentinel.set(value);}catch(Exception error){actorError.set(error);}
+     return activity.get().hasWindowFocus();
+    });boolean verified=false;
+    try{
+     String before=metadata(p.uri);Response call=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),call);refused(call);assertTrue(injected.get());assertNull(actorError.get());assertNotNull(sentinel.get());assertTrue(call.error.contains("complete/ErrnoException"));assertArrayEquals(sentinel.get(),Files.readAllBytes(complete.toPath()));
+     JSONObject incomplete=new JSONObject(Files.readString(new File(p.directory(),"INCOMPLETE.json").toPath()));assertEquals(android.system.OsConstants.EEXIST,incomplete.getInt("errno"));assertNull("Existing full or partial filenames never authorize success",call.value);unchanged(p,before);verified=true;
     }finally{editor.close();if(verified)dispose(p);}
    }
   }

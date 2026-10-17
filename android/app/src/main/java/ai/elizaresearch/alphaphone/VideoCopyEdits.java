@@ -37,6 +37,7 @@ import androidx.media3.transformer.VideoEncoderSettings;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginCall;
 import java.io.File;
+import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -172,6 +173,21 @@ final class VideoCopyEdits {
    if(after.st_dev!=opened.st_dev||after.st_ino!=opened.st_ino)throw new IOException("Recovery directory changed during sync");
   }finally{Os.close(fd);}
  }
+ private byte[] preservationManifestReadback(File directory,String name,StructStat expected)throws Exception{
+  requirePrivateDirectory(directory);if(!name.equals("COMPLETION.pending")&&!name.equals("COMPLETE.json"))throw new IOException("Invalid recovery manifest");
+  String path=new File(directory,name).getAbsolutePath();java.io.FileDescriptor fd=Os.open(path,OsConstants.O_RDONLY|OsConstants.O_NOFOLLOW|OsConstants.O_NONBLOCK,0);
+  try{
+   StructStat opened=Os.fstat(fd);
+   if(!OsConstants.S_ISREG(opened.st_mode)||opened.st_uid!=android.os.Process.myUid()||(opened.st_mode&077)!=0||opened.st_nlink!=1||opened.st_dev!=expected.st_dev||opened.st_ino!=expected.st_ino||opened.st_size!=expected.st_size||opened.st_size>65536)throw new IOException("Recovery manifest changed");
+  }catch(Exception failure){Os.close(fd);throw failure;}
+  byte[] value;
+  try(FileInputStream input=new FileInputStream(fd);ByteArrayOutputStream bytes=new ByteArrayOutputStream()){
+   byte[] chunk=new byte[8192];int length;while((length=input.read(chunk))!=-1){if(bytes.size()+length>65536)throw new IOException("Recovery manifest exceeds its limit");bytes.write(chunk,0,length);}value=bytes.toByteArray();
+   StructStat after=Os.fstat(fd);if(after.st_dev!=expected.st_dev||after.st_ino!=expected.st_ino||after.st_uid!=android.os.Process.myUid()||(after.st_mode&077)!=0||!OsConstants.S_ISREG(after.st_mode)||after.st_nlink!=1||after.st_size!=value.length||after.st_size!=expected.st_size)throw new IOException("Recovery manifest changed during readback");
+  }
+  requirePrivateDirectory(directory);StructStat current=Os.lstat(path);
+  if(current.st_dev!=expected.st_dev||current.st_ino!=expected.st_ino||current.st_uid!=android.os.Process.myUid()||!OsConstants.S_ISREG(current.st_mode)||(current.st_mode&077)!=0||current.st_nlink!=1||current.st_size!=value.length)throw new IOException("Recovery manifest path changed");return value;
+ }
  private JSONObject preservationDigest(InputStream input,FileOutputStream output,String token,String recordHash,long admittedEpoch)throws Exception{
   if(input==null)throw new IOException("Pending output could not be opened");MessageDigest hash=MessageDigest.getInstance("SHA-256");byte[] chunk=new byte[64*1024];long bytes=0;int emptyReads=0;
   while(true){requirePreservationState(token,recordHash,admittedEpoch);int length=input.read(chunk);if(length<0)break;if(length==0){if(++emptyReads>4)throw new IOException("Pending output read stalled");continue;}emptyReads=0;bytes+=length;if(bytes>PRESERVATION_MAX_BYTES)throw new IOException("Pending output exceeds reviewed recovery limit");hash.update(chunk,0,length);if(output!=null)output.write(chunk,0,length);}
@@ -198,17 +214,19 @@ final class VideoCopyEdits {
     if(!first.toString().equals(escrow.toString())||!first.toString().equals(second.toString())||!before.toString().equals(after.toString()))throw new IOException("Pending output changed during preservation");
     preservationFile(archive,"metadata-after.json",after.toString());requirePreservationState(token,expectedRecordHash,admittedEpoch);
     JSONObject complete=new JSONObject().put("operationId",token).put("status","preserved").put("recordSHA256",expectedRecordHash).put("sourceURI",source.toString()).put("sourceBefore",before).put("sourceAfter",after).put("bytes",first.getLong("bytes")).put("sha256",first.getString("sha256")).put("forensicOnly",true);
-    // Publish only an already fsynced whole manifest. link() is atomic and
-    // refuses an existing destination; the sealed source is retained too.
+    // Android app policy forbids hard links. Completion is exclusive and
+    // durable, not an atomic whole-file publication; a filename is never proof.
     stage="seal";preservationFile(archive,"COMPLETION.pending",complete.toString());syncPreservationDirectory(archive);requirePreservationState(token,expectedRecordHash,admittedEpoch);
     Uri finalFound=copy(token,record);if(finalFound==null||!after.toString().equals(preservationMetadata(finalFound,token).toString()))throw new IOException("Pending output changed before preservation seal");
     requirePrivateDirectory(archive);String sealedPath=new File(archive,"COMPLETION.pending").getAbsolutePath(),completePath=new File(archive,"COMPLETE.json").getAbsolutePath();StructStat sealed=Os.lstat(sealedPath);
     if(!OsConstants.S_ISREG(sealed.st_mode)||sealed.st_uid!=android.os.Process.myUid()||(sealed.st_mode&077)!=0||sealed.st_nlink!=1)throw new IOException("Preservation seal changed");
-    stage="complete";requirePreservationState(token,expectedRecordHash,admittedEpoch);Os.link(sealedPath,completePath);StructStat published=Os.lstat(completePath);
-    if(!OsConstants.S_ISREG(published.st_mode)||published.st_uid!=sealed.st_uid||published.st_mode!=sealed.st_mode||published.st_ino!=sealed.st_ino||published.st_dev!=sealed.st_dev||published.st_nlink!=2||published.st_size!=sealed.st_size)throw new IOException("Preservation seal changed");syncPreservationDirectory(archive);
+    byte[] manifestBytes=complete.toString().getBytes(StandardCharsets.UTF_8);if(!java.util.Arrays.equals(manifestBytes,preservationManifestReadback(archive,"COMPLETION.pending",sealed)))throw new IOException("Preservation seal content changed");
+    stage="complete";requirePreservationState(token,expectedRecordHash,admittedEpoch);preservationFile(archive,"COMPLETE.json",complete.toString());StructStat published=Os.lstat(completePath);
+    if(!OsConstants.S_ISREG(published.st_mode)||published.st_uid!=sealed.st_uid||published.st_mode!=sealed.st_mode||published.st_ino==sealed.st_ino||published.st_dev!=sealed.st_dev||published.st_nlink!=1||published.st_size!=sealed.st_size)throw new IOException("Preservation seal changed");syncPreservationDirectory(archive);
+    if(!java.util.Arrays.equals(manifestBytes,preservationManifestReadback(archive,"COMPLETE.json",published)))throw new IOException("Complete recovery manifest changed");
     JSObject result=new JSObject();result.put("operationId",token);result.put("artifactId",token);result.put("status","preserved");result.put("bytes",first.getLong("bytes"));result.put("sha256",first.getString("sha256"));requirePreservationState(token,expectedRecordHash,admittedEpoch);call.resolve(result);
    }catch(Exception failure){
-    if(archive!=null)try{preservationFile(archive,"INCOMPLETE.json",new JSONObject().put("operationId",token).put("stage",stage).put("errorClass",failure.getClass().getSimpleName()).put("sourceWritesPerformed",false).put("journalWritesPerformed",false).toString());syncPreservationDirectory(archive);}catch(Exception retained){/* Keep existing evidence; never overwrite or clean up. */}
+    if(archive!=null)try{JSONObject incomplete=new JSONObject().put("operationId",token).put("stage",stage).put("errorClass",failure.getClass().getSimpleName()).put("sourceWritesPerformed",false).put("journalWritesPerformed",false);if(failure instanceof ErrnoException)incomplete.put("errno",((ErrnoException)failure).errno);preservationFile(archive,"INCOMPLETE.json",incomplete.toString());syncPreservationDirectory(archive);}catch(Exception retained){/* Keep existing evidence; never overwrite or clean up. */}
     call.reject("Video copy preservation refused: "+stage+"/"+failure.getClass().getSimpleName());
    }
   });
