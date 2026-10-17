@@ -219,7 +219,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   }
   function proposalCard(proposal:import('../runtime/alpha-client').ActionProposal){
     const home=proposal.reviewDestination==='home';
-    return {type:'generic',icon:'check',title:home?'Review Notes on Home':'Approve: '+proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
+    return {type:'generic',icon:'check',title:home?'Review Notes on Home':proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':proposal.description,proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
   }
   p.cancelReadReplyCompletions=function(onlyProposalId?:string){
     for(const [proposalId,lease] of this.readReplyLeases||[]){
@@ -996,8 +996,8 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const message=live.find(item=>item.card===c);if(!message)return m;
       const ic=out.ic||{},busy=!!this.decliningProposal||!!this.pendingActionApproval;
       return {...m,cGeneric:false,cDigest:true,rows:[
-        {ini:'',who:c.title,text:c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
-        {ini:'',who:'Decline',text:this.decliningProposal===c.proposalId?'Declining…':'Reject this proposal. Nothing runs.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
+        {ini:'',who:busy?'Working…':c.title,text:c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
+        {ini:'',who:this.decliningProposal===c.proposalId?'Cancelling…':'Cancel',text:'Keep things as they are.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
       ]};
     });
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
@@ -1302,7 +1302,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
         this.pendingActionApprovalProposalId=card.proposalId;
-        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
+        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;this.setState({});
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
@@ -1325,7 +1325,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           else this.agentSay(receipt.summary);
         }
       } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||readLease.phase!=='cancelled'&&connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
-      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live)context(this);}
+      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live){context(this);this.setState({});}}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {

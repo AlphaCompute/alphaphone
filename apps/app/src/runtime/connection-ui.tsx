@@ -1,3 +1,4 @@
+import {readDevicePreferences} from '../browser/device-preferences';
 import {resolveCloudEnvironment} from './cloud-environment-selection';
 import {aospImage} from './aosp-image';
 import {SMS_SEND_CAPABILITY} from './sms-agent-contract';
@@ -2130,7 +2131,9 @@ export const connectionController = {
       // history. Other hosts retain the existing envelope and legacy alias.
       const nativeProse=isAndroid&&selected.kind==='resident'&&selected.userTextFormatVersion===1;
       const wireText=nativeProse?text:message.text;
-      const options = { signal: requestSignal, clientMessageId: requestId, channelType, metadata: { ...(channelType==='VOICE_DM'&&voiceTurnSignal?{voiceTurnSignal}:{}), ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
+      const actionPreferences=await readDevicePreferences(requestSignal).catch(()=>{requestSignal.throwIfAborted();return {askBeforeAgentActions:true};});assertCurrent();
+      const directRequestedActions=!actionPreferences.askBeforeAgentActions;
+      const options = { signal: requestSignal, clientMessageId: requestId, channelType, metadata: { ...(directRequestedActions?{agentActionMode:'direct-request-v1'}:{}), ...(channelType==='VOICE_DM'&&voiceTurnSignal?{voiceTurnSignal}:{}), ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       dispatched = { conversationId: id, at: Date.now() };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const replyReady=(results:readonly unknown[]|undefined)=>{assertCurrent();onReplyReady?.(results);};
@@ -2159,7 +2162,13 @@ export const connectionController = {
       if (selected.actions) {
         // A pending action that does not fit this screen, time zone or negotiated support is
         // named to the owner instead of being dropped; it stays unapprovable.
-        try { const items = await selected.actions.pendingReview(message.context, requestSignal); proposals = items.flatMap(item => item.proposal ? [item.proposal] : []); notices = items.flatMap(item => item.notice ? [item.notice.slice(0, 500)] : []).slice(0, 5); }
+        try { let items = await selected.actions.pendingReview(message.context, requestSignal);
+          if(!responseFailure&&directRequestedActions&&typeof reply.userMessageId==='string'&&validateUuid(reply.userMessageId)){
+            const performed=await selected.actions.performRequested(reply.userMessageId,message.context,requestSignal,async()=>!(await readDevicePreferences(requestSignal)).askBeforeAgentActions);
+            assertCurrent();
+            if(performed.length){notices.push(...performed.map(result=>result.summary.slice(0,500)));items=await selected.actions.pendingReview(message.context,requestSignal);}
+          }
+          proposals = items.flatMap(item => item.proposal ? [item.proposal] : []); notices.push(...items.flatMap(item => item.notice ? [item.notice.slice(0, 500)] : []));notices=notices.slice(0,5); }
         catch { update({ message: 'Reply received. Phone action proposals could not be checked; use action history.' }); }
       }
       requestSignal.throwIfAborted();
