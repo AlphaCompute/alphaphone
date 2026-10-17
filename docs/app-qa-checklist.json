@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T22:55:55.317198+00:00",
+  "updatedAt": "2026-10-17T23:08:00Z",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "ec7d28705cf3af5ab8ed82f28536ed3d179d3d4e",
+  "productSource": "f0c7a79a7067954cbf077e69c893bad2f223f5fd",
   "agentSource": "623b3f8d6da8e86b4f4d996ce1fd668af0d29529",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -826,7 +826,7 @@
       "viewOrFlow": "Photo mode and actual capture",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Current Chromium: real encoded synthetic frame persists and reloads; failed storage creates no photo. Physical sensor pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -838,7 +838,7 @@
       "viewOrFlow": "Video mode, recording clock and stop",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Browser MediaRecorder and edit-copy cases passed with synthetic video/audio; native recording pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -850,7 +850,7 @@
       "viewOrFlow": "Mode switching, front/back and zoom",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Current browser camera control tests pass for zoomed pixels, front mirroring and switching reset.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -862,7 +862,7 @@
       "viewOrFlow": "Focus, exposure and supported flash controls",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Current browser control tests pass for focus/zoom and confirmed torch capability; physical hardware pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -946,7 +946,7 @@
       "viewOrFlow": "Compact Ask Alpha review and OCR",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Compact image/content review tests pass at150% text in light and dark; device/OCR acceptance remains separate.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -970,7 +970,7 @@
       "viewOrFlow": "Library groups and thumbnail loading",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Browser encoded-photo persistence/reload passes with synthetic camera. Native library acceptance remains pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -1116,7 +1116,7 @@
       "viewOrFlow": "Recently Deleted opens preview on tap",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Current Chromium: opening a deleted photo keeps it deleted until Recover; delete-review focus/explicit actions pass in light/dark and compact height. Synthetic photos only.",
       "seeker": "Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred.",
       "userApproval": "Pending",
       "evidence": [],
@@ -2494,13 +2494,17 @@
     "source": "c5d5d8005220910da8535d48353ce6ddf00517aa",
     "sdk": "985322b5df96a91e9dc913c73280a97b82890642",
     "runtime": "75773ddf",
-    "state": "Isolated camera successor; not loaded on 5209 or installed on Seeker",
-    "validation": "16 focused product tests and 4 rendered synthetic camera tests passed; 8 real database action tests passed. Full combined verification pending."
+    "state": "Camera/Files successor with browser ID correction; isolated, full verification required before load",
+    "validation": "49 cross-view layout cases pass; camera ID correction passes12 browser cases including real encoded synthetic photo persistence, navigation and zoom. Shared action8 and schema11 pass. Final combined verification pending."
   },
   "currentPreviewPreservation": {
     "rooms": 14,
     "messageHashes": 233,
     "scope": "5209 browser-agent profile; current Cloud account retained",
     "acceptance": "Read-only navigation checked. Fresh provider writes, live audio and current Seeker remain separate."
+  },
+  "browserLayoutQualification": {
+    "passed": 49,
+    "scope": "synthetic Chromium, compact/large text, light/dark; not device or human acceptance"
   }
 }

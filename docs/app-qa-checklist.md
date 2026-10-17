@@ -1,6 +1,6 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Product `ec7d28705c`, runtime `623b3f8d6d`, SDK `985322b5`. The controlled update retained the Cloud account, 14 rooms and 233 message hashes. A read-only EC7 navigation pass covered Home, Settings, Connections, Inbox, Calendar, Photos/Albums, Files, Notes, Workflows, Browser, Maps and All apps. Current sensor, provider-write, voice and Seeker acceptance remain separate. Updated October 17, 2026.
+Live preview: <http://127.0.0.1:5209/>. Product `f0c7a79a7` (microphone lifecycle hotfix), runtime `623b3f8d6d`, SDK `985322b5`. The controlled update retained the Cloud account, 14 rooms and 233 message hashes. A read-only EC7 navigation pass covered Home, Settings, Connections, Inbox, Calendar, Photos/Albums, Files, Notes, Workflows, Browser, Maps and All apps. Current sensor, provider-write, voice and Seeker acceptance remain separate. Updated October 17, 2026.
 
 The JSON companion tracks 174 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
@@ -10,7 +10,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 
 Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, existing certificate, UID10250 and original install date preserved. Normal SDK/product verification, four variants, lint and APK checks passed. The valid saved credential now commits a provider binding; resident is now running with Cloud inference and connected Google permissions after all eight retired IPC directories were archived intact. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider result was observed. Native send and Calendar write were not attempted. See [native read evidence](evidence/seeker-cloud-read-20261017.json). Prior row evidence stays labeled by its observed build; human approval remains separate.
 
-Prepared camera successor: product `c5d5d8005` and runtime `75773ddf` are isolated, not loaded on 5209. Four rendered synthetic tests cover Home capture, a lost navigation acknowledgement, an old request and ask-first mode. Sixteen focused product tests and eight database-backed action tests passed. Full combined verification, a real camera prompt and Seeker acceptance remain pending.
+Prepared camera successor: product `c5d5d8005` and runtime `75773ddf` are isolated, not loaded on 5209. Four rendered synthetic tests cover Home capture, a lost navigation acknowledgement, an old request and ask-first mode. Sixteen focused product tests and eight database-backed action tests passed. The first full run passed 1,624 tests with 2 skips; 49 cross-view layout tests passed. Broader media tests then found a browser photo-ID length mismatch. The correction now passes 12 browser cases, including actual encoded synthetic frames and zoom. Final combined verification, a real camera prompt and Seeker acceptance remain pending.
 
 ## Shell and Home
 
@@ -105,17 +105,17 @@ Prepared camera successor: product `c5d5d8005` and runtime `75773ddf` are isolat
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| camera-01 | Photo mode and actual capture | Prior preview pass; latest retest pending | Pending | Pending |
-| camera-02 | Video mode, recording clock and stop | Pending | Pending | Pending |
-| camera-03 | Mode switching, front/back and zoom | Pending | Pending | Pending |
-| camera-04 | Focus, exposure and supported flash controls | Pending | Pending | Pending |
+| camera-01 | Photo mode and actual capture | Current Chromium: real encoded synthetic frame persists and reloads; failed storage creates no photo. Physical sensor pending. | Pending | Pending |
+| camera-02 | Video mode, recording clock and stop | Browser MediaRecorder and edit-copy cases passed with synthetic video/audio; native recording pending. | Pending | Pending |
+| camera-03 | Mode switching, front/back and zoom | Current browser camera control tests pass for zoomed pixels, front mirroring and switching reset. | Pending | Pending |
+| camera-04 | Focus, exposure and supported flash controls | Current browser control tests pass for focus/zoom and confirmed torch capability; physical hardware pending. | Pending | Pending |
 | camera-05 | Permission denied, device busy and track termination | Prior preview pass; latest retest pending | Pending | Pending |
 | camera-06 | Transient toast timeout and centered logo | Pending | Pending | Pending |
 | camera-07 | Capture review and session gallery | Pending | Pending | Pending |
 | camera-08 | Scan capture, add/reorder/remove pages | Pending | Pending | Pending |
 | camera-09 | Scan draft save, load and explicit removal | Pending | Pending | Pending |
 | camera-10 | Image PDF and searchable PDF export | Pending | Pending | Pending |
-| camera-11 | Compact Ask Alpha review and OCR | Pending | Pending | Pending |
+| camera-11 | Compact Ask Alpha review and OCR | Compact image/content review tests pass at150% text in light and dark; device/OCR acceptance remains separate. | Pending | Pending |
 | camera-12 | Exit/background recording and save behavior | Pending | Pending | Pending |
 
 | camera-13 | Agent takes one photo from Home or visible Camera | Isolated successor: 4 rendered synthetic tests and 16 focused tests pass; real sensor/provider prompt pending. | Pending | Pending |
@@ -124,7 +124,7 @@ Prepared camera successor: product `c5d5d8005` and runtime `75773ddf` are isolat
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| photos-01 | Library groups and thumbnail loading | Pending | Pending | Pending |
+| photos-01 | Library groups and thumbnail loading | Browser encoded-photo persistence/reload passes with synthetic camera. Native library acceptance remains pending. | Pending | Pending |
 | photos-02 | Stable top-bar layout across Photos/Albums | EC7 live empty Photos and Albums checked: stable toolbar and Select present. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review. | Pending |
 | photos-03 | Albums list, contents, selection and batch actions | Albums list/contents implemented; selection and batch-action review pending. | Native Albums list opened. Current Select photos action targets library; native custom-album selection remains open. | Pending |
 | photos-04 | Search, favorites and empty results | Pending | Pending | Pending |

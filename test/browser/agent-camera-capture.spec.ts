@@ -61,7 +61,7 @@ for(const mode of ['capture','lost-ack','old-message','ask-first'] as const)test
   const {browserCamera}=await import('/src/prototype/browser-camera.ts');
   browserCamera.startPreview=async()=>({width:16,height:16,deviceId:'fixture'});
   browserCamera.stopPreview=async()=>{};
-  browserCamera.capturePhoto=async()=>{const f=(window as any).cameraRequestFixture;f.captures++;const c=document.createElement('canvas');c.width=c.height=16;return{path:'browser-photo:///456',format:'jpeg',base64:c.toDataURL('image/jpeg').split(',')[1],width:16,height:16};};
+  browserCamera.capturePhoto=async()=>{const f=(window as any).cameraRequestFixture;f.captures++;const c=document.createElement('canvas');c.width=c.height=16;return{path:'browser-photo:///1792274767123123456789012',format:'jpeg',base64:c.toDataURL('image/jpeg').split(',')[1],width:16,height:16};};
   if(mode==='ask-first'){const {editDevicePreferences}=await import('/src/browser/device-preferences.ts');await editDevicePreferences(state=>{state.askBeforeAgentActions=true;});}
  },mode);
  await returnToApps(page);
@@ -70,7 +70,9 @@ for(const mode of ['capture','lost-ack','old-message','ask-first'] as const)test
  await expect(page.getByRole('button',{name:'Stop reply',exact:true})).toHaveCount(0);
  if(mode==='capture'){
   await expect.poll(()=>page.evaluate(()=>(window as any).cameraRequestFixture.receipts.length)).toBe(1);
-  const f=await page.evaluate(()=>(window as any).cameraRequestFixture);expect(f.captures).toBe(1);expect(f.receipts[0].outcome).toBe('applied');expect(f.receipts[0].result.mediaId).toBe('456');expect(JSON.stringify(f.receipts)).not.toContain('base64');
+  const f=await page.evaluate(()=>(window as any).cameraRequestFixture);expect(f.captures).toBe(1);expect(f.receipts[0].outcome).toBe('applied');expect(f.receipts[0].result.mediaId).toBe('1792274767123123456789012');expect(JSON.stringify(f.receipts)).not.toContain('base64');
+  await expect(page.getByText('Photo saved in Photos.',{exact:true})).toHaveCount(1);
+  await expect(page.getByText('Take photo: Open Camera to take the requested photo.',{exact:true})).toHaveCount(0);
  }else{
   await expect(page.getByText('Opening Camera.',{exact:true}).first()).toBeVisible();
   const f=await page.evaluate(()=>(window as any).cameraRequestFixture);expect(f.captures).toBe(0);expect(f.decisions).toBe(0);

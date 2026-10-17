@@ -55,7 +55,7 @@ export function validateCameraCaptureResult(
     !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(row.operationId) ||
     (operationId !== undefined && row.operationId !== operationId) ||
     typeof row.mediaId !== "string" ||
-    !/^[1-9][0-9]{0,18}$/.test(row.mediaId) ||
+    !/^[1-9][0-9]{0,24}$/.test(row.mediaId) ||
     ![row.width, row.height].every(
       (n) =>
         typeof n === "number" && Number.isSafeInteger(n) && n > 0 && n <= 65536,

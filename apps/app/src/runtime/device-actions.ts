@@ -137,12 +137,13 @@ function assertForegroundContext(operation:ForegroundReviewOperation,context:Con
  // Name-targeted edits are requested from Home and resolved by a local choice, never by a selection elsewhere.
  if(context.view!=='home')throw new ContextNotice('Return to Home to choose the record for this action.');
 }
+export const CAMERA_CONTEXT_NOTICE='Open Camera to take the requested photo.';
 /** A pending proposal that does not fit the current screen. Its message is shown to the owner. */
 export class ContextNotice extends Error { override readonly name='ContextNotice'; }
 function assertNotesContext(operation:NotesOperation,context:ContextEnvelope){const s=context.selectedObject,t=operation.target;if(context.sensitive||context.view!=='notes'||!s||s.kind!=='note'||s.id!==t.noteId||s.revision!==t.revision||s.accountId!==t.sourceId||s.sourceRevision!==t.sourceRevision)throw Error('Selected note context changed');}
 /** Every screen rule for a proposal; throws when the current screen cannot review it. */
 function assertProposalContext(operation:ReviewableDeviceOperation,context:ContextEnvelope){
- if(isCameraCapture(operation)&&(context.sensitive||context.view!=='camera'))throw new ContextNotice('Open Camera to take the requested photo.');
+ if(isCameraCapture(operation)&&(context.sensitive||context.view!=='camera'))throw new ContextNotice(CAMERA_CONTEXT_NOTICE);
  if(isForegroundReview(operation))assertForegroundContext(operation,context);
  if(isSmsSend(operation)&&(context.sensitive||context.view!=='messages'||context.selectedObject?.kind!=='sms-subscription'||context.selectedObject.id!==String(operation.subscriptionId)))throw new ContextNotice('Open Messages and select the reviewed SIM before approving SMS.');
  if(isClockOperation(operation))assertClockTimeZone(operation,context.timeZone);

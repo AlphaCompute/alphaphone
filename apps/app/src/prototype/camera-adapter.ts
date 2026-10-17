@@ -638,7 +638,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     // width distorts the saved image; retain sensor dimensions and let the
     // owned-media reader create bounded, aspect-preserving display previews.
     const photo = await camera.capturePhoto({ format: 'jpeg', quality: 85, saveToGallery: true });
-    if (!photo.path || !(browserMode ? /^browser-photo:\/\/\/[1-9][0-9]{0,18}$/.test(photo.path) : /^content:\/\/media\/(?:external|external_primary)\/images\/media\/[1-9][0-9]{0,18}$/.test(photo.path)) || photo.format !== 'jpeg' || !photo.base64 || photo.width <= 0 || photo.height <= 0) throw new Error('Incomplete photo receipt');
+    if (!photo.path || !(browserMode ? /^browser-photo:\/\/\/[1-9][0-9]{0,24}$/.test(photo.path) : /^content:\/\/media\/(?:external|external_primary)\/images\/media\/[1-9][0-9]{0,18}$/.test(photo.path)) || photo.format !== 'jpeg' || !photo.base64 || photo.width <= 0 || photo.height <= 0) throw new Error('Incomplete photo receipt');
     // A capture may finish after navigation: the native gallery write already
     // happened. Retain its real receipt, but never move the user back to Camera.
     const mediaId = photo.path.split('/').pop();
