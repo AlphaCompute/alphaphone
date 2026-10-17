@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T22:52:44.383076+00:00",
+  "updatedAt": "2026-10-17T01:48:10.442937+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -1760,11 +1760,11 @@
       "viewOrFlow": "Models and local speech readiness",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Native Models now shows on-device voice and actual native provider admission/model. Two synthetic native UI checks pass; installed-current-source retest pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "Installedbb4d still displayed misleading Cloud voice label. Correction is in source afterbb4d and needs the next integrated native build."
     },
     {
       "id": "settings-15",
@@ -1857,9 +1857,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Pending",
-      "seeker": "Pending",
+      "seeker": "bb4d/9365 normal four-variant/lint/package checks passed and exact signed APK installed preserving UID/first-install date. Ordinary Gmail read prompt failed: actual resident launched Cloud inference=false, no protected provider key or Google host broker. Supported Cloud admission is pending; native send/deletion not attempted.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-native-startup-20261017.json"
+      ],
       "notes": ""
     },
     {
@@ -2292,5 +2294,7 @@
       "nativePromptAcceptance": false,
       "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
     }
-  }
+  },
+  "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
+  "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a"
 }
