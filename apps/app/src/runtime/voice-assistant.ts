@@ -9,11 +9,15 @@
  * decides when the user has finished:
  *
  *  - After the last segment closes and its final is in, a short gap (`shortGapMs`) asks the
- *    optional semantic `endpoint` port (Clef when one is admitted; none exists at the current
- *    pin, so the documented VAD fallback applies) with a bounded deadline. `finished` submits now.
+ *    optional semantic `endpoint` port (the resident agent's end-of-turn scorer, elizaOS #36546,
+ *    see voice-turn-routes.ts) with a bounded deadline, one call in flight per utterance.
+ *    `finished` submits now. `continue` (scored, not complete), `unavailable`, a failure or an
+ *    expired deadline all leave the decision to the long gap: unavailable is never complete.
  *  - A long gap (`longGapMs`) always submits. Both gaps are measured from the VAD speech-end.
  *  - New speech before submission cancels both timers (and any pending endpoint call) and the
  *    utterance continues.
+ *  - Each submission reports which path took it (`semantic` or `gap`) and the last semantic
+ *    outcome of that utterance through `onTurn` (diagnostics: enums and numbers, never text).
  *
  * Generations: each submission and each interruption bumps `turn`. Every asynchronous callback
  * (endpoint decision, agent reply, playback progress) checks the generation it started under and
@@ -65,7 +69,21 @@ export interface AssistantReply {
   interrupted?: boolean;
   awaitingUserInput?: { proposalId: string; digest: string };
 }
-export type EndpointDecision = 'finished' | 'continue';
+/** `finished`: the turn is complete. `continue`: scored as not complete. `unavailable`: not scored. */
+export type EndpointDecision = 'finished' | 'continue' | 'unavailable';
+/** A decision with diagnostic detail (enum reason and scorer latency only, never text). */
+export interface EndpointResult { decision: EndpointDecision; reason?: string; latencyMs?: number }
+/** What the semantic endpoint said for the utterance that was submitted. */
+export type EndpointOutcome = 'complete' | 'incomplete' | 'unavailable' | 'timeout' | 'error' | 'not-asked';
+export interface EndpointRecord {
+  /** The path that submitted the turn. */
+  by: 'semantic' | 'gap';
+  semantic: EndpointOutcome;
+  /** The scorer's reason when it was unavailable (an upstream enum value). */
+  reason?: string;
+  /** Scorer latency reported by the agent, or the client round trip when it gave none. */
+  latencyMs?: number;
+}
 export interface AssistantHeard {
   turnId: string;
   replyId: string;
@@ -101,8 +119,8 @@ export interface AssistantPorts {
   listen(handlers: AssistantListenHandlers): Promise<AssistantCapture>;
   /** A new utterance began: the host pins the context the turn will be sent with. Throws when stale. */
   beginUtterance?(): void;
-  /** Semantic end-of-turn (Clef). Omitted: the VAD long-gap fallback decides alone. */
-  endpoint?(text: string, signal: AbortSignal): Promise<EndpointDecision>;
+  /** Semantic end-of-turn (the resident's scorer). Omitted: the VAD long-gap fallback decides alone. */
+  endpoint?(text: string, signal: AbortSignal): Promise<EndpointDecision | EndpointResult>;
   /** Disfluency and self-echo gate for one segment (upstream shouldRespondToVoiceTurn). */
   shouldRespond?(text: string, context: { recentAgentReply: string; replyAgeMs: number; agentSpeaking: boolean }): boolean;
   /** Turn signal metadata for the agent (upstream buildVoiceTurnSignal). */
@@ -116,8 +134,8 @@ export interface AssistantPorts {
   onState?(state: AssistantState): void;
   /** Microphone level in [0, 1], display only. */
   onLevel?(peak: number): void;
-  /** Diagnostics hooks: numbers and ids only. */
-  onTurn?(event: 'submitted' | 'first-audio' | 'finished' | 'interrupted', turnId: string): void;
+  /** Diagnostics hooks: numbers, enums and ids only. `submitted` carries how the turn was endpointed. */
+  onTurn?(event: 'submitted' | 'first-audio' | 'finished' | 'interrupted', turnId: string, detail?: { endpoint: EndpointRecord }): void;
 }
 export interface AssistantTiming {
   shortGapMs: number;
@@ -131,8 +149,10 @@ export interface AssistantTiming {
  * owner-set constants. Gaps follow the VAD speech-end, which itself trails the last voiced window
  * by the native gate's hangover (LiveVadGate, about 512 ms). The barge-in hold exceeds that
  * hangover, so a short blip (which keeps a segment open for about 550 ms) never confirms by time.
+ * The endpoint deadline covers the IPC round trip and one scorer pass; short gap plus deadline
+ * (900 ms) stays well under the long gap, which submits regardless.
  */
-export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({ shortGapMs: 300, longGapMs: 1200, endpointDeadlineMs: 250, bargeInConfirmMs: 700 });
+export const ASSISTANT_TIMING_DEFAULTS: AssistantTiming = Object.freeze({ shortGapMs: 300, longGapMs: 1200, endpointDeadlineMs: 600, bargeInConfirmMs: 700 });
 export interface AssistantClock {
   now(): number;
   setTimer(callback: () => void, ms: number): unknown;
@@ -209,6 +229,8 @@ export class VoiceAssistantSession {
   private shortTimer: unknown;
   private longTimer: unknown;
   private endpointController?: AbortController;
+  /** The last semantic outcome of the current utterance (reset when speech resumes). */
+  private endpointOutcome?: Omit<EndpointRecord, 'by'>;
   private response?: Response;
   private inflight: Promise<unknown> = Promise.resolve();
   private speech = new Set<Promise<unknown>>();
@@ -408,6 +430,7 @@ export class VoiceAssistantSession {
     this.clearTimers();
     this.endpointController?.abort();
     this.endpointController = undefined;
+    this.endpointOutcome = undefined;
     const response = this.response;
     if (response?.started && !this.capture?.fullDuplex) {
       // Without echo cancellation the microphone hears the reply: speech during playback is not a turn.
@@ -478,28 +501,49 @@ export class VoiceAssistantSession {
     if (this.ports.endpoint) this.shortTimer = this.clock.setTimer(() => {
       this.shortTimer = undefined;
       if (!owns()) return;
+      // One endpoint call in flight per utterance: a re-scheduled gap replaces the earlier call.
+      this.endpointController?.abort();
       const controller = new AbortController();
       this.endpointController = controller;
+      const askedAt = this.clock.now();
       let deadline: unknown;
-      const expired = new Promise<EndpointDecision>(resolve => { deadline = this.clock.setTimer(() => resolve('continue'), this.timing.endpointDeadlineMs); });
-      // A slow, failing or absent decision never blocks: the long gap still submits.
-      void Promise.race([Promise.resolve().then(() => this.ports.endpoint!(text, controller.signal)).catch((): EndpointDecision => 'continue'), expired]).then(decision => {
+      type Settled = Omit<EndpointRecord, 'by'> & { finished: boolean };
+      const expired = new Promise<Settled>(resolve => { deadline = this.clock.setTimer(() => resolve({ finished: false, semantic: 'timeout' }), this.timing.endpointDeadlineMs); });
+      const asked = Promise.resolve().then(() => this.ports.endpoint!(text, controller.signal)).then((value): Settled => {
+        const result: EndpointResult = typeof value === 'string' ? { decision: value } : value ?? { decision: 'unavailable' };
+        const reported = Number.isFinite(result.latencyMs) && (result.latencyMs as number) >= 0 ? Math.round(result.latencyMs as number) : Math.max(0, Math.round(this.clock.now() - askedAt));
+        const latencyMs = Math.min(reported, 3_600_000);
+        if (result.decision === 'finished') return { finished: true, semantic: 'complete', latencyMs };
+        if (result.decision === 'continue') return { finished: false, semantic: 'incomplete', latencyMs };
+        return { finished: false, semantic: 'unavailable', ...(typeof result.reason === 'string' ? { reason: result.reason } : {}) };
+      }, (): Settled => ({ finished: false, semantic: 'error' }));
+      // A slow, failing, unavailable or absent decision never blocks: the long gap still submits.
+      void Promise.race([asked, expired]).then(settled => {
         this.clock.clearTimer(deadline);
-        if (this.endpointController === controller) this.endpointController = undefined;
         controller.abort();
-        if (decision === 'finished' && owns()) this.submit(session);
+        // A superseded call (new speech, a re-scheduled gap or a submission) is dropped.
+        if (this.endpointController !== controller) return;
+        this.endpointController = undefined;
+        if (!owns()) return;
+        const { finished, ...outcome } = settled;
+        this.endpointOutcome = outcome;
+        if (finished) this.submit(session, 'semantic');
       });
     }, Math.max(0, this.timing.shortGapMs - elapsed));
-    this.longTimer = this.clock.setTimer(() => { this.longTimer = undefined; if (owns()) this.submit(session); }, Math.max(0, this.timing.longGapMs - elapsed));
+    this.longTimer = this.clock.setTimer(() => { this.longTimer = undefined; if (owns()) this.submit(session, 'gap'); }, Math.max(0, this.timing.longGapMs - elapsed));
   }
 
   // --- Turns --------------------------------------------------------------------------------
 
-  private submit(session: number) {
+  private submit(session: number, by: EndpointRecord['by']) {
     if (!this.current(session) || this.response) return;
     const text = this.utteranceText();
     this.clearTimers();
+    // A call still in flight when the long gap submits counts as a timeout for this utterance.
     this.endpointController?.abort();
+    this.endpointController = undefined;
+    const endpoint: EndpointRecord = { by, ...(this.endpointOutcome ?? { semantic: this.ports.endpoint ? 'timeout' : 'not-asked' }) };
+    this.endpointOutcome = undefined;
     this.segments = [];
     ++this.utteranceEpoch;
     if (!text) return;
@@ -507,7 +551,7 @@ export class VoiceAssistantSession {
     const response: Response = { turnId: crypto.randomUUID(), controller: new AbortController(), sentences: [], played: 0, started: false };
     this.response = response;
     this.publish({ phase: 'thinking', transcript: text });
-    this.ports.onTurn?.('submitted', response.turnId);
+    this.ports.onTurn?.('submitted', response.turnId, { endpoint });
     const previous = this.inflight;
     const run = this.respond(session, turn, response, text, previous);
     this.inflight = run.catch(() => {});

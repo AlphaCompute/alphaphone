@@ -45,8 +45,11 @@ without being admitted.
 An older installed native bridge that does not advertise this capability continues
 to use the compatibility path: PCM still crosses the renderer there. Native-route
 errors do not silently switch transports or replay audio. Full native turn control,
-semantic endpointing/Clef admission and TTS/playback orchestration remain separate
-work; the renderer still owns the voice-assistant interaction state machine.
+Clef admission and TTS/playback orchestration remain separate work; the renderer
+still owns the voice-assistant interaction state machine, including the semantic
+end-of-turn and heard-content requests (elizaOS #36546/#36547, see
+[fused speech](fused-speech.md)), which use the ordinary owner-bound resident request
+path, not this PCM transport.
 
 Host JVM tests exercise the queue, cutoff, cancellation, idle re-enrollment,
 response limits and cancellable deadlines. TypeScript port tests execute the actual

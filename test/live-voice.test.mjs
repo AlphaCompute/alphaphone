@@ -133,9 +133,10 @@ test('the live client and adapter never store, log or send interim text and keep
   assert.equal((adapter.match(/send:sendTurn/g) || []).length, 2);
 });
 
-test('Android: Silero VAD runs in the app process and only the live ASR routes are added to the agent bridge', () => {
+test('Android: Silero VAD runs in the app process and only the live ASR and end-of-turn routes are added to the agent bridge', () => {
   const plugin = fs.readFileSync(new URL('../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLocalAgentPlugin.java', import.meta.url), 'utf8');
-  assert.match(plugin, /\|asr\/local-inference\/live\(\/status\)\?\)\$"/);
+  // The end-of-turn route (#423, elizaOS #36546) carries text only; the heard route is covered in voice-turn-routes.test.mjs.
+  assert.match(plugin, /\|asr\/local-inference\/\(live\(\/status\)\?\|end-of-turn\)\)\$"/);
   const capture = fs.readFileSync(new URL('../android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaLiveVoiceCapture.java', import.meta.url), 'utf8');
   assert.match(capture, /ElizaVoiceNative\.nativeVadProcessBatch/);
   assert.match(capture, /AudioFormat\.ENCODING_PCM_16BIT/);

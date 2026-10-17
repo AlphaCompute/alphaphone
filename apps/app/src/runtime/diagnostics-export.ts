@@ -49,7 +49,8 @@ export type DiagnosticsInput={
 export type NativeVoiceTimingIdentity={sourceCommit:string;sourceDirty:boolean;engineSha256:string;modelSha256:string;models?:Record<string,string>;device:string;environment:'device'|'emulator';abi:'arm64-v8a'|'x86_64';sdk?:number;build:string};
 export type NativeVoiceTimingRow={id:string;turnId:string;pipeline:string;clock:'native-monotonic-ms';captureClock:string;cold:boolean;coldReason?:string;outcome:string;reason?:string;audibleClock?:string;network?:string;thermal?:string;thermalHeadroom?:number;identity:NativeVoiceTimingIdentity;marks:Record<string,number>};
 export type VoiceTimingLiveRow={mode:'stream'|'batch'|'unknown';partials:number;firstPartialMs?:number;finalFromSpeechEndMs?:number;asrFinalFromSpeechEndMs?:number};
-export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;live?:VoiceTimingLiveRow;nativeTurn?:string;outcome?:'abandoned'};
+export type VoiceTimingEndpointRow={by:'semantic'|'gap';semantic:'complete'|'incomplete'|'unavailable'|'timeout'|'error'|'not-asked';reason?:string;latencyMs?:number};
+export type VoiceTimingRow={version:1;id:string;recordedAt:number;route:string;cold:boolean;entry?:'conversation'|'notes';policy?:'auto-send'|'review';marks:Record<string,number>;live?:VoiceTimingLiveRow;endpoint?:VoiceTimingEndpointRow;heard?:string;nativeTurn?:string;outcome?:'abandoned'};
 export type DiagnosticsReport={
  format:typeof DIAGNOSTICS_FORMAT;generatedAt:string;platform:'android'|'web';
  app:{version:string|null;versionCode?:number;variant?:'launcher'|'standalone';buildType?:'debug'|'release';testMocks?:boolean};
@@ -95,6 +96,16 @@ function voiceTimingRows(input:unknown):VoiceTimingRow[]{
    for(const key of ['firstPartialMs','finalFromSpeechEndMs','asrFinalFromSpeechEndMs'] as const){const at=live[key];if(typeof at==='number'&&Number.isFinite(at)&&at>=0&&at<3_600_000)numbers[key]=Math.round(at);}
    out.live=numbers;
   }
+  // Voice-assistant endpointing and heard-content outcomes (#423): enums and two numbers only.
+  const endpoint=row.endpoint&&typeof row.endpoint==='object'&&!Array.isArray(row.endpoint)?row.endpoint as Record<string,unknown>:null;
+  const by=endpoint?one(endpoint.by,['semantic','gap'] as const):undefined,semantic=endpoint?one(endpoint.semantic,['complete','incomplete','unavailable','timeout','error','not-asked'] as const):undefined;
+  if(endpoint&&by&&semantic){
+   const value:VoiceTimingEndpointRow={by,semantic};
+   const reason=one(endpoint.reason,['voice-not-started','ffi-context-unloaded','scorer-unsupported','ram-pressure','unscored','timeout','too-long','invalid-response','unknown'] as const);if(reason)value.reason=reason;
+   if(typeof endpoint.latencyMs==='number'&&Number.isFinite(endpoint.latencyMs)&&endpoint.latencyMs>=0&&endpoint.latencyMs<3_600_000)value.latencyMs=Math.round(endpoint.latencyMs);
+   out.endpoint=value;
+  }
+  const heard=one(row.heard,['recorded','unchanged','not-needed','nothing-heard','conflict','not-found','unavailable','rejected','stale','invalid'] as const);if(heard)out.heard=heard;
   const nativeTurn=text(row.nativeTurn,uuid);if(nativeTurn)out.nativeTurn=nativeTurn;
   if(row.outcome==='abandoned')out.outcome='abandoned';
   rows.push(out);
