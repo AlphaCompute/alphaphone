@@ -125,8 +125,8 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-05 | Photo viewer, zoom and previous/next | Pending | Opened the newly captured960x1280 QA photo on574; local viewer controls rendered. | Pending |
 | photos-06 | Video playback and controls | Pending | Pending | Pending |
 | photos-07 | Photo edits save as copy | Pending | Pending | Pending |
-| photos-08 | Video trim timeline, rotate, crop and preview | Pending | Pending | Pending |
-| photos-09 | Edited-video audio, original preservation and save-copy | Browser editor and trim validation pass in45-test media suite. | Native video editing is still disabled; real encoder/export and copy-recovery qualification remain required. | Pending |
+| photos-08 | Video trim timeline, rotate, crop and preview | 33 current browser video/storage regressions pass; native UI/gesture qualification is separate. | Exact production exporter component passes real trim/clockwise rotate/crop and timestamps. Full Alpha editor UI has not yet been installed/qualified. | Pending |
+| photos-09 | Edited-video audio, original preservation and save-copy | 33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior. | Two actual offline Seeker component tests pass: decoded audio, original bytes/revision, physical trim samples, publish-receipt recovery, no duplicate, changed binding/source refusal and background cancellation. Full Alpha UI/revocation/process-death qualification remains pending. | Pending |
 | photos-10 | Info and metadata | Pending | Pending | Pending |
 | photos-11 | Share/export actual result | Pending | Pending | Pending |
 | photos-12 | Recently Deleted opens preview on tap | Prior preview pass; latest retest pending | Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred. | Pending |

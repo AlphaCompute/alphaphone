@@ -1049,11 +1049,13 @@
       "area": "Photos",
       "viewOrFlow": "Video trim timeline, rotate, crop and preview",
       "scope": "MVP",
-      "implementation": "Needs review against current source",
-      "preview": "Pending",
-      "seeker": "Pending",
+      "implementation": "Shared trim workspace with native streaming preview and Android export is implemented on this draft branch; full Alpha installed UI acceptance remains pending.",
+      "preview": "33 current browser video/storage regressions pass; native UI/gesture qualification is separate.",
+      "seeker": "Exact production exporter component passes real trim/clockwise rotate/crop and timestamps. Full Alpha editor UI has not yet been installed/qualified.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/native-video-component-20261017.json"
+      ],
       "notes": ""
     },
     {
@@ -1061,11 +1063,13 @@
       "area": "Photos",
       "viewOrFlow": "Edited-video audio, original preservation and save-copy",
       "scope": "MVP",
-      "implementation": "Browser editor implemented. Native video editing remains explicitly disabled; Android trim/rotate/crop/export and receipt recovery still require implementation and qualification.",
-      "preview": "Current45-test media suite passes, including video editor validation and minimum-span trim controls. This does not prove Android export.",
-      "seeker": "Not implemented: native Edit video refuses with the original unchanged.",
+      "implementation": "Native Media3 edit-copy, source snapshot/CAS/digest fences, audio preservation, durable receipts and cancellation are implemented on this branch. Normal resident four-variant build and full Alpha UI acceptance remain required.",
+      "preview": "33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior.",
+      "seeker": "Two actual offline Seeker component tests pass: decoded audio, original bytes/revision, physical trim samples, publish-receipt recovery, no duplicate, changed binding/source refusal and background cancellation. Full Alpha UI/revocation/process-death qualification remains pending.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/native-video-component-20261017.json"
+      ],
       "notes": "Use a real Android encoder/export path with audio and original preservation, durable copy receipts and source permission/revision checks. Human approval remains pending."
     },
     {
