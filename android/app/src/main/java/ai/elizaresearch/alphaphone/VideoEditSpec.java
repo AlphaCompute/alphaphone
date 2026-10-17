@@ -14,7 +14,9 @@ final class VideoEditSpec {
     ||(rotation!=0&&rotation!=90&&rotation!=180&&rotation!=270)
     ||sourceWidth<=0||sourceHeight<=0||(long)sourceWidth*sourceHeight>32_000_000)
    throw new IllegalArgumentException("Choose a video range of at least 0.1 seconds, within a five-minute video.");
-  this.startMs=Math.round(start*1000);this.endMs=Math.min(durationMs,Math.round(end*1000));
+  this.startMs=Math.round(start*1000);
+  // An end within 0.05 s of the duration, on either side, is the full video (the same tolerance as the overshoot above).
+  long requested=Math.round(end*1000);this.endMs=Math.abs(durationMs-requested)<=50?durationMs:Math.min(durationMs,requested);
   if(endMs-startMs<100)throw new IllegalArgumentException("Choose a video range of at least 0.1 seconds.");
   this.rotation=rotation;this.crop=crop;
   double factor=crop?1.3:1,sw=sourceWidth/factor,sh=sourceHeight/factor;

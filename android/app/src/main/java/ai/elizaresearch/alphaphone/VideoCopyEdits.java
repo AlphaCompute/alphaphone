@@ -58,7 +58,13 @@ import org.json.JSONObject;
  * Each Save has one durable identity, including after a lost bridge response. */
 @OptIn(markerClass={UnstableApi.class,ExperimentalApi.class})
 final class VideoCopyEdits {
- interface Sources { Source read(String id,String expectedRevision)throws Exception; }
+ interface Sources {
+  Source read(String id,String expectedRevision)throws Exception;
+  /** Rechecks after opening (export readback, publish): identity, access and revision, but not
+   * window focus. A notification shade or system dialog takes focus without pausing the editor;
+   * leaving Photos is already covered by the pause/epoch cancel. */
+  default Source recheck(String id,String expectedRevision)throws Exception{return read(id,expectedRevision);}
+ }
  static final class Source {
   final Uri uri;final String revision;
   Source(Uri uri,String revision){this.uri=uri;this.revision=revision;}
@@ -267,7 +273,7 @@ final class VideoCopyEdits {
  }
  private void current(Session session,boolean digest)throws Exception {
   if(active!=session||session.cancelled||retired||session.epoch!=epoch.get())throw new IOException("Video editor closed");
-  Source source=sources.read(session.id,session.revision);
+  Source source=sources.recheck(session.id,session.revision);
   if(!source.uri.equals(session.source.uri)||!source.revision.equals(session.revision)||!version(source.uri).equals(session.version)||digest&&!Arrays.equals(session.digest,bytes(session,null)))throw new IOException("Video changed. Close and reopen the editor.");
  }
  private void metadata(Session session)throws Exception {
@@ -384,7 +390,7 @@ final class VideoCopyEdits {
  private void complete(Session session,Exception failure){
   if(active!=session)return;
   try{
-   if(failure!=null)throw failure;session.stage="export-readback";current(session,true);output(session);
+   if(failure!=null)throw failure;session.stage="export-readback";current(session,false);output(session);
    ContentValues values=new ContentValues();values.put("_display_name",name(session.token));values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Phone/Edits/");values.put("is_pending",1);values.put("width",session.edit.width);values.put("height",session.edit.height);
    session.stage="pending-insert";Uri target=context.getContentResolver().insert(OUTPUTS,values);if(target==null)throw new IOException("Video copy could not be created");
    session.stage="pending-custody";JSONObject custody=read(session.token);custody.put("pendingId",Long.toString(ContentUris.parseId(target)));write(session.token,custody);
