@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T03:11:56.148920+00:00",
+  "updatedAt": "2026-10-17T03:26:56.924415+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "610dacc13b4420b3c9790499a0e71d832833caa8",
-  "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+  "productSource": "4d7941c12625e22962da873d8d4d05ecb87f3dea",
+  "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -382,9 +382,10 @@
       "seeker": "Installeda569 ordinary read-only LinkedIn prompt failed before answering: runtime selected missing local chat bundle. Cloud credits UI is recognized; native text-provider wiring needs correction.",
       "userApproval": "Pending",
       "evidence": [
-        "docs/evidence/seeker-a569-native-update-20261016.json"
+        "docs/evidence/seeker-a569-native-update-20261016.json",
+        "docs/evidence/integrated-preview-20261017.json"
       ],
-      "notes": ""
+      "notes": " Latest4d/Shared6ef ordinary prompt: exact QA email search succeeded with1 provider match and expected sender. Full-message and visual latest QA remain separate."
     },
     {
       "id": "inbox-19",
@@ -2255,7 +2256,7 @@
     "productionAudit": "404 files; testMocks=false; passed",
     "visibleAcceptance": false
   },
-  "mainIntegrated": "7db159a2ec29956459701724c935dd8159171902",
+  "mainIntegrated": "f1d4baa6",
   "nativeInstalled": {
     "source": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
     "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
@@ -2307,7 +2308,7 @@
   "nativeVideoCandidate": "5f42d94057690b6d849ae3afac775606a36e21b7",
   "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
   "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
-  "currentPreviewSource": "610dacc13b4420b3c9790499a0e71d832833caa8",
+  "currentPreviewSource": "4d7941c12625e22962da873d8d4d05ecb87f3dea",
   "previousEvidenceSnapshot": {
     "productSource": "94bef8bc",
     "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -2346,5 +2347,23 @@
     "disconnectedComposeProductionTestsPassed": 2,
     "fullLatestCIPending": true,
     "visibleHumanAcceptance": false
+  },
+  "latestProgrammaticAcceptance": {
+    "schemaVersion": 1,
+    "at": "2026-10-17T03:26:56.924415+00:00",
+    "source": "4d7941c12625e22962da873d8d4d05ecb87f3dea",
+    "sharedSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+    "preview": "http://127.0.0.1:5209/",
+    "priorConversationsPreserved": 13,
+    "priorMessagesPreserved": 228,
+    "cloudIdentityReadStatus": 200,
+    "ordinaryPrompt": "Find the self-addressed QA email by exact subject and report whether it exists and its sender; no mail mutation.",
+    "action": "MESSAGE_SEARCH_INBOX",
+    "actionSuccess": true,
+    "resultMatches": 1,
+    "replyConfirmedPresenceAndExpectedSender": true,
+    "newSendAttempted": false,
+    "nativeAcceptance": false,
+    "visualAcceptance": false
   }
 }

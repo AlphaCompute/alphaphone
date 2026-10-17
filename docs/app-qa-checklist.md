@@ -1,6 +1,6 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Verified preview source `610dacc1`; Shared `9365c9bb`. Candidate `5f42d940` (Shared `6ef36b8d`, main `f1d4baa6`) is still qualifying and is not yet installed or served on 5209. Test-only follow-ups are on `f39071ef`. Updated October 17, 2026.
+Live preview: <http://127.0.0.1:5209/>. Verified preview source `4d7941c1`; Shared `6ef36b8d`, including main `f1d4baa6`. All13 prior conversations and228 messages survived the update; Cloud identity and a fresh agent Gmail search passed. Candidate `5f42d940` has the same product code; its native package is not yet qualified or installed. Updated October 17, 2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
@@ -8,7 +8,7 @@ For each applicable flow check light/dark, compact portrait, landscape, large te
 
 Review order: latest preview → deployed backend/prompt proof → installed Seeker → your per-view approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
 
-Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original app data retained. Native Gmail/Calendar prompt acceptance remains blocked by provider admission. Four current-candidate Photos permission flows and two production disconnected-Compose flows pass; full candidate CI and native build are still running. Earlier row evidence remains labeled by its observed build and is not automatically promoted.
+Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original app data retained. Native Gmail/Calendar prompt acceptance remains blocked by provider admission. Four current-candidate Photos permission flows and two production disconnected-Compose flows pass; browser shards are still running. Native SDK verification passed; product continuation is prepared after an initialization assertion. Earlier row evidence remains labeled by its observed build and is not automatically promoted.
 
 ## Shell and Home
 
