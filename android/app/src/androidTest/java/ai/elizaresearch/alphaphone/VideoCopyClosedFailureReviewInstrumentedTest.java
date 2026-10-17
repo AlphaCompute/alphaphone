@@ -45,7 +45,9 @@ public final class VideoCopyClosedFailureReviewInstrumentedTest {
    assertNotNull("Real registered foreground AlphaPhotosPlugin required",registered.get());Result call=new Result();
    BoundedActivityScenario.main(()->registered.get().preserveClosedVideoCopy(token,recordHash,call));
    assertTrue("Preservation outcome unknown; never rerun automatically",call.done.await(60,TimeUnit.SECONDS));assertNull(call.error,call.error);assertNotNull(call.value);assertEquals("preserved",call.value.getString("status"));assertEquals(token,call.value.getString("operationId"));
-   Bundle receipt=new Bundle();receipt.putString("operationId",token);receipt.putString("artifactId",call.value.getString("artifactId"));receipt.putString("sha256",call.value.getString("sha256"));receipt.putLong("bytes",call.value.getLong("bytes"));InstrumentationRegistry.getInstrumentation().sendStatus(0,receipt);
+   assertEquals(token,call.value.getString("artifactId"));assertTrue(call.value.getString("sha256").matches("[a-f0-9]{64}"));assertTrue(call.value.getLong("bytes")>=0&&call.value.getLong("bytes")<=4L*1024*1024);assertFalse(call.value.has("path"));assertFalse(call.value.has("uri"));assertFalse(call.value.has("dataBase64"));
+   // Exact artifact files remain private; the operator reads them only after
+   // the single canonical JUnit outcome, under separate transfer admission.
   }
  }
 }
