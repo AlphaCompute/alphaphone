@@ -42,11 +42,14 @@
       "two real-provider instrumentation regressions added"
     ],
     "diffCheck": "passed",
-    "compileAndTests": "Both production and instrumentation Java compiled; two isolated fixture APKs assembled and signatures/source manifests verified. Provider tests not yet run; main Alpha not rebuilt or installed.",
+    "compileAndTests": "Production/instrumentation Java and two fixture APK assemblies passed. Three exact real-provider custody regressions passed on Seeker; original mainAlpha2446 unchanged. Original pending-write cause and normal SaveCopy remain unproven.",
     "installedRuntimeChanged": false,
     "custodyCorrectionCommit": "1d29e37d",
     "fixtureAPKSource": "1d29e37d",
-    "providerTestsRun": false
+    "providerTestsRun": true,
+    "providerTestCount": 3,
+    "providerTestSeconds": 0.286,
+    "providerEvidence": "docs/evidence/native-video-pending-custody-20261017.json"
   },
   "preserved": [
     "source639",

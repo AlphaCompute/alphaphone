@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T07:35:52.508280+00:00",
+  "updatedAt": "2026-10-17T07:40:00.879481+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -1071,12 +1071,13 @@
       "scope": "MVP",
       "implementation": "Native Media3 edit-copy, source snapshot/CAS/digest fences, audio preservation, durable receipts and cancellation are implemented on this branch. Normal resident four-variant build and full Alpha UI acceptance remain required.",
       "preview": "33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior.",
-      "seeker": "Installed2446 ONE Save failed at pending-write/code0; pending640/failedjournal retained and source639 unchanged. Pending custody/diagnostics correction1d29 compiles including regression tests; isolated fixture APKs assembled/source+signature verified, provider witness not run. Main Alpha unchanged; no retry.",
+      "seeker": "Main installed2446 ONE Save failed at pending-write/code0; pending640/failedjournal retained, original639 unchanged. Correction1d29 production/test Java+fixture APKs pass;3real-provider custody regressions passed on Seeker (.286s), mainAlpha/state unchanged. Original writecause and normalSaveCopy still open; no retry.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/native-video-component-20261017.json",
         "docs/evidence/native-video-callback-20261017.json",
-        "docs/evidence/seeker-video-save-failure-20261017.json"
+        "docs/evidence/seeker-video-save-failure-20261017.json",
+        "docs/evidence/native-video-pending-custody-20261017.json"
       ],
       "notes": "Current 8b12bbb2 production exporter sources passed all3 isolated offline Seeker tests (59.198s), including late callback after worker shutdown, with installed fixture APK SHA joined to staged production sources. See docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain pending."
     },
