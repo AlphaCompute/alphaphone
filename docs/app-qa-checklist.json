@@ -2143,8 +2143,8 @@
       "area": "Camera",
       "viewOrFlow": "Agent takes one photo from Home or visible Camera",
       "scope": "MVP",
-      "implementation": "Isolated c5d5d8005 product +75773ddf runtime; not live",
-      "preview": "4 rendered synthetic tests pass: capture once, lost acknowledgement, old request and ask-first. 16 focused source tests pass. Real sensor/provider prompt pending.",
+      "implementation": "Corrected foreground camera candidate; runtime capability required; not live",
+      "preview": "12 browser cases pass, including25-digit encoded-photo persistence, Home navigation, old-request refusal and ask-first. Realtime ordering14 source cases pass. Physical camera/provider prompt pending.",
       "seeker": "Pending; no installation or capture performed",
       "userApproval": "Pending",
       "evidence": [],
@@ -2491,11 +2491,11 @@
     "evidence": "docs/evidence/native-video-preservation-bd0e-seeker-20261017.json"
   },
   "candidateIntegration": {
-    "source": "c5d5d8005220910da8535d48353ce6ddf00517aa",
     "sdk": "985322b5df96a91e9dc913c73280a97b82890642",
-    "runtime": "75773ddf",
-    "state": "Camera/Files successor with browser ID correction; isolated, full verification required before load",
-    "validation": "49 cross-view layout cases pass; camera ID correction passes12 browser cases including real encoded synthetic photo persistence, navigation and zoom. Shared action8 and schema11 pass. Final combined verification pending."
+    "runtime": "e52c019f9b2762a97222129a74a4b77b28a942cc",
+    "state": "Corrected camera/Files successor; isolated, final full verification pending",
+    "validation": "Prior baseline1626/1624pass/2skip; 49 cross-view cases pass. Corrected browser photo IDs pass12 browser cases and18 focused tests. Shared8SQL+11schema pass. Five production review cases pass. No real sensor, provider prompt or Seeker acceptance.",
+    "baselineProductSource": "1f1a8d043d3bede9d2fe786d700398c939059f49"
   },
   "currentPreviewPreservation": {
     "rooms": 14,
