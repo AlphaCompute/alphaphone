@@ -176,4 +176,22 @@ public final class VideoCopyInstrumentedTest {
   }finally{editor.close();assertTrue(journal.edit().remove(token).commit());}
  }
 
+ @Test public void beginRetainsFailedMissingOrMismatchedOutputCustody()throws Exception {
+  for(boolean mismatch:new boolean[]{false,true}){
+   String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
+   java.util.concurrent.atomic.AtomicBoolean sourceRead=new java.util.concurrent.atomic.AtomicBoolean();
+   VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{sourceRead.set(true);throw new AssertionError("Custody hold must happen before source read/export");});
+   java.io.File directory=new java.io.File(context.getCacheDir(),"alpha-video-edits"),input=new java.io.File(directory,token+"-input.mp4"),output=new java.io.File(directory,token+"-output.mp4");
+   byte[] inputBytes=new byte[]{11,22,33,44},outputBytes=new byte[]{55,66,77,88};
+   try{
+    try(java.io.FileOutputStream f=new java.io.FileOutputStream(input)){f.write(inputBytes);}try(java.io.FileOutputStream f=new java.io.FileOutputStream(output)){f.write(outputBytes);}
+    byte[] inputHash=MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(input.toPath())),outputHash=MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(output.toPath()));
+    if(mismatch){ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);Uri found=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(found);owned.add(found);assertNotEquals("9223372036854775806",Long.toString(ContentUris.parseId(found)));}
+    String record=new JSONObject().put("status","failed").put("createdAt",System.currentTimeMillis()).put("pendingId","9223372036854775806").toString();assertTrue(journal.edit().putString(token,record).commit());
+    Response begin=new Response();editor.begin("not-admitted-source","not-read",begin);assertTrue(begin.done.await(10,TimeUnit.SECONDS));assertEquals("Recorded video copy needs recovery review",begin.error);assertNull(begin.value);assertFalse(sourceRead.get());
+    assertEquals(record,journal.getString(token,null));assertArrayEquals(inputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(input.toPath())));assertArrayEquals(outputHash,MessageDigest.getInstance("SHA-256").digest(java.nio.file.Files.readAllBytes(output.toPath())));
+   }finally{editor.close();assertTrue(journal.edit().remove(token).commit());if(input.exists())assertTrue(input.delete());if(output.exists())assertTrue(output.delete());cleanup();}
+  }
+ }
+
 }

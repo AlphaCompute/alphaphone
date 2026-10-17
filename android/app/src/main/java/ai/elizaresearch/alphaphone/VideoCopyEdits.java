@@ -163,11 +163,14 @@ final class VideoCopyEdits {
  private void remove(File file)throws IOException {if(file.exists()&&!file.delete())throw new IOException("Video edit cleanup could not be confirmed");}
  private void files(String token)throws IOException {remove(file(token,"-input.mp4"));remove(file(token,"-output.mp4"));}
  @SuppressWarnings("deprecation") // API29-compatible pending visibility; never infer absence from the default collection.
- private Uri copy(String token)throws Exception {
+ private Uri copy(String token,JSONObject record)throws Exception {
+  Uri found=null;
   try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(OUTPUTS),new String[]{"_id"},"owner_package_name=? AND _display_name=?",new String[]{context.getPackageName(),name(token)},null)){
-   if(row==null)throw new IOException("Video copy lookup is unavailable");if(!row.moveToFirst())return null;
-   Uri found=ContentUris.withAppendedId(OUTPUTS,row.getLong(0));if(row.moveToNext())throw new IOException("More than one copy matches this request. Inspect Photos.");return found;
+   if(row==null)throw new IOException("Video copy lookup is unavailable");
+   if(row.moveToFirst()){found=ContentUris.withAppendedId(OUTPUTS,row.getLong(0));if(row.moveToNext())throw new IOException("More than one copy matches this request. Inspect Photos.");}
   }
+  if(record.has("pendingId")&&(found==null||!record.getString("pendingId").equals(Long.toString(ContentUris.parseId(found)))))throw new IOException("Recorded video copy needs recovery review");
+  return found;
  }
  @SuppressWarnings("deprecation")
  private boolean pending(Uri uri)throws Exception {
@@ -180,8 +183,7 @@ final class VideoCopyEdits {
   if(active!=null&&active.token.equals(token)&&active.saveCall!=null)return receipt(token,"incomplete",null);
   if(record.optString("status").equals("saved")){try{files(token);}catch(IOException cleanup){/* The confirmed published copy remains saved; retainSpace retries owned-cache cleanup. */}return receipt(token,"saved",record.getString("id"));}
   if(active!=null&&active.token.equals(token)){active.cancelled=true;active=null;}
-  Uri found=copy(token);
-  if(record.has("pendingId")&&(found==null||!record.getString("pendingId").equals(Long.toString(ContentUris.parseId(found)))))throw new IOException("Recorded video copy needs recovery review");
+  Uri found=copy(token,record);
   if(found!=null&&!pending(found)){
    String id=Long.toString(ContentUris.parseId(found));record.put("status","saved").put("id",id);write(token,record);files(token);return receipt(token,"saved",id);
   }
@@ -191,7 +193,7 @@ final class VideoCopyEdits {
  }
  private void retainSpace()throws Exception {
   if(directory.getUsableSpace()<VideoEditSpec.MAX_BYTES*4)throw new IOException("Free at least 400 MB to edit a video");
-  for(String key:journal.getAll().keySet()){JSONObject record=read(key);if(terminal(record.optString("status"))){if(record.optString("status").equals("failed")){Uri retained=copy(key);if(retained!=null&&pending(retained))throw new IOException("Pending video copy needs recovery review");}files(key);}}
+  for(String key:journal.getAll().keySet()){JSONObject record=read(key);if(terminal(record.optString("status"))){if(record.optString("status").equals("failed")){Uri retained=copy(key,record);if(retained!=null&&pending(retained))throw new IOException("Pending video copy needs recovery review");}files(key);}}
   if(journal.getAll().size()<128)return;
   List<String> terminal=new ArrayList<>();
   for(String key:journal.getAll().keySet()){JSONObject row=read(key);if(terminal(row.optString("status")))terminal.add(key);}
