@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T16:26:37.695475+00:00",
+  "updatedAt": "2026-10-17T17:16:40.041052+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -1069,9 +1069,9 @@
       "area": "Photos",
       "viewOrFlow": "Edited-video audio, original preservation and save-copy",
       "scope": "MVP",
-      "implementation": "Observer and async receipt coordination fixes retained. BFF09 directory-sync API repair compiles; isolated preservation sealing uses unsupported hardlink publication and needs a supported completion protocol. Full main build/UI remains open.",
+      "implementation": "Native exporter/custody and exclusive durable preservation completion qualified on Seeker in a separate real fixture UID. Renderer observer/receipt coordination fixes retained. Current packaged main/actual Alpha UI qualification remains open.",
       "preview": "33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior.",
-      "seeker": "Main2446 ONE Save failed; pending640/8e43/source639 preserved. Correction1d29: bothJava/fixtureAPK builds,3custodytests(.286s), and real synthetic exporter trim/rotate/crop/audio/markers/recovery/idempotency/cancel test(11.291s) passed on Seeker. Originalmainwritecause/normalAlphaSaveCopy remain open; no retry.",
+      "seeker": "BD0E: both fixture Java compiles/two APKs and11real Seeker methods passed (0fail/0skip), including valid/empty/partial preservation, collision/refusal/concurrency gates and hardware trim/rotate/crop/audio/timestamps/recovery/idempotency/cancel. Oldfixture14entries/failed artifacts and main2446/639/640/8e43 unchanged. Component proof only; no original640bytes or ordinary mainSave retry.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/native-video-component-20261017.json",
@@ -1081,9 +1081,10 @@
         "docs/evidence/native-video-exporter-1d29-20261017.json",
         "docs/evidence/native-video-library-observer-20261017.json",
         "docs/evidence/native-video-owner-preservation-source-20261017.json",
-        "docs/evidence/native-video-bff09-seeker-seal-failure-20261017.json"
+        "docs/evidence/native-video-bff09-seeker-seal-failure-20261017.json",
+        "docs/evidence/native-video-preservation-bd0e-seeker-20261017.json"
       ],
-      "notes": "BFF09 first preservation method failed at complete/ErrnoException after retaining copied bytes and sealed pending manifest. Remaining9methods not run. All13priorfixtureentries/mainprocesses/source639/pending640/8e43 unchanged; unexpectednewfixtureartifacts retained encrypted. Original640 has no full bytearchive and no disposition/Save retry granted."
+      "notes": "BFF09 first failure remains retained and unreplayed. BD0E uses a separate real package/UID to avoid deleting old failed evidence or bypassing begin/custody guards. Full main lifecycle, original640 owner preservation/disposition and UI SaveCopy require separate execution."
     },
     {
       "id": "photos-10",
@@ -2319,7 +2320,7 @@
       "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
     }
   },
-  "nativeVideoCandidate": "bff09b90ebd4627588fed3b51b802bc7311c556e",
+  "nativeVideoCandidate": "bd0e622a7bae0e7e91dde51c87dc846c79620bb7",
   "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
   "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
   "currentPreviewSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
@@ -2436,5 +2437,18 @@
     "evidence": "docs/evidence/native-video-bff09-seeker-seal-failure-20261017.json",
     "fullMainAcceptance": false,
     "supportedPublicationContractReviewPending": true
+  },
+  "latestNativeVideoFixtureAcceptance": {
+    "source": "bd0e622a7bae0e7e91dde51c87dc846c79620bb7",
+    "passed": 11,
+    "failed": 0,
+    "skipped": 0,
+    "newFixtureUID": 10276,
+    "newTestUID": 10277,
+    "all14OldEntriesAndFailedFixtureArtifactsUnchanged": true,
+    "mainAnd639640Unchanged": true,
+    "original640ByteArchiveStillMissing": true,
+    "fullAlphaUIAcceptance": false,
+    "evidence": "docs/evidence/native-video-preservation-bd0e-seeker-20261017.json"
   }
 }

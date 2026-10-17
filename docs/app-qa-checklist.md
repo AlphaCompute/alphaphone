@@ -243,6 +243,10 @@ Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, e
 
 ## Current integration gaps
 
+Latest native component proof: `bd0e622a` built both fixture APKs and passed all **11 real Seeker methods (0 failures, 0 skips)** in a separate app UID. Coverage includes preservation/collision/refusal/concurrency checks and hardware trim/rotate/crop/audio/timestamps/recovery/idempotency/cancellation. All14 old fixture entries and retained failure files, main2446/processes, source639 and pending640/failed record stayed unchanged. The original640 byte archive, packaged current main and full Alpha UI SaveCopy remain open. See [current component evidence](evidence/native-video-preservation-bd0e-seeker-20261017.json).
+
+Hosted parent `a2786dd2` repository verification passed1495 tests with0 failures/2 skips and the404-file production audit; Android foundation and production-surface checks passed. The free/busy reader case passed there. These receipts do not retroactively turn the older remote-image three skipped cases into passes. Remaining browser shards and human per-view approval are separate.
+
 Latest physical fixture result: source `bff09b90` passed both Java compiles and built both fixture APKs. The same-certificate fixture upgrade preserved its UID, original install date and all13 prior journal entries. The first preservation method failed at `complete/ErrnoException`; the remaining nine methods were not run. The new synthetic artifacts are retained; main Alpha2446, all three process identities, source639 and pending640/failed record stayed unchanged. A supported completion-publication protocol needs review before another qualified attempt. This is not full-app SaveCopy or native Gmail/Calendar acceptance. See [exact fixture failure](evidence/native-video-bff09-seeker-seal-failure-20261017.json).
 
 - Browser ordinary Gmail self-send, independent Inbox delivery, exact full-body readback and agent search/read passed for a new QA fixture. Native acceptance is separate.
