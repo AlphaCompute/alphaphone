@@ -28,13 +28,16 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
  window.addEventListener('alpha:device-settings',preferenceChanged);
  let refreshTask:Promise<void>|undefined,refreshAgain=false;
  const reconcile=()=>{if(refreshTask){refreshAgain=true;return;}refreshTask=(async()=>{do{refreshAgain=false;current();await connectionController.refreshDeveloperVoiceHistory(input.binding,lifecycle.signal);current();}while(refreshAgain&&!stopped);})().catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice history could not be verified.'));}).finally(()=>{refreshTask=undefined;});};
- const submitted=new Set<string>(),navigated=new Set<string>(),performedMessages=new Set<string>();let currentTurn:string|undefined;let navigationTask=Promise.resolve();let phase='idle';
+ const submitted=new Set<string>(),navigated=new Set<string>(),performedMessages=new Set<string>();let currentTurn:string|undefined,completedRequest:{traceId:string;messageId:string}|undefined;let navigationTask=Promise.resolve();let phase='idle';
  // OG's targeted renderer channel owns early delivery. The voice terminal
  // suppresses its duplicate once that transport has accepted the frame.
  const navigate=(event:RealtimeVoiceNavigation)=>{
   if(currentTurn!==event.traceId||!submitted.has(event.traceId)||navigated.has(event.traceId)||!input.onNavigate)return;
   if(navigated.size>=64)navigated.delete(navigated.values().next().value!);navigated.add(event.traceId);
-  navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
+  const cameraContinuation=event.viewId==='camera'&&completedRequest?.traceId===event.traceId?completedRequest:undefined;
+  navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==event.traceId)return;await input.onNavigate!(event);current();
+   if(cameraContinuation&&directActions){const receipts=await connectionController.performVoiceRequestedActions(input.binding,cameraContinuation.messageId,lifecycle.signal,'camera_capture_photo');current();for(const receipt of receipts)input.onActionResult?.(receipt.summary);reconcile();}
+  }).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice navigation could not be verified.'));});
  };
  const rendererHandoffs=new Set<string>();
  const receiveNavigation=(message:MessageEvent)=>{
@@ -59,7 +62,7 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
    if(['ready','stt_final','speaking_start','reply_complete','usage'].includes(event.t))reconcile();
    if(event.t==='navigate_view')navigate(event);
    if(event.t==='reply_complete'&&event.traceId===currentTurn&&submitted.has(event.traceId)&&directActions&&'userMessageId' in event&&typeof event.userMessageId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.userMessageId)&&!performedMessages.has(event.userMessageId)){
-    const messageId=event.userMessageId,traceId=event.traceId;
+    const messageId=event.userMessageId,traceId=event.traceId;completedRequest={messageId,traceId};
     if(performedMessages.size>=64)performedMessages.delete(performedMessages.values().next().value!);performedMessages.add(messageId);
     navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==traceId||!directActions)return;const receipts=await connectionController.performVoiceRequestedActions(input.binding,messageId,lifecycle.signal);current();for(const receipt of receipts)input.onActionResult?.(receipt.summary);reconcile();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice action could not be verified.'));});
    }

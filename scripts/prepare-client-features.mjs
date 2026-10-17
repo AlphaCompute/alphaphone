@@ -106,15 +106,16 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   const upstream = upstreamNativeSource(root);
   const source = new Map(CLIENT_FEATURE_PATHS.flatMap(prefix => [...upstream.read(prefix)]));
   const sourceFiles = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const cameraContract=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.json'),'utf8'));
-  const cameraBytes=fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.ts'));
-  if(cameraContract.baseCommit!==upstream.pin||cameraContract.path!=='plugins/plugin-assistant/src/services/device-actions/camera-contract.ts'||hash(cameraBytes)!==cameraContract.sha256)throw Error('Camera contract projection changed');
-  source.set(cameraContract.path,{bytes:cameraBytes,mode:'100644',sha256:cameraContract.sha256});
+
 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
   if (upstream.pin !== '985322b5df96a91e9dc913c73280a97b82890642') throw Error('Review voice projections for the new upstream pin.');
+  const cameraContract=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.json'),'utf8'));
+  const cameraBytes=fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.ts'));
+  if(cameraContract.baseCommit!==upstream.pin||cameraContract.path!=='plugins/plugin-assistant/src/services/device-actions/camera-contract.ts'||hash(cameraBytes)!==cameraContract.sha256)throw Error('Camera contract projection changed');
+  source.set(cameraContract.path,{bytes:cameraBytes,mode:'100644',sha256:cameraContract.sha256});
   const projectionInputs={
     'packages/host/src/voice.ts':'6dc46172e55c3e3fcac3e5b548b7f5e5c9bbda7cd12792f43f0ee807d48df1f6',
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
