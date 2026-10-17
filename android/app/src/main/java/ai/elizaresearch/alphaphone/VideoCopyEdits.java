@@ -114,8 +114,19 @@ final class VideoCopyEdits {
  private interface Work {void run()throws Exception;}
  private void submit(PluginCall call,Work work){
   if(retired){call.reject("Video editor closed");return;}
-  try{io.execute(()->{try{work.run();}catch(Exception error){call.reject(error.getMessage()==null?"Video edit could not be confirmed":error.getMessage());}});}
-  catch(java.util.concurrent.RejectedExecutionException closed){call.reject("Video editor closed");}
+  dispatch(()->{try{work.run();}catch(Exception error){call.reject(error.getMessage()==null?"Video edit could not be confirmed":error.getMessage());}},()->call.reject("Video editor closed"));
+ }
+ // Callbacks can arrive after Activity teardown has stopped IO. Preserve the
+ // durable request for recovery and answer the bridge instead of crashing.
+ private void dispatch(Runnable work,Runnable refused){
+  PluginWorkers.submit(io,work,refused);
+ }
+ private void finish(Session session,Exception failure){
+  dispatch(()->complete(session,failure),()->{
+   synchronized(session){session.cancelled=true;if(active==session)active=null;}
+   if(session.saveCall!=null)session.saveCall.reject("Video copy outcome is unresolved. Reopen Photos to check this request before saving another copy.");
+   retire();
+  });
  }
  private ContentValues version(Uri uri)throws Exception {
   String[] columns=Build.VERSION.SDK_INT>=30?new String[]{"_size","date_modified","generation_modified","is_pending","is_trashed"}:new String[]{"_size","date_modified","is_pending"};
@@ -222,13 +233,13 @@ final class VideoCopyEdits {
    // edits. No MP4 edit list can expose trimmed-away video/audio in another player.
    DefaultEncoderFactory factory=new DefaultEncoderFactory.Builder(context).setEnableFormatFallback(false).setRequestedVideoEncoderSettings(new VideoEncoderSettings.Builder().setBitrate(bitrate).build()).setRequestedAudioEncoderSettings(new AudioEncoderSettings.Builder().setBitrate(128_000).build()).build();
    session.transformer=new Transformer.Builder(context).setLooper(encoder.getLooper()).setEncoderFactory(factory).setVideoMimeType(MimeTypes.VIDEO_H264).setAudioMimeType(MimeTypes.AUDIO_AAC).experimentalSetMp4EditListTrimEnabled(false).experimentalSetTrimOptimizationEnabled(false).addListener(new Transformer.Listener(){
-    @Override public void onCompleted(Composition composition,ExportResult result){session.encodingFinished=true;io.execute(()->complete(session,null));}
-    @Override public void onError(Composition composition,ExportResult result,ExportException error){session.encodingFinished=true;io.execute(()->complete(session,error));}
+    @Override public void onCompleted(Composition composition,ExportResult result){session.encodingFinished=true;finish(session,null);}
+    @Override public void onError(Composition composition,ExportResult result,ExportException error){session.encodingFinished=true;finish(session,error);}
    }).build();
    session.stage="encoding";session.transformer.start(edited,session.output.getAbsolutePath());
    long deadline=android.os.SystemClock.elapsedRealtime()+Math.max(60_000,(session.edit.endMs-session.edit.startMs)*3);
-   Runnable guard=new Runnable(){public void run(){if(session.encodingFinished)return;if(session.cancelled||retired||session.output.length()>VideoEditSpec.MAX_BYTES||android.os.SystemClock.elapsedRealtime()>deadline){session.cancelled=true;session.transformer.cancel();session.encodingFinished=true;io.execute(()->complete(session,new IOException("Video export stopped. Original unchanged.")));}else encoder.postDelayed(this,250);}};encoder.postDelayed(guard,250);
-  }catch(Exception failure){session.encodingFinished=true;io.execute(()->complete(session,failure));}
+   Runnable guard=new Runnable(){public void run(){if(session.encodingFinished)return;if(session.cancelled||retired||session.output.length()>VideoEditSpec.MAX_BYTES||android.os.SystemClock.elapsedRealtime()>deadline){session.cancelled=true;session.transformer.cancel();session.encodingFinished=true;finish(session,new IOException("Video export stopped. Original unchanged."));}else encoder.postDelayed(this,250);}};encoder.postDelayed(guard,250);
+  }catch(Exception failure){session.encodingFinished=true;finish(session,failure);}
  }
  private void output(Session session)throws Exception {
   if(!session.output.isFile()||session.output.length()<=0||session.output.length()>VideoEditSpec.MAX_BYTES)throw new IOException("Video copy is empty or exceeds 100 MB");
@@ -271,9 +282,9 @@ final class VideoCopyEdits {
   // Also retire a Begin still queued on IO, before it can return a session ID.
   if(session==null){epoch.incrementAndGet();return;}
   synchronized(session){epoch.incrementAndGet();session.cancelled=true;}
-  if(session.saveCall!=null){Handler handler=encoder;if(handler!=null)handler.post(()->{if(!session.encodingFinished){if(session.transformer!=null)session.transformer.cancel();session.encodingFinished=true;io.execute(()->complete(session,new IOException("Video editor closed")));}});}
-  else io.execute(()->{if(active==session){active=null;try{reconcile(session.token);}catch(Exception unresolved){/* The durable prepared record remains for read-only recovery. */}retire();}});
+  if(session.saveCall!=null){Handler handler=encoder;if(handler!=null)handler.post(()->{if(!session.encodingFinished){if(session.transformer!=null)session.transformer.cancel();session.encodingFinished=true;finish(session,new IOException("Video editor closed"));}});}
+  else dispatch(()->{if(active==session){active=null;try{reconcile(session.token);}catch(Exception unresolved){/* The durable prepared record remains for read-only recovery. */}retire();}},()->{if(active==session)active=null;retire();});
  }
  private void retire(){if(retired&&active==null){if(encoderThread!=null)encoderThread.quitSafely();io.shutdown();}}
- void close(){if(retired)return;retired=true;cancel(null);if(active==null)io.execute(this::retire);}
+ void close(){if(retired)return;retired=true;cancel(null);if(active==null)retire();}
 }

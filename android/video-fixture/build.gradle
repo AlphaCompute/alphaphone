@@ -17,11 +17,11 @@ android {
 // AGP uses source directories rather than Java include filters. Stage only these
 // exact production files and bind their hashes into the witness APK.
 def stageVideoSources=tasks.register('stageVideoSources',Copy){
- from('../app/src/main/java'){include '**/VideoCopyEdits.java','**/VideoEditSpec.java'}
+ from('../app/src/main/java'){include '**/VideoCopyEdits.java','**/VideoEditSpec.java','**/PluginWorkers.java'}
  into layout.buildDirectory.dir('generated/video-source')
  doLast {
   def files=[:]
-  ['VideoCopyEdits.java','VideoEditSpec.java'].each { name ->
+  ['VideoCopyEdits.java','VideoEditSpec.java','PluginWorkers.java'].each { name ->
    def relative='ai/elizaresearch/alphaphone/'+name
    def source=file('../app/src/main/java/'+relative)
    def target=layout.buildDirectory.file('generated/video-source/'+relative).get().asFile
