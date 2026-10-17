@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T01:49:17.441405+00:00",
+  "updatedAt": "2026-10-17T03:11:56.148920+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "94bef8bc",
-  "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
+  "productSource": "610dacc13b4420b3c9790499a0e71d832833caa8",
+  "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -393,7 +393,7 @@
       "scope": "MVP",
       "implementation": "Ordinary prompt, exact draft, plain Yes, real Gmail acceptance and exact inbox delivery/readback verified for a distinct new QA email. Original uncertain send stays fenced.",
       "preview": "Verified on5209/Shared911: canonical succeeded, same provider message ID found in Inbox, exact body match, and agent searched/read it through prompts.",
-      "seeker": "Native inference route fix is built/tested in source; APK rebuild and live prompt proof pending.",
+      "seeker": "Actual bb4d prompt attempt failed before answering: native Cloud provider admission remains unbound. No native Gmail send claimed. Diagnostic candidate is qualifying.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/gmail-prompt-send-20261016.json"
@@ -1152,7 +1152,7 @@
       "viewOrFlow": "Native permitted library and consent updates",
       "scope": "MVP",
       "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
-      "preview": "Four permission-state browser flows pass; ten light/dark compact Photos focus/contrast flows pass. Broader45-test media suite passes; native export qualification remains separate.",
+      "preview": "Fresh current-candidate permission regression: all four browser flows passed (Settings placement, selected access, denied request then approval, revocation). Browser controls disabled in Work settings prevented a new manual preview observation.",
       "seeker": "Installeda569f79c: fresh Settings > Photos readback and Android photo permissions navigation passed; returned to Alpha; existing full grant unchanged. Denied permission contract retains explicit request.",
       "userApproval": "Pending",
       "evidence": [
@@ -2255,15 +2255,18 @@
     "productionAudit": "404 files; testMocks=false; passed",
     "visibleAcceptance": false
   },
-  "mainIntegrated": "c23eac718e7133c91b397d3b63a813946aadc2b2",
+  "mainIntegrated": "7db159a2ec29956459701724c935dd8159171902",
   "nativeInstalled": {
-    "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
-    "apkSha256": "36f477a3564263abbb425c2e64dad6b2b1bd4609a2da8cfeb24425538cc2151b",
+    "source": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
+    "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+    "apkSha256": "5b0d1015fe99ce3a41022b19329a6801fc3e04967b948f803dd03a9a546758b2",
     "sameExistingSigner": true,
     "sameAppIdAndOriginalInstallTime": true,
     "dataReset": false,
-    "residentRunning": true,
-    "allViewsAccepted": false
+    "nativePromptAcceptance": false,
+    "allViewsAccepted": false,
+    "observedAt": "2026-10-17T01:40:55.978766+00:00",
+    "blocker": "Native Cloud provider admission fails; no bound inference or Google broker in observed resident. Safe stage diagnostics are in the candidate."
   },
   "qualification": {
     "productVerify": {
@@ -2301,8 +2304,47 @@
       "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
     }
   },
-  "nativeVideoCandidate": "8b12bbb2",
+  "nativeVideoCandidate": "5f42d94057690b6d849ae3afac775606a36e21b7",
   "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
   "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
-  "currentPreviewSource": "b1b2a76d"
+  "currentPreviewSource": "610dacc13b4420b3c9790499a0e71d832833caa8",
+  "previousEvidenceSnapshot": {
+    "productSource": "94bef8bc",
+    "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
+    "mainIntegrated": "c23eac718e7133c91b397d3b63a813946aadc2b2",
+    "nativeInstalled": {
+      "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
+      "apkSha256": "36f477a3564263abbb425c2e64dad6b2b1bd4609a2da8cfeb24425538cc2151b",
+      "sameExistingSigner": true,
+      "sameAppIdAndOriginalInstallTime": true,
+      "dataReset": false,
+      "residentRunning": true,
+      "allViewsAccepted": false
+    },
+    "automatedValidation": {
+      "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
+      "tests": 1457,
+      "passed": 1455,
+      "skipped": 2,
+      "failed": 0,
+      "typecheck": "passed",
+      "productionBuild": "passed",
+      "productionAudit": "404 files; testMocks=false; passed",
+      "visibleAcceptance": false
+    }
+  },
+  "candidateQualification": {
+    "source": "5f42d94057690b6d849ae3afac775606a36e21b7",
+    "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+    "mainIntegrated": "f1d4baa6",
+    "state": "normal combined qualification running; not yet the 5209 preview or installed Seeker",
+    "latestTestOnlyHead": "f39071ef83db53326c70e426fca2edabaf30f0d5"
+  },
+  "latestFocusedValidation": {
+    "source": "f39071ef83db53326c70e426fca2edabaf30f0d5",
+    "permissionBrowserTestsPassed": 4,
+    "disconnectedComposeProductionTestsPassed": 2,
+    "fullLatestCIPending": true,
+    "visibleHumanAcceptance": false
+  }
 }

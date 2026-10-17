@@ -1,12 +1,14 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Current preview functional code `94bef8bc`, including main `c23eac71`; Shared `9116ba86`. Updated October16,2026.
+Live preview: <http://127.0.0.1:5209/>. Verified preview source `610dacc1`; Shared `9365c9bb`. Candidate `5f42d940` (Shared `6ef36b8d`, main `f1d4baa6`) is still qualifying and is not yet installed or served on 5209. Test-only follow-ups are on `f39071ef`. Updated October 17, 2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
 For each applicable flow check light/dark, compact portrait, landscape, large text, keyboard and safe areas, Back, reload/resume, empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
 Review order: latest preview → deployed backend/prompt proof → installed Seeker → your per-view approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
+
+Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original app data retained. Native Gmail/Calendar prompt acceptance remains blocked by provider admission. Four current-candidate Photos permission flows and two production disconnected-Compose flows pass; full candidate CI and native build are still running. Earlier row evidence remains labeled by its observed build and is not automatically promoted.
 
 ## Shell and Home
 
@@ -49,7 +51,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | Native routing fix APK rebuild and prompt retest pending | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | Actual bb4d prompt failed before answering; Cloud provider admission diagnostic candidate is qualifying. No native send claimed. | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Account-scoped cache implemented and source-tested. | Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead). | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
@@ -133,7 +135,7 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 | photos-13 | Recover one or selected items | Prior preview pass; latest retest pending | Passed574: explicit Recover restored the sole QA item; trashcount returned0. | Pending |
 | photos-14 | Permanently delete only explicit selected items | Prior preview pass; latest retest pending | Passed574: selected only the new QA photo; expired review refused; fresh one-item review permanently deleted it; trashcount0. | Pending |
 | photos-15 | Selection cancel, empty selection and toolbar states | Pending | Pending | Pending |
-| photos-16 | Native permitted library and consent updates | Access controls moved to Settings > Photos; denied-access grid keeps Choose photo access. Full verification passed:1455 pass/2 skips/0 fail. | Installeda569f79c: fresh Settings > Photos readback and Android permissions navigation passed; existing grant unchanged. Denied access retains explicit request. | Pending |
+| photos-16 | Native permitted library and consent updates | Four current-candidate permission regressions pass: Settings controls, selected access, denied request/approval, and revocation. New manual preview observation unavailable while browser controls are disabled. | Installeda569f79c: fresh Settings > Photos readback and Android permissions navigation passed; existing grant unchanged. Denied access retains explicit request. | Pending |
 
 ## Maps
 
