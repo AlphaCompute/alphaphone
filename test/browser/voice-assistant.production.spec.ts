@@ -4,6 +4,8 @@ import {flagOffAndroid,residentHome,fenceNetwork,button} from './flag-off-androi
 // controls over the native live capture. Synthetic ports only: the AlphaVoiceCloud live capture
 // (frames and Silero VAD edges), the resident agent's live ASR route and local playback. This is
 // routing, lifecycle and accounting evidence, not microphone, echo, JNI, model or device evidence.
+// The resident's end-of-turn (elizaOS #36546) and heard (#36547) routes are synthetic too: the
+// scorer answers unavailable unless a test sets `live.eot`, and heard requests are recorded.
 async function setup(page:Page){
  const foreign=await fenceNetwork(page);await flagOffAndroid(page);
  await page.addInitScript(()=>{
@@ -16,7 +18,7 @@ async function setup(page:Page){
    }
    return emit(plugin,event,value);
   };
-  const f=w.live={noCanceller:false,captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
+  const f=w.live={eot:{available:false,reason:'voice-not-started'} as any,eotCalls:[] as string[],heard:[] as any[],noCanceller:false,captures:[] as any[],stops:[] as string[],active:null as string|null,routes:[] as any[],finals:[] as string[],spoken:[] as string[],plays:[] as string[],stopped:0,forbidden:[] as string[],onStop:null as null|((id:string)=>void)};
   const events:Array<{event:string;callback:(value:any)=>void}>=[];
   f.emit=(event:string,value:any)=>{for(const row of events)if(row.event===event)row.callback(value);};
   f.frame=(timestamp:number)=>({pcm16:btoa(String.fromCharCode(...new Uint8Array(1024))),sampleRate:16000,channels:1,samples:512,timestamp});
@@ -26,6 +28,14 @@ async function setup(page:Page){
   header.methods=[...['checkPermissions','localSpeechStatus','liveCaptureStatus','startLiveCapture','stopLiveCapture','synthesizeLocal','play','stopPlayback','cancel','releaseLocalSpeech','cancelRecording'].map(name=>({name,rtype:'promise'})),{name:'addListener',rtype:'callback'},{name:'removeListener',rtype:'callback'}];
   const callback=c.nativeCallback;c.nativeCallback=(plugin:string,method:string,input:any,fn:any)=>{if(plugin==='AlphaVoiceCloud'&&method==='addListener'){events.push({event:input.eventName,callback:fn});return String(events.length);}return callback(plugin,method,input,fn);};
   c.nativePromise=async(plugin:string,method:string,input:any)=>{
+   if(plugin==='Agent'&&method==='request'&&input.path==='/api/asr/local-inference/end-of-turn'){
+    if(input.method!=='POST')throw Error('Unsupported local agent request.');
+    f.eotCalls.push(JSON.parse(input.body).transcript);return {status:200,body:JSON.stringify(f.eot)};
+   }
+   if(plugin==='Agent'&&method==='request'&&/^\/api\/conversations\/[^/]+\/messages\/[0-9a-f-]{36}\/heard$/.test(String(input.path))){
+    const body=JSON.parse(input.body),messageId=String(input.path).split('/')[5];f.heard.push({path:input.path,heardText:body.heardText,ownerId:input.ownerId});
+    return {status:200,body:JSON.stringify({ok:true,messageId,text:body.heardText,truncated:true,changed:true})};
+   }
    if(plugin==='Agent'&&method==='request'&&String(input.path).startsWith('/api/asr/local-inference/live')){
     if(input.path==='/api/asr/local-inference/live/status')return {status:200,body:JSON.stringify({ready:true,streaming:true,sessions:0,maxSessions:4})};
     const body=JSON.parse(input.body);f.routes.push(body);
@@ -120,6 +130,14 @@ test('barge-in stops playback, keeps only the played sentence and sends the new 
  await expect(page.getByText('(Interrupted. The rest of this reply was not played.)')).toBeVisible();
  await expect(page.getByText('starts at nine with Priya')).toHaveCount(0);
  await expect(page.getByText('Tomorrow is clear.')).toBeVisible();
+ // The agent is asked to keep exactly the played sentence of that reply; the fully heard reply is untouched.
+ const heard=await live(page,f=>f.heard);
+ expect(heard.map((row:any)=>[row.path.split('/')[5],row.heardText])).toEqual([['11111111-1111-4111-8111-111111111111','You have two meetings today.']]);
+ expect(heard[0].ownerId).toBeTruthy();
+ // With the scorer unavailable both turns were submitted by the long gap.
+ expect(await live(page,f=>f.eotCalls)).toEqual(['What is on my calendar today','and tomorrow']);
+ const endpoints=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:voice-timing:v1')||'[]').filter((row:any)=>row.endpoint).map((row:any)=>[row.endpoint.by,row.endpoint.semantic,row.endpoint.reason,row.heard??null]));
+ expect(endpoints).toEqual([['gap','unavailable','voice-not-started','recorded'],['gap','unavailable','voice-not-started',null]]);
  await clean(page,foreign);
 });
 
@@ -144,6 +162,8 @@ test('Stop speaking interrupts by button; Mute turns the microphone off and on w
  await button(page,'Stop voice conversation').click();
  await expect(page.getByText('(Interrupted before this reply was played.)')).toBeVisible();
  expect(await posts(page)).toEqual(['How is the weather']);
+ // Nothing was heard: the route needs a non-empty prefix, so nothing is sent.
+ expect(await live(page,f=>f.heard)).toEqual([]);
  await clean(page,foreign);
 });
 
@@ -189,5 +209,30 @@ test('stopping before the pause discards the unsent utterance and late transcrip
  await page.waitForTimeout(1600);
  expect(await posts(page)).toEqual([]);
  expect(await live(page,f=>f.routes.at(-1).close)).toBe(true);
+ await clean(page,foreign);
+});
+
+test('semantic endpointing: a complete score submits after the short gap; an incomplete one waits for the long gap',async({page})=>{
+ const foreign=await setup(page);
+ await page.evaluate(()=>{(window as any).live.eot={available:true,endOfTurnProbability:.93,complete:true,commitThreshold:.7,nextSpeaker:'agent',source:'eliza-1-drafter',model:'eliza-1',latencyMs:18};});
+ await button(page,'Talk').click();
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ await say(page,'What is on my calendar today');
+ await expect.poll(()=>posts(page)).toEqual(['What is on my calendar today']);
+ await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');
+ await page.evaluate(()=>(window as any).live.finishPlayback());
+ await expect(voice(page)).toHaveAttribute('data-voice-state','listening');
+ await page.evaluate(()=>{(window as any).live.eot={available:true,endOfTurnProbability:.2,complete:false,commitThreshold:.7,nextSpeaker:'user',source:'eliza-1-drafter',model:'eliza-1',latencyMs:15};});
+ await say(page,'and remind me to');
+ await expect.poll(()=>live(page,f=>f.eotCalls.length)).toBe(2);
+ await page.waitForTimeout(500);
+ expect(await posts(page)).toEqual(['What is on my calendar today'],'not complete: no early submit');
+ await expect.poll(()=>posts(page)).toEqual(['What is on my calendar today','and remind me to']);
+ const endpoints=await page.evaluate(()=>JSON.parse(localStorage.getItem('alphaphone:voice-timing:v1')||'[]').filter((row:any)=>row.endpoint).map((row:any)=>row.endpoint));
+ expect(endpoints).toEqual([{by:'semantic',semantic:'complete',latencyMs:18},{by:'gap',semantic:'incomplete',latencyMs:15}]);
+ expect(JSON.stringify(endpoints)).not.toContain('calendar');
+ // The reply was fully heard: no heard request.
+ expect(await live(page,f=>f.heard)).toEqual([]);
+ await button(page,'Stop voice conversation').click();
  await clean(page,foreign);
 });

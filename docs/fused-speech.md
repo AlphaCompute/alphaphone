@@ -104,13 +104,24 @@ recording a clip on the device:
    retracted. Cancel drops queued audio and late output; IPC closure does not roll back
    inference already running. A segment whose transcription fails (`502 ASR_FAILED`) yields
    no text and capture continues; an unavailable route or transport failure stops it.
-5. **Endpointing (assistant).** After the last segment's final, a short gap (300 ms) asks a
-   semantic end-of-turn port and a long gap (1,200 ms) submits; both follow the VAD speech-end,
-   which itself trails speech by the gate's ~512 ms hangover. These are engineering defaults
-   (local-speech research), not measurements or owner-set constants. **Clef is not in the pin**
-   (`968348d792d3`: no Clef model, loader or decision head; only the native EOT scorer for the
-   Eliza-1 text model), so no semantic port is wired and the documented VAD long-gap fallback
-   decides alone. New speech before submission cancels both timers and continues the utterance.
+5. **Endpointing (assistant).** After the last segment's final, a short gap (300 ms) asks the
+   resident's semantic end-of-turn route and a long gap (1,200 ms) submits; both follow the VAD
+   speech-end, which itself trails speech by the gate's ~512 ms hangover. The route is
+   `POST /api/asr/local-inference/end-of-turn` (elizaOS #36546, in the pin `08703642627c`): one
+   causal pass of the fused Eliza-1 end-of-turn scorer over the utterance text, through the same
+   owner-bound resident request port as the live ASR route (`voice-turn-routes.ts`). It is asked once
+   per utterance with a 600 ms deadline (short gap plus deadline stays under the long gap), aborted
+   by resumed speech, and its answer is dropped when the utterance changed. `available` and
+   `complete` submit at once; `available` and not complete waits for the long gap or more speech;
+   `available: false` (`voice-not-started`, `ffi-context-unloaded`, `scorer-unsupported`,
+   `ram-pressure`, `unscored`, `timeout`), a 502 scoring error, a transport failure or the deadline
+   all fall back to the long gap; unavailable is never treated as complete. The route never starts
+   voice or loads a model, so the semantic path only works where the resident's voice bridge and
+   its fused text context are loaded; elsewhere the gaps decide alone. **Clef is not in the pin**
+   (no Clef model, loader or decision head); the scorer is the Eliza-1 one. Each submitted turn's
+   voice timing record keeps `endpoint`: the path (`semantic` or `gap`), the outcome enum, the
+   unavailable reason and the scorer latency, never text. The gaps and deadline are engineering
+   defaults (local-speech research), not measurements or owner-set constants.
 6. **Send.** The turn goes through the existing voice policy unchanged (`VOICE_SEND_POLICY`
    in `voice-selection.ts`, MVP-01/P-01). A reply carrying action proposals ends voice for review in
    the conversation: automatic submission never approves a side effect.
@@ -127,11 +138,19 @@ recording a clip on the device:
    Replies play one sentence at a time and only sentences whose playback completed count as heard:
    the conversation view keeps that text and marks the rest
    "(Interrupted. The rest of this reply was not played.)". Stop speaking does the same by button.
-   **Gaps:** the marking is this session's conversation view only. The agent's own memory still
-   holds the full reply (there is no route to record the heard portion), so reloading history shows
-   it in full; a reply the agent completes after the user interrupted it while it was still being
-   generated is not shown in the voice session but appears in full after a reload. The 700 ms hold
-   and the sentence-by-sentence synthesis gap are engineering defaults to tune on a device.
+   Once the reply's message id is known, Alpha also sends exactly the played prefix (the completed
+   sentences of the spoken form) to `POST /api/conversations/:id/messages/:messageId/heard`
+   (elizaOS #36547), so the agent's stored reply, and its memory and search, keep only the heard
+   part. Only an assistant reply of the current voice conversation's binding is sent; nothing is
+   sent for a reply that was fully heard. The request never blocks the next turn. A 409 (the played
+   text is not a prefix the agent recognises) is recorded and the view stays trimmed; a 404 or 503
+   is retried once after 1.5 s, then dropped; the outcome enum is kept on the turn's voice timing
+   record (`heard`). **Gaps:** a reply interrupted before its first sentence finished cannot be
+   recorded (the route needs a non-empty prefix), so the agent keeps it in full; a reply the agent
+   completes after the user interrupted it while it was still being generated has no message id
+   in the voice session, is not trimmed and appears in full after a reload; a partially played
+   sentence is never claimed as heard. The 700 ms hold and the sentence-by-sentence synthesis gap
+   are engineering defaults to tune on a device.
 
 Interim text: the agent publishes ephemeral `voice-transcript` events (`speech-start`, `partial`
 with the full running text, `final`, `error`) on its WebSocket event stream. `live-voice.ts`
@@ -147,7 +166,7 @@ Installed event-flow acceptance remains separate from source wiring.
 Latency is recorded per turn as numbers only (`voice-timing.ts` `live`: ASR mode, partial count,
 speech-start to first partial, speech-end to final on the client and the agent's own last-frame to
 final) and appears in the diagnostics export. Evidence: class S (node tests
-`test/live-voice.test.mjs` and `test/voice-assistant.test.mjs`, the Playwright specs
+`test/live-voice.test.mjs`, `test/voice-assistant.test.mjs` and `test/voice-turn-routes.test.mjs`, the Playwright specs
 `test/browser/live-voice.spec.ts` with a stub agent and `test/browser/voice-assistant.production.spec.ts`
 on the flag-off renderer with synthetic native ports) and Gradle compilation; not run on an emulator
 or a device. Echo, barge-in timing, lock, calls and Bluetooth need device acceptance.
