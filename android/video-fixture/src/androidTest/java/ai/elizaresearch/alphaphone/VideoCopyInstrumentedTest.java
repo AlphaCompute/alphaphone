@@ -136,4 +136,21 @@ public final class VideoCopyInstrumentedTest {
    report.put("sourceChangedDuringRealEncodingRefused",true).put("backgroundCancelledRealEncoding",true).put("noPublishedCopy",true).put("originalBytesUnchanged",true).put("passed",true);
   }finally{cleanup();try(java.io.FileOutputStream out=context.openFileOutput("video-qa-lifecycle.json",Context.MODE_PRIVATE)){out.write(report.toString(2).getBytes(java.nio.charset.StandardCharsets.UTF_8));}}
  }
+ @Test public void lateEncoderCallbackAfterWorkerShutdownRejectsAndKeepsRecovery()throws Exception {
+  try(ActivityScenario<VideoFixtureActivity> scene=ActivityScenario.launch(VideoFixtureActivity.class)){
+   AtomicReference<VideoFixtureActivity> activity=new AtomicReference<>();scene.onActivity(activity::set);InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+   Uri original=source();byte[] originalBytes=digest(original);String revision=revision(original),id=UUID.randomUUID().toString();
+   VideoCopyEdits.Sources sources=(key,expected)->{if(!key.equals(id)||!revision(original).equals(expected))throw new IllegalStateException("Source changed");return new VideoCopyEdits.Source(original,expected);};
+   VideoCopyEdits editor=new VideoCopyEdits(context,sources);activity.get().editor=editor;
+   Response begin=new Response();editor.begin(id,revision,begin);String token=begin.await().getString("sessionId");
+   java.lang.reflect.Field active=VideoCopyEdits.class.getDeclaredField("active");active.setAccessible(true);Object session=active.get(editor);assertNotNull(session);
+   Response save=new Response();java.lang.reflect.Field call=session.getClass().getDeclaredField("saveCall");call.setAccessible(true);call.set(session,save);
+   java.lang.reflect.Field worker=VideoCopyEdits.class.getDeclaredField("io");worker.setAccessible(true);((java.util.concurrent.ExecutorService)worker.get(editor)).shutdown();
+   java.lang.reflect.Method callback=VideoCopyEdits.class.getDeclaredMethod("finish",session.getClass(),Exception.class);callback.setAccessible(true);callback.invoke(editor,session,null);
+   assertTrue(save.done.await(2,TimeUnit.SECONDS));assertTrue(save.error.contains("outcome is unresolved"));assertEquals(0,copies(token));assertArrayEquals(originalBytes,digest(original));
+   Response late=new Response();editor.result(token,late);assertTrue(late.done.await(2,TimeUnit.SECONDS));assertEquals("Video editor closed",late.error);editor.close();editor.close();
+   VideoCopyEdits recovery=new VideoCopyEdits(context,sources);try{Response read=new Response();recovery.result(token,read);assertEquals("not-started",read.await().getString("status"));assertEquals(0,copies(token));}finally{recovery.close();}
+  }finally{cleanup();}
+ }
+
 }

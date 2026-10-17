@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-16T22:52:44.383076+00:00",
+  "updatedAt": "2026-10-17T01:26:29.244994+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -1056,7 +1056,7 @@
       "evidence": [
         "docs/evidence/native-video-component-20261017.json"
       ],
-      "notes": ""
+      "notes": "Physical exporter evidence binds the source hashes in docs/evidence/native-video-component-20261017.json. Later callback-shutdown repair e530eb51 passes 33 focused checks plus Android compilation/lint; current-source physical rerun and full packaged Alpha UI qualification remain pending."
     },
     {
       "id": "photos-09",
@@ -1070,7 +1070,7 @@
       "evidence": [
         "docs/evidence/native-video-component-20261017.json"
       ],
-      "notes": "Use a real Android encoder/export path with audio and original preservation, durable copy receipts and source permission/revision checks. Human approval remains pending."
+      "notes": "Physical exporter evidence binds the source hashes in docs/evidence/native-video-component-20261017.json. Later callback-shutdown repair e530eb51 passes 33 focused checks plus Android compilation/lint; current-source physical rerun and full packaged Alpha UI qualification remain pending."
     },
     {
       "id": "photos-10",
@@ -2296,5 +2296,6 @@
       "nativePromptAcceptance": false,
       "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
     }
-  }
+  },
+  "nativeVideoCandidate": "e530eb51"
 }
