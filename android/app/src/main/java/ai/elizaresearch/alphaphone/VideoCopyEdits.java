@@ -199,8 +199,7 @@ final class VideoCopyEdits {
     if(!OsConstants.S_ISREG(sealed.st_mode)||sealed.st_uid!=android.os.Process.myUid()||(sealed.st_mode&077)!=0||sealed.st_nlink!=1)throw new IOException("Preservation seal changed");
     stage="complete";requirePreservationState(token,expectedRecordHash,admittedEpoch);Os.link(sealedPath,completePath);StructStat published=Os.lstat(completePath);
     if(!OsConstants.S_ISREG(published.st_mode)||published.st_uid!=sealed.st_uid||published.st_mode!=sealed.st_mode||published.st_ino!=sealed.st_ino||published.st_dev!=sealed.st_dev||published.st_nlink!=2||published.st_size!=sealed.st_size)throw new IOException("Preservation seal changed");syncPreservationDirectory(archive);
-    requirePreservationState(token,expectedRecordHash,admittedEpoch);
-    JSObject result=new JSObject();result.put("operationId",token);result.put("artifactId",token);result.put("status","preserved");result.put("bytes",first.getLong("bytes"));result.put("sha256",first.getString("sha256"));call.resolve(result);
+    JSObject result=new JSObject();result.put("operationId",token);result.put("artifactId",token);result.put("status","preserved");result.put("bytes",first.getLong("bytes"));result.put("sha256",first.getString("sha256"));requirePreservationState(token,expectedRecordHash,admittedEpoch);call.resolve(result);
    }catch(Exception failure){
     if(archive!=null)try{preservationFile(archive,"INCOMPLETE.json",new JSONObject().put("operationId",token).put("stage",stage).put("errorClass",failure.getClass().getSimpleName()).put("sourceWritesPerformed",false).put("journalWritesPerformed",false).toString());syncPreservationDirectory(archive);}catch(Exception retained){/* Keep existing evidence; never overwrite or clean up. */}
     call.reject("Video copy preservation refused: "+stage+"/"+failure.getClass().getSimpleName());
