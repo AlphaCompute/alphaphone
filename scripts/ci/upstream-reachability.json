@@ -3,13 +3,13 @@
   "repository": "elizaOS/eliza",
   "base": "develop",
   "baseCommit": "68f9c74b134d0f063c140eb64704d4342c4b8ce9",
-  "head": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
-  "recordedAt": "2026-10-16",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+  "head": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+  "recordedAt": "2026-10-17",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
   "status": "diverged",
-  "aheadBy": 62,
-  "behindBy": 24,
-  "mergeBase": "dd1e61c60dfc539f5bfa2359fcd314e0c083870f",
+  "aheadBy": 63,
+  "behindBy": 9,
+  "mergeBase": "08703642627ca12167ad6f3b08516d352b7e3a0d",
   "pinOnlyCommits": [
     {
       "sha": "2d1c8a9071dc5db1db253b940e4eba350e389861",
@@ -164,6 +164,10 @@
       "subject": "fix(calendar): accept empty DELETE transport streams without accepting bodies"
     },
     {
+      "sha": "9e7a1553f378a570be3fe74c021e71710a1c96eb",
+      "subject": "Merge Maps relay and allowance with Calendar transport and owner fixes"
+    },
+    {
       "sha": "52e2dd737ba77e9a830c6e864678c4bfb32d174f",
       "subject": "Wire owner-scoped Gmail mailbox changes through managed hosts"
     },
@@ -198,6 +202,10 @@
     {
       "sha": "a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd",
       "subject": "Scope Calendar approval contracts to preserve legacy Life Ops compatibility"
+    },
+    {
+      "sha": "bee108fe11df35dc992170027866f565c338eb71",
+      "subject": "Merge current develop and preserve owner-bound Alpha integrations"
     },
     {
       "sha": "ac326329f0d00663ef0dc76e5a187607cbcdd7e8",
@@ -250,323 +258,10 @@
     {
       "sha": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
       "subject": "Keep native Google host alive with the resident process"
-    }
-  ],
-  "pullRequests": [
-    {
-      "number": 34453,
-      "state": "merged",
-      "mergedAt": "2026-10-08T23:24:20Z",
-      "mergeCommit": "903a1bc4effaa36558a1b933c8098186c1620a5f",
-      "head": "codex/native-record-discovery-upstream"
     },
     {
-      "number": 34649,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:04:25Z",
-      "mergeCommit": "aa11eb735fb8beccd8a87909d45d9b4efffec87f",
-      "head": "codex/notes-trash-shared-client-20261009"
-    },
-    {
-      "number": 34650,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:04:34Z",
-      "mergeCommit": "2fa46af7a94e1045178598b1b56be847edcc870b",
-      "head": "codex/maps-navigation-shared-20261009"
-    },
-    {
-      "number": 34653,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:14:10Z",
-      "mergeCommit": "db204ce76e47c1988d1fca84f68543ba094f428f",
-      "head": "codex/reminders-lifecycle-shared-20261009"
-    },
-    {
-      "number": 34658,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:14:06Z",
-      "mergeCommit": "0cbd9d64e50f1f5c47feb7717272aa1092bfa84a",
-      "head": "codex/calendar-direct-options-shared-20261009"
-    },
-    {
-      "number": 34662,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:16:24Z",
-      "mergeCommit": "ea9df94a8bdf2edd4e2c7abb6c35516a10d12e80",
-      "head": "codex/gmail-message-workflows-20261009"
-    },
-    {
-      "number": 34667,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:21:49Z",
-      "mergeCommit": "43676428c6cbf8452365cb03faaada54b97f7218",
-      "head": "codex/system-launcher-shared-20261009"
-    },
-    {
-      "number": 34676,
-      "state": "merged",
-      "mergedAt": "2026-10-10T01:38:07Z",
-      "mergeCommit": "4e76a10060f4588cb8010a76732e8a734efaf47c",
-      "head": "codex/notification-mirror-shared-20261009"
-    },
-    {
-      "number": 34683,
-      "state": "merged",
-      "mergedAt": "2026-10-10T02:04:35Z",
-      "mergeCommit": "38fcc53e85f53f20dca3aaa942d926fb68196519",
-      "head": "codex/workflow-native-digests-shared-20261009"
-    },
-    {
-      "number": 34691,
-      "state": "merged",
-      "mergedAt": "2026-10-10T02:10:50Z",
-      "mergeCommit": "e0def8b28d148ff8eb62ad8e837bf4ce32c83019",
-      "head": "codex/media-shared-20261009"
-    },
-    {
-      "number": 34699,
-      "state": "merged",
-      "mergedAt": "2026-10-10T02:25:21Z",
-      "mergeCommit": "99bcbbadd6624d565a0d0d0051d6a4e4a6e92649",
-      "head": "codex/device-review-contracts-shared-20261009"
-    },
-    {
-      "number": 34708,
-      "state": "merged",
-      "mergedAt": "2026-10-10T02:38:04Z",
-      "mergeCommit": "a8ad88dbedaf8a6d0f15f77d7a9a06f8e4b89603",
-      "head": "codex/browser-policies-shared-20261009"
-    },
-    {
-      "number": 34723,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:00:47Z",
-      "mergeCommit": "bd40c58b4b7810f2142a704f1ae2b718e6ec00be",
-      "head": "codex/browser-speech-shared-20261009"
-    },
-    {
-      "number": 34727,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:06:15Z",
-      "mergeCommit": "ec207214b99679fb041d240f75cb5d10d4629bd3",
-      "head": "codex/action-journal-shared-20261009"
-    },
-    {
-      "number": 34729,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:09:18Z",
-      "mergeCommit": "2f29c28b150ec388480bda88e13ebb1350786eeb",
-      "head": "codex/alpha-native-compatibility-20261009"
-    },
-    {
-      "number": 34734,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:15:26Z",
-      "mergeCommit": "fa7c722e0d1b8b26d51dda02a7d2e82a6c177d8b",
-      "head": "codex/pull-gesture-touch-compatibility-20261009"
-    },
-    {
-      "number": 34743,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:26:13Z",
-      "mergeCommit": "c9ff1a8110335cfde3768299a3299c214626eae3",
-      "head": "codex/local-speech-determinism-20261009"
-    },
-    {
-      "number": 34755,
-      "state": "merged",
-      "mergedAt": "2026-10-10T03:43:50Z",
-      "mergeCommit": "a9c5b99496c9122d308744feb0bed2d3e33c955a",
-      "head": "codex/shared-password-custody-20261009"
-    },
-    {
-      "number": 34754,
-      "state": "merged",
-      "mergedAt": "2026-10-10T04:03:50Z",
-      "mergeCommit": "41c5c20aac1e999823bf6fedd812c1732dd5a226",
-      "head": "codex/journal-native-fixture-registration-20261009"
-    },
-    {
-      "number": 34773,
-      "state": "merged",
-      "mergedAt": "2026-10-10T04:19:41Z",
-      "mergeCommit": "11a36ddc9dd42d4c344a19965a8552d1d0c2c9d8",
-      "head": "fix/endtest-action-journal-nocheck-20261009"
-    },
-    {
-      "number": 34751,
-      "state": "merged",
-      "mergedAt": "2026-10-10T04:25:04Z",
-      "mergeCommit": "5b50baa3dc5ceb84badad92eb56151f42d19b3a0",
-      "head": "fix/endtest-lint-format-20261009"
-    },
-    {
-      "number": 34761,
-      "state": "merged",
-      "mergedAt": "2026-10-10T04:33:16Z",
-      "mergeCommit": "945209d3e75053cc834ddf6352fc8c2feefc42f7",
-      "head": "fix/endtest-app-tests-20261009"
-    },
-    {
-      "number": 34835,
-      "state": "merged",
-      "mergedAt": "2026-10-10T06:30:36Z",
-      "mergeCommit": "f7ffc3eacbed93659c1b95b89bc9d9ce33db676a",
-      "head": "codex/native-password-manager-20261010"
-    },
-    {
-      "number": 34879,
-      "state": "merged",
-      "mergedAt": "2026-10-10T08:26:41Z",
-      "mergeCommit": "4148a1660921a354ece2badf25a79a2398a51058",
-      "head": "codex/password-transfer-20261010"
-    },
-    {
-      "number": 34883,
-      "state": "merged",
-      "mergedAt": "2026-10-10T08:40:37Z",
-      "mergeCommit": "40dbe96bd1fc2603aaff655cd52d0ab899704e2c",
-      "head": "codex/keystore-text-frame-20261010"
-    },
-    {
-      "number": 34888,
-      "state": "merged",
-      "mergedAt": "2026-10-10T10:08:15Z",
-      "mergeCommit": "13c98575987a121decc45b161b0c8a4ee698554e",
-      "head": "codex/native-notice-receipts-20261010"
-    },
-    {
-      "number": 35906,
-      "state": "merged",
-      "mergedAt": "2026-10-12T21:10:51Z",
-      "mergeCommit": "3b9328095362431e3f7e57e05be8bfa5ef6b3276",
-      "head": "claude/alpha-workflow-dossier-route"
-    },
-    {
-      "number": 35907,
-      "state": "merged",
-      "mergedAt": "2026-10-12T21:10:55Z",
-      "mergeCommit": "a69171a570a91ef117dcfe17e3f1a7c3c60314d7",
-      "head": "claude/alpha-history-client-message-id"
-    },
-    {
-      "number": 35908,
-      "state": "merged",
-      "mergedAt": "2026-10-12T22:22:04Z",
-      "mergeCommit": "d40bee769f83c7f488e79d0bda1ef14db844fba1",
-      "head": "claude/alpha-gmail-search-mailbox-revision"
-    },
-    {
-      "number": 35909,
-      "state": "merged",
-      "mergedAt": "2026-10-12T21:19:42Z",
-      "mergeCommit": "b5f8a288b258c3fcd8f4be35ff5c8cd107f31c55",
-      "head": "claude/alpha-launcher-components"
-    },
-    {
-      "number": 35910,
-      "state": "merged",
-      "mergedAt": "2026-10-12T21:19:45Z",
-      "mergeCommit": "a90a880c0485e6d44da50dffe4fb9feb1e950a6b",
-      "head": "claude/alpha-credential-slot-retained-limit"
-    },
-    {
-      "number": 35911,
-      "state": "merged",
-      "mergedAt": "2026-10-12T22:25:24Z",
-      "mergeCommit": "42b9b13c3c7a19fcd9bd9a16d3f6554217e6eb25",
-      "head": "claude/alpha-calendar-availability-read"
-    },
-    {
-      "number": 35912,
-      "state": "merged",
-      "mergedAt": "2026-10-13T19:20:05Z",
-      "mergeCommit": "b678c514d7989f51d54ddfd8a3300bce504e1748",
-      "head": "claude/alpha-calendar-event-identity"
-    },
-    {
-      "number": 35913,
-      "state": "merged",
-      "mergedAt": "2026-10-13T19:20:10Z",
-      "mergeCommit": "5f7ba33e5589c2af923da341a483e237b38fb080",
-      "head": "claude/alpha-calendar-review-account"
-    },
-    {
-      "number": 36123,
-      "state": "merged",
-      "mergedAt": "2026-10-13T21:16:40Z",
-      "mergeCommit": "c82cf7bd69b2b5b7104937765fa24fe16b4c0ea4",
-      "head": "claude/alpha-bionic-log-privacy"
-    },
-    {
-      "number": 36124,
-      "state": "merged",
-      "mergedAt": "2026-10-13T21:16:34Z",
-      "mergeCommit": "0b05fe36f3535bf2e0e7280ed109ff6ea7a8a574",
-      "head": "claude/alpha-dependency-security"
-    },
-    {
-      "number": 36126,
-      "state": "merged",
-      "mergedAt": "2026-10-13T22:06:23Z",
-      "mergeCommit": "bc71e21f3b5020a2d11719e6e905c0347a4d802f",
-      "head": "claude/alpha-llama-cpp-security-pin"
-    },
-    {
-      "number": 36212,
-      "state": "merged",
-      "mergedAt": "2026-10-14T10:32:20Z",
-      "mergeCommit": "d06a1aa9c9222ce8be60190af2317784a1b9bfff",
-      "head": "claude/alpha-asr-phonon2"
-    },
-    {
-      "number": 36213,
-      "state": "merged",
-      "mergedAt": "2026-10-14T11:16:58Z",
-      "mergeCommit": "d68909cb71213ebdcb650bfb6fb043d33db8cf8f",
-      "head": "claude/alpha-asr-streaming"
-    },
-    {
-      "number": 36214,
-      "state": "merged",
-      "mergedAt": "2026-10-14T12:03:17Z",
-      "mergeCommit": "70dc0bbf93ff67811e5eff3c6d2c92922e1acf4c",
-      "head": "claude/alpha-asr-live-voice"
-    },
-    {
-      "number": 36239,
-      "state": "merged",
-      "mergedAt": "2026-10-14T17:48:29Z",
-      "mergeCommit": "c7a9a0d7e7ea399ead4016727737d2d975f2d5ba",
-      "head": "claude/alpha-voice-gaps"
-    },
-    {
-      "number": 36271,
-      "state": "merged",
-      "mergedAt": "2026-10-14T21:24:06Z",
-      "mergeCommit": "d4de8c1cd7b0f7fd02325b2f77843ecb24adc415",
-      "head": "claude/alphaphone-signin-callback-contract"
-    },
-    {
-      "number": 36261,
-      "state": "merged",
-      "mergedAt": "2026-10-14T21:44:16Z",
-      "mergeCommit": "f7f3765d0a9cb8414f6c3a472446cff77e6fb9c7",
-      "head": "claude/alpha-ipc-events"
-    },
-    {
-      "number": 36303,
-      "state": "merged",
-      "mergedAt": "2026-10-15T03:21:11Z",
-      "mergeCommit": "c0145e3090cefe3fb87c22963fb5c15b76945162",
-      "head": "adef3e4e3e7ca48e89a5a858404a3349269acac7"
-    },
-    {
-      "number": 36309,
-      "state": "merged",
-      "mergedAt": "2026-10-15T03:57:10Z",
-      "mergeCommit": "7eea9fb61441f6a16e1a9941d8507896e8207e75",
-      "head": "5089d99262639d4ff41dfcdf8fde83a925e7d89c"
+      "sha": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+      "subject": "Merge commit '08703642627ca12167ad6f3b08516d352b7e3a0d' into codex/alpha-native-cloud-admission-20261016"
     }
   ]
 }

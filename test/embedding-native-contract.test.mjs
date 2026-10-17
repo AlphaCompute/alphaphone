@@ -27,6 +27,10 @@ test('registered JNI selects the product class without rewriting shared C++ and 
  assert.equal(verifyNativeJava(cpp,java),3);
  assert.throws(()=>verifyNativeJava(cpp,java.replace('boolean parseSpecial','int parseSpecial')),/signature changed/);
  assert.throws(()=>verifyNativeJava(cpp,java.replace('static native float[] nativeEmbedUtf8(long handle, byte[] input, int pooling);','')),/set changed/);
+ const streamCpp=cpp+'\nELIZA_NATIVE(nativeParadeeSynthesizeStream, "(J[BFLjava/lang/Object;)V"),',streamJava=java.replace('\n}','\nstatic native void nativeParadeeSynthesizeStream(long ctx, byte[] utf8Text, float speed, Object sink);\n}');
+ assert.equal(verifyNativeJava(streamCpp,streamJava),4);
+ assert.throws(()=>verifyNativeJava(streamCpp.replace('Ljava/lang/Object;','Ljava/lang/String;'),streamJava),/signature changed/);
+ assert.throws(()=>verifyNativeJava(streamCpp,streamJava.replace('Object sink','Runnable sink')),/Unsupported native Java type/);
  assert.doesNotThrow(()=>verifyNativeSymbols('000 T JNI_OnLoad\n',binding));
  for(const symbols of ['000 T nativeEmbed','000 T JNI_OnLoad\n000 T unexpected'])assert.throws(()=>verifyNativeSymbols(symbols,binding),/missing|unexpected/);
 });

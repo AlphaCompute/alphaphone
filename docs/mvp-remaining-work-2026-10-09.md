@@ -1,3 +1,5 @@
+Current integration candidate: SDK `6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a` merges upstream `08703642627c` with the retained native Google and reviewed Gmail changes. Existing JNI/build inputs are unchanged from `9365c9bb0d`; recorded qualified native bytes are retained. New end-of-turn, heard-content, allowance and Maps behavior still needs current-source qualification. Historical source-bound evidence follows.
+
 <!-- Integration 9e7a1553f378a570be3fe74c021e71710a1c96eb combines main Maps and Calendar; native qualification remains pending. -->
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 

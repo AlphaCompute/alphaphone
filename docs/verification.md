@@ -1484,3 +1484,39 @@ and the upstream review/CI gate remain required before integration is accepted.
 ## Separate Maps allowance source admission (2026-10-15)
 
 Candidate `221a0bc4e0d501a670943d274f10d7818357ada4` adds the reviewed P-56 allowance changes above `1a5a05db0c80`. Source equivalence is recorded in `docs/evidence/maps-allowance-pin-source-equivalence-2026-10-15.json`. Its 36 Cloud Maps tests and 17 Maps plugin tests pass. Native source, engine gitlinks and the dependency lock are unchanged. This does not transfer historical native qualification. Selected numeric limits, deployment, real-provider and device acceptance remain open. Issue #410 remains open.
+
+## Eliza develop and llama.cpp main pin (2026-10-16)
+
+The pin moves to eliza `develop` `afd44a8544b4aed3bae7824be5d261270a69540e`, whose llama.cpp gitlink is the fork's `main`
+`6e6a4401aae473723cb164a3190eebea6526ea6e`. The previous pin's five Maps allowance commits reached `develop` through merged
+elizaOS/eliza PRs (#36309, #36398 and the Maps relay PRs), so the reachability record is now `behind` with no pin-only commits.
+The llama.cpp move adds bounded Paradee streaming PCM (elizaOS/llama.cpp#82, voice ABI 19) and rejects undersized ASR stream
+transcript buffers (#81). The elizavoice-jni Java class now declares `nativeParadeeSynthesizeStream(long, byte[], float, Object)`;
+`scripts/embedding-native-contract.mjs` accepts the `Object` sink descriptor and its test covers the new signature.
+
+- Native (class B, development machine): both ABIs rebuilt with NDK 28.2.13676358 by
+  `node scripts/prepare-embedding-host.mjs --build --remap-build-path`. Voice ABI 19; paradee, paradee-stream and ASR support
+  all report 1; 87 `eliza_inference_*` exports including six `asr_stream_*`; 16 KiB LOAD alignment; full JNI exports only
+  `JNI_OnLoad`. Voice-subset JNI bridges built by `./gradlew :local-speech:assembleRelease` export only `JNI_OnLoad`.
+  `android/voice-host/qualified-voice-host.json` records the new bytes and stays `qualified: false`; the embedding host
+  candidate is recorded under `requalification` and its reviewed receipt is still required.
+- Voice projections: the three projection inputs are byte-identical at the new pin, so the reviewed projection carries over.
+- Resident dependency audit: 98 findings across 3691 package versions, identical advisory and package-version set to the
+  previous pin; dispositions carried forward.
+- `npm run verify`: pass (1350 tests, 1348 pass, 0 fail; typecheck, build and production bundle audit pass).
+- Android: `npm run agent:prepare`, `agent:build-workflow-worker` and `agent:stage-android` succeed at this pin;
+  `agent:build-embedding-host` and plain `npm run android:build` stop before Gradle (exit 3 / exit 2) because the reviewed
+  embedding-host receipt, device voice qualification and the release signer need a person, as on the previous pin.
+  `npm run android:build -- --allow-unpackaged-runtime` (no staged payload) builds standalone and launcher debug and unsigned
+  release APKs; `verify-apks` records both releases `distributable: false`.
+
+No host, emulator or device execution of the new native bytes is claimed, and no qualification is transferred.
+
+### Source pin 08703642627c (2026-10-16)
+
+The pin then moved to eliza `develop` `08703642627ca12167ad6f3b08516d352b7e3a0d`, which adds elizaOS/eliza#36546 (local
+end-of-turn route), #36547 (heard-only assistant content), #36549 (period-allowance reset in chat terminal failures) and
+#36556 (Maps admission latency harness). The llama.cpp gitlink, every native build input, the elizavoice-jni Java class, the
+voice projection inputs and `bun.lock` are byte-identical to `afd44a8544b4`, so the recorded native bytes are unchanged and
+no rebuild was needed. Reachability: `behind`, no pin-only commits. Resident audit: identical 98 findings across 3691 package
+versions; dispositions carried forward.
