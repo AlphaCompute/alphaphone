@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "description": "Alpha Phone production product descriptor for Pixel 10a (stallion) on Android 17. scripts/stage-aosp.mjs --target pixel10a --production refuses to stage while any field here is UNSET or a placeholder, while the pinned source lock differs from sourceLock.sha256 or is still marked developmentOnly, or while android/release-signer.json has no reviewed signer. scripts/sign-aosp-release.mjs reads the avb and ota sections. Values are reviewed public identities only (certificate and key digests, never key material). releaseQualified and deviceAcceptanceVerified are recorded by release evidence, never by software.",
+  "product": "alpha_stallion_phone",
+  "target": "pixel10a",
+  "device": {
+    "codename": "stallion",
+    "androidRelease": "17"
+  },
+  "lunch": {
+    "development": "alpha_stallion_phone-cp2a-userdebug",
+    "production": "alpha_stallion_phone-cp2a-user"
+  },
+  "sourceLock": {
+    "file": "android/aosp/pixel10a-source.json",
+    "sha256": "UNSET"
+  },
+  "signer": {
+    "apkDescriptor": "android/release-signer.json",
+    "platformCertificateSha256": "UNSET",
+    "releaseCertificates": {
+      "shared": "UNSET",
+      "media": "UNSET",
+      "networkstack": "UNSET",
+      "sdk_sandbox": "UNSET",
+      "bluetooth": "UNSET",
+      "nfc": "UNSET",
+      "apex": "UNSET"
+    },
+    "decision": "A-06"
+  },
+  "avb": {
+    "algorithm": "SHA256_RSA4096",
+    "vbmetaKey": "avb.pem",
+    "chainedPartitions": ["vbmeta_system", "vbmeta_vendor"],
+    "publicKeyMetadata": "avb_pkmd.bin",
+    "publicKeySha256": "UNSET"
+  },
+  "ota": {
+    "channel": "android/aosp/pixel10a-ota-channel.json"
+  },
+  "releaseQualified": false,
+  "deviceAcceptanceVerified": false
+}

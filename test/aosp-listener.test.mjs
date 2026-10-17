@@ -89,7 +89,32 @@ test("staging copies the reviewed configuration and APK and refuses a different 
   for (const file of ["Android.bp", "listener.mk", "permissions/privapp-permissions-ai.elizaresearch.alphaphone.sense.xml", "sysconfig/alphaphone-sense.xml", "overlay/frameworks/base/core/res/res/values/config.xml"])
     assert.ok(fs.existsSync(path.join(target, file)), file);
   assert.match(fs.readFileSync(path.join(output, "product.mk"), "utf8"), /^include .*\/listener\/listener\.mk$/m);
-  assert.throws(() => stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP }), /already exists/);
+  assert.throws(() => stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP }), /already exists/);  // The listener captures only with the chip's indicator lease, so every staged listener requires the chip patch.
+  const productMk = fs.readFileSync(path.join(output, "product.mk"), "utf8");
+  assert.match(productMk, /^include .*\/listener\/systemui\/chip\/chip\.mk$/m, "the chip certificate overlay is part of the staged product");
+  const required = JSON.parse(fs.readFileSync(path.join(target, "systemui/required-source-patches.json"), "utf8"));
+  const chipManifest = JSON.parse(read("systemui/chip/manifest.json"));
+  assert.equal(required.systemuiChip, true);
+  assert.deepEqual(required.requiredSourcePatches.map(row => [row.bundle, row.patchSha256, row.revision]), [["chip", chipManifest.patchSha256, chipManifest.revision]]);
+  assert.deepEqual([required.sourcePatched, required.imageBuilt], [false, false], "staging records a requirement, never a patched source or image");
+});
+
+test("production staging includes the Listening chip by default; only an explicit development call omits it", t => {
+  const stage = fs.readFileSync(path.join(root, "scripts/stage-aosp.mjs"), "utf8");
+  const call = /stageListener\(\{[^}]*\}\)/.exec(stage)?.[0];
+  assert.ok(call, "stage-aosp stages the listener");
+  assert.doesNotMatch(call, /systemuiChip/, "stage-aosp (production and development) takes the chip default");
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), "listener-stage-nochip-"));
+  t.after(() => fs.rmSync(output, { recursive: true, force: true }));
+  const apk = path.join(output, "input.apk");
+  fs.writeFileSync(apk, "apk-bytes");
+  fs.writeFileSync(path.join(output, "product.mk"), "# launcher\n");
+  const target = stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP, systemuiChip: false });
+  assert.doesNotMatch(fs.readFileSync(path.join(output, "product.mk"), "utf8"), /chip\.mk/);
+  const required = JSON.parse(fs.readFileSync(path.join(target, "systemui/required-source-patches.json"), "utf8"));
+  assert.equal(required.systemuiChip, false);assert.deepEqual(required.requiredSourcePatches, []);
+  assert.match(required.consequence, /never captures/);
+  assert.match(fs.readFileSync(path.join(root, LISTENER_SOURCE, "systemui/chip/chip.mk"), "utf8"), /production included/);
 });
 
 test("the privileged listener is pinned by a reviewed descriptor and must carry its qualified speech bundle", () => {

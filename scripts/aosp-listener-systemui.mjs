@@ -36,7 +36,9 @@ export function verifyListenerSystemui(source, state = 'before', bundle = 'ops')
     if (digest !== entry[`${state}Sha256`]) throw Error(`SystemUI ${state} image mismatch: ${entry.path}`);
     return {path: entry.path, sha256: digest};
   });
-  return {schema: 1, scope: `${files.length} manifest-listed SystemUI files only; remaining source tree is not verified`, bundle, state, expectedProjectRevision: manifest.revision, baselineLockSha256: manifest.baselineLockSha256, manifestSha256: sha(manifestBytes), patchSha256: manifest.patchSha256, files, fullTreeVerified: false, imageBuilt: false, lockAodIndicatorQualified: false, indicatorHealthLeaseImplemented: false};
+  return {schema: 1, scope: `${files.length} manifest-listed SystemUI files only; remaining source tree is not verified`, bundle, state, expectedProjectRevision: manifest.revision, baselineLockSha256: manifest.baselineLockSha256, manifestSha256: sha(manifestBytes), patchSha256: manifest.patchSha256, files, fullTreeVerified: false, imageBuilt: false, lockAodIndicatorQualified: false,
+    // Source-level only: the lease is never compiled, booted or qualified by this receipt.
+    indicatorHealthLeaseImplemented: bundle === 'chip' && manifest.indicatorHealthLeaseImplemented === true, indicatorHealthLeaseQualified: false, systemUiCompiled: false};
 }
 
 // Prepare a tiny overlay for a disposable build copy; never write into the supplied AOSP source.

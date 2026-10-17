@@ -9,7 +9,7 @@
 
 # Flow implementation plan and acceptance ledger
 
-Date: 2026-09-29. Target correction: Pixel 10 or similar **phone**, not tablet. The available Pixel 9 emulator profile is a development approximation; it does not establish physical Pixel 10 support or acceptance. Read with `flow-audit-and-prd.md`, `native-capability-research.md`, `agent-integration.md`, and the existing implementation plan. This plan records a source inspection of the expanded app while implementation is underway. It deliberately makes no APK, emulator, provider, or physical-device passing claim. Later test reports should record the exact tested commit/artifact and update evidence without turning planned behavior into results.
+Date: 2026-09-29. Target correction: Pixel 10 or similar **phone**, not tablet. (Superseded by decision P-15: the hardware target is Pixel 10a, codename stallion, on Android 17.) The available Pixel 9 emulator profile is a development approximation; it does not establish physical Pixel 10 support or acceptance. Read with `flow-audit-and-prd.md`, `native-capability-research.md`, `agent-integration.md`, and the existing implementation plan. This plan records a source inspection of the expanded app while implementation is underway. It deliberately makes no APK, emulator, provider, or physical-device passing claim. Later test reports should record the exact tested commit/artifact and update evidence without turning planned behavior into results.
 
 ## Source milestone
 

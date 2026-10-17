@@ -103,7 +103,7 @@ what the separately signed native apps on this page require.
 
 ## Phone test-target correction
 
-The target is Pixel 10 or similar phone, not tablet. The prior install evidence records the earlier disposable emulator. The same four verified artifacts were installed successfully onto `alpha_flow_pixel_20260929` after `sys.boot_completed=1` and AVD-name verification, using the available Pixel 9 hardware definition and API 35 AOSP ARM64 image. Each artifact SHA-256 was rechecked before installation. All four `adb install -r` commands returned `Success`; results are in ignored `artifacts/native-apps/phone-install-results.json`. Phone geometry is 1080 × 2424 pixels at 420 dpi. No account, provider default or permission was configured. No Pixel 10 definition was installed. Physical Pixel 10 compatibility remains unverified.
+The target is a phone, not tablet; the hardware target is now Pixel 10a on Android 17 (P-15). The prior install evidence records the earlier disposable emulator. The same four verified artifacts were installed successfully onto `alpha_flow_pixel_20260929` after `sys.boot_completed=1` and AVD-name verification, using the available Pixel 9 hardware definition and API 35 AOSP ARM64 image. Each artifact SHA-256 was rechecked before installation. All four `adb install -r` commands returned `Success`; results are in ignored `artifacts/native-apps/phone-install-results.json`. Phone geometry is 1080 × 2424 pixels at 420 dpi. No account, provider default or permission was configured. No Pixel 10 definition was installed. Physical Pixel 10 compatibility remains unverified.
 
 ## Reproducible offline AOSP staging
 

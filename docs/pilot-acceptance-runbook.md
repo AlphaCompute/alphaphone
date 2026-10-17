@@ -4,7 +4,7 @@ This runbook implements the handoff procedure in steps 14–15 of the [MVP compl
 
 ## Release entry conditions
 
-Assign an operator, reviewer, support owner and rollback owner before provisioning. Record references to the authorized signing and device-management mechanisms; never copy keys, credentials or recovery codes into the evidence bundle. Select the exact Pixel SKU, hardware revision, Android image and supported device tree. “Pixel 10 or similar” is the product direction, not a claim that every Pixel build is supported.
+Assign an operator, reviewer, support owner and rollback owner before provisioning. Record references to the authorized signing and device-management mechanisms; never copy keys, credentials or recovery codes into the evidence bundle. The supported hardware is Pixel 10a (codename `stallion`) on Android 17, product `alpha_stallion_phone`; record each unit's SKU, hardware revision, Android image and build fingerprint. Other Pixel models are not supported hardware for the pilot.
 
 Freeze the app commit, the pinned Eliza source identity (`upstream.lock.json`; no local patch is applied), speech/model manifests and generated runtime manifest. Complete `npm run verify` and the full build chain `npm run android:build:local` (input check, `agent:prepare`, `agent:build-workflow-worker`, `agent:stage-android`, `android:build`) without `--allow-unpackaged-runtime`, which builds non-distributable developer APKs only; retain both distribution outputs and test APKs, and obtain successful required CI results for the candidate commit. Identify the separately signed release APK and OS image. Debug signing, unsigned release compilation and launcher-overlay staging are not production image acceptance.
 

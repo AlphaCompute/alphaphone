@@ -4,22 +4,27 @@
   "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
   "baselineLockSha256": "2829fe087a13e946e27ecf7782948c454e991614d977b2a91a8a78d1791f40ce",
   "patch": "listening-chip.patch",
-  "patchSha256": "affc24aa2fa448a8a97bd7195be73a5c9740253c8405bda86149838ba1e9fb77",
+  "patchSha256": "77f92a9b5d60a40241cd99c12283b7334cbd5565f1b6d22e7ef97875fcf8d133",
   "files": [
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java",
       "beforeSha256": null,
-      "afterSha256": "05c956b97eaf15d859bcd32cc3d3ad42f7bd2c228a872e3f07bea00f6065bf41"
+      "afterSha256": "36719ff97fe8cc689217fa4d3af4120307890e2397f8904004084358bb9fe989"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java",
       "beforeSha256": null,
-      "afterSha256": "a70d10a737d4eaf1bfcf228a3b8df7eea4b8caa7ee98cae6f516bd511f85417e"
+      "afterSha256": "f03fbf76893e30b1d071af019a0c724452d10a7d39f937e0276cea8628578e52"
+    },
+    {
+      "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningLease.java",
+      "beforeSha256": null,
+      "afterSha256": "b5018624c195023cff07d11fa2f8e278a4da67fdbcceda6f99a449c60b619573"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java",
       "beforeSha256": null,
-      "afterSha256": "837255f845b120661250d71878a987ea9ee454147233bbf3106f485f7eaf2582"
+      "afterSha256": "751fbe988ac5b28535374942ca00daa0cfcb785315440c787e54747927b674ee"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipBinder.kt",
@@ -50,5 +55,11 @@
   "fullTreeVerified": false,
   "imageBuilt": false,
   "lockAodIndicatorQualified": false,
-  "indicatorHealthLeaseImplemented": false
+  "indicatorHealthLeaseImplemented": true,
+  "indicatorHealthLease": {
+    "scope": "source",
+    "systemUiCompiled": false,
+    "hostChecks": "Java chip sources type-checked against hand-written stubs and the lease client exercised on the JVM (test/aosp-listening-chip.test.mjs); the Kotlin binder and resources are not compiled",
+    "qualified": false
+  }
 }
