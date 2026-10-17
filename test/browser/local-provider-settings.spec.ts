@@ -6,17 +6,18 @@ async function stubAgent(page: import('@playwright/test').Page, cloud = false) {
   await page.addInitScript((cloud: boolean) => {
     const w = window as any; w.androidBridge = {};
     const f = w.providerFixture = { saved: null as null | { model: string }, configures: [] as any[], clears: 0, stops: 0, reject: '' };
-    const methods = (names: string[]) => names.map(name => ({ name, rtype: 'promise' }));
+    const methods = (names: string[]) => names.map(name => ({ name, rtype: name==='addListener'?'callback':'promise' }));
     // Eliza Cloud reports the same Qwen model with its Cerebras vendor prefix.
     const status = () => cloud ? { provider: 'elizacloud', configured: true, model: 'cerebras/qwen-3.8-27b' } : f.saved ? { provider: 'cerebras', configured: true, model: 'qwen-3.8-27b' } : { provider: 'cerebras', configured: false };
     w.Capacitor = {
       PluginHeaders: [
         { name: 'Agent', methods: methods(['getStatus', 'start', 'stop', 'request', 'configureProvider', 'providerStatus', 'clearProvider']) },
-        { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureCompareExchange', 'secureRemove', 'request', 'cancel']) },
+        { name: 'AlphaConnection', methods: methods(['secureRead', 'secureWrite', 'secureCompareExchange', 'secureRemove', 'request', 'cancel', 'addListener', 'removeListener']) },
         { name: 'AlphaNotifications', methods: methods(['status', 'crossAppStatus', 'addListener', 'removeListener']) },
         { name: 'AlphaVoiceCloud', methods: methods(['checkPermissions']) },
         { name: 'DeviceApps', methods: methods(['buildInfo']) },
       ],
+      nativeCallback: () => 'provider-fixture-listener',
       nativePromise: async (plugin: string, method: string, input: any) => {
         if (plugin === 'DeviceApps') return { launcher: false, version: 'provider-fixture' };
         if (plugin === 'AlphaNotifications') return { permissionGranted: true, appEnabled: true };
@@ -81,4 +82,15 @@ test('the chooser names the Eliza Cloud model as Settings does', async ({ page }
   await expect(chooser).toBeVisible();
   await chooser.getByText('Model provider', { exact: true }).click();
   await expect(chooser.getByText('Configured · Eliza Cloud · qwen-3.8-27b (Cerebras)', { exact: true })).toBeVisible();
+});
+
+for(const cloud of [false,true])test(`native Models shows on-device voice and actual provider admission: ${cloud?'configured':'unconfigured'}`,async({page})=>{
+ await stubAgent(page,cloud);await page.goto('/');
+ await page.getByRole('button',{name:'Close connection settings',exact:true}).click();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Models',exact:true}).click();
+ await expect(page.getByText('Conversation uses the selected agent. Voice runs on this device.',{exact:true})).toBeVisible();
+ await expect(page.getByText('On this device',{exact:true})).toBeVisible();
+ await expect(page.getByText(cloud?'Eliza Cloud':'Not configured',{exact:true})).toBeVisible();
+ if(cloud)await expect(page.getByText('cerebras/qwen-3.8-27b',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).providerFixture.configures)).toEqual([]);
 });

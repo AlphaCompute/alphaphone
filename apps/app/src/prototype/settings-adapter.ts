@@ -306,7 +306,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     const native = Capacitor.isNativePlatform();
     const [state, settings, noticeState, crossState, metadata, roleState, build, problems, photos] = await Promise.allSettled([device.snapshot(), system.getDeviceSettings(), notifications.status(), notifications.crossAppStatus(), history===null?Promise.resolve(null):notifications.notificationHistory(),
       // Browsers have no Android roles: the web plugin rejects, so nothing is shown there.
-      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog(), native ? photoLibrary.libraryAccess() : Promise.resolve(null)]);
+      native ? system.getStatus() : Promise.reject(Error('No device roles')), native && launcher === null ? deviceApps.buildInfo() : Promise.resolve(null), readCrashLog(), native ? photoLibrary.libraryAccess() : Promise.resolve(null), native ? connectionController.refreshProviderStatus() : Promise.resolve()]);
     if (owner !== instance || generation !== token) return;
     roles = roleState.status === 'fulfilled' ? readRoles(roleState.value) : null;
     if (build.status === 'fulfilled' && build.value) launcher = build.value.launcher === true;
@@ -596,8 +596,9 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           ...(Capacitor.isNativePlatform() ? [info('Mobile data', reported(facts.mobileDataEnabled)), info('Airplane mode', reported(facts.airplaneMode))] : []),
           nav('Manage mobile networks', 'mobile'), ...(Capacitor.isNativePlatform() ? [nav('Airplane mode in Android', 'airplane')] : [])])];
       } else if (page.title === 'Models') {
-        page.hero = { ...page.hero, big: target, sub: developmentCartesiaVoiceEnabled?'Direct Cerebras and Cartesia · development':'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
-        page.groups = [group([info('Connection', connection.kind), ...(browserLocalAgentEnabled ? [info('Inference provider', inferenceProvider)] : []), info('Inference model', 'Not reported by agent'), info('Voice', developmentCartesiaVoiceEnabled?'Cartesia · development':account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
+        const native=Capacitor.isNativePlatform(),provider=connection.providerStatus;
+        page.hero = { ...page.hero, big: target, sub: native?'Conversation uses the selected agent. Voice runs on this device.':developmentCartesiaVoiceEnabled?'Direct Cerebras and Cartesia · development':'Conversation uses the selected agent. Voice uses Eliza Cloud.' };
+        page.groups = [group([info('Connection', native?runtimeLocation:connection.kind), ...(native?[info('Inference provider',provider?provider.configured?(provider.provider==='elizacloud'?'Eliza Cloud':'Cerebras'):'Not configured':'Status unavailable')]:browserLocalAgentEnabled ? [info('Inference provider', inferenceProvider)] : []), info('Inference model', native&&provider?.configured&&provider.model?provider.model:'Not reported by agent'), info('Voice', native?'On this device':developmentCartesiaVoiceEnabled?'Cartesia · development':account ? 'Eliza Cloud' : 'Sign-in required'), { kNav:true, label:'Eliza Cloud account', lbl:'Eliza Cloud account', chev:true, noAB:true, go:()=>connectionController.openCloudAccount() }])];
       } else if (page.title === 'Developer') {
         page.groups = [group([info('App version', facts.appVersion || buildVersion), info('Agent memory', connection.session?'Usage not reported by agent':'Not connected')]), group([problemsRow(), diagnosticsRow()]), group([nav('Android developer settings', 'developer')])];
       } else if (page.title === 'Notifications') {
