@@ -243,6 +243,8 @@ Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, e
 
 ## Current integration gaps
 
+Latest physical fixture result: source `bff09b90` passed both Java compiles and built both fixture APKs. The same-certificate fixture upgrade preserved its UID, original install date and all13 prior journal entries. The first preservation method failed at `complete/ErrnoException`; the remaining nine methods were not run. The new synthetic artifacts are retained; main Alpha2446, all three process identities, source639 and pending640/failed record stayed unchanged. A supported completion-publication protocol needs review before another qualified attempt. This is not full-app SaveCopy or native Gmail/Calendar acceptance. See [exact fixture failure](evidence/native-video-bff09-seeker-seal-failure-20261017.json).
+
 - Browser ordinary Gmail self-send, independent Inbox delivery, exact full-body readback and agent search/read passed for a new QA fixture. Native acceptance is separate.
 - Browser ordinary Google Calendar create/read/delete passed for a distinct QA event, with independent provider absence readback. Original uncertain operations remain fenced and were not replayed.
 - Seeker now runs source2446/Shared6ef with its original identity/data, Cloud inference and Google read/send plus Calendar read/edit connected. Its one known-QA email read prompt failed at the Cloud text request with HTTP400. That exact request is handed off for correlation; no native send or Calendar write was attempted.

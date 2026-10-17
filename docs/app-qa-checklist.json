@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T08:32:00.437164+00:00",
+  "updatedAt": "2026-10-17T16:26:37.695475+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -1069,7 +1069,7 @@
       "area": "Photos",
       "viewOrFlow": "Edited-video audio, original preservation and save-copy",
       "scope": "MVP",
-      "implementation": "Observerrace+receiptackboundary corrected atf38c327d.13browser/typechecks pass, including heldreceipt valid/revoked/revision andlate-newerselection. Priorfullnormal1495pass/2skip belongsd35; exactf38normalverify+4APK/lint pending. NativeJava1d29 custody/exporter passes preserved; historicalmainSavecause/currentmainacceptance separate.",
+      "implementation": "Observer and async receipt coordination fixes retained. BFF09 directory-sync API repair compiles; isolated preservation sealing uses unsupported hardlink publication and needs a supported completion protocol. Full main build/UI remains open.",
       "preview": "33 video/storage regressions, TypeScript and20 static integration checks pass. Browser checks do not establish Android hardware behavior.",
       "seeker": "Main2446 ONE Save failed; pending640/8e43/source639 preserved. Correction1d29: bothJava/fixtureAPK builds,3custodytests(.286s), and real synthetic exporter trim/rotate/crop/audio/markers/recovery/idempotency/cancel test(11.291s) passed on Seeker. Originalmainwritecause/normalAlphaSaveCopy remain open; no retry.",
       "userApproval": "Pending",
@@ -1080,9 +1080,10 @@
         "docs/evidence/native-video-pending-custody-20261017.json",
         "docs/evidence/native-video-exporter-1d29-20261017.json",
         "docs/evidence/native-video-library-observer-20261017.json",
-        "docs/evidence/native-video-owner-preservation-source-20261017.json"
+        "docs/evidence/native-video-owner-preservation-source-20261017.json",
+        "docs/evidence/native-video-bff09-seeker-seal-failure-20261017.json"
       ],
-      "notes": "Native-only owner-context preservation candidate01c30 source/test bodies prepared; no compilation/invocation yet. Original pending640 remains retained without full bytearchive; no newSave/disposition/guardrelax."
+      "notes": "BFF09 first preservation method failed at complete/ErrnoException after retaining copied bytes and sealed pending manifest. Remaining9methods not run. All13priorfixtureentries/mainprocesses/source639/pending640/8e43 unchanged; unexpectednewfixtureartifacts retained encrypted. Original640 has no full bytearchive and no disposition/Save retry granted."
     },
     {
       "id": "photos-10",
@@ -2318,7 +2319,7 @@
       "evidence": "docs/evidence/seeker-a569-native-update-20261016.json"
     }
   },
-  "nativeVideoCandidate": "5f42d94057690b6d849ae3afac775606a36e21b7",
+  "nativeVideoCandidate": "bff09b90ebd4627588fed3b51b802bc7311c556e",
   "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
   "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
   "currentPreviewSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
@@ -2428,5 +2429,12 @@
       "Native Google Calendar deletion through prompts",
       "Full installed per-view QA and human acceptance"
     ]
+  },
+  "latestNativeVideoFixtureQualification": {
+    "source": "bff09b90ebd4627588fed3b51b802bc7311c556e",
+    "state": "Both Java compiles/two fixture APKs passed. Signed same-cert fixture update preservedUID/install/all13priorentries. First physical preservation method failed complete/ErrnoException;9notrun; stopped/no retry. Main2446/639/640/8e43 unchanged.",
+    "evidence": "docs/evidence/native-video-bff09-seeker-seal-failure-20261017.json",
+    "fullMainAcceptance": false,
+    "supportedPublicationContractReviewPending": true
   }
 }
