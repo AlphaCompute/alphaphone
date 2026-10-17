@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T06:56:41.915252+00:00",
+  "updatedAt": "2026-10-17T07:08:06.445245+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -1055,11 +1055,12 @@
       "scope": "MVP",
       "implementation": "Shared trim workspace with native streaming preview and Android export is implemented on this draft branch; full Alpha installed UI acceptance remains pending.",
       "preview": "33 current browser video/storage regressions pass; native UI/gesture qualification is separate.",
-      "seeker": "Exact production exporter component passes real trim/clockwise rotate/crop and timestamps. Full Alpha editor UI has not yet been installed/qualified.",
+      "seeker": "Installed2446 actual paused synthetic fixture: exact filename1match; editor loaded; trim0\u21921s/length4\u21923s; rotation90 and center crop visually verified; Android Back returned paused original. Original76022B SHA/revision6346 unchanged. No playback/save-copy or crash recovery claim.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/native-video-component-20261017.json",
-        "docs/evidence/native-video-callback-20261017.json"
+        "docs/evidence/native-video-callback-20261017.json",
+        "docs/evidence/seeker-paused-video-editor-20261017.json"
       ],
       "notes": "Current 8b12bbb2 production exporter sources passed all3 isolated offline Seeker tests (59.198s), including late callback after worker shutdown, with installed fixture APK SHA joined to staged production sources. See docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain pending."
     },
