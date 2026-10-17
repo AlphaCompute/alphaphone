@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "baseCommit": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+  "baseCommit": "985322b5df96a91e9dc913c73280a97b82890642",
   "patches": [
     {
       "file": "secure-store-bounded-memory.patch",

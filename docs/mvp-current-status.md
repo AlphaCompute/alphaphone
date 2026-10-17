@@ -1,4 +1,4 @@
-Current integration candidate: SDK `6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a` merges upstream `08703642627c` with the retained native Google and reviewed Gmail changes. Existing JNI/build inputs are unchanged from `9365c9bb0d`; recorded qualified native bytes are retained. New end-of-turn, heard-content, allowance and Maps behavior still needs current-source qualification. Historical source-bound evidence follows.
+Current integration candidate: SDK `985322b5df96a91e9dc913c73280a97b82890642` is eliza `develop` after elizaOS/eliza#36598 (native Google host, Calendar approvals and Gmail host operations), replacing the off-develop `6ef36b8d6aa1`. Upstream's Calendar delete, native Gmail send and Gmail mailbox-change paths are default-off flags that Alpha removes from the agent environment. Existing JNI/build inputs are unchanged from `9365c9bb0d`; recorded qualified native bytes are retained. New end-of-turn, heard-content, allowance and Maps behavior still needs current-source qualification. Historical source-bound evidence follows.
 
 <!-- Checked source integration a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd; full native product qualification remains pending. -->
 # Current MVP status
@@ -33,7 +33,7 @@ The historical October 14 development rebuild used upstream `193d9264fc`; curren
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The consumer pin in `upstream.lock.json` is `6ef36b8d6a` (2026-10-17: merges current main SDK08703642627c with the authenticated native Google host and reviewed Gmail changes; full current qualification and native Google prompt acceptance remain pending). The earlier pin was `968348d792` (moved on 2026-10-14,
+- The consumer pin in `upstream.lock.json` is `985322b5df` (2026-10-17: eliza `develop` after elizaOS/eliza#36598, which carries the authenticated native Google host and reviewed Gmail changes; Calendar delete, native Gmail send and Gmail mailbox changes are upstream default-off flags Alpha keeps off; full current qualification and native Google prompt acceptance remain pending). Before that it was the off-develop `6ef36b8d6a` (2026-10-17). The earlier pin was `968348d792` (moved on 2026-10-14,
   PR #531), with llama.cpp gitlink `3e5f73922ee8`. It preserves Phonon-2 batch/streaming
   ASR, Paradee-8M TTS, misaki G2P and voice ABI 18 from the previous `c7a9a0d7e7` pin,
   adds the upstream-preserving native integration, native build/Kokoro classification repairs

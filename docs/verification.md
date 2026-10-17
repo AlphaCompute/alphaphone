@@ -1520,3 +1520,15 @@ end-of-turn route), #36547 (heard-only assistant content), #36549 (period-allowa
 voice projection inputs and `bun.lock` are byte-identical to `afd44a8544b4`, so the recorded native bytes are unchanged and
 no rebuild was needed. Reachability: `behind`, no pin-only commits. Resident audit: identical 98 findings across 3691 package
 versions; dispositions carried forward.
+
+### Source pin 985322b5df96 (2026-10-17)
+
+The pin moved from the off-develop `6ef36b8d6aa1` to eliza `develop` `985322b5df96a91e9dc913c73280a97b82890642`, the merge
+of elizaOS/eliza#36598 (native Google host, Calendar approvals and owner-bound Gmail host operations), which contains
+`6ef36b8d6aa1`. The llama.cpp gitlink (`6e6a4401aae4`), every native build input, the elizavoice-jni Java class, the voice
+projection inputs and `bun.lock` are byte-identical, so the recorded native bytes are unchanged and no rebuild was needed;
+regenerated notices differ only in the pin. Reachability: `behind`, no pin-only commits. The carried
+`calendar-managed-rejection.patch` is retired because upstream now contains its explicit-rejection receipt; its regression
+test exercises the upstream code. Upstream's default-off `ELIZA_MANAGED_CALENDAR_DELETE_ENABLED`,
+`ELIZA_NATIVE_GOOGLE_GMAIL_SEND_ENABLED` and `ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED` are removed from the resident
+agent's environment, so those paths stay refused until Seeker acceptance and the production service exist.
