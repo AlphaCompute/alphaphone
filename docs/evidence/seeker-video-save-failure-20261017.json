@@ -49,7 +49,15 @@
     "providerTestsRun": true,
     "providerTestCount": 3,
     "providerTestSeconds": 0.286,
-    "providerEvidence": "docs/evidence/native-video-pending-custody-20261017.json"
+    "providerEvidence": "docs/evidence/native-video-pending-custody-20261017.json",
+    "exporterComponent": {
+      "passed": true,
+      "seconds": 11.291,
+      "testCount": 1,
+      "evidence": "docs/evidence/native-video-exporter-1d29-20261017.json",
+      "originalMainAlphaCauseProven": false,
+      "normalAlphaSaveAcceptance": false
+    }
   },
   "preserved": [
     "source639",
