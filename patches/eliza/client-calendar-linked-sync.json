@@ -1,5 +1,5 @@
 {
-  "baseCommit": "968348d792d3d36df129bc53bd85cebed47d0830",
+  "baseCommit": "5729cf0f1d7490d59671d298fb68af353d2408e7",
   "path": "packages/contracts/src/calendar-linked-sync.ts",
   "sourceCommit": "114967c6a520e1e9b86ce5f5dd544eef946594fd",
   "sha256": "686e9e3c0db7651a3612b1940c95bcb9fac89155a4faafcfb6ab67bd0fbe41bb",

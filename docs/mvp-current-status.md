@@ -30,8 +30,9 @@ The historical October 14 development rebuild used upstream `193d9264fc`; curren
   agent runs behind it, and the plan decides only whether Cloud inference is bound into the
   running agent. There is no "without AI" or offline mode. Remote pairing is retired on production Android and
   remains a browser and test-mocks development transport (see Connection choices below).
-- The upstream pin in `upstream.lock.json` is `968348d792` (moved on 2026-10-14,
-  PR #531), with llama.cpp gitlink `3e5f73922ee8`. It preserves Phonon-2 batch/streaming
+- The development pin in `upstream.lock.json` is `5729cf0f1d` (2026-10-17), adding
+  requested-action policy and completed navigation to the October 14 source from PR #531.
+  It retains llama.cpp gitlink `3e5f73922ee8` and Phonon-2 batch/streaming
   ASR, Paradee-8M TTS, misaki G2P and voice ABI 18 from the previous `c7a9a0d7e7` pin,
   adds the upstream-preserving native integration, native build/Kokoro classification repairs
   and disables the optional Android video helper. A consumer wrapper records both clean source revisions around the shared voice build; staging checks
