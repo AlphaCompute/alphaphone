@@ -27,8 +27,8 @@ public final class LocalAgentProviderAdmissionTest {
  }
  /** In-memory store whose admit is the real admission compare-exchange. */
  static final class Store implements LocalAgentProviderAdmission.CloudBindingStore {
-  String provider,cloud,cloudAfterAdmit;boolean identityFails,conflict;int rollbacks,identityHttpStatus;
-  public String readProvider(){return provider;}
+  String provider,cloud,cloudAfterAdmit;boolean identityFails,conflict,readFails,rollbackFails;int rollbacks,identityHttpStatus;
+  public String readProvider(){if(readFails)throw new SecurityException(TOKEN+KEY);return provider;}
   public String readCloud(){return cloud;}
   public void assertCurrent(){}
   public JSONObject identity(String token)throws Exception{
@@ -44,7 +44,7 @@ public final class LocalAgentProviderAdmissionTest {
    return provider;
   }
   public void rollback(String binding,String previous)throws Exception{
-   rollbacks++;
+   rollbacks++;if(rollbackFails)throw new SecurityException(TOKEN+KEY);
    if(binding.equals(provider))provider=previous==null?null:LocalAgentProviderAdmission.withoutAdmission(previous);
   }
  }
@@ -144,20 +144,24 @@ public final class LocalAgentProviderAdmissionTest {
   }
   JSONObject schema=LocalAgentProviderAdmission.cloudCredentialDiagnostics(cloud(ID,NOW-1),OTHER,NOW);
   check(!schema.getBoolean("credentialIdMatches")&&schema.getBoolean("expired")&&"number".equals(schema.getString("expiryType")),"public credential schema is accurate");
-  for(String expectedStage:new String[]{"credential-validation","identity-read","admission-commit","confirmation"}){
+  for(String expectedStage:new String[]{"model","credential-read","credential-validation","identity-read","admission-commit","confirmation","rollback"}){
    Store diagnosticStore=new Store();diagnosticStore.cloud=cloud(ID,NOW+1000);diagnosticStore.provider=directSelection;
+   if(expectedStage.equals("credential-read"))diagnosticStore.readFails=true;
    if(expectedStage.equals("credential-validation"))diagnosticStore.cloud=null;
    if(expectedStage.equals("identity-read"))diagnosticStore.identityHttpStatus=403;
    if(expectedStage.equals("admission-commit"))diagnosticStore.conflict=true;
-   if(expectedStage.equals("confirmation"))diagnosticStore.cloudAfterAdmit=cloud(OTHER,NOW+1000);
-   try{LocalAgentProviderAdmission.bindCloudProvider(diagnosticStore,ID,"cerebras/qwen-3.8-27b",()->NOW);throw new AssertionError("Expected diagnostic refusal");}
+   if(expectedStage.equals("confirmation")||expectedStage.equals("rollback"))diagnosticStore.cloudAfterAdmit=cloud(OTHER,NOW+1000);
+   if(expectedStage.equals("rollback"))diagnosticStore.rollbackFails=true;
+   try{LocalAgentProviderAdmission.bindCloudProvider(diagnosticStore,ID,expectedStage.equals("model")?"unsupported-model":"cerebras/qwen-3.8-27b",()->NOW);throw new AssertionError("Expected diagnostic refusal");}
    catch(LocalAgentProviderAdmission.CloudBindingFailure failure){
     check(expectedStage.equals(failure.stage),"exact failed stage");String diagnostic=failure.diagnostic.toString();
     for(String secret:new String[]{TOKEN,KEY,ID,OTHER,"3b241101-e2bb-4255-8caf-4136c566a962","6ba7b810-9dad-41d1-80b4-00c04fd430c8"})check(!diagnostic.contains(secret),"failure diagnostics contain no credential or identity values");
     check(failure.diagnostic.getInt("httpStatus")== (expectedStage.equals("identity-read")?403:0),"safe HTTP status retained");
    }
-   check(diagnosticStore.provider.equals(directSelection),"diagnostics never weaken refusal or rollback");
+   if(expectedStage.equals("rollback"))check(diagnosticStore.rollbacks==1&&!LocalAgentProviderAdmission.providerStatus(diagnosticStore.provider,diagnosticStore.cloud,NOW).getBoolean("configured"),"failed rollback remains unconfirmed and unusable, never falsely restored");
+   else check(diagnosticStore.provider.equals(directSelection),"diagnostics never weaken refusal or rollback");
   }
+  for(int status:new int[]{401,403,404,429,500,503})check(new LocalAgentProviderAdmission.CloudReadFailure(status) instanceof SecurityException,"all HTTP failures preserve the existing Calendar SecurityException classification");
   System.out.println("PASS local agent provider admission");
  }
 }
