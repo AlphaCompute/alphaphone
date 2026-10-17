@@ -4,7 +4,7 @@ import {existsSync,readdirSync,mkdtempSync,readFileSync,writeFileSync,mkdirSync,
 import {homedir,tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {preparePatchedNative} from '../scripts/prepare-patched-native.mjs';
+import {prepareNativeFixture} from './fixtures/native-source.mjs';
 const root=resolve(import.meta.dirname,'..');
 const cache=join(homedir(),'.gradle/caches/modules-2/files-2.1/org.json/json/20250517');
 const cached=existsSync(cache)?readdirSync(cache).flatMap(hash=>readdirSync(join(cache,hash)).filter(name=>name==='json-20250517.jar').map(name=>join(cache,hash,name)))[0]:undefined;
@@ -14,7 +14,7 @@ test('patched native secure store handles actual 32 MiB authenticated records wi
  const relative='plugins/plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/JsonCredentialSlots.java';
  try{
   const source=join(dir,relative);mkdirSync(dirname(source),{recursive:true});
-  writeFileSync(source,readFileSync(join(preparePatchedNative({root}).root,relative)));
+  writeFileSync(source,readFileSync(join(prepareNativeFixture(root,dir).root,relative)));
   let java=readFileSync(source,'utf8');
   // Only host unavailable Android key acquisition is adapted. AES/GCM, AAD,
   // JSON parsing, bounded reads, committed-byte checks and CAS are real source.

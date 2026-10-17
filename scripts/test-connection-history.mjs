@@ -2,22 +2,12 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import vm from 'node:vm';
+import {transformSync} from 'esbuild';
+import {resolveCloudEnvironment} from '../apps/app/src/runtime/cloud-environment-selection.ts';
 import { readFile } from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
-import { spawnSync } from 'node:child_process';
-const cloudSignInModule = await import('../apps/app/src/runtime/cloud-sign-in.ts');
-if (!process.execArgv.includes('--experimental-transform-types')) {
-  process.exit(spawnSync(process.execPath, ['--experimental-transform-types', process.argv[1]], { stdio: 'inherit' }).status ?? 1);
-}
-const { CloudProtocol, CloudProvisionAcceptedError } = await import('../apps/app/src/runtime/cloud-protocol.ts');
-const { PersonalProtocolError } = await import('../apps/app/src/runtime/cloud-personal-protocol.ts');
-const { DevelopmentCloudAgentProtocol } = await import('../apps/app/src/runtime/development-cloud-agents.ts');
-const { phoneContextMessage } = await import('../apps/app/src/runtime/phone-context.ts');
-const { findStoppedUserTurn } = await import('../apps/app/src/runtime/stopped-reply-match.ts');
-const { RemoteProtocol } = await import('../apps/app/src/runtime/remote-protocol.ts');
-const { presentDeviceRecordOperation } = await import('../apps/app/src/runtime/device-record-presentation.ts');
-const subscriptionEntitlement = await import('../apps/app/src/runtime/subscription-entitlement.ts');
-const { AlphaClientError } = await import('../apps/app/src/runtime/alpha-client.ts');
+import {loadBrowserModule} from '../test/fixtures/browser-source.mjs';
+const [cloudSignInModule,{ CloudProtocol, CloudProvisionAcceptedError },{ PersonalProtocolError },{ DevelopmentCloudAgentProtocol },{ phoneContextMessage },{ findStoppedUserTurn },{ RemoteProtocol },{ presentDeviceRecordOperation },subscriptionEntitlement,{ AlphaClientError }]=await loadBrowserModule(['apps/app/src/runtime/cloud-sign-in.ts', 'apps/app/src/runtime/cloud-protocol.ts', 'apps/app/src/runtime/cloud-personal-protocol.ts', 'apps/app/src/runtime/development-cloud-agents.ts', 'apps/app/src/runtime/phone-context.ts', 'apps/app/src/runtime/stopped-reply-match.ts', 'apps/app/src/runtime/remote-protocol.ts', 'apps/app/src/runtime/device-record-presentation.ts', 'apps/app/src/runtime/subscription-entitlement.ts', 'apps/app/src/runtime/alpha-client.ts'],{testMocks:true});
 const user = '11111111-1111-4111-8111-111111111111', agent = '22222222-2222-4222-8222-222222222222', organization = '99999999-9999-4999-8999-999999999999';
 const personal = 'personal:12345678-1234-5234-8234-123456789abc', agentHost = `https://${agent}.cloud.eliza.app`;
 const conversation = '33333333-3333-4333-8333-333333333333';
@@ -101,7 +91,7 @@ let clockRetirements=0,heldClockRetirement=null,clockRetirementStarted=null;
 const retireClockReviews=async()=>{clockRetirements++;clockRetirementStarted?.();if(heldClockRetirement)await heldClockRetirement;};
 // This controller fixture models a host whose transport reaches Eliza Cloud. The flag-off web page
 // has none and starts no Cloud route; test/browser/connection-boundaries.production.spec.ts covers it.
-const sandbox = { ...subscriptionEntitlement, ...cloudSignInModule, cloudSignIn:undefined, cloudSignInGoogle:false, AlphaClientError, browserLocalAgentEnabled:true, retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:true, devSurfacesEnabled:true, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
+const sandbox = {resolveCloudEnvironment, ...subscriptionEntitlement, ...cloudSignInModule, cloudSignIn:undefined, cloudSignInGoogle:false, AlphaClientError, browserLocalAgentEnabled:true, retireClockReviews, workflowPresentationProtocol:async()=>2, browserDevProfile:false, devProfileQuery:false, testMocksEnabled:true, devSurfacesEnabled:true, secureConnectionStore:{read:async slot=>deviceSlots.get(slot)??null,write:async(slot,value)=>{deviceSlots.set(slot,value);},remove:async slot=>{deviceSlots.delete(slot);}},
   PersonalProtocolError, personalIntent:async()=>null, savePersonalIntent:async(_owner,intent)=>intent, clearPersonalIntent:async()=>{},
   RemoteProtocol, remoteCredentialStore, nativeRemoteRequest, DeviceActions, presentDeviceRecordOperation, actionScope:async value=>Buffer.from(value).toString('base64url').slice(0,32), negotiateEnabledViews:async()=>'',
   Capacitor:{getPlatform:()=>'web'},aospImage:false,SMS_SEND_CAPABILITY:'sms.send.v1', setTimeout:(callback,ms)=>setTimeout(callback,ms===15000?20:ms), clearTimeout, Intl, Date, Buffer, pauseHostedBackground:async()=>{}, configureHostedBackground:async()=>{}, registerPlugin: () => ({}), CloudProtocol, DevelopmentCloudAgentProtocol, CloudProvisionAcceptedError, phoneContextMessage, findStoppedUserTurn, nativeCloudRequest,
@@ -119,7 +109,7 @@ Object.assign(sandbox, selectionSandbox.selectionApi);
 let source = (await readFile(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8')).split('export function ConnectionChooser()')[0];
 source = source.replace(/^import .*;\n/gm, '').replace(/export /g, '');
 source += '\nglobalThis.controller = connectionController;';
-vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }), sandbox);
+vm.runInNewContext(transformSync(stripTypeScriptTypes(source, { mode: 'transform' }), {define:{'import.meta.env':JSON.stringify({DEV:true})}}).code, sandbox);
 const controller = sandbox.controller;
 try {
   await controller.cloudList('production');
