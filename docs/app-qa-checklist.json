@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T06:40:33.592862+00:00",
+  "updatedAt": "2026-10-17T06:56:41.915252+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
@@ -43,9 +43,11 @@
       "scope": "MVP",
       "implementation": "Core-only Home defaults; explicit native favorites and All apps retained. 34 unit and 6 browser checks pass.",
       "preview": "Focused synthetic browser proof; real 5209 remains available for human QA.",
-      "seeker": "Installeda569: core-only grid and All apps visibly verified after update; broader shortcuts/drawer acceptance pending.",
+      "seeker": "Installed2446 read-only: Home has exactly11 core navigation controls and no ordinary Android app grid in observed area. All apps reports84 apps; core favorites and installed app rows visible. No edits/launches; custom-shortcut preservation lacks a prior baseline.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-home-models-readonly-20261017.json"
+      ],
       "notes": ""
     },
     {
@@ -1769,9 +1771,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Native Models now shows on-device voice and actual native provider admission/model. Two synthetic native UI checks pass; installed-current-source retest pending.",
-      "seeker": "Pending",
+      "seeker": "Installed2446 read-only Models: Eliza, connection On this device, Eliza Cloud inference, qwen-3.8-27b (Cerebras), voice On this device. This proves displayed selection only; native model request failed separately and remote/offline transitions were not induced.",
       "userApproval": "Pending",
-      "evidence": [],
+      "evidence": [
+        "docs/evidence/seeker-home-models-readonly-20261017.json"
+      ],
       "notes": "Installedbb4d still displayed misleading Cloud voice label. Correction is in source afterbb4d and needs the next integrated native build."
     },
     {
