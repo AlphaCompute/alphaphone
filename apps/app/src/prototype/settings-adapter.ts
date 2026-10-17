@@ -23,6 +23,7 @@ import { gmailGrantLabel, googleAccountAccessLabel } from '../runtime/gmail-gran
 import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { exportVoiceTiming } from '../runtime/voice-timing';
+import { readNativeVoiceTiming } from '../runtime/native-voice-turn';
 import { listenerStatus, openListenerSettings, pauseListener, turnOffListener, type ListenerStatus } from '../runtime/always-on-listener';
 import { leavePasswordManager, passwordEntryPage, passwordManagerGroups, passwordManagerLifecycle, refreshPasswordManager, PASSWORD_PAGES } from '../passwords/password-manager';
 
@@ -261,7 +262,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     if (diagnosticsBusy) return;
     const instance = owner, native = Capacitor.isNativePlatform(); diagnosticsBusy = true; changed();
     try {
-      const [buildFacts, problems, roleState] = await Promise.allSettled([native ? device.diagnosticsFacts() : Promise.resolve({}), readCrashLog(), native ? system.getStatus() : Promise.resolve({ roles: [] })]);
+      const [buildFacts, problems, roleState, nativeTiming] = await Promise.allSettled([native ? device.diagnosticsFacts() : Promise.resolve({}), readCrashLog(), native ? system.getStatus() : Promise.resolve({ roles: [] }), readNativeVoiceTiming()]);
       const value: Bag = buildFacts.status === 'fulfilled' ? buildFacts.value : {};
       const connection = connectionController.getSnapshot();
       const report = buildDiagnostics({
@@ -275,6 +276,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         connection: { kind: connection.kind, connected: !!connection.session },
         // Per-turn voice latency kept on this device; buildDiagnostics copies timing fields only.
         voiceTiming: (() => { try { return JSON.parse(exportVoiceTiming()); } catch { return null; } })(),
+        // Native audio-clock voice latency (issue #395): timings, turn ids and hashes only.
+        nativeVoiceTiming: nativeTiming.status === 'fulfilled' ? nativeTiming.value : null,
       });
       const text = diagnosticsText(report);
       if (native) {

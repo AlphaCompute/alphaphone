@@ -17,13 +17,26 @@
  * numbers only — partial count, speech-start to first partial, speech-end to final on this
  * client, and the agent's own last-frame to final. Never text.
  *
+ * On the phone, a conversation turn's transcript-ready, send and first-token marks are also
+ * reported to the native latency collector (issue #395) through a sink the platform installs
+ * (native-voice-turn.ts). Native stamps them on its monotonic clock and links them to the live
+ * capture turn by a random native turn id, which this record keeps as `nativeTurn` and the reply's
+ * synthesis echoes. Only the stage name and that id cross the bridge: never text.
+ *
  * Plain constants and function exports only: Node contract tests evaluate this source.
  */
 type VoiceTimingMark = 'recording-end' | 'transcript-ready' | 'send' | 'first-token' | 'final-reply' | 'first-audio';
 type VoiceTimingEntry = 'conversation' | 'notes';
 type VoiceTimingPolicy = 'auto-send' | 'review';
 type VoiceTimingLive = { mode: 'stream' | 'batch' | 'unknown'; partials: number; firstPartialMs?: number; finalFromSpeechEndMs?: number; asrFinalFromSpeechEndMs?: number };
-type VoiceTimingRecord = { version: 1; id: string; recordedAt: number; route: string; cold: boolean; entry?: VoiceTimingEntry; policy?: VoiceTimingPolicy; marks: Partial<Record<VoiceTimingMark, number>>; live?: VoiceTimingLive; outcome?: 'abandoned' };
+type VoiceTimingRecord = { version: 1; id: string; recordedAt: number; route: string; cold: boolean; entry?: VoiceTimingEntry; policy?: VoiceTimingPolicy; marks: Partial<Record<VoiceTimingMark, number>>; live?: VoiceTimingLive; nativeTurn?: string; outcome?: 'abandoned' };
+/** Native collector stages (VoiceLatencyTrials) fed by renderer marks. */
+type NativeVoiceStage = 'asr-final' | 'request' | 'first-token';
+const nativeVoiceStages: Partial<Record<VoiceTimingMark, NativeVoiceStage>> = { 'transcript-ready': 'asr-final', send: 'request', 'first-token': 'first-token' };
+const nativeTurnPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** Reports one stage; resolves with the native turn id it was bound to, if any. */
+type NativeVoiceStageSink = (stage: NativeVoiceStage, voiceTurnId?: string) => Promise<string | undefined>;
+let nativeVoiceStageSink: NativeVoiceStageSink | undefined;
 const voiceTimingLiveNumbers = ['firstPartialMs', 'finalFromSpeechEndMs', 'asrFinalFromSpeechEndMs'] as const;
 /** The `live` numbers of a record, or undefined when the value is not exactly that shape. */
 export function voiceTimingLive(value: unknown): VoiceTimingLive | undefined {
@@ -43,7 +56,7 @@ const voiceTimingKey = 'alphaphone:voice-timing:v1';
 const voiceTimingLimit = 200;
 const voiceTimingOrder: VoiceTimingMark[] = ['recording-end', 'transcript-ready', 'send', 'first-token', 'final-reply', 'first-audio'];
 const voiceTimingRoutes = ['on-device', 'browser', 'local-agent', 'eliza-cloud', 'paired-agent', 'development-agent', 'manual'];
-let voiceTimingActive: { id: string; base: number } | undefined;
+let voiceTimingActive: { id: string; base: number; entry?: VoiceTimingEntry; native?: string } | undefined;
 let voiceTimingClock: () => number = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
 
 function voiceTimingStore(): Storage | undefined { try { return globalThis.localStorage; } catch { return undefined; } }
@@ -54,6 +67,7 @@ function voiceTimingValid(value: unknown): value is VoiceTimingRecord {
   if ((row.entry !== undefined && row.entry !== 'conversation' && row.entry !== 'notes') || (row.policy !== undefined && row.policy !== 'auto-send' && row.policy !== 'review')) return false;
   if (!row.marks || typeof row.marks !== 'object' || Array.isArray(row.marks)) return false;
   if (row.live !== undefined && !voiceTimingLive(row.live)) return false;
+  if (row.nativeTurn !== undefined && (typeof row.nativeTurn !== 'string' || !nativeTurnPattern.test(row.nativeTurn))) return false;
   return Object.entries(row.marks as Record<string, unknown>).every(([key, at]) => voiceTimingOrder.includes(key as VoiceTimingMark) && typeof at === 'number' && Number.isFinite(at) && at >= 0 && at < 3_600_000);
 }
 /** Every stored record that passes validation, oldest first. */
@@ -73,7 +87,7 @@ export function beginVoiceTurn(input: { route: string; cold: boolean; entry?: Vo
   abandonVoiceTurn();
   if (!voiceTimingRoutes.includes(input.route) || typeof crypto === 'undefined' || typeof crypto.randomUUID !== 'function') return undefined;
   const id = crypto.randomUUID();
-  voiceTimingActive = { id, base: voiceTimingClock() };
+  voiceTimingActive = { id, base: voiceTimingClock(), ...(input.entry === 'conversation' || input.entry === 'notes' ? { entry: input.entry } : {}) };
   const source = { ...(input.entry === 'conversation' || input.entry === 'notes' ? { entry: input.entry } : {}), ...(input.policy === 'auto-send' || input.policy === 'review' ? { policy: input.policy } : {}) };
   voiceTimingSave({ version: 1, id, recordedAt: Date.now(), route: input.route, cold: input.cold === true, ...source, marks: { 'recording-end': 0 } });
   return id;
@@ -91,9 +105,29 @@ export function markVoiceTiming(mark: VoiceTimingMark, turn?: string): boolean {
   if (mark === 'send' && row.marks['transcript-ready'] === undefined) return false;
   if (voiceTimingOrder.slice(0, index).some(prior => (row.marks[prior] ?? -1) > at)) return false;
   row.marks[mark] = at; voiceTimingSave(row);
+  forwardNativeStage(mark, active);
   if (mark === 'first-audio') voiceTimingActive = undefined;
   return true;
 }
+/**
+ * Installs (or, with undefined, removes) the native stage reporter. Conversation turns only: Notes
+ * dictation is not a voice-assistant latency turn. Diagnostic: a failing sink never affects a turn.
+ */
+export function setNativeVoiceStageSink(sink: NativeVoiceStageSink | undefined) { nativeVoiceStageSink = sink; }
+function forwardNativeStage(mark: VoiceTimingMark, turn: { id: string; entry?: VoiceTimingEntry; native?: string }) {
+  const stage = nativeVoiceStages[mark], sink = nativeVoiceStageSink;
+  if (!stage || !sink || turn.entry !== 'conversation') return;
+  let pending: Promise<string | undefined>;
+  try { pending = Promise.resolve(sink(stage, turn.native)); } catch { return; }
+  void pending.then(id => {
+    if (typeof id !== 'string' || !nativeTurnPattern.test(id) || turn.native !== undefined && turn.native !== id) return;
+    turn.native = id;
+    const row = voiceTimingRecords().find(item => item.id === turn.id);
+    if (row && row.nativeTurn === undefined) { row.nativeTurn = id; voiceTimingSave(row); }
+  }).catch(() => { /* Diagnostic only. */ });
+}
+/** The native latency turn the active conversation turn is linked to, for its reply's synthesis. */
+export function nativeVoiceTurnId(): string | undefined { return voiceTimingActive?.native; }
 /** Attach live ASR numbers to the active turn (or the named one while it is still active). */
 export function recordLiveVoiceTiming(live: unknown, turn?: string): boolean {
   const active = voiceTimingActive, numbers = voiceTimingLive(live);

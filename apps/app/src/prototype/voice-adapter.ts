@@ -21,6 +21,7 @@ import { createCloudVoice, cloudVoiceFailure } from '../runtime/cloud-voice';
 import { selectVoiceRoute, voiceSendPolicy } from '../runtime/voice-selection';
 import { beginVoiceTurn, markVoiceTiming, abandonVoiceTurn, finishVoiceTurn, sendVoiceEntry, recordLiveVoiceTiming } from '../runtime/voice-timing';
 import { createNativeLiveDictation, nativeAssistantListener, nativeLiveVoiceReady, type NativeLiveDictation } from '../runtime/native-live-voice';
+import { installNativeVoiceTurnMarks } from '../runtime/native-voice-turn';
 import { VoiceAssistantSession, type AssistantState } from '../runtime/voice-assistant';
 import { shouldRespondToVoiceTurn, buildVoiceTurnSignal } from '@elizaos/voice/turn';
 import { toSpeakableText } from '@elizaos/ui/voice/voice-chat-playback';
@@ -60,6 +61,7 @@ function noteSpeechText(note: Bag | undefined): string {
 /** One owned recorder, shared by Notes dictation and the chat voice mode. */
 export function installPrototypeVoiceAdapter(Component: any, views: Record<string, Bag>) {
   installLocalSpeechPlayback(Component);
+  installNativeVoiceTurnMarks();
   const notes = views.notes, render = notes.render, back = notes.back, leave = notes.onLeave;
   let closeTranscriptQuestion:(()=>void)|undefined;
   const originalApi = Component.prototype.api;
@@ -515,7 +517,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         if(result.complete){markVoiceTiming('first-token');markVoiceTiming('final-reply');}
         conversationLastTranscript=sent.text;conversationLastReply=result.text;conversationReviewRequired=result.reviewRequired===true&&!result.awaitingUserInput;return result;
       };
-      const voiceStopped=(value:BatchVoiceState)=>cloudVoiceFailure(value.error)||((value.error as {code?:unknown})?.code==='no-speech'?(cloudDriver?'Eliza Cloud heard no speech, so nothing was sent. Start the voice conversation again, or switch to the keyboard.':'No speech was heard, so nothing was sent. Start the voice conversation again, or switch to the keyboard.'):(value.error as {code?:unknown})?.code==='live-asr'?'On-device transcription stopped. Start the voice conversation again, or switch to the keyboard.':(value.error as {code?:unknown})?.code==='capture'?'The microphone stopped. Start the voice conversation again, or switch to the keyboard.':'Voice stopped. Check your connection and conversation history before trying again.');
+      const voiceStopped=(value:BatchVoiceState)=>cloudVoiceFailure(value.error)||((value.error as {reason?:unknown})?.reason==='call-active'?'Voice paused for a phone call. Start the voice conversation again after the call, or switch to the keyboard.':null)||((value.error as {code?:unknown})?.code==='no-speech'?(cloudDriver?'Eliza Cloud heard no speech, so nothing was sent. Start the voice conversation again, or switch to the keyboard.':'No speech was heard, so nothing was sent. Start the voice conversation again, or switch to the keyboard.'):(value.error as {code?:unknown})?.code==='live-asr'?'On-device transcription stopped. Start the voice conversation again, or switch to the keyboard.':(value.error as {code?:unknown})?.code==='capture'?'The microphone stopped. Start the voice conversation again, or switch to the keyboard.':'Voice stopped. Check your connection and conversation history before trying again.');
       // Voice assistant (#423): one echo-cancelled native capture for the whole conversation, VAD
       // endpointing, barge-in and heard-content accounting, when the native VAD capture and the
       // agent's streaming route are both ready. Otherwise the half-duplex recorded-clip loop below.

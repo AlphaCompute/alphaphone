@@ -25,6 +25,7 @@ function fixture({native = true} = {}) {
     // Recognition readiness (ready) and read-aloud readiness (playbackReady) are separate checks.
     createOnDeviceVoice: () => ({ready: async () => false, playbackReady: async () => true}),
     createCloudVoice: () => ({speak: async (text,signal,started) => box.speakLocalText(text,signal,started,false,{execution:'cloud'})}),
+    nativeVoiceTurnId: () => undefined,
     planLocalSpeech: text => { if (/🙂/.test(text)) throw Error('Unsupported'); return [text]; },
     speakLocalText: async (text, signal, started, _queue, requirements) => {
       f.spoken.push({text, execution: requirements?.execution}); f.signals.push(signal);

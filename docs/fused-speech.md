@@ -253,7 +253,29 @@ still required.
 - Live event subscription and direct native PCM routing are implemented in the consumer;
   current installed capture/IPC/inference/playback acceptance remains open (see Live voice).
 - The app-process recorded-clip path (`NativeAsr.transcribe`, used by Notes dictation and when the
-  live route is not ready) is batch; Paradee returns a complete buffer.
+  live route is not ready) is batch.
+
+## Streamed speech output and audio focus (#397)
+
+When the pinned engine reports `ParadeeVoice.supportsStreaming()`, `AlphaVoiceCloudPlugin` synthesizes
+each reviewed sentence with `synthesizeStream` and plays the chunks through an AudioTrack
+(`AudioTrackSpeechOutput`: MODE_STREAM, 24 kHz mono float, USAGE_ASSISTANT/CONTENT_TYPE_SPEECH) as
+they arrive. `StreamingSpeechPlayback` holds at most 30 s of PCM in a `SpeechPcmQueue`; a full queue
+blocks the synthesis callback (backpressure) and stop, barge-in, pause or focus loss closes it, zeroes
+every unplayed chunk, flushes the track and cancels synthesis without reloading the models. Chunks are
+validated per call (`SpeechStreamValidation`: bounded, finite, non-silent utterance) and zeroed after
+the write; streamed audio is never written to storage. `synthesizeLocal` resolves at the first chunk
+with the same `playbackId`/`play`/`playbackEnded` protocol. Only an engine without streaming uses the
+whole-sentence MediaPlayer path; a streaming error is a failure, not a fallback.
+
+Speech requests `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK` before it plays and abandons it afterwards
+(`AlphaSpeechAudioFocus`, `SpeechAudioFocusPolicy`): permanent or transient loss stops the utterance
+and clears its queue, a ducking loss lowers it to 20 %, regain restores it. No speech, recording or
+live capture starts while the audio mode is ringing, in a call or in VoIP communication
+(`call-active`), and on Android 12+ a call starting stops speech and the assistant's live capture
+with that reason. Host-JVM fixtures (`test/streaming-speech.test.mjs`) check the queue, writer,
+cancellation and focus policy; AudioTrack playback, focus behaviour and call handling have not run on
+an emulator or device.
 - The Paradee GGUF, the misaki lexicon and the Phonon-2 GGUF are not published for download; they
   come from the pinned, byte-reproducible conversions.
 - Closed at this pin by elizaOS/eliza#36239 and elizaOS/llama.cpp#79: AOSP stages eSpeak NG data,
