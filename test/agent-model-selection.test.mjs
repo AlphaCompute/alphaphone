@@ -5,16 +5,16 @@ import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {spawnSync,execFileSync} from 'node:child_process';
 
-function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=false,repeat=false}={}) {
+function launch({route,override,swaps,existingToken=true,runtimeConfigUpdate=false,repeat=false,autoReset}={}) {
  const dir=mkdtempSync(join(tmpdir(),'alpha-model-')),profile=join(dir,'profile'),source=join(dir,'source'),receipt=join(dir,'models.json'),childReceipt=join(dir,'child.json'),bun=join(dir,'fake-bun');
  mkdirSync(profile);mkdirSync(join(source,'packages/app/src/runtime'),{recursive:true});writeFileSync(join(source,'packages/app/src/runtime/dev-server.ts'),'');
  execFileSync('git',['init','-q',source]);execFileSync('git',['-C',source,'-c','user.name=Fixture','-c','user.email=fixture@example.invalid','commit','--allow-empty','-qm','fixture']);
- writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,hostRevision:process.env.ELIZA_HOST_CONTEXT_REVISION,token:process.env.ELIZA_API_TOKEN,nativeViews:JSON.parse(process.env.ELIZA_NATIVE_VIEW_DECLARATIONS),swaps:{secret:process.env.ELIZA_SECRET_SWAP_ENABLED??null,pii:process.env.ELIZA_PII_SWAP_ENABLED??null},config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
+ writeFileSync(bun,`#!/usr/bin/env node\nconst fs=require('node:fs');fs.writeFileSync(${JSON.stringify(childReceipt)},JSON.stringify({pid:process.pid,hostRevision:process.env.ELIZA_HOST_CONTEXT_REVISION,autoReset:process.env.ELIZA_PGLITE_AUTO_RESET??null,token:process.env.ELIZA_API_TOKEN,nativeViews:JSON.parse(process.env.ELIZA_NATIVE_VIEW_DECLARATIONS),swaps:{secret:process.env.ELIZA_SECRET_SWAP_ENABLED??null,pii:process.env.ELIZA_PII_SWAP_ENABLED??null},config:JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8'))}));fs.writeFileSync(${JSON.stringify(receipt)},JSON.stringify(Object.fromEntries(['CEREBRAS_MODEL','CEREBRAS_SMALL_MODEL','CEREBRAS_LARGE_MODEL'].map(k=>[k,process.env[k]]))));${runtimeConfigUpdate?"fs.writeFileSync(process.env.ELIZA_CONFIG_PATH,JSON.stringify({...JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH,'utf8')),runtimeSelection:'retained'}));":''}`,{mode:0o700});
  const tokenPath=join(profile,'owner-token'),retainedToken='a'.repeat(64);if(existingToken)writeFileSync(tokenPath,retainedToken,{mode:0o600});
  const config=join(profile,'eliza.json');if(route)writeFileSync(config,JSON.stringify({serviceRouting:{llmText:route},fixtureKeep:'preserve'}),{mode:0o600});
  const before=existsSync(config)?readFileSync(config,'utf8'):null;
  let ownedLivePid;
- const env={...process.env,ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;
+ const env={...process.env,ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',ALPHA_ELIZA_SOURCE:source,ALPHA_REMOTE_PROFILE:profile,ALPHA_REMOTE_PORT:'47999',ALPHA_BUN:bun,CEREBRAS_API_KEY:'synthetic-fixture-key'};for(const key of ['ELIZA_SECRET_SWAP_ENABLED','ELIZA_PII_SWAP_ENABLED','CEREBRAS_MODEL','ELIZA_PGLITE_AUTO_RESET'])delete env[key];Object.assign(env,swaps||{});if(override!==undefined)env.CEREBRAS_MODEL=override;if(autoReset!==undefined)env.ELIZA_PGLITE_AUTO_RESET=autoReset;
  try {
   let result=spawnSync(process.execPath,[resolve('scripts/start-local-remote.mjs')],{env,encoding:'utf8',timeout:15000});
   const firstChild=existsSync(childReceipt)?JSON.parse(readFileSync(childReceipt,'utf8')):null;
@@ -73,4 +73,13 @@ test('local host owns a fresh nonsecret retirement revision on each launch of th
  assert.notEqual(r.firstChild.hostRevision,r.child.hostRevision);
  assert.equal(r.firstChild.token,r.retainedToken);assert.equal(r.child.token,r.retainedToken);
  assert.equal(r.after,r.before);assert.equal(r.childAlive,false);
+});
+
+
+test('local launcher preserves the explicit database recovery choice in the spawned child',()=>{
+ for(const autoReset of [undefined,'0','1']){
+  const r=launch({autoReset});assert.equal(r.status,0,r.error);
+  assert.equal(r.child.autoReset,autoReset??null);assert.equal(r.childAlive,false);
+  assert.equal(r.child.token,r.retainedToken);
+ }
 });
