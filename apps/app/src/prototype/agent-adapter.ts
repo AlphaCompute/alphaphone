@@ -1116,6 +1116,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
       const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
       current();
+      if(delivered&&reply.userMessageId){
+        const results=await connectionController.continueRequestedCamera(reply.userMessageId,signal);
+        for(const result of results)this.agentSay(result.summary,{type:'generic',icon:'camera',title:result.status==='succeeded'?'Photo saved':'Camera',sub:result.summary,systemNotice:true,done:true});
+      }
       const awaiting=reply.proposals?.filter(proposal=>proposal.readReply?.origin.requestId===turnId&&proposal.readReply.origin.conversationId===identity.conversationId&&proposal.readReply.origin.inReplyTo===reply.userMessageId);
       if(awaiting&&awaiting.length>1)throw Error('More than one Notes review was returned. Use action history.');
       for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal),undefined,belongs);}
@@ -1188,7 +1192,13 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       for(const notice of replyNotices(reply))this.agentSay(notice,{type:'generic',icon:'info',title:'Phone action not shown here',sub:notice,systemNotice:true,done:true});
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal));}
-      try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+      try{
+        const delivered=await deliverNavigation(reply.actionResults);
+        if(delivered&&reply.userMessageId){
+          const results=await connectionController.continueRequestedCamera(reply.userMessageId,new AbortController().signal);
+          for(const result of results)if(this.live)this.agentSay(result.summary,{type:'generic',icon:'camera',title:result.status==='succeeded'?'Photo saved':'Camera',sub:result.summary,systemNotice:true,done:true});
+        }
+      }catch(error){if(this.live)this.toast(error instanceof Error?error.message:'Could not confirm the screen change. Check your screen.');}
     } catch (e) {
       let opened=false;
       if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{opened=await deliverNavigation(readyNavigation);}catch{}}

@@ -36,6 +36,7 @@ export class ViewNavigationClient {
 	readonly clientId = crypto.randomUUID();
 	private disposed = false;
 	private attempt?: NavigationAttempt;
+	private readonly deliveredContexts = new WeakMap<AbortController, ContextEnvelope>();
 	private readonly state;
 	constructor(
 		private readonly request: Request,
@@ -85,6 +86,14 @@ export class ViewNavigationClient {
 		};
 		this.attempt = attempt;
 		return attempt;
+	}
+	currentAttempt(context: ContextEnvelope): NavigationAttempt | undefined {
+		if (JSON.stringify(this.context()) !== JSON.stringify(context)) return;
+		try { this.attempt?.current(); return this.attempt; } catch { return; }
+	}
+	deliveredContext(attempt: NavigationAttempt): ContextEnvelope | undefined {
+		const context = this.deliveredContexts.get(attempt.controller);
+		return context ? structuredClone(context) : undefined;
 	}
 	cancel() {
 		this.attempt?.controller.abort();
@@ -228,7 +237,8 @@ export class ViewNavigationClient {
 			this.context()?.view === target &&
 			!this.context()?.sensitive &&
 			!document.hidden
-		)
+		) {
+			this.deliveredContexts.set(attempt.controller, structuredClone(this.context()!));
 			return {
 				status: "delivered",
 				label:
@@ -238,6 +248,7 @@ export class ViewNavigationClient {
 							? values.label
 							: target,
 			};
+		}
 		return { status: "unknown" };
 	}
 }

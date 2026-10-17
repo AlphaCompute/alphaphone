@@ -283,10 +283,10 @@ export class DeviceActions {
   }
   /** Only proposals bound by the host to this exact freshly sent user message may run.
    * Recovery, workflows and old hosts remain review-only; ordinary OS permissions still apply. */
-  async performRequested(messageId:string,context:ContextEnvelope,signal:AbortSignal,allowed:()=>Promise<boolean>):Promise<OperationReceipt[]> {
+  async performRequested(messageId:string,context:ContextEnvelope,signal:AbortSignal,allowed:()=>Promise<boolean>,operationType?:ReviewableDeviceOperation['type']):Promise<OperationReceipt[]> {
     const results:OperationReceipt[]=[];
     for(const [id,entry] of [...this.proposals]) {
-      if(results.length>=4||entry.proposal.workflow||entry.proposal.requestMessageId!==messageId)continue;
+      if(results.length>=4||entry.proposal.workflow||entry.proposal.requestMessageId!==messageId||(operationType!==undefined&&entry.proposal.operation.type!==operationType))continue;
       if(!await allowed())break;
       signal.throwIfAborted();
       const result=await this.approve(id,context,signal);results.push(result);

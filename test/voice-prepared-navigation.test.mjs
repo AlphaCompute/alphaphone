@@ -6,7 +6,7 @@ import{findViewActionHandoff}from'../.eliza/client-features/packages/core/src/vi
 import{createCompletedActionNavigationState}from'../.eliza/client-features/packages/core/src/views/completed-action-navigation.ts';
 import{NAVIGATE_VIEW_EVENT}from'../.eliza/client-features/packages/core/src/events.ts';
 const text=readFileSync('apps/app/src/runtime/view-navigation.ts','utf8');
-const ViewNavigationClient=new Function('NAVIGATE_VIEW_EVENT','createCompletedActionNavigationState','findViewActionHandoff','ENABLED_MVP_VIEWS','AlphaClientError',stripTypeScriptTypes(text,{mode:'transform'}).replace(/^import[\s\S]*?;\n/gm,'').replace(/^export /gm,'')+';return ViewNavigationClient;')(NAVIGATE_VIEW_EVENT,createCompletedActionNavigationState,findViewActionHandoff,new Set(['notes','home','workflows']),class extends Error{});
+const ViewNavigationClient=new Function('NAVIGATE_VIEW_EVENT','createCompletedActionNavigationState','findViewActionHandoff','ENABLED_MVP_VIEWS','AlphaClientError',stripTypeScriptTypes(text,{mode:'transform'}).replace(/^import[\s\S]*?;\n/gm,'').replace(/^export /gm,'')+';return ViewNavigationClient;')(NAVIGATE_VIEW_EVENT,createCompletedActionNavigationState,findViewActionHandoff,new Set(['notes','home','workflows','camera']),class extends Error{});
 const source=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
 const helper=source.slice(source.indexOf('  function openInternalView('),source.indexOf('  function context(shell:',source.indexOf('  function openInternalView(')));
 const projection=source.slice(source.indexOf('  p.applyRealtimeVoiceNavigation = async function('),source.indexOf('  p.sendVoiceTurn = async function('));
@@ -18,16 +18,17 @@ function harness({claimFailure=false,retireAfterClaim=false,viewId="notes",local
   if(path.endsWith('interact-claim')){assert.equal(commits,0);if(claimFailure)throw Error('Actual claim was refused');if(retireAfterClaim)active=false;return{claimId:'fixture-owned-claim'};}
   assert.equal(path,'/api/views/interact-result');assert.equal(commits,1);assert.equal(context.view,localView);assert.equal(body.result.switched,true);return{accepted:true};
  },()=>active,()=>context);
- const controller={voiceConversationCurrent:()=>active,captureViewNavigation:value=>({client,attempt:client.capture(value)})};
+ let capturedAttempt;
+ const controller={voiceConversationCurrent:()=>active,captureViewNavigation:value=>({client,attempt:capturedAttempt=client.capture(value)})};
  const p={};const alphaClient={getState:()=>({context})};
  const sync=shell=>{context={view:shell.state.view||'home',revision:context.revision+1,sensitive:false};};
  const code=stripTypeScriptTypes(helper+projection,{mode:'transform'});
- new Function('p','connectionController','alphaClient','isMvpView','views','context',code)(p,controller,alphaClient,v=>['notes','home','workflows'].includes(v),{notes:{},home:{},workflows:{}},sync);
+ new Function('p','connectionController','alphaClient','isMvpView','views','context',code)(p,controller,alphaClient,v=>['notes','home','workflows','camera'].includes(v),{notes:{},home:{},workflows:{},camera:{}},sync);
  const shell={live:true,state:{view:null,chat:'full'},S(){return this.state;},goHome(chat){this.state.view=null;this.state.chat=chat;},openView(view,_patch,chat){this.state.view=view;this.state.chat=chat;},setState(_patch,done){flushCommit=()=>{commits++;done?.();};},voiceConversationContext(){if(!active)throw Error('Owner changed');return context;},toast(){}};
  const id='11111111-1111-4111-8111-111111111111',binding={requestId:id,clientId:client.clientId,installationId:'33333333-3333-4333-8333-333333333333',viewId,viewType:'gui'};
  const event={viewId,viewPath:'/'+viewId,traceId:'owned-turn',navigationPrepared:true,completedActionHandoffId:id,navigationBinding:binding};
  const navigation={async apply(_view,check,commit){check();return commit('full',()=>{});},finish(delivered){finishes.push(delivered);}};
- return{event,requests,finishes,client,apply:value=>p.applyRealtimeVoiceNavigation.call(shell,{...value,binding:{},assertCurrent(){if(!active)throw Error('Owner changed');},navigation}),flush(){assert.equal(typeof flushCommit,'function');flushCommit();},retire(){active=false;},get commits(){return commits;},close(){client.dispose();},shell};
+ return{event,requests,finishes,client,get capturedAttempt(){return capturedAttempt;},apply:value=>p.applyRealtimeVoiceNavigation.call(shell,{...value,binding:{},assertCurrent(){if(!active)throw Error('Owner changed');},navigation}),flush(){assert.equal(typeof flushCommit,'function');flushCommit();},retire(){active=false;},get commits(){return commits;},close(){client.dispose();},shell};
 }
 const settle=async()=>{for(let n=0;n<30;n++)await Promise.resolve();};
 test('actual realtime projection reuses canonical claim→commit callback→accepted result before success',async()=>{
@@ -45,4 +46,20 @@ test('owner rotation during commit makes completion unknown and never sends a st
 
 test('actual prepared projection normalizes chat and automations through canonical commit',async()=>{
  for(const [viewId,localView]of [['chat','home'],['automations','workflows']]){const f=harness({viewId,localView});try{const pending=f.apply(f.event);await settle();assert.equal(f.requests.length,1);f.flush();assert.equal(await pending,true);assert.equal(f.shell.S().view,localView==='home'?null:localView);assert.equal(f.requests[1].body.result.switched,true);assert.deepEqual(f.finishes,[true]);}finally{f.close();}}
+});
+
+test('camera continuation gets a context only after the matching navigation acknowledgement',async()=>{
+ const f=harness({viewId:'camera',localView:'camera'});try{
+  const capture=f.client.capture({view:'home',revision:1,sensitive:false});
+  assert.equal(f.client.currentAttempt({view:'home',revision:1,sensitive:false}),capture);
+  assert.equal(f.client.deliveredContext(capture),undefined);
+  const pending=f.client.deliver([{actionName:'VIEWS_SHOW',success:true,values:{mode:'show',viewId:'camera',viewPath:'/camera',viewType:'gui',completedActionHandoffId:f.event.completedActionHandoffId,navigationPrepared:true,navigationBinding:f.event.navigationBinding}}],capture,async()=>{f.shell.state.view='camera';f.shell.setState({},()=>{});f.flush();return true;});
+  await pending.catch(()=>{});
+  assert.equal(f.client.deliveredContext(capture),undefined,'a visual switch without the owned context commit is insufficient');
+ }finally{f.close();}
+ const g=harness({viewId:'camera',localView:'camera'});try{
+  const pending=g.apply(g.event);await settle();assert.equal(g.client.deliveredContext(g.capturedAttempt),undefined);g.flush();assert.equal(await pending,true);
+  assert.deepEqual(g.client.deliveredContext(g.capturedAttempt),{view:'camera',revision:2,sensitive:false});
+  assert.equal(g.client.currentAttempt({view:'home',revision:1,sensitive:false}),undefined);
+ }finally{g.close();}
 });

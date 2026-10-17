@@ -39,3 +39,33 @@ const overlay=cameraFixture();overlay.context.api.S.chat='full';assert.equal((aw
 const background=cameraFixture();background.context.document.hidden=true;assert.equal((await background.capture('background-operation',signal(),()=>{})).status,'failed');assert.equal(background.calls,0);
 const cancelled=cameraFixture();const abort=new AbortController();abort.abort();assert.equal((await cancelled.capture('cancelled',abort.signal,()=>{})).status,'failed');assert.equal(cancelled.calls,0);
 console.log('PASS: actual camera save/request code and DeviceActions journal/receipt flow; current-message binding, visible view, capability, cancellation, concurrency and lost-receipt non-replay. Synthetic camera boundary only.');
+
+// Exercise the actual controller continuation, with navigation and preferences as boundaries.
+const controllerSource=readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8');
+const start=controllerSource.indexOf('  async continueRequestedCamera('),end=controllerSource.indexOf('  voiceRendererClientId()',start);
+assert(start>=0&&end>start);
+function continuationFixture(){
+ const camera=cameraFixture(),f=flow(camera),actions=f.make(),context={view:'camera',revision:2,sensitive:false};
+ const session={sessionId:'session'},selected={actions},attempt={controller:new AbortController()};
+ const state={session},pending={messageId:'message-one',selected,session,generation:7,conversationId:'conversation',client:{deliveredContext:()=>context},attempt,expiresAt:Date.now()+30000};
+ const scope=vm.createContext({requestedCameraContinuation:pending,navigationContext:()=>context,document:{hidden:false},epoch:7,active:selected,state,conversationMemory:new Map([['key','conversation']]),conversationKey:()=> 'key',readDevicePreferences:async()=>({askBeforeAgentActions:false}),Date});
+ vm.runInContext(stripTypeScriptTypes('globalThis.controller={'+controllerSource.slice(start,end)+'};',{mode:'transform'}),scope);
+ return {scope,context,pending,session,state,attempt,camera,run:(message='message-one')=>scope.controller.continueRequestedCamera(message,signal())};
+}
+const continued=continuationFixture();assert.equal((await continued.run())[0].status,'succeeded');assert.equal(continued.camera.calls,1);assert.equal((await continued.run()).length,0);assert.equal(continued.camera.calls,1);
+for(const reason of ['wrong-message','no-ack','different-view','hidden','owner','conversation','epoch','aborted-navigation','expired','ask-first','moved-after-ack']){
+ const h=continuationFixture();
+ if(reason==='no-ack')h.pending.client.deliveredContext=()=>undefined;
+ if(reason==='different-view')h.context.view='photos';
+ if(reason==='hidden')h.scope.document.hidden=true;
+ if(reason==='owner')h.state.session={sessionId:'other'};
+ if(reason==='conversation')h.scope.conversationMemory.set('key','other');
+ if(reason==='epoch')h.scope.epoch=8;
+ if(reason==='aborted-navigation')h.attempt.controller.abort();
+ if(reason==='expired')h.pending.expiresAt=0;
+ if(reason==='ask-first')h.scope.readDevicePreferences=async()=>({askBeforeAgentActions:true});
+ if(reason==='moved-after-ack')h.scope.navigationContext=()=>({...h.context,revision:3});
+ await h.run(reason==='wrong-message'?'old-message':'message-one').catch(()=>[]);
+ assert.equal(h.camera.calls,0,reason+' must not capture');
+}
+console.log('PASS: Home continuation consumes only the current completed message after acknowledged Camera navigation; stale, lost acknowledgement, changed owner/view/preferences, expired and duplicate continuations cannot capture.');

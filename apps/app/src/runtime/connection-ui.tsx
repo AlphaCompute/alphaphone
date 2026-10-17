@@ -9,7 +9,7 @@ import {automationsRouteAllowed, type AutomationsMethod} from './automations-rou
 import {iconStyle} from '../icon-style';
 import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
 import type {ConversationMessageTarget, ChatChannel, VoiceConversationBinding,VoiceTurnSignal,ReadReplyBinding,NativeNotesReadReplyHint} from './alpha-client';
-import {ViewNavigationClient} from './view-navigation';
+import {ViewNavigationClient,type NavigationAttempt} from './view-navigation';
 import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
 import {developmentExecutionDocument} from '../browser/development-execution-document';
@@ -263,6 +263,7 @@ const actionReceipts = new Map<string, { sessionId: string; result: Promise<Oper
 const readReplyOwners=new Map<ReadReplyBinding,{actions:DeviceActions;proposalId:string;digest:string;cancelled:boolean}>();
 function retireReadReplies(){for(const binding of [...readReplyOwners.keys()])void connectionController.cancelReadReply(binding).catch(()=>{});}
 let navigationContext:(()=>ContextEnvelope|null)|undefined;
+let requestedCameraContinuation:{messageId:string;selected:Active;session:VerifiedSession;generation:number;conversationId:string;client:ViewNavigationClient;attempt:NavigationAttempt;expiresAt:number}|undefined;
 let deviceRecovery: DeviceRecovery | undefined;
 let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: 'Device action executor is unavailable.' });
 /** Foreground local reviews (free/busy over owner-chosen calendars). The phone shell supplies the
@@ -1407,6 +1408,18 @@ export const connectionController = {
     const receipts=await selected.actions.performRequested(messageId,context,signal,allowed);current();
     return receipts;
   },
+  async continueRequestedCamera(messageId:string,signal:AbortSignal):Promise<OperationReceipt[]> {
+    const pending=requestedCameraContinuation;
+    if(!pending||pending.messageId!==messageId)return [];
+    requestedCameraContinuation=undefined;
+    const context=pending.client.deliveredContext(pending.attempt);
+    if(!context||context.view!=='camera'||context.sensitive||!pending.selected.actions)return [];
+    const current=()=>{signal.throwIfAborted();if(document.hidden||pending.attempt.controller.signal.aborted||Date.now()>pending.expiresAt||epoch!==pending.generation||active!==pending.selected||state.session!==pending.session||conversationMemory.get(conversationKey(pending.session))!==pending.conversationId||JSON.stringify(navigationContext?.())!==JSON.stringify(context))throw Error('The camera request changed.');};
+    const allowed=async()=>{current();const preferences=await readDevicePreferences(signal);current();return !preferences.askBeforeAgentActions;};
+    if(!await allowed())return [];
+    await pending.selected.actions.pendingReview(context,signal);current();
+    return pending.selected.actions.performRequested(messageId,context,signal,allowed,'camera_capture_photo');
+  },
   voiceRendererClientId(){return boundNavigation()?.clientId;},
   voiceRendererMetadata(context:ContextEnvelope){return boundNavigation()?.metadata(context)??{};},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
@@ -2133,6 +2146,8 @@ export const connectionController = {
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
     const selected = active, session = state.session, generation = epoch;
+    requestedCameraContinuation=undefined;
+    const cameraNavigation=boundNavigation(),cameraAttempt=cameraNavigation?.currentAttempt(context);
     if (!selected || !session) throw noSessionError(NO_AGENT_SEND);
     const controller = new AbortController();
     const cancel = () => controller.abort(signal.reason);
@@ -2193,9 +2208,9 @@ export const connectionController = {
       if (selected.actions) {
         // A pending action that does not fit this screen, time zone or negotiated support is
         // named to the owner instead of being dropped; it stays unapprovable.
-        try { let items = await selected.actions.pendingReview(message.context, requestSignal);
+        try { let items = await selected.actions.pendingReview(context, requestSignal);
           if(!responseFailure&&directRequestedActions&&typeof reply.userMessageId==='string'&&validateUuid(reply.userMessageId)){
-            const performed=await selected.actions.performRequested(reply.userMessageId,message.context,requestSignal,async()=>!(await readDevicePreferences(requestSignal)).askBeforeAgentActions);
+            const performed=await selected.actions.performRequested(reply.userMessageId,context,requestSignal,async()=>!(await readDevicePreferences(requestSignal)).askBeforeAgentActions);
             assertCurrent();
             if(performed.length){notices.push(...performed.map(result=>result.summary.slice(0,500)));items=await selected.actions.pendingReview(message.context,requestSignal);}
           }
@@ -2207,6 +2222,9 @@ export const connectionController = {
       // A failed reply can follow a durably recorded proposal. Recover only the
       // existing identity/context-bound review; never retry chat or execute it.
       if (responseFailure && !proposals?.length) throw responseFailure;
+      if(!responseFailure&&directRequestedActions&&message.context.view==='home'&&cameraNavigation&&cameraAttempt&&typeof reply.userMessageId==='string'&&Array.isArray(reply.actionResults)){
+        requestedCameraContinuation={messageId:reply.userMessageId,selected,session,generation,conversationId:id,client:cameraNavigation,attempt:cameraAttempt,expiresAt:Date.now()+30_000};
+      }
       return { text: responseFailure
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
         : reply.text, ...(notices.length ? { notices } : {}), ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };
