@@ -314,8 +314,12 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
         toggleFavorite: () => launcher.toggleFavorite(app),
       };
     };
-    const rows = filterLauncherApps(snap.apps, query).map(row);
+    const matching = filterLauncherApps(snap.apps, query);
     const pinned = query.trim() ? [] : launcher.favoriteApps();
+    const pinnedKeys = new Set(pinned.map(appKey));
+    // Favorites already appear above the inventory. Search returns all matches;
+    // an unfiltered drawer shows every entry once, with its existing controls.
+    const rows = matching.filter(app => !pinnedKeys.has(appKey(app))).map(row);
     const favorites = pinned.map((app, index) => {
       const base = row(app), name = base.aria.slice('Open '.length);
       return {...base, earlierAria: `Move ${name} earlier`, laterAria: `Move ${name} later`, first: index === 0, last: index === pinned.length - 1,
@@ -328,8 +332,8 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
     } : null;
     const status = snap.status === 'loading' || snap.status === 'idle' ? 'Reading installed apps…'
       : snap.status === 'failed' ? 'Installed apps could not be read.'
-      : !snap.apps.length ? 'No other apps are installed.'
-      : !rows.length ? `No apps match “${query.trim()}”.` : '';
+      : !query.trim() && !snap.apps.some(app => !builtinRows.has(appKey(app))) ? 'No other apps are installed.'
+      : !matching.length ? `No apps match “${query.trim()}”.` : '';
     const homeApps = launcher.favoriteApps().map(app => {
       const builtin = builtinRows.get(appKey(app));
       return builtin ? {...builtin, hasIcon: false, noIcon: true} : {...row(app), badge: false};
@@ -340,7 +344,7 @@ export function installHomeLauncher(Component: any, bridge: LauncherBridge, opti
       rows, hasRows: rows.length > 0, favorites, hasFavorites: favorites.length > 0,
       dial, hasDial: !!dial, status, hasStatus: !!status, failed: snap.status === 'failed',
       retry: () => void launcher.load(), launchError: snap.launchError || '', hasLaunchError: !!snap.launchError,
-      count: snap.status === 'ready' ? `${rows.length} ${rows.length === 1 ? 'app' : 'apps'}` : '',
+      count: snap.status === 'ready' ? `${matching.length} ${matching.length === 1 ? 'app' : 'apps'}` : '',
     }};
   };
   return launcher;

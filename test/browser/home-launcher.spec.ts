@@ -56,7 +56,9 @@ test('a failed installed-app read shows an explicit failure with a manual retry'
   await page.getByRole('button', { name: 'All apps', exact: true }).click();
   const drawer = page.getByRole('dialog', { name: 'All apps', exact: true });
   await expect(drawer.getByText('Installed apps could not be read.', { exact: true })).toBeVisible();
-  await expect(drawer.getByRole('button', { name: /^Open / })).toHaveCount(0);
+  // Built-in Alpha apps remain usable when the installed-app scan fails.
+  await expect(drawer.getByRole('button', { name: 'Open Calendar', exact: true })).toBeVisible();
+  await expect(drawer.getByRole('button', { name: /^Open / })).toHaveCount(10);
   await drawer.getByRole('button', { name: 'Try again', exact: true }).click();
   await expect(drawer.getByRole('button', { name: 'Open Settings', exact: true })).toBeVisible();
 });

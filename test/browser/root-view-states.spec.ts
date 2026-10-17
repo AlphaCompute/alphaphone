@@ -40,15 +40,19 @@ async function open(page: Page, view: View, theme: 'light' | 'dark'): Promise<Lo
   // opened from launcher Home's Notifications button (docs/gesture-zones.md); the standalone app has none.
   const launcher = view === 'Notifications' ? (theme === 'dark' ? '&shell=launcher' : '?shell=launcher') : '';
   await page.goto((theme === 'dark' ? '/?theme=dark' : '/') + launcher);
-  const calendar = page.getByRole('button', { name: 'Calendar', exact: true });
-  await calendar.waitFor({ state: 'visible' });
+  // Home shortcuts cannot be restored when storage is blocked. All apps must
+  // remain usable in that state, so exercise its actual built-in navigation.
+  await page.getByRole('button', { name: 'All apps', exact: true }).waitFor({ state: 'visible' });
   if (view === 'Notifications') {
     await page.getByRole('button', { name: 'Open notifications', exact: true }).click();
     const shade = page.locator('[data-alpha-layer="shade"]');
     await expect(shade).toHaveAttribute('aria-hidden', 'false');
     return shade;
   }
-  await page.getByRole('button', { name: view === 'Reminders' ? 'Calendar' : view, exact: true }).click();
+  const target=view === 'Reminders' ? 'Calendar' : view;
+  const shortcut=page.getByRole('button',{name:target,exact:true});
+  if(await shortcut.isVisible())await shortcut.click();
+  else{await page.getByRole('button',{name:'All apps',exact:true}).click();await page.getByRole('dialog',{name:'All apps',exact:true}).getByRole('button',{name:`Open ${target}`,exact:true}).click();}
   await expect(page.locator('html')).toHaveAttribute('data-active-view', view === 'Reminders' ? 'calendar' : view.toLowerCase());
   const app = page.locator('[data-alpha-layer="app"]');
   await expect(app).toHaveAttribute('aria-hidden', 'false');
