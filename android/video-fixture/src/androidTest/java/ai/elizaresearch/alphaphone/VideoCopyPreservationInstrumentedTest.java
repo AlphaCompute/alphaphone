@@ -34,8 +34,8 @@ public final class VideoCopyPreservationInstrumentedTest {
  private final class Pending {
   final String token="video-"+UUID.randomUUID();final Uri uri;final byte[] bytes;String record;
   Pending(byte[] bytes)throws Exception{
-   this.bytes=bytes;ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);
-   uri=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(uri);
+   this.bytes=bytes;android.util.Log.i("AlphaVideoPreservationQA","new-token="+token);ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);
+   uri=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(uri);android.util.Log.i("AlphaVideoPreservationQA","new-token="+token+",row="+android.content.ContentUris.parseId(uri));
    try(OutputStream output=context.getContentResolver().openOutputStream(uri,"w")){assertNotNull(output);output.write(bytes);}
    setRecord(new JSONObject().put("status","failed").put("createdAt",System.currentTimeMillis()).put("pendingId",Long.toString(android.content.ContentUris.parseId(uri))));
   }
