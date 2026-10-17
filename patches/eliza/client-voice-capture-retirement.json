@@ -1,0 +1,12 @@
+{
+  "baseCommit": "985322b5df96a91e9dc913c73280a97b82890642",
+  "paths": [
+    {
+      "path": "packages/ui/src/voice/voice-session-client.ts",
+      "beforeSha256": "1c8322e7f92a4d72f4b3bcc3870703fb2884e0325e56c3cc3cb122b8dbe184f0",
+      "afterSha256": "e6281bae4d2ec9df8c8ea8839bc97ae9673f87cb61fa0c3c6cbbdb83036645c5"
+    }
+  ],
+  "patchSha256": "b9a3219eb8ca651b46e78a74ea80305326acd0143da03fa059652fb15fdbe2b0",
+  "sourceScope": "Retire the current voice session on fatal capture, including when the UI error observer throws. No reconnect or new session is started."
+}

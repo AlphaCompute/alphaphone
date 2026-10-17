@@ -134,14 +134,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   // Apply the reviewed shared voice delta before the existing injected-fetch projection.
   // This carries the capture lease fix and prepared navigation protocol together.
   const voicePatchRoot=path.join(root,'patches/eliza');
-  for(const [patchName,expectedPaths] of [
-    ['client-voice-prepared-navigation',['packages/ui/src/voice/voice-session-client.ts','packages/ui/src/voice/voice-session-protocol.ts']],
-    ['client-voice-microphone-readiness',['packages/ui/src/voice/voice-session-mic-capture.ts']],
-    ['client-voice-capture-lifecycle',['packages/ui/src/voice/voice-session-mic-capture.ts']],
-    ['client-voice-requested-actions',['packages/host/src/voice.ts','packages/ui/src/voice/voice-session-protocol.ts']],
-    ['client-voice-credit-terminal',['packages/ui/src/voice/voice-session-client.ts']],
-    ['client-voice-context-loss',['packages/ui/src/voice/voice-session-client.ts']],
-  ]){
+  const applyVoiceProjection=(patchName,expectedPaths)=>{
   const voiceProjection=JSON.parse(fs.readFileSync(path.join(voicePatchRoot,patchName+'.json'),'utf8'));
   const voicePatch=path.join(voicePatchRoot,patchName+'.patch');
   if(voiceProjection.baseCommit!==upstream.pin||hash(fs.readFileSync(voicePatch))!==voiceProjection.patchSha256||voiceProjection.paths.length!==expectedPaths.length||voiceProjection.paths.some(row=>!expectedPaths.includes(row.path)||source.get(row.path)?.sha256!==row.beforeSha256))throw Error('Review changed shared voice navigation projection input');
@@ -151,11 +144,20 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
     execFileSync('patch',['--batch','--fuzz=0','--forward','-p1','--input',voicePatch],{cwd:voiceStage,stdio:'pipe',timeout:30000});
     for(const row of voiceProjection.paths){const bytes=fs.readFileSync(path.join(voiceStage,row.path));if(hash(bytes)!==row.afterSha256)throw Error('Shared voice navigation projection output changed');project(row.path,bytes.toString());}
   }finally{fs.rmSync(voiceStage,{recursive:true,force:true});}
-  }
+  };
+  for(const [patchName,expectedPaths] of [
+    ['client-voice-prepared-navigation',['packages/ui/src/voice/voice-session-client.ts','packages/ui/src/voice/voice-session-protocol.ts']],
+    ['client-voice-microphone-readiness',['packages/ui/src/voice/voice-session-mic-capture.ts']],
+    ['client-voice-capture-lifecycle',['packages/ui/src/voice/voice-session-mic-capture.ts']],
+    ['client-voice-requested-actions',['packages/host/src/voice.ts','packages/ui/src/voice/voice-session-protocol.ts']],
+    ['client-voice-credit-terminal',['packages/ui/src/voice/voice-session-client.ts']],
+    ['client-voice-context-loss',['packages/ui/src/voice/voice-session-client.ts']],
+  ])applyVoiceProjection(patchName,expectedPaths);
   const clientPath='packages/ui/src/voice/voice-session-client.ts';
   const fallback='      const { fetchVoiceSession } = await import("./voice-session-fetch");\n      return fetchVoiceSession(url, init);';
   if(text(clientPath).split(fallback).length!==2)throw Error('Voice fetch projection source changed.');
   project(clientPath,text(clientPath).replace(fallback,'      void url; void init;\n      throw new Error("Alpha voice requires an injected session fetch.");'));
+  applyVoiceProjection('client-voice-capture-retirement',[clientPath]);
   const status=text('packages/ui/src/voice/voice-chat-types.ts').match(/export type VoiceContinuousStatus =[\s\S]*?;/)?.[0];
   const loggerTypes=text('packages/core/src/logger.ts');
   const start=loggerTypes.indexOf('type LogFn ='),end=loggerTypes.indexOf('/**\n * Log entry structure',start);
