@@ -33,6 +33,6 @@
     "id": "inbox",
     "label": "Inbox",
     "path": "/inbox",
-    "fallbackFor": "@elizaos/plugin-google-workspace"
+    "fallbackFor": "@elizaos/plugin-inbox"
   }
 ]
