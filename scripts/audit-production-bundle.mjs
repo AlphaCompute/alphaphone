@@ -12,6 +12,9 @@ import {assetLinksProblems} from './render-assetlinks.mjs';
 
 /** Decision P-43: production copy that offered or described a "no agent" state. */
 export const RETIRED_NO_AGENT_TEXT = Object.freeze(['without AI', 'Continue offline', 'continue offline', 'Connect an agent']);
+/** Decision P-43 (#381): fallback copy that implied a remote agent. Production has none; the resident
+ * runs on the phone. Test-mocks builds keep the remote development path and are not denied. */
+export const RETIRED_REMOTE_AGENT_TEXT = Object.freeze(['Connect your remote agent', 'No remote agent connected', 'Connect a remote agent']);
 export const DENYLIST = Object.freeze([
   'Connect remote agent', 'Agent HTTPS address', 'Development Cloud agent infrastructure', 'Dedicated hosting requires a reviewed setup',
   'alpha:force-render-error', 'alpha:render-error-check', 'Forced render failure',
@@ -40,6 +43,7 @@ export const DENYLIST = Object.freeze([
   '/api/auth/pair', 'Pair this agent before connecting', 'Choose an endpoint serving one agent', 'Pair the agent again',
   '/api/v1/eliza/agents', 'personalElizaId', 'dedicated-always', 'personal Cloud agent', 'cloud-runtime:',
   'X-Eliza-Phone-Protocol', 'x-eliza-phone-protocol', 'Connect your own remote agent',
+  ...RETIRED_REMOTE_AGENT_TEXT,
   // In-app Eliza Cloud sign-in (owner directive 2026-10-14): the diagnostic button and the staging
   // return host are test-mocks only. The Cloud sign-in hand-off stays in product builds as the
   // fallback until the in-app readiness probe passes, so its routes are not denied here.

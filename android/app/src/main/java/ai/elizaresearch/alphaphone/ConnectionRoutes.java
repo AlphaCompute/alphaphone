@@ -87,8 +87,8 @@ final class ConnectionRoutes {
  }
  /**
   * Hosts openExternal may hand to the system browser. A flag-off renderer opens only Cloud sign-in
-  * (https://eliza.app/auth/cli-login), credit top-up and account management on
-  * https://cloud.eliza.app/cloud/billing, and Google's consent page for Gmail
+  * (https://eliza.app/auth/cli-login), subscription plan and account management on
+  * https://cloud.eliza.app/cloud/billing (Manage plan / Choose a plan; nothing is bought in-app), and Google's consent page for Gmail
   * (https://accounts.google.com). Staging (staging.eliza.app, cloud-staging.eliza.app) and any other
   * *.eliza.app host are admitted only in test-mocks builds. HTTPS on the default port only; the host
   * is compared lower-cased and exactly, so a lookalike or trailing-dot spelling is refused.

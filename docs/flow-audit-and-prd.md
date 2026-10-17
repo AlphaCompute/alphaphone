@@ -1,6 +1,6 @@
 # Alpha Phone — complete flow audit and product requirements
 
-Date: 2026-09-29. Target correction: Pixel 10 or similar **phone**, not tablet. The available Pixel 9 emulator profile is a development approximation; it does not establish physical Pixel 10 support or acceptance. Scope: Alpha Phone only, its fourteen designed built-in experiences, shared launcher/assistant flows, and the requested reminders, notification, credential, and transcription journeys. This is a requirements and source-audit document, not evidence that those experiences are implemented or have passed acceptance. Native/API/vendor research accompanies this document separately.
+Date: 2026-09-29. Target correction: Pixel 10 or similar **phone**, not tablet. (Superseded by decision P-15: the hardware target is Pixel 10a, codename stallion, on Android 17.) The available Pixel 9 emulator profile is a development approximation; it does not establish physical Pixel 10 support or acceptance. Scope: Alpha Phone only, its fourteen designed built-in experiences, shared launcher/assistant flows, and the requested reminders, notification, credential, and transcription journeys. This is a requirements and source-audit document, not evidence that those experiences are implemented or have passed acceptance. Native/API/vendor research accompanies this document separately.
 
 > October 12 scope update: approved [#402](https://github.com/AlphaCompute/alphaphone/issues/402)
 > defers passkeys outside MVP. Historical F09 passkey requirements below belong to
@@ -36,7 +36,7 @@ These are best-guess working decisions so engineering can proceed. They do not c
 | --- | --- | --- |
 | Product identity | One Alpha Phone renderer and package; lowercase `a` brand mark, Alpha visual language, no sibling-product UI imports | Brand owner deliberately revises identity |
 | Distribution | Standalone and HOME flavors remain alternative installs of the same package | Release strategy changes |
-| Supported development target | Pixel 10 or similar phone; use installed Pixel 9 emulator definition as the closest available test profile, with actual geometry recorded per run | Hardware selection adds a distinct target |
+| Supported development target | Pixel 10a on Android 17 (P-15; originally "Pixel 10 or similar phone"); use installed Pixel 9 emulator definition as the closest available test profile, with actual geometry recorded per run | Hardware selection adds a distinct target |
 | Agent location | Cloud execution through approved owner/agent-scoped Eliza transport | An explicit reviewed architecture changes it |
 | Native strategy | Android owns lock, shade, permission dialogs, role selection, secure prompts, picker, camera/handoff and default apps; Alpha owns orchestration and task views | A qualified native plugin provides embedded functionality |
 | Local data | Offline-first user-created notes and drafts, durable IDs and schema migrations; no raw credentials in renderer storage | Account-backed synchronization is implemented |

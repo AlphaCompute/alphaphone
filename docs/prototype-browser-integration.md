@@ -106,7 +106,7 @@ Evidence: `test/browser/browser-signins.spec.ts` covers the renderer contract (r
 
 Browser origin, download, session, permission, external-link and autofill policies are merged in [Eliza PR 34708](https://github.com/elizaOS/eliza/pull/34708). Alpha stages authenticated Java helpers from its upstream pin. Its download decoder and origin checks and native session normalization use the shared policies. Profile views, encrypted storage and review dialogs remain product-owned. Further adapter consolidation is pending.
 
-Required evidence is source patch SHA, both APK hashes, Android/WebView versions and supported profile/renderer features, phone dimensions, actual UI/video and endpoint traces, and explicit per-case pass/fail. A build, the prototype's deterministic pixel comparison, or the external Chromium handoff test cannot establish this native-content flow. Full AOSP image boot, owned Chromium bridge, production agent authentication, default provider enrollment and physical Pixel10 acceptance remain independent gates.
+Required evidence is source patch SHA, both APK hashes, Android/WebView versions and supported profile/renderer features, phone dimensions, actual UI/video and endpoint traces, and explicit per-case pass/fail. A build, the prototype's deterministic pixel comparison, or the external Chromium handoff test cannot establish this native-content flow. Full AOSP image boot, owned Chromium bridge, production agent authentication, default provider enrollment and physical Pixel 10a acceptance remain independent gates.
 
 ## Agent tab context
 

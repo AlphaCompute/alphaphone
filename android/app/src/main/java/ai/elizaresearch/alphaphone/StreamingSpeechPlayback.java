@@ -160,6 +160,8 @@ final class StreamingSpeechPlayback {
     Thread.sleep(POLL_MS);
    }
    if(stopped)return;
+   // A track that never played every queued frame did not finish: never report it as heard.
+   if(out.playedFrames()<written)throw new IllegalStateException("playback-drain-timeout");
    long[] audible=checkAudible(out,audibleReported,headNs);audibleReported=audible[0]==1;headNs=audible[1];
    if(!audibleReported&&headNs!=VoiceLatencyTrials.UNSET){audibleReported=true;listener.audible(headNs,HEAD_CLOCK);}
    out.stop();

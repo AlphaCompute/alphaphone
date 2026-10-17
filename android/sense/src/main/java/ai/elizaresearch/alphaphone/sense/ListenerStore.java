@@ -70,6 +70,7 @@ final class ListenerStore {
   processConsent = commit(prefs.edit().putInt(CONSENT,ListenerPolicy.CONSENT_VERSION).putLong(CONSENT_AT,now).putBoolean(ENABLED,true)
    .putLong(PAUSED_UNTIL,0).remove(EXITS).remove(TRIPPED));
   Listener.speechUnavailable=false;
+  if(processConsent)Listener.indicatorLost=false;
   return processConsent;
   }
  }
@@ -98,13 +99,14 @@ final class ListenerStore {
  /** Turning listening back on is an explicit user action and clears a tripped crash loop. */
  void setEnabled(boolean enabled){
   SharedPreferences.Editor edit=prefs.edit().putBoolean(ENABLED,enabled).putLong(PAUSED_UNTIL,0);
-  if(enabled){edit.remove(EXITS).remove(TRIPPED);Listener.speechUnavailable=false;}
+  // An explicit turn-on is the user action that clears a lost-indicator stop as well.
+  if(enabled){edit.remove(EXITS).remove(TRIPPED);Listener.speechUnavailable=false;Listener.indicatorLost=false;}
   commit(edit);
  }
 
  /** {@code until} is {@link ListenerPolicy#PAUSE_UNTIL_RESUMED} or an {@code SystemClock.elapsedRealtime} deadline. */
  void pause(long until){commit(prefs.edit().putLong(PAUSED_UNTIL,until).putLong(PAUSE_BOOT,bootCount(context)));}
- void resume(){commit(prefs.edit().putLong(PAUSED_UNTIL,0).remove(EXITS).remove(TRIPPED));Listener.speechUnavailable=false;}
+ void resume(){commit(prefs.edit().putLong(PAUSED_UNTIL,0).remove(EXITS).remove(TRIPPED));Listener.speechUnavailable=false;Listener.indicatorLost=false;}
 
  /** Marks a capture session open (true) or cleanly closed (false); a process start that finds it open counts an unclean exit. */
  boolean setSessionOpen(boolean open){
