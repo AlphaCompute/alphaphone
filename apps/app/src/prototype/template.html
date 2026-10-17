@@ -2790,7 +2790,7 @@
     <sc-if value="{{files.noQuery}}">
       <div class="alpha-fit-grid" style="--fit-columns: 2; --fit-gap: 10px; --fit-min: 100px; gap: 10px">
         <sc-for list="{{files.locs}}" as="l">
-          <button onClick="{{l.go}}" class="tap" aria-label="{{l.name}}" style="min-height: 104px; min-width: 0; gap: 12px; overflow-wrap: anywhere; border-radius: 24px; background: var(--s2); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; text-align: left">
+          <button onClick="{{l.go}}" class="tap" aria-label="{{l.name}}" style="min-height: 104px; min-width: 0; gap: 12px; overflow-wrap: anywhere; border-radius: 24px; background: var(--s2); padding: 16px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: flex-start; text-align: left">
             <svg class="i" viewBox="0 0 24 24" style="color: var(--acct)"><path d="{{l.d}}"></path></svg>
             <div><div style="font-size: 16px; font-weight: 600">{{l.name}}</div><div style="font-size: 13px; color: var(--mut); margin-top: 2px">{{l.sub}}</div></div>
           </button>
