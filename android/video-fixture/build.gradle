@@ -1,0 +1,44 @@
+apply plugin: 'com.android.application'
+android {
+ namespace 'ai.elizaresearch.alpha.videoqa'
+ compileSdk rootProject.ext.compileSdkVersion
+ defaultConfig {
+  applicationId 'ai.elizaresearch.alpha.videoqa'
+  minSdk 29
+  targetSdk rootProject.ext.targetSdkVersion
+  versionCode 1
+  versionName 'video-qa-1'
+  testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+ }
+ sourceSets.main.java.srcDir layout.buildDirectory.dir('generated/video-source')
+ sourceSets.main.assets.srcDir layout.buildDirectory.dir('generated/video-source-assets')
+ compileOptions { sourceCompatibility JavaVersion.VERSION_21; targetCompatibility JavaVersion.VERSION_21 }
+}
+// AGP uses source directories rather than Java include filters. Stage only these
+// exact production files and bind their hashes into the witness APK.
+def stageVideoSources=tasks.register('stageVideoSources',Copy){
+ from('../app/src/main/java'){include '**/VideoCopyEdits.java','**/VideoEditSpec.java'}
+ into layout.buildDirectory.dir('generated/video-source')
+ doLast {
+  def files=[:]
+  ['VideoCopyEdits.java','VideoEditSpec.java'].each { name ->
+   def relative='ai/elizaresearch/alphaphone/'+name
+   def source=file('../app/src/main/java/'+relative)
+   def target=layout.buildDirectory.file('generated/video-source/'+relative).get().asFile
+   def digest={ f -> java.security.MessageDigest.getInstance('SHA-256').digest(f.bytes).encodeHex().toString() }
+   if(digest(source)!=digest(target))throw new GradleException('Video witness source changed')
+   files[relative]=digest(source)
+  }
+  def receipt=layout.buildDirectory.file('generated/video-source-assets/native-video-source.json').get().asFile
+  receipt.parentFile.mkdirs();receipt.text=groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson([media3:'1.11.1',files:files,verbatim:true]))
+ }
+}
+tasks.named('preBuild').configure {dependsOn stageVideoSources}
+dependencies {
+ implementation project(':capacitor-android')
+ implementation 'androidx.media3:media3-transformer:1.11.1'
+ implementation 'androidx.media3:media3-effect:1.11.1'
+ androidTestImplementation 'androidx.test:runner:1.6.2'
+ androidTestImplementation 'androidx.test:core:1.7.0'
+ androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+}

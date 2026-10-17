@@ -66,6 +66,9 @@ const nativeLibrary = registerPlugin<{
   saveEdit(options:{sessionId:string;rotation:number;crop:boolean;filter:string}):Promise<EditReceipt>;
   editResult(options:{operationId:string}):Promise<EditReceipt>;
   cancelEdit(options:{sessionId:string}):Promise<void>;
+  beginVideoEdit(options:{id:string;revision:string}):Promise<{sessionId:string;operationId:string;duration:number;width:number;height:number}>;
+  saveVideoEdit(options:{sessionId:string;start:number;end:number;rotation:number;crop:boolean}):Promise<EditReceipt>;
+  cancelVideoEdit(options:{sessionId?:string}):Promise<void>;
   list(options: { before?: string; trashed?: boolean; album?: string }): Promise<{ items: SavedPhoto[]; next: string }>;
   read(options: { id: string; includeTrashed?: boolean }): Promise<SavedPhoto>;
   setTrashed(options: { id: string; revision: string; trashed: boolean }): Promise<SavedPhoto & {status:string}>;
@@ -165,33 +168,39 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   let preview: SavedPhoto | undefined, reading = '', sharing = false;
   let edit: (EditPreview & {source:string;rotation:number;crop:boolean;busy:boolean;uncertain?:boolean})|undefined,editEpoch=0;
   let editRecoveryChecked=false,copyRecovery:AbortController|undefined;
-  let closeVideoEdit:(()=>void)|undefined,videoEditSource:string|undefined;
-  function cancelEdit(){copyRecovery?.abort();copyRecovery=undefined;closeVideoEdit?.();closeVideoEdit=undefined;videoEditSource=undefined;++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});}
+  let closeVideoEdit:(()=>void)|undefined,videoEditSource:string|undefined,nativeVideoSession:string|undefined,nativeVideoOpening:number|undefined;
+  function cancelEdit(){copyRecovery?.abort();copyRecovery=undefined;const oldVideo=nativeVideoSession,opening=nativeVideoOpening;nativeVideoSession=undefined;nativeVideoOpening=undefined;closeVideoEdit?.();closeVideoEdit=undefined;videoEditSource=undefined;++editEpoch;const old=edit;edit=undefined;if(old)void library.cancelEdit({sessionId:old.sessionId}).catch(()=>{});if(oldVideo||opening!==undefined)void nativeLibrary.cancelVideoEdit(oldVideo?{sessionId:oldVideo}:{}).catch(()=>{});}
   async function beginEdit(row:SavedPhoto,owner:Bag){
-    if(!row.mutationRevision||edit||mutating)return;
-    if(row.kind==='video'&&!browserMode){owner.toast('Video editing is not available. Your video is unchanged.');return;}
-    cancelEdit();closeVideo();const token=editEpoch;
+    if(!row.mutationRevision||edit||mutating||nativeVideoOpening!==undefined||closeVideoEdit)return;
+    cancelEdit();closeVideo();const token=editEpoch;let videoSessionId:string|undefined,copyIntentChecked=false;
     const current=()=>!disposed&&!document.hidden&&token===editEpoch&&owner.isActive()&&owner.get('photos').open===row.id;
     try{
-      const pending=await readMediaCopyIntent();if(!current())return;
+      const pending=await readMediaCopyIntent();copyIntentChecked=true;if(!current())return;
       if(pending){owner.toast('Checking a previous saved-copy outcome…');void recoverEdit(owner);return;}
       if(row.kind==='video'){
-        const source=await browserPhotoLibrary.read({id:nativeId(row.id)});if(!current())return;if(!source.path||!source.duration)throw Error('Video has no playable source.');
-        const operationId=crypto.randomUUID();videoEditSource=row.id;
-        closeVideoEdit=openVideoEditReview({path:source.path,duration:source.duration},async(parameters,signal)=>{
+        if(!browserMode)nativeVideoOpening=token;
+        const session=browserMode?undefined:await nativeLibrary.beginVideoEdit({id:nativeId(row.id),revision:row.mutationRevision!});
+        if(nativeVideoOpening===token)nativeVideoOpening=undefined;
+        if(session){videoSessionId=session.sessionId;if(!current()){void nativeLibrary.cancelVideoEdit({sessionId:session.sessionId});return;}nativeVideoSession=session.sessionId;}
+        const source=await library.read({id:nativeId(row.id)});if(!current()){if(session)void nativeLibrary.cancelVideoEdit({sessionId:session.sessionId});return;}
+        if(!source.path||!source.duration||!browserMode&&source.mutationRevision!==row.mutationRevision)throw Error('Video changed or has no playable source.');
+        const operationId=session?.operationId||crypto.randomUUID();videoEditSource=row.id;
+        closeVideoEdit=openVideoEditReview({path:source.path,duration:session?.duration||source.duration,stream:!!session},async(parameters,signal)=>{
           const ticket:EditCompletion={token:operationId,epoch:token,source:row.id};
+          const abort=()=>{if(session)void nativeLibrary.cancelVideoEdit({sessionId:session.sessionId}).catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
           try{
             ticket.intent=await admitMediaCopyIntent(operationId,signal);automaticEditRecovery=operationId;
             if(signal.aborted||!current()){await acknowledgeMediaCopyIntent(ticket.intent);return false;}
-            const receipt=await browserPhotoLibrary.saveVideoCopy({id:source.id,revision:row.mutationRevision!,operationId,edit:parameters},signal);
+            const receipt=session?await nativeLibrary.saveVideoEdit({sessionId:session.sessionId,...parameters}):await browserPhotoLibrary.saveVideoCopy({id:source.id,revision:row.mutationRevision!,operationId,edit:parameters},signal);
             await finishEdit(receipt,owner,ticket);return receipt.status==='saved';
           }catch{if(ticket.intent)await recoverEdit(owner,ticket);else if(current()){owner.set({nativeCopyRecovery:true});owner.toast('Copy request could not be retained. Check saved-copy recovery before another save.');}return false;}
-        },()=>{if(editEpoch===token){++editEpoch;closeVideoEdit=undefined;videoEditSource=undefined;}});
+          finally{signal.removeEventListener('abort',abort);}
+        },()=>{if(session){if(nativeVideoSession===session.sessionId)nativeVideoSession=undefined;void nativeLibrary.cancelVideoEdit({sessionId:session.sessionId}).catch(()=>{});}if(editEpoch===token){++editEpoch;closeVideoEdit=undefined;videoEditSource=undefined;}});
         return;
       }
       const value=await library.beginEdit({id:nativeId(row.id),revision:row.mutationRevision});if(!current()){void library.cancelEdit({sessionId:value.sessionId});return;}
       edit={...value,source:row.id,rotation:0,crop:false,busy:false};owner.set({nativeEditRevision:Date.now()});
-    }catch(error){if(current()){owner.set({nativeCopyRecovery:true});owner.toast(error instanceof Error?error.message:'Photo editor unavailable.');}}
+    }catch(error){if(videoSessionId){void nativeLibrary.cancelVideoEdit({sessionId:videoSessionId}).catch(()=>{});if(nativeVideoSession===videoSessionId)nativeVideoSession=undefined;}else if(nativeVideoOpening===token){nativeVideoOpening=undefined;void nativeLibrary.cancelVideoEdit({}).catch(()=>{});}if(current()){owner.set({nativeCopyRecovery:row.kind!=='video'||!copyIntentChecked});owner.toast(error instanceof Error?error.message:'Photo editor unavailable.');}}
   }
   async function transformEdit(owner:Bag,rotate:boolean,chosenFilter?:string){const current=edit;if(!current||current.busy||current.uncertain)return;current.busy=true;const rotation=rotate?(current.rotation+90)%360:current.rotation,crop=chosenFilter!==undefined?current.crop:rotate?current.crop:!current.crop,filter=chosenFilter??current.filter;owner.set({nativeEditRevision:Date.now()});
     try{const value=await library.previewEdit({sessionId:current.sessionId,rotation,crop,filter});if(edit===current)edit={...current,...value,rotation,crop,busy:false};}
@@ -208,6 +217,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     await acknowledgeMediaCopyIntent(ticket.intent);const updateView=completionCurrent(ticket,owner);
     if(edit?.operationId===ticket.token)cancelEdit();
     if(!updateView)return true;owner.set({nativeCopyRecovery:false});
+    if(videoEditSource&&videoEditSource===ticket.source&&closeVideoEdit){const close=closeVideoEdit;closeVideoEdit=undefined;close();}
     if(value.status==='saved'&&value.id){owner.toast('Saved a copy. Original unchanged.');void refresh();await openSaved('native-camera-'+value.id,owner);}
     else{owner.toast(value.status==='failed'?'Copy was not saved. Original unchanged.':'No copy was created. Original unchanged.');owner.set({nativeEditRevision:Date.now()});}return true;
   }

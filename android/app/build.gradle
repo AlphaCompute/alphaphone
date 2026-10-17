@@ -136,6 +136,8 @@ dependencies {
  implementation project(':eliza-network-policy')
  implementation project(':local-speech')
  implementation 'androidx.browser:browser:1.9.0'
+ implementation 'androidx.media3:media3-transformer:1.11.1'
+ implementation 'androidx.media3:media3-effect:1.11.1'
     implementation "androidx.work:work-runtime:2.11.0"
  implementation project(':capacitor-android')
  implementation project(':eliza-system')
