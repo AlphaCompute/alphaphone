@@ -1,6 +1,6 @@
 --- a/packages/ui/src/voice/voice-session-client.ts
 +++ b/packages/ui/src/voice/voice-session-client.ts
-@@ -527,0 +528,13 @@
+@@ -528,0 +529,13 @@
 +    let currentUiContext: VoiceUiContext | undefined;
 +    if (uiContextSupported && options.getUiContext) {
 +      try {
@@ -14,6 +14,6 @@
 +        return;
 +      }
 +    }
-@@ -530 +543 @@
+@@ -531 +544 @@
 -        const context = parseVoiceUiContext(options.getUiContext());
 +        const context = parseVoiceUiContext(currentUiContext);
