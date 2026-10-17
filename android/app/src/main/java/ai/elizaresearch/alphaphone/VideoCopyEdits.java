@@ -162,14 +162,16 @@ final class VideoCopyEdits {
  }
  private void remove(File file)throws IOException {if(file.exists()&&!file.delete())throw new IOException("Video edit cleanup could not be confirmed");}
  private void files(String token)throws IOException {remove(file(token,"-input.mp4"));remove(file(token,"-output.mp4"));}
+ @SuppressWarnings("deprecation") // API29-compatible pending visibility; never infer absence from the default collection.
  private Uri copy(String token)throws Exception {
-  try(Cursor row=context.getContentResolver().query(OUTPUTS,new String[]{"_id"},"owner_package_name=? AND _display_name=?",new String[]{context.getPackageName(),name(token)},null)){
+  try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(OUTPUTS),new String[]{"_id"},"owner_package_name=? AND _display_name=?",new String[]{context.getPackageName(),name(token)},null)){
    if(row==null)throw new IOException("Video copy lookup is unavailable");if(!row.moveToFirst())return null;
    Uri found=ContentUris.withAppendedId(OUTPUTS,row.getLong(0));if(row.moveToNext())throw new IOException("More than one copy matches this request. Inspect Photos.");return found;
   }
  }
+ @SuppressWarnings("deprecation")
  private boolean pending(Uri uri)throws Exception {
-  try(Cursor row=context.getContentResolver().query(uri,new String[]{"is_pending"},null,null,null)){
+  try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(uri),new String[]{"is_pending"},null,null,null)){
    if(row==null||!row.moveToFirst())throw new IOException("Video copy readback is unavailable");return row.getInt(0)==1;
   }
  }
@@ -179,15 +181,17 @@ final class VideoCopyEdits {
   if(record.optString("status").equals("saved")){try{files(token);}catch(IOException cleanup){/* The confirmed published copy remains saved; retainSpace retries owned-cache cleanup. */}return receipt(token,"saved",record.getString("id"));}
   if(active!=null&&active.token.equals(token)){active.cancelled=true;active=null;}
   Uri found=copy(token);
+  if(record.has("pendingId")&&(found==null||!record.getString("pendingId").equals(Long.toString(ContentUris.parseId(found)))))throw new IOException("Recorded video copy needs recovery review");
   if(found!=null&&!pending(found)){
    String id=Long.toString(ContentUris.parseId(found));record.put("status","saved").put("id",id);write(token,record);files(token);return receipt(token,"saved",id);
   }
+  if(found!=null&&(record.has("failureStage")||record.optString("status").equals("failed")))throw new IOException("Pending video copy needs recovery review");
   if(found!=null&&context.getContentResolver().delete(found,"is_pending=1 AND owner_package_name=?",new String[]{context.getPackageName()})!=1)throw new IOException("Pending video cleanup could not be confirmed");
-  files(token);String status=record.optString("binding").isEmpty()?"not-started":"failed";record.put("status",status);write(token,record);return receipt(token,status,null);
+  files(token);String status=record.optString("binding").isEmpty()?"not-started":"failed";record.remove("pendingId");record.put("status",status);write(token,record);return receipt(token,status,null);
  }
  private void retainSpace()throws Exception {
   if(directory.getUsableSpace()<VideoEditSpec.MAX_BYTES*4)throw new IOException("Free at least 400 MB to edit a video");
-  for(String key:journal.getAll().keySet())if(terminal(read(key).optString("status")))files(key);
+  for(String key:journal.getAll().keySet()){JSONObject record=read(key);if(terminal(record.optString("status"))){if(record.optString("status").equals("failed")){Uri retained=copy(key);if(retained!=null&&pending(retained))throw new IOException("Pending video copy needs recovery review");}files(key);}}
   if(journal.getAll().size()<128)return;
   List<String> terminal=new ArrayList<>();
   for(String key:journal.getAll().keySet()){JSONObject row=read(key);if(terminal(row.optString("status")))terminal.add(key);}
@@ -258,20 +262,23 @@ final class VideoCopyEdits {
   try{
    if(failure!=null)throw failure;session.stage="export-readback";current(session,true);output(session);
    ContentValues values=new ContentValues();values.put("_display_name",name(session.token));values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Phone/Edits/");values.put("is_pending",1);values.put("width",session.edit.width);values.put("height",session.edit.height);
-   session.stage="pending-write";Uri target=context.getContentResolver().insert(OUTPUTS,values);if(target==null)throw new IOException("Video copy could not be created");
-   try(android.os.ParcelFileDescriptor descriptor=context.getContentResolver().openFileDescriptor(target,"w");FileInputStream input=new FileInputStream(session.output)){
-    if(descriptor==null)throw new IOException("Video copy could not be written");try(FileOutputStream out=new android.os.ParcelFileDescriptor.AutoCloseOutputStream(descriptor)){byte[] chunk=new byte[64*1024];int length;while((length=input.read(chunk))!=-1){if(session.cancelled||retired)throw new IOException("Video editor closed");out.write(chunk,0,length);}out.flush();out.getFD().sync();}
+   session.stage="pending-insert";Uri target=context.getContentResolver().insert(OUTPUTS,values);if(target==null)throw new IOException("Video copy could not be created");
+   session.stage="pending-custody";JSONObject custody=read(session.token);custody.put("pendingId",Long.toString(ContentUris.parseId(target)));write(session.token,custody);
+   session.stage="pending-open";try(android.os.ParcelFileDescriptor descriptor=context.getContentResolver().openFileDescriptor(target,"w");FileInputStream input=new FileInputStream(session.output)){
+    if(descriptor==null)throw new IOException("Video copy could not be written");try(FileOutputStream out=new android.os.ParcelFileDescriptor.AutoCloseOutputStream(descriptor)){byte[] chunk=new byte[64*1024];int length;while((length=input.read(chunk))!=-1){if(session.cancelled||retired)throw new IOException("Video editor closed");session.stage="pending-write";out.write(chunk,0,length);}session.stage="pending-flush";out.flush();session.stage="pending-fsync";out.getFD().sync();session.stage="pending-close";}
    }
-   try(InputStream saved=context.getContentResolver().openInputStream(target);FileInputStream exported=new FileInputStream(session.output)){
+   session.stage="pending-readback";try(InputStream saved=context.getContentResolver().openInputStream(target);FileInputStream exported=new FileInputStream(session.output)){
     if(saved==null||!Arrays.equals(outputDigest(saved,session.output.length(),session),outputDigest(exported,session.output.length(),session)))throw new IOException("Video copy readback changed");
    }
-   current(session,true);
+   session.stage="source-recheck";current(session,true);
    ArrayList<ContentProviderOperation> batch=new ArrayList<>();batch.add(ContentProviderOperation.newAssertQuery(session.source.uri).withValues(session.version).withExpectedCount(1).build());batch.add(ContentProviderOperation.newUpdate(target).withSelection("is_pending=1 AND owner_package_name=?",new String[]{context.getPackageName()}).withValue("is_pending",0).withExpectedCount(1).build());
    session.stage="publish";synchronized(session){if(session.cancelled||retired||session.epoch!=epoch.get())throw new IOException("Video editor closed");context.getContentResolver().applyBatch("media",batch);}
-   if(pending(target))throw new IOException("Video publication could not be confirmed");
+   session.stage="publication-readback";if(pending(target))throw new IOException("Video publication could not be confirmed");
    session.stage="receipt";JSONObject row=read(session.token);String id=Long.toString(ContentUris.parseId(target));row.put("status","saved").put("id",id);write(session.token,row);files(session.token);active=null;session.saveCall.resolve(receipt(session.token,"saved",id));
   }catch(Exception error){
-   android.util.Log.w("AlphaVideoCopy","stage="+session.stage+",code="+(error instanceof ExportException?((ExportException)error).errorCode:0));
+   String errorClass=error.getClass().getSimpleName(),causeClass=error.getCause()==null?"none":error.getCause().getClass().getSimpleName();
+   android.util.Log.w("AlphaVideoCopy","stage="+session.stage+",class="+errorClass+",causeClass="+causeClass+",code="+(error instanceof ExportException?((ExportException)error).errorCode:0));
+   try{JSONObject failed=read(session.token);failed.put("failureStage",session.stage).put("failureClass",errorClass).put("failureCauseClass",causeClass);write(session.token,failed);}catch(Exception receiptFailure){android.util.Log.w("AlphaVideoCopy","stage=failure-receipt,class="+receiptFailure.getClass().getSimpleName());}
    active=null;
    try{session.saveCall.resolve(reconcile(session.token));}catch(Exception unknown){session.saveCall.reject("Video copy outcome is unresolved. Reopen Photos to check this request before saving another copy.");}
   }finally{retire();}

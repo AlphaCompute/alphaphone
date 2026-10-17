@@ -99,7 +99,8 @@ public final class VideoCopyInstrumentedTest {
   }finally{if(decoder!=null){decoder.stop();decoder.release();}extractor.release();}
  }
  private void assertTone(float[] pcm,int rate,double start,double end,int expected){int begin=(int)(start*rate),finish=Math.min(pcm.length,(int)(end*rate)),crossings=0;assertTrue(finish>begin);double square=0;for(int i=begin;i<finish;i++){square+=pcm[i]*pcm[i];if(i>begin&&pcm[i-1]<=0&&pcm[i]>0)crossings++;}assertTrue("Audio was silent",Math.sqrt(square/(finish-begin))>.05);double frequency=crossings*rate/(double)(finish-begin);assertTrue("Wrong audio interval: "+frequency,Math.abs(frequency-expected)<=25);}
- private void cleanup()throws Exception {for(Uri uri:owned){try(Cursor row=context.getContentResolver().query(uri,new String[]{"owner_package_name"},null,null,null)){if(row!=null&&row.moveToFirst()){assertEquals(context.getPackageName(),row.getString(0));context.getContentResolver().delete(uri,null,null);}}}owned.clear();}
+ @SuppressWarnings("deprecation")
+ private void cleanup()throws Exception {for(Uri uri:owned){try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(uri),new String[]{"owner_package_name"},null,null,null)){if(row!=null&&row.moveToFirst()){assertEquals(context.getPackageName(),row.getString(0));context.getContentResolver().delete(uri,null,null);}}}owned.clear();}
 
  @Test public void realTrimRotateCropAudioRecoveryCancellationAndOriginalPreservation()throws Exception {
   JSONObject report=new JSONObject().put("layer","physical native exporter component; not full Alpha UI acceptance").put("networkPermission",false).put("source","generated four-quadrant video with timestamp markers and four audio tones");
@@ -151,6 +152,28 @@ public final class VideoCopyInstrumentedTest {
    Response late=new Response();editor.result(token,late);assertTrue(late.done.await(2,TimeUnit.SECONDS));assertEquals("Video editor closed",late.error);editor.close();editor.close();
    VideoCopyEdits recovery=new VideoCopyEdits(context,sources);try{Response read=new Response();recovery.result(token,read);assertEquals("not-started",read.await().getString("status"));assertEquals(0,copies(token));}finally{recovery.close();}
   }finally{cleanup();}
+ }
+
+ @SuppressWarnings("deprecation")
+ @Test public void failedReceiptRetainsPendingProviderOutput()throws Exception {
+  String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
+  VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{throw new AssertionError("Recovery must not open another source");});
+  try{
+   ContentValues values=new ContentValues();values.put("_display_name","Alpha-video-edit-"+token.substring(6)+".mp4");values.put("mime_type","video/mp4");values.put("relative_path","Movies/Alpha Video QA/");values.put("is_pending",1);
+   Uri pending=context.getContentResolver().insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(pending);owned.add(pending);
+   try(InputStream input=context.getAssets().open("qa-source.mp4");OutputStream output=context.getContentResolver().openOutputStream(pending,"w")){assertNotNull(output);byte[] chunk=new byte[8192];int n;while((n=input.read(chunk))!=-1)output.write(chunk,0,n);}
+   byte[] original=digest(pending);String record=new JSONObject().put("status","failed").put("createdAt",System.currentTimeMillis()).put("binding","1000:3000:90:false:240:320").toString();assertTrue(journal.edit().putString(token,record).commit());
+   for(int attempt=0;attempt<2;attempt++){Response result=new Response();editor.result(token,result);assertTrue(result.done.await(10,TimeUnit.SECONDS));assertEquals("Pending video copy needs recovery review",result.error);assertNull(result.value);assertEquals(record,journal.getString(token,null));assertArrayEquals(original,digest(pending));}
+   try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(pending),new String[]{"_id","is_pending"},null,null,null)){assertNotNull(row);assertTrue(row.moveToFirst());assertEquals(ContentUris.parseId(pending),row.getLong(0));assertEquals(1,row.getInt(1));assertFalse(row.moveToNext());}
+  }finally{editor.close();assertTrue(journal.edit().remove(token).commit());cleanup();}
+ }
+ @Test public void recordedMissingPendingOutputCannotBecomeFalseFailure()throws Exception {
+  String token="video-"+UUID.randomUUID();android.content.SharedPreferences journal=context.getSharedPreferences("alpha-video-copy-results-v1",0);
+  VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{throw new AssertionError("Recovery must not open another source");});
+  try{
+   String record=new JSONObject().put("status","exporting").put("createdAt",System.currentTimeMillis()).put("pendingId","9223372036854775806").toString();assertTrue(journal.edit().putString(token,record).commit());
+   Response result=new Response();editor.result(token,result);assertTrue(result.done.await(10,TimeUnit.SECONDS));assertEquals("Recorded video copy needs recovery review",result.error);assertNull(result.value);assertEquals(record,journal.getString(token,null));
+  }finally{editor.close();assertTrue(journal.edit().remove(token).commit());}
  }
 
 }
