@@ -42,8 +42,11 @@
       "two real-provider instrumentation regressions added"
     ],
     "diffCheck": "passed",
-    "compileAndTests": "not yet run; no native build or install authorized in this stage",
-    "installedRuntimeChanged": false
+    "compileAndTests": "Both production and instrumentation Java compiled; two isolated fixture APKs assembled and signatures/source manifests verified. Provider tests not yet run; main Alpha not rebuilt or installed.",
+    "installedRuntimeChanged": false,
+    "custodyCorrectionCommit": "1d29e37d",
+    "fixtureAPKSource": "1d29e37d",
+    "providerTestsRun": false
   },
   "preserved": [
     "source639",
