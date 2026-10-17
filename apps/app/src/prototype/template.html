@@ -4082,7 +4082,7 @@
             </sc-if>
 
             <sc-if value="{{m.cDigest}}">
-              <div style="border-radius: 22px; background: var(--s2); overflow: hidden">
+              <div class="{{m.actionReviewClass}}" style="border-radius: 22px; background: var(--s2); overflow: hidden">
                 <sc-for list="{{m.rows}}" as="r">
                   <button onClick="{{r.open}}" style="width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); text-align: left">
                     <span style="width: 34px; height: 34px; border-radius: 17px; background: var(--s3); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; white-space: nowrap">{{r.ini}}</span>

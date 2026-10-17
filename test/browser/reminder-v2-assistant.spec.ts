@@ -100,7 +100,7 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
       expect(await page.evaluate(()=>(window as any).recoveryFixture.claims)).toBe(0);
       expect(await page.evaluate(()=>(window as any).recoveryFixture.journal)).toEqual([]);
       expect(await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/reminder-store.ts')).reminderDocument.readRaw())!).reminders[0].status)).toBe('pending');
-      await expect(page.getByText('Approve: Complete selected reminder',{exact:true})).toHaveCount(0);return;
+      await expect(page.getByText('Complete selected reminder',{exact:true})).toHaveCount(0);return;
     }
     await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
     expect(await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.selectedObject)).toMatchObject({kind:'reminder',timingVersion:2});
@@ -110,8 +110,8 @@ for (const mode of ['read', 'update', 'complete', 'cancel', 'stale', 'recurring-
     await page.getByRole('button',{name:'Expand chat',exact:true}).click();
     const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
     const presentation=presentDeviceRecordOperation(operation,await page.evaluate(()=>(window as any).calendarSent.metadata.clientDevice.context.timeZone));
-    const approvalLabel='Approve: '+presentation.title;
-    await page.getByRole('button',{name:approvalLabel+' Tap to approve this exact action',exact:true}).click();
+    const approvalLabel=presentation.title;
+    await page.getByText(approvalLabel,{exact:true}).click();
     if(mode==='cancel'){
       await page.getByRole('dialog',{name:'Delete reminder?',exact:true}).getByRole('button',{name:'Delete reminder',exact:true}).click();
       await expect(page.getByRole('complementary',{name:'Pending deletions'}).getByRole('button',{name:'Undo',exact:true})).toBeVisible();
