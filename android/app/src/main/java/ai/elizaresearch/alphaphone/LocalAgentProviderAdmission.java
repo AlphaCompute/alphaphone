@@ -19,6 +19,29 @@ final class LocalAgentProviderAdmission {
  static final String CLOUD_PROVIDER_MODEL="cerebras/qwen-3.8-27b";
  static final String CLOUD_PROVIDER_BASE="https://api.eliza.app/api/v1";
  static final String PROVIDER_MODEL_PATTERN="[A-Za-z0-9][A-Za-z0-9._/-]{0,127}";
+ /** Safe diagnostics never contain credential values, identities or response bodies. */
+ static final class CloudReadFailure extends Exception {
+  final int status;
+  CloudReadFailure(int status){super("Cloud read unavailable");this.status=status>=100&&status<=599?status:0;}
+ }
+ static final class CloudBindingFailure extends Exception {
+  final String stage;final JSONObject diagnostic;
+  CloudBindingFailure(String stage,JSONObject schema,Exception cause)throws Exception{
+   super("Cloud admission failed at "+stage,cause);this.stage=stage;
+   diagnostic=new JSONObject().put("stage",stage).put("exceptionClass",cause.getClass().getSimpleName()).put("httpStatus",cause instanceof CloudReadFailure?((CloudReadFailure)cause).status:0).put("credentialSchema",schema);
+  }
+ }
+ static JSONObject cloudCredentialDiagnostics(String saved,String expectedId,long now)throws Exception{
+  JSONObject out=new JSONObject().put("present",saved!=null);if(saved==null)return out;
+  JSONObject value;try{value=new JSONObject(saved);}catch(Exception malformed){return out.put("schema","invalid-json");}
+  Object id=value.opt("credentialId"),token=value.opt("token"),expiry=value.opt("expiresAt");boolean uuid=false;
+  try{uuid=id instanceof String&&UUID.fromString((String)id).toString().equalsIgnoreCase((String)id);}catch(Exception malformed){/* Only the boolean leaves storage. */}
+  out.put("schema","object").put("credentialIdPresent",id instanceof String).put("credentialIdUuid",uuid).put("providerTokenPresent",token instanceof String).put("providerTokenFormatValid",token instanceof String&&validProviderToken((String)token,16384));
+  if(expectedId!=null)out.put("credentialIdMatches",expectedId.equals(id));
+  out.put("expiryType",!value.has("expiresAt")?"absent":expiry==JSONObject.NULL?"null":expiry instanceof Number?"number":expiry instanceof String?"string":"other");
+  if(expiry instanceof Number)out.put("expiryFinite",Double.isFinite(((Number)expiry).doubleValue())).put("expired",((Number)expiry).doubleValue()<=now);
+  return out;
+ }
  static boolean validProviderToken(String token,int maximumLength) {
   if(token==null||token.length()<8||token.length()>maximumLength)return false;
   // HTTP bearer credentials are visible ASCII; reject all whitespace/control characters, including CR/LF runs.
@@ -119,26 +142,31 @@ final class LocalAgentProviderAdmission {
  }
  /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
  static String bindCloudProvider(CloudBindingStore store,String credentialId,String model,java.util.function.LongSupplier clock) throws Exception {
+  String stage="model";JSONObject schema=new JSONObject();
+  try{
   if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
+  stage="credential-read";
   String previous=store.readProvider();
   String cloud=store.readCloud();
   store.assertCurrent();
-  String token=cloudProviderToken(cloud,credentialId,clock.getAsLong());
-  JSONObject identity=store.identity(token);
+  schema=cloudCredentialDiagnostics(cloud,credentialId,clock.getAsLong());
+  stage="credential-validation";String token=cloudProviderToken(cloud,credentialId,clock.getAsLong());
+  stage="identity-read";JSONObject identity=store.identity(token);
   store.assertCurrent();
   // A unique revision distinguishes two concurrent admissions for the same account/model.
   String selection=new JSONObject().put("provider","elizacloud").put("credentialId",credentialId).put("model",model)
    .put("revision",UUID.randomUUID().toString()).toString();
-  String binding=store.admit(previous,selection,cloud,identity);
+  stage="admission-commit";String binding=store.admit(previous,selection,cloud,identity);
   if(binding==null)throw new IllegalStateException();
-  try{
+  stage="confirmation";try{
    cloudProviderToken(store.readCloud(),credentialId,clock.getAsLong());
    if(!binding.equals(store.readProvider()))throw new IllegalStateException();
   }catch(Exception unavailable){
-   store.rollback(binding,previous);
+   try{store.rollback(binding,previous);}catch(Exception rollback){stage="rollback";throw rollback;}
    throw unavailable;
   }
   return binding;
+  }catch(Exception failure){throw new CloudBindingFailure(stage,schema,failure);}
  }
  private static final String GENERATION="admissionGeneration",FINGERPRINT="admissionFingerprint",CLOUD_IDENTITY="verifiedCloudIdentity";
  /** Public identity of the native-verified Cloud selection; never the bearer. */

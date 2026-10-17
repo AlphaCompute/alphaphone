@@ -27,11 +27,12 @@ public final class LocalAgentProviderAdmissionTest {
  }
  /** In-memory store whose admit is the real admission compare-exchange. */
  static final class Store implements LocalAgentProviderAdmission.CloudBindingStore {
-  String provider,cloud,cloudAfterAdmit;boolean identityFails,conflict;int rollbacks;
+  String provider,cloud,cloudAfterAdmit;boolean identityFails,conflict;int rollbacks,identityHttpStatus;
   public String readProvider(){return provider;}
   public String readCloud(){return cloud;}
   public void assertCurrent(){}
   public JSONObject identity(String token)throws Exception{
+   if(identityHttpStatus>0)throw new LocalAgentProviderAdmission.CloudReadFailure(identityHttpStatus);
    if(identityFails)throw new SecurityException("Cloud identity unavailable");
    check(TOKEN.equals(token),"the identity lookup receives the saved token");
    return new JSONObject().put("userId","3b241101-e2bb-4255-8caf-4136c566a962");
@@ -136,6 +137,27 @@ public final class LocalAgentProviderAdmissionTest {
   refused(()->LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,cloud(OTHER,NOW+60_000),NOW),"Google refuses credential switch");
   refused(()->LocalAgentProviderAdmission.managedGoogleBinding(googleSelected,googleCloud,NOW+60_001),"Google refuses expired credential");
   refused(()->LocalAgentProviderAdmission.managedGoogleBinding(directSelection,null,NOW),"Google refuses direct-provider selection");
+  // Diagnostics preserve all admission/refusal/rollback behavior and expose no values.
+  for(String value:new String[]{null,"{broken",cloud(ID,NOW+1000),cloud(ID,"private-expiry-marker"),new JSONObject().put("token",TOKEN).put("credentialId",ID).put("privateExtra",KEY).toString()}){
+   String diagnostic=LocalAgentProviderAdmission.cloudCredentialDiagnostics(value,ID,NOW).toString();
+   for(String secret:new String[]{TOKEN,KEY,ID,"3b241101-e2bb-4255-8caf-4136c566a962","6ba7b810-9dad-41d1-80b4-00c04fd430c8","private-expiry-marker","privateExtra"})check(!diagnostic.contains(secret),"diagnostics never expose "+secret);
+  }
+  JSONObject schema=LocalAgentProviderAdmission.cloudCredentialDiagnostics(cloud(ID,NOW-1),OTHER,NOW);
+  check(!schema.getBoolean("credentialIdMatches")&&schema.getBoolean("expired")&&"number".equals(schema.getString("expiryType")),"public credential schema is accurate");
+  for(String expectedStage:new String[]{"credential-validation","identity-read","admission-commit","confirmation"}){
+   Store diagnosticStore=new Store();diagnosticStore.cloud=cloud(ID,NOW+1000);diagnosticStore.provider=directSelection;
+   if(expectedStage.equals("credential-validation"))diagnosticStore.cloud=null;
+   if(expectedStage.equals("identity-read"))diagnosticStore.identityHttpStatus=403;
+   if(expectedStage.equals("admission-commit"))diagnosticStore.conflict=true;
+   if(expectedStage.equals("confirmation"))diagnosticStore.cloudAfterAdmit=cloud(OTHER,NOW+1000);
+   try{LocalAgentProviderAdmission.bindCloudProvider(diagnosticStore,ID,"cerebras/qwen-3.8-27b",()->NOW);throw new AssertionError("Expected diagnostic refusal");}
+   catch(LocalAgentProviderAdmission.CloudBindingFailure failure){
+    check(expectedStage.equals(failure.stage),"exact failed stage");String diagnostic=failure.diagnostic.toString();
+    for(String secret:new String[]{TOKEN,KEY,ID,OTHER,"3b241101-e2bb-4255-8caf-4136c566a962","6ba7b810-9dad-41d1-80b4-00c04fd430c8"})check(!diagnostic.contains(secret),"failure diagnostics contain no credential or identity values");
+    check(failure.diagnostic.getInt("httpStatus")== (expectedStage.equals("identity-read")?403:0),"safe HTTP status retained");
+   }
+   check(diagnosticStore.provider.equals(directSelection),"diagnostics never weaken refusal or rollback");
+  }
   System.out.println("PASS local agent provider admission");
  }
 }

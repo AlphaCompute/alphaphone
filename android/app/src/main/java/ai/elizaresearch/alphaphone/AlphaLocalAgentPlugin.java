@@ -291,7 +291,11 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    AlphaCredentialStore store=new AlphaCredentialStore(getContext(),()->{if(disposed)throw new IllegalStateException("Local agent bridge closed");requireCredentialIntent(configuration);});
    bindCloudProvider(store,credentialId,model);store.assertCurrent();
    call.resolve(new JSObject().put("configured",true));
-  }catch(Exception unavailable){call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.");}},()->{call.reject("Local agent bridge is closed.");});
+  }catch(Exception unavailable){
+   String code="NATIVE_CLOUD_ADMISSION_UNAVAILABLE";
+   if(unavailable instanceof LocalAgentProviderAdmission.CloudBindingFailure){LocalAgentProviderAdmission.CloudBindingFailure failure=(LocalAgentProviderAdmission.CloudBindingFailure)unavailable;code="NATIVE_CLOUD_ADMISSION_"+failure.stage.toUpperCase(java.util.Locale.ROOT).replace('-','_');android.util.Log.w("AlphaCloudAdmission",failure.diagnostic.toString());}
+   call.reject("Cloud account changed or is unavailable. Sign in again before starting the local agent.",code);
+  }},()->{call.reject("Local agent bridge is closed.");});
  }
  /** Preserve the previous selection when admission loses its account, without replacing a newer selection. */
  static void bindCloudProvider(AlphaCredentialStore store,String credentialId,String model) throws Exception {
@@ -345,6 +349,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     String saved=store.readCredentialSlot("local-agent-provider:v1");
     JSONObject provider=LocalAgentProviderAdmission.providerIdentity(saved);
     String cloud="elizacloud".equals(provider.optString("provider"))?store.readCredentialSlot("cloud:production"):null;
+    if(BuildConfig.DEBUG){try{android.util.Log.i("AlphaCloudAdmission","credential-schema="+LocalAgentProviderAdmission.cloudCredentialDiagnostics(store.readCredentialSlot("cloud:production"),null,System.currentTimeMillis()));}catch(Exception unavailable){android.util.Log.i("AlphaCloudAdmission","credential-schema-read-unavailable");}}
     call.resolve(new JSObject(LocalAgentProviderAdmission.providerStatus(saved,cloud,System.currentTimeMillis()).toString()));
    }
    catch(Exception unavailable){call.reject("Provider status unavailable.");}

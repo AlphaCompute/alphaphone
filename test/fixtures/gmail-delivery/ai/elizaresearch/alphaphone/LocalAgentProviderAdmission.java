@@ -1,1 +1,1 @@
-package ai.elizaresearch.alphaphone;import org.json.*;class LocalAgentProviderAdmission{static JSONObject verifiedCloudIdentity(JSONObject data){return data;}}
+package ai.elizaresearch.alphaphone;import org.json.*;class LocalAgentProviderAdmission{static final class CloudReadFailure extends Exception{final int status;CloudReadFailure(int status){this.status=status;}}static JSONObject verifiedCloudIdentity(JSONObject data){return data;}}
