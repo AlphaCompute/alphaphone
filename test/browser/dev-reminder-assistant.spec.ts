@@ -97,8 +97,8 @@ for (const mode of ['create', 'read', 'update', 'complete', 'snooze', 'cancel', 
     if(mode==='stale')await page.evaluate(async ()=>{await (await import('/src/browser/reminder-store.ts')).reminderDocument.edit(()=>({reminders:[] as any[]}),data=>{data.reminders[0].revision='d'.repeat(64);data.reminders[0].title='Changed elsewhere';});});
     await page.getByRole('button',{name:'Expand chat',exact:true}).click();
     const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
-    const approvalLabel='Approve: '+presentDeviceRecordOperation(operation,'UTC').title;
-    await page.getByRole('button',{name:approvalLabel+' Tap to approve this exact action',exact:true}).click();
+    const approvalLabel=presentDeviceRecordOperation(operation,'UTC').title;
+    await page.getByText(approvalLabel,{exact:true}).click();
     if(mode==='cancel'){
       await page.getByRole('dialog',{name:'Delete reminder?',exact:true}).getByRole('button',{name:'Delete reminder',exact:true}).click();
       await expect(page.getByRole('complementary',{name:'Pending deletions'}).getByRole('button',{name:'Undo',exact:true})).toBeVisible();

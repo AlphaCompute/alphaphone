@@ -516,3 +516,7 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .calendar-approval-review footer .calendar-approval-primary { background:var(--acc,#0000ff);color:#fff; }
 /* A service recovery cannot capture audio; do not render its disabled mic as an active control. */
 .alpha-voice-composer button[aria-pressed]:disabled,[data-alpha-pill-voice] button[aria-pressed]:disabled { opacity:.35; cursor:default; }
+
+/* Action details must remain fully readable before approval. */
+.alpha-action-review button > span { display:none!important; }
+.alpha-action-review button > div > div:last-child { white-space:pre-wrap!important; overflow:visible!important; text-overflow:clip!important; overflow-wrap:anywhere; line-height:1.45; }

@@ -123,9 +123,9 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       expect(await page.evaluate(()=>({uploads:(window as any).recoveryFixture.cloudUploads,local:(window as any).recoveryFixture.localProbes,channel:(window as any).calendarSent.channelType}))).toEqual({uploads:1,local:0,channel:'VOICE_DM'});
     }
     else {await input.fill(mode==='show'?'Show my alarms':mode==='snooze'?'Snooze ringing alarms for ten minutes':mode==='dismiss'?'Dismiss the ringing alarm':'Set an alarm for 07:00; await my review.');await input.press('Enter');}
-    if(mode==='old-host'||mode==='browser'){await expect(page.getByText('Clock handoff is unavailable on this host. Open Clock from Calendar.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);await expect(page.getByText('Approve: clock handoff',{exact:true})).toHaveCount(0);return;}
+    if(mode==='old-host'||mode==='browser'){await expect(page.getByText('Clock handoff is unavailable on this host. Open Clock from Calendar.',{exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);await expect(page.getByText('clock handoff',{exact:true})).toHaveCount(0);return;}
     if(mode!=='transcribed')await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
-    await expect(page.getByText('Approve: clock handoff',{exact:true})).toBeVisible();
+    await expect(page.getByText('clock handoff',{exact:true})).toBeVisible();
     expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);
     if(mode==='zone')await page.evaluate(()=>{const original=Intl.DateTimeFormat.prototype.resolvedOptions;Intl.DateTimeFormat.prototype.resolvedOptions=function(){return {...original.call(this),timeZone:'Pacific/Honolulu'};};});
     if(mode==='modal'){
@@ -141,7 +141,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       expect(await page.evaluate(async()=>{try{await (await import('/src/runtime/alpha-client.ts')).alphaClient.approve('fixture-proposal');return false;}catch{return true;}})).toBe(true);
       expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;
     }
-    await page.getByText('Approve: clock handoff',{exact:true}).click();
+    await page.getByText('clock handoff',{exact:true}).click();
     if(mode==='zone'){await expect(page.getByText('This action is no longer pending for the current screen. Open its original selection and review again.',{exact:true}).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(0);return;}
 
     if(mode==='review-cancel'){
@@ -199,7 +199,7 @@ for (const mode of ['confirm','transcribed','zone','modal','unknown','receipt-lo
       // A newly opening sheet can scroll its inner text between pointer down/up.
       await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
       await page.getByRole('button',{name:'Expand chat',exact:true}).click();
-      await page.getByRole('button',{name:'Approve: clock handoff Tap to approve this exact action',exact:true}).click();
+      await page.getByRole('button',{name:/^clock handoff /}).click();
       await expect(page.getByText(/already has a device journal entry/).first()).toBeVisible();expect(await page.evaluate(()=>(window as any).recoveryFixture.effects)).toBe(1);
     }
 

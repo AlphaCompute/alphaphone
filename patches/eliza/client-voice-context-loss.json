@@ -1,13 +1,13 @@
 {
   "baseCommit": "985322b5df96a91e9dc913c73280a97b82890642",
-  "sourceCommit": "da8c103521af01a3504deb3e6adb3a375d2417bc",
   "paths": [
     {
       "path": "packages/ui/src/voice/voice-session-client.ts",
-      "beforeSha256": "20ef94c8c4e01d4f1ec1ee6c64f62182eff28626ce50608b1cf0dae873495f63",
-      "afterSha256": "0a0339f8e223a4990a8bbd8312b35276b20aec8fe170b955d1196edc2804f23b"
+      "beforeSha256": "2d928e07ab1adfe9e0334d81599e82766cc654ea66908557a07ebcd0852de19e",
+      "afterSha256": "5a0af57a81a7700e449588be59896ad27499a07480b18c9d20cd8584189b993d"
     }
   ],
-  "patchSha256": "5ff8d4e2e0bcc3bb1565877e29b4a5618cc5a6f69701dc21f928fe029c791394",
-  "sourceScope": "Stop microphone capture when the bound renderer context throws; do not discard every packet silently or retry the session."
+  "patchSha256": "b1d0936caa118c5583af3083330f8842edec52fb49ca3efb942c2f14db43c153",
+  "sourceCommit": "da8c103521af01a3504deb3e6adb3a375d2417bc",
+  "sourceScope": "Stop capture on a retired renderer context; layered after the credit terminal policy."
 }

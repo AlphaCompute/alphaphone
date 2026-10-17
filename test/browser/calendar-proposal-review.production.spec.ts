@@ -154,15 +154,20 @@ async function connected(page: Page) {
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
 }
 
-test('Android: the proposal card states time zone, calendar and attendees, and Approve hands over exactly the reviewed operation once', async ({ page }) => {
+test('Android: the proposal card states time zone, calendar and attendees, and Approve hands over exactly the reviewed operation once', async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   await residentAgent(page, operation, ['calendar.create.v1']);
   await connected(page);
   await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
-  const approve = page.getByText('Approve: Create event', { exact: true });
+  await page.getByRole('button',{name:'Expand chat',exact:true}).click();
+  await expect.poll(async()=> (await page.locator('[data-alpha-layer="conversation"]').boundingBox())?.height??0).toBeGreaterThan(700);
+  const approve = page.getByText('Create event', { exact: true });
   await expect(approve).toBeVisible({ timeout: 20_000 });
   // The whole reviewed text, line for line, in the conversation.
-  await expect(page.getByText(card.join('\n'), { exact: true })).toBeVisible();
+  await expect(page.getByText(card.slice(1).join('\n'), { exact: true })).toBeVisible();
+  await expect(page.getByText(card.slice(1).join('\n'), { exact: true })).toHaveCSS('white-space','pre-wrap');
+  await expect(page.locator('.alpha-action-review button > span').first()).toBeHidden();
+  await testInfo.attach('calendar-action-review',{body:await page.screenshot({animations:'disabled'}),contentType:'image/png'});
   // Nothing has reached the native Calendar plugin or the journal.
   let state = await fixture(page);
   expect(state.calendar).toEqual([]);
@@ -195,14 +200,14 @@ test('Android: declining the calendar proposal hands nothing to the Calendar plu
   await residentAgent(page, operation, ['calendar.create.v1']);
   await connected(page);
   await page.getByRole('button', { name: 'Open conversation', exact: true }).click();
-  await expect(page.getByText('Approve: Create event', { exact: true })).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: /^Decline Reject this proposal/ }).click();
+  await expect(page.getByText('Create event', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: /^Cancel Keep things as they are\./ }).click();
   await expect(page.getByText('Declined. No phone action was performed.', { exact: true })).toBeVisible({ timeout: 20_000 });
   const state = await fixture(page);
   expect(state.calendar).toEqual([]);
   expect(state.states).toEqual([['fixture-calendar', 'rejected']]);
   expect(state.journal.filter(m => ['reserve', 'markApplying', 'finish'].includes(m))).toEqual([]);
-  await expect(page.getByText('Approve: Create event', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Create event', { exact: true })).toHaveCount(0);
 });
 
 test('Android: a calendar proposal from an agent that has not negotiated Calendar creation is never offered for approval', async ({ page }) => {
@@ -213,7 +218,7 @@ test('Android: a calendar proposal from an agent that has not negotiated Calenda
   // The phone has read the agent's proposals; the unsupported one gets no approval control.
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.lists), { timeout: 30_000 }).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
-  await expect(page.getByText('Approve: Create event', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Create event', { exact: true })).toHaveCount(0);
   const state = await fixture(page);
   expect(state.calendar).toEqual([]);
   expect(state.decisions).toEqual([]);
