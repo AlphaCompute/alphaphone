@@ -147,6 +147,8 @@ for (const scale of [1, 2]) {
     await page.getByRole('button', { name: 'All apps', exact: true }).click();
     const drawer = page.getByRole('dialog', { name: 'All apps' });
     await expect(drawer).toBeVisible();
+    await drawer.getByRole('button', { name: 'Remove Files from favorites', exact: true }).click();
+    await expect(drawer.locator('[data-launcher-app]')).not.toHaveCount(0);
     await setTextScale(page, scale);
     const found = blocking(format(await auditPage(page, { clipping: true, overlap: true })));
     expect(found, found.join('\n')).toEqual([]);
@@ -154,7 +156,7 @@ for (const scale of [1, 2]) {
     const cover = await drawer.evaluate(element => { const box = element.getBoundingClientRect(), screen = element.closest('[data-screen]')!.getBoundingClientRect(); return { top: box.top - screen.top, left: box.left - screen.left, right: screen.right - box.right }; });
     expect(cover).toEqual({ top: 0, left: 0, right: 0 });
     // Each row: the name sits between the icon and the favorite control and inside the row.
-    const rows = await drawer.locator('[data-launcher-app]').evaluateAll(list => list.map(row => {
+    const rows = await drawer.locator('[data-launcher-app], [data-launcher-favorite]').evaluateAll(list => list.map(row => {
       const open = row.querySelector('button')!, name = open.querySelector('span > span')!, favorite = row.querySelector('button[aria-pressed]')!;
       const range = document.createRange(); range.selectNodeContents(name);
       const text = Array.from(range.getClientRects()).filter(rect => rect.width > 1);
