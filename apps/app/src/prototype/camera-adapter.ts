@@ -218,7 +218,11 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     // It cannot consume a new save or cancel/navigate a newer editor/selection.
     if(value.operationId!==ticket.token||!ticket.intent)throw Error('Saved-copy receipt identity changed');
     const terminal=(value.status==='saved'&&!!value.id)||['failed','unchanged','not-started'].includes(value.status);if(!terminal)return false;
-    await acknowledgeMediaCopyIntent(ticket.intent);const updateView=completionCurrent(ticket,owner);
+    await acknowledgeMediaCopyIntent(ticket.intent);
+    // A library notification can arrive while acknowledgement yields too.
+    const pendingCopy=pendingNativeVideoCopy;
+    if(pendingCopy?.epoch===ticket.epoch&&pendingCopy.source.id===ticket.source)await pendingCopy.checking;
+    const updateView=completionCurrent(ticket,owner);
     if(edit?.operationId===ticket.token)cancelEdit();
     if(!updateView)return true;owner.set({nativeCopyRecovery:false});
     if(videoEditSource&&videoEditSource===ticket.source&&closeVideoEdit){const close=closeVideoEdit;closeVideoEdit=undefined;close();}
