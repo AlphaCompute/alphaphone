@@ -1,7 +1,7 @@
 # MVP remaining-work inventory — policy reconciled October 12, 2026
 
-Current source pin: `221a0bc4e0d5` (2026-10-15, separate Maps allowance), llama.cpp `3e5f73922ee8`.
-The relay preserves native source from `968348d792d3` (PR #531). Voice remains unqualified and the prior embedding-host
+Current source pin: `08703642627c` (2026-10-16, eliza `develop`; native inputs identical to `afd44a8544b4`), llama.cpp `6e6a4401aae4` (fork `main`).
+Both Android ABIs were rebuilt at this pin (voice ABI 19, Paradee streaming PCM); build inspection only. Voice remains unqualified and the prior embedding-host
 receipt remains refused pending requalification. Historical evidence below is not promoted.
 
 The 53 stable inventory IDs remain for traceability. The owner has resolved the

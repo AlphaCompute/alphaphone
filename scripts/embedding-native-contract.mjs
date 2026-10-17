@@ -23,7 +23,7 @@ export function nativeCmakeOptions(binding){return binding.mode==='registered'?[
 const clean=source=>source.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g,'');
 /** Reject a source pin whose full registration table cannot bind its staged Java class. */
 export function verifyNativeJava(cpp,java){
- const types={void:'V',boolean:'Z',byte:'B',char:'C',short:'S',int:'I',long:'J',float:'F',double:'D',String:'Ljava/lang/String;'};
+ const types={void:'V',boolean:'Z',byte:'B',char:'C',short:'S',int:'I',long:'J',float:'F',double:'D',String:'Ljava/lang/String;',Object:'Ljava/lang/Object;'};
  const descriptor=type=>{type=type.replace(/\s/g,'');if(type.endsWith('[]'))return '['+descriptor(type.slice(0,-2));if(!types[type])throw Error('Unsupported native Java type '+type);return types[type];};
  const declarations=new Map();
  for(const match of clean(java).matchAll(/\bstatic\s+native\s+([\w\[\]]+)\s+(\w+)\s*\(([^)]*)\)\s*;/g)){
