@@ -163,7 +163,14 @@ final class VideoCopyEdits {
   try(FileOutputStream output=preservationOutput(directory,name)){output.write(bytes);output.flush();output.getFD().sync();}
  }
  private void syncPreservationDirectory(File directory)throws Exception{
-  requirePrivateDirectory(directory);java.io.FileDescriptor fd=Os.open(directory.getAbsolutePath(),OsConstants.O_RDONLY|OsConstants.O_DIRECTORY|OsConstants.O_NOFOLLOW,0);try{Os.fsync(fd);}finally{Os.close(fd);}
+  requirePrivateDirectory(directory);String path=directory.getAbsolutePath();StructStat before=Os.lstat(path);
+  java.io.FileDescriptor fd=Os.open(path,OsConstants.O_RDONLY|OsConstants.O_NOFOLLOW|OsConstants.O_NONBLOCK,0);
+  try{
+   StructStat opened=Os.fstat(fd);
+   if(!OsConstants.S_ISDIR(opened.st_mode)||opened.st_uid!=android.os.Process.myUid()||(opened.st_mode&077)!=0||opened.st_dev!=before.st_dev||opened.st_ino!=before.st_ino)throw new IOException("Recovery directory changed before sync");
+   Os.fsync(fd);requirePrivateDirectory(directory);StructStat after=Os.lstat(path);
+   if(after.st_dev!=opened.st_dev||after.st_ino!=opened.st_ino)throw new IOException("Recovery directory changed during sync");
+  }finally{Os.close(fd);}
  }
  private JSONObject preservationDigest(InputStream input,FileOutputStream output,String token,String recordHash,long admittedEpoch)throws Exception{
   if(input==null)throw new IOException("Pending output could not be opened");MessageDigest hash=MessageDigest.getInstance("SHA-256");byte[] chunk=new byte[64*1024];long bytes=0;int emptyReads=0;
