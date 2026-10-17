@@ -136,4 +136,24 @@ public final class VideoCopyPreservationInstrumentedTest {
    }
   }
  }
+ @Test public void postSealForegroundOrRecordChangeRefusesWithoutTreatingMarkerAsAcceptance()throws Exception{
+  try(ActivityScenario<VideoFixtureActivity> scene=ActivityScenario.launch(VideoFixtureActivity.class)){
+   AtomicReference<VideoFixtureActivity> activity=new AtomicReference<>();scene.onActivity(activity::set);
+   for(String mode:List.of("foreground","record")){
+    Pending p=new Pending(asset());File complete=new File(p.directory(),"COMPLETE.json");AtomicBoolean sawSeal=new AtomicBoolean();
+    VideoCopyEdits editor=editor(()->{
+     if(complete.exists()){
+      if(mode.equals("foreground")){sawSeal.set(true);return false;}
+      if(sawSeal.compareAndSet(false,true))try{p.setRecord(new JSONObject(p.record).put("postSealActor",true));}catch(Exception error){throw new IllegalStateException(error);}
+     }
+     return activity.get().hasWindowFocus();
+    });boolean verified=false;
+    try{
+     String before=metadata(p.uri);Response call=new Response();editor.preserveClosedFailure(p.token,recordHash(p.record),call);refused(call);assertTrue("The final authority check must run after the sealed marker exists",sawSeal.get());assertTrue(complete.isFile());assertTrue(new File(p.directory(),"INCOMPLETE.json").isFile());assertNull("A sealed marker alone must not report success",call.value);
+     assertEquals(p.record,journal.getString(p.token,null));assertEquals(before,metadata(p.uri));assertArrayEquals(p.bytes,bytes(p.uri));assertArrayEquals(p.bytes,Files.readAllBytes(new File(p.directory(),"bytes.bin").toPath()));verified=true;
+    }finally{editor.close();if(verified)dispose(p);}
+   }
+  }
+ }
+
 }
