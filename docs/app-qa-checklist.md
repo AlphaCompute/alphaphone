@@ -1,6 +1,6 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Verified preview source `4d7941c1`; Shared `6ef36b8d`, including main `f1d4baa6`. All13 prior conversations and228 messages survived the update; Cloud identity and a fresh agent Gmail search passed. Candidate `5f42d940` has the same product code; its native package is not yet qualified or installed. Updated October 17, 2026.
+Live preview: <http://127.0.0.1:5209/>. Functional source `2446a567`; Shared `6ef36b8d`, including the recorded main integration `f1d4baa6`. All13 prior conversations and228 messages survived the preview update; Cloud identity and fresh agent Gmail search passed. Seeker now has the same functional source, with its original UID/data retained. Test-only CI repairs are on `ab523907`. Updated October 17, 2026.
 
 The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
@@ -8,7 +8,7 @@ For each applicable flow check light/dark, compact portrait, landscape, large te
 
 Review order: latest preview → deployed backend/prompt proof → installed Seeker → your per-view approval. Labels/categories remain deferred; Phone/Messages/Contacts require AOSP; Wallet is excluded.
 
-Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original app data retained. Native Gmail/Calendar prompt acceptance remains blocked by provider admission. Four current-candidate Photos permission flows and two production disconnected-Compose flows pass; browser shards are still running. Native SDK verification passed; product continuation is prepared after an initialization assertion. Earlier row evidence remains labeled by its observed build and is not automatically promoted.
+Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, existing certificate, UID10250 and original install date preserved. Normal SDK/product verification, four variants, lint and APK checks passed. The valid saved credential now commits a provider binding; resident is now running with Cloud inference and connected Google permissions after all eight retired IPC directories were archived intact. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider result was observed. Native send and Calendar write were not attempted. See [native read evidence](evidence/seeker-cloud-read-20261017.json). Prior row evidence stays labeled by its observed build; human approval remains separate.
 
 ## Shell and Home
 
@@ -51,7 +51,7 @@ Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original a
 | inbox-16 | Spam, Archive, Sent, Starred and Trash reads | Prior preview pass; latest retest pending | Pending | Pending |
 | inbox-17 | Read/unread, star, archive, trash and restore writes | Pending | Pending | Pending |
 | inbox-18 | Agent list/search/read full email | Real agent list/search/full-message reads passed atShared33a6; installed Seeker proof pending | Pending | Pending |
-| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | Actual bb4d prompt failed before answering; Cloud provider admission diagnostic candidate is qualifying. No native send claimed. | Pending |
+| inbox-19 | Agent self-addressed send and delivery readback | Verified: exact draft → plain Yes → Gmail succeeded receipt → same message in Inbox → exact full body → agent search/read. Earlier uncertain send untouched. | 2446 running and Google connected. One known-QA read failed at Cloud text HTTP400; native send remains unproven. | Pending |
 | inbox-20 | Send approval, cancellation, duplicate and uncertain outcome | Pending | Pending | Pending |
 | inbox-21 | Account-scoped persistent cache and background refresh | Account-scoped cache implemented and source-tested. | Warm re-entry showed10 mail rows without connection loading at first UI observation (2.727s including inspection overhead). | Pending |
 | inbox-22 | Disconnect/reconnect without cross-account data | Pending | Pending | Pending |
@@ -243,15 +243,17 @@ Latest installed Seeker evidence: `bb4d334b`, APK `5b0d1015…758b2`, original a
 
 ## Current integration gaps
 
-- Gmail reading/search/full-message prompts passed in the browser agent. Real agent self-send/delivery is still pending backend activation. No QA email has been sent.
-- Backend SQL files initially lacked journal entries. The owner has now proved the normal372-entry migration and rerun in isolation; production activation remains pending.
-- Original Calendar approval/attempt remains protected and uncertain; no reset, blind replay or substitute fixture.
-- Seeker is running the full installed app. Its existing Cloud account reports no active AI plan; the account/plan question is pending for native prompt tests.
-- Native Google read/send and Calendar read/edit access are confirmed. Calendar sync review currently refuses context; live enable/write/Undo remains open.
+- Browser ordinary Gmail self-send, independent Inbox delivery, exact full-body readback and agent search/read passed for a new QA fixture. Native acceptance is separate.
+- Browser ordinary Google Calendar create/read/delete passed for a distinct QA event, with independent provider absence readback. Original uncertain operations remain fenced and were not replayed.
+- Seeker now runs source2446/Shared6ef with its original identity/data, Cloud inference and Google read/send plus Calendar read/edit connected. Its one known-QA email read prompt failed at the Cloud text request with HTTP400. That exact request is handed off for correlation; no native send or Calendar write was attempted.
+- Native Calendar consent/write/Undo has prior build evidence; current installed sync and prompt lifecycle acceptance remain open.
+- Photo access controls are in Settings > Photos. Denied Photos still requires explicit Android permission choice; selected/full access does not show ongoing access controls in the grid. Four focused browser permission flows passed. On current Seeker2446, Settings visibly contains both access controls and the existing full grant, while Photos grid omits access controls; no grant was changed. Physical denied/selected/revoked transitions and human approval remain separate.
 - Agent threaded reply/forward and optional Gmail mailbox-change consent remain open.
-- Native camera saved a new disposable QA photo. Recently Deleted, video editing, scan and remaining per-view native flows are still being checked.
-- Native album selection and mode accessibility names require follow-up. Stable header positioning alone does not complete that request.
+- Full packaged Camera/Photos editor UI, revocation, process-death recovery and remaining per-view native flows remain open; component exporter tests passed separately.
 - Full app audio, held-out ASR quality and human acceptance remain separate from passed component/packaging tests.
+- Hosted CI atab523907: repository, Android and production browser checks pass; three MVP browser shards remain running. Preview5209 returns HTTP200.
+
+The dated entries below retain earlier build results and blockers; the current state above supersedes their blocker wording.
 
 Current verification:1,455 tests passed, two existing skips; types, production build and404-file production audit passed. All four APK variants built/linted/verified. The installed standalone APK matches the locally signed candidate and retains the original app identity. This does not imply provider-write, full native or human acceptance.
 

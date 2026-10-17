@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T03:26:56.924415+00:00",
+  "updatedAt": "2026-10-17T06:40:33.592862+00:00",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "4d7941c12625e22962da873d8d4d05ecb87f3dea",
+  "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
@@ -394,10 +394,11 @@
       "scope": "MVP",
       "implementation": "Ordinary prompt, exact draft, plain Yes, real Gmail acceptance and exact inbox delivery/readback verified for a distinct new QA email. Original uncertain send stays fenced.",
       "preview": "Verified on5209/Shared911: canonical succeeded, same provider message ID found in Inbox, exact body match, and agent searched/read it through prompts.",
-      "seeker": "Actual bb4d prompt attempt failed before answering: native Cloud provider admission remains unbound. No native Gmail send claimed. Diagnostic candidate is qualifying.",
+      "seeker": "2446/6ef installed with original identity/data retained; resident running with Cloud inference and connected Google access. One known-QA Gmail read prompt failed with Cloud text HTTP400 before any observed Gmail tool result. No native send or Calendar write attempted.",
       "userApproval": "Pending",
       "evidence": [
-        "docs/evidence/gmail-prompt-send-20261016.json"
+        "docs/evidence/gmail-prompt-send-20261016.json",
+        "docs/evidence/seeker-cloud-read-20261017.json"
       ],
       "notes": "The new test used a distinct subject/body and operation ID. The old9364 operation was not replayed or reset."
     },
@@ -1154,7 +1155,7 @@
       "scope": "MVP",
       "implementation": "Photo access controls moved to native Settings > Photos; denied-access Photos retains explicit Android permission request. Full verification passed:1455 pass/2 skips/0 fail.",
       "preview": "Fresh current-candidate permission regression: all four browser flows passed (Settings placement, selected access, denied request then approval, revocation). Browser controls disabled in Work settings prevented a new manual preview observation.",
-      "seeker": "Installeda569f79c: fresh Settings > Photos readback and Android photo permissions navigation passed; returned to Alpha; existing full grant unchanged. Denied permission contract retains explicit request.",
+      "seeker": "Current installed2446: Settings > Photos visibly shows All photos and videos, Choose photo access, and Android photo permissions. Photos grid visibly omits all three ongoing access controls. Existing full grant unchanged; no permission control invoked. Denied/selected/revoked transitions retain four browser regression passes, not current physical transition acceptance.",
       "userApproval": "Pending",
       "evidence": [
         "docs/evidence/photo-access-settings-native-20261016.json"
@@ -1864,10 +1865,11 @@
       "scope": "MVP",
       "implementation": "Needs review against current source",
       "preview": "Pending",
-      "seeker": "bb4d/9365 normal four-variant/lint/package checks passed and exact signed APK installed preserving UID/first-install date. Ordinary Gmail read prompt failed: actual resident launched Cloud inference=false, no protected provider key or Google host broker. Supported Cloud admission is pending; native send/deletion not attempted.",
+      "seeker": "2446/6ef installed with original identity/data retained; resident running with Cloud inference and connected Google access. One known-QA Gmail read prompt failed with Cloud text HTTP400 before any observed Gmail tool result. No native send or Calendar write attempted.",
       "userApproval": "Pending",
       "evidence": [
-        "docs/evidence/seeker-native-startup-20261017.json"
+        "docs/evidence/seeker-native-startup-20261017.json",
+        "docs/evidence/seeker-cloud-read-20261017.json"
       ],
       "notes": ""
     },
@@ -1985,7 +1987,7 @@
       "viewOrFlow": "Hosted CI at published head",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "ab523907: repository verification, Android build/foundation, and production browser surface pass; three MVP browser shards still running.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -2068,7 +2070,7 @@
       "scope": "MVP",
       "implementation": "Existing preservation guard; operator review performed",
       "preview": "Pending visible QA",
-      "seeker": "Eight Oct8/9 retired IPC directories archived intact; live IPC unchanged; resident started.",
+      "seeker": "All eight current retired IPC evidence directories archived intact; existing archive, active namespace, credentials and effect journals retained. One normal start succeeded; resident visibly running.",
       "userApproval": "Pending",
       "evidence": [],
       "notes": "User-facing recovery review remains a follow-up; no files deleted or credentials read."
@@ -2246,28 +2248,29 @@
   ],
   "nativeSpeechEvidence": "docs/evidence/native-google-33a6; current ARM64 Seeker and x86 API35 component streaming/cancellation/ASR tests passed; full installed Alpha audio and human acceptance pending",
   "automatedValidation": {
-    "source": "574c8e395f039d9b1719bcf9dc78637f11556d3f",
-    "tests": 1457,
-    "passed": 1455,
-    "skipped": 2,
-    "failed": 0,
-    "typecheck": "passed",
-    "productionBuild": "passed",
-    "productionAudit": "404 files; testMocks=false; passed",
+    "source": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
+    "normalSDKVerify": "passed at exact unchanged 6ef36b8d",
+    "normalProductVerify": "passed",
+    "normalFourVariantsLintAndAPKChecks": "passed",
+    "packagedRuntime": "verified for all four APKs; testMocks=false; allowUnpackagedRuntime=false",
+    "originalQualifiedInputsUnchangedAfterBuild": true,
     "visibleAcceptance": false
   },
   "mainIntegrated": "f1d4baa6",
   "nativeInstalled": {
-    "source": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
-    "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
-    "apkSha256": "5b0d1015fe99ce3a41022b19329a6801fc3e04967b948f803dd03a9a546758b2",
+    "source": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
+    "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+    "apkSha256": "06df1c8364e06458e6e5a3ceebd8f98f0c2ee0e4ad1b1b344f161358436572fb",
     "sameExistingSigner": true,
     "sameAppIdAndOriginalInstallTime": true,
+    "UID": 10250,
+    "firstInstallTime": "2026-10-07 20:49:05",
     "dataReset": false,
     "nativePromptAcceptance": false,
     "allViewsAccepted": false,
-    "observedAt": "2026-10-17T01:40:55.978766+00:00",
-    "blocker": "Native Cloud provider admission fails; no bound inference or Google broker in observed resident. Safe stage diagnostics are in the candidate."
+    "observedAt": "2026-10-17T06:40:33.592862+00:00",
+    "blocker": "Resident and Google source connected after preserved IPC archive. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider outcome observed. No native send or Calendar write attempted.",
+    "residentRunning": true
   },
   "qualification": {
     "productVerify": {
@@ -2308,7 +2311,7 @@
   "nativeVideoCandidate": "5f42d94057690b6d849ae3afac775606a36e21b7",
   "installedNativeSource": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
   "installedNativeSharedSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
-  "currentPreviewSource": "4d7941c12625e22962da873d8d4d05ecb87f3dea",
+  "currentPreviewSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
   "previousEvidenceSnapshot": {
     "productSource": "94bef8bc",
     "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -2335,18 +2338,19 @@
     }
   },
   "candidateQualification": {
-    "source": "5f42d94057690b6d849ae3afac775606a36e21b7",
+    "source": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
     "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
-    "mainIntegrated": "f1d4baa6",
-    "state": "normal combined qualification running; not yet the 5209 preview or installed Seeker",
-    "latestTestOnlyHead": "f39071ef83db53326c70e426fca2edabaf30f0d5"
+    "buildInputCommit": "9c4867fb1e53eda5d2c78f844a380031e6e3608d",
+    "state": "Normal SDK/product verification and four APK variants, lint, package checks passed; original reused inputs unchanged after build. Installed on Seeker; prompt acceptance still pending.",
+    "latestTestOnlyHead": "ab523907"
   },
   "latestFocusedValidation": {
-    "source": "f39071ef83db53326c70e426fca2edabaf30f0d5",
-    "permissionBrowserTestsPassed": 4,
-    "disconnectedComposeProductionTestsPassed": 2,
+    "source": "ab523907",
+    "providerOwningBrowserPass": 4,
+    "privacyConnectionBrowserPass": 3,
+    "copyDrawerLargeTextBrowserPass": 5,
     "fullLatestCIPending": true,
-    "visibleHumanAcceptance": false
+    "humanApproval": false
   },
   "latestProgrammaticAcceptance": {
     "schemaVersion": 1,
@@ -2365,5 +2369,54 @@
     "newSendAttempted": false,
     "nativeAcceptance": false,
     "visualAcceptance": false
+  },
+  "previousInstalledEvidence": {
+    "source": "bb4d334ba779bdda54f8f1bf7a34acc437933afd",
+    "agentSource": "9365c9bb0d1771f17eedafcb5b3240ae129b276a",
+    "apkSha256": "5b0d1015fe99ce3a41022b19329a6801fc3e04967b948f803dd03a9a546758b2",
+    "sameExistingSigner": true,
+    "sameAppIdAndOriginalInstallTime": true,
+    "dataReset": false,
+    "nativePromptAcceptance": false,
+    "allViewsAccepted": false,
+    "observedAt": "2026-10-17T01:40:55.978766+00:00",
+    "blocker": "Native Cloud provider admission fails; no bound inference or Google broker in observed resident. Safe stage diagnostics are in the candidate."
+  },
+  "latestNativePromptAttempt": {
+    "schemaVersion": 1,
+    "observedAt": "2026-10-17T06:40:33.592862+00:00",
+    "source": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
+    "sharedSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+    "installedApkSha256": "06df1c8364e06458e6e5a3ceebd8f98f0c2ee0e4ad1b1b344f161358436572fb",
+    "originalUidAndInstallDatePreserved": true,
+    "retiredIpcEvidenceArchivedWithoutDeletion": true,
+    "residentRunning": true,
+    "cloudInferenceEnabled": true,
+    "googleReadSendCalendarReadEditConnected": true,
+    "nativeReadPrompt": {
+      "dispatchAt": "2026-10-17T06:36:17.017127Z",
+      "logicalRequestId": "f612c2a7-f082-4ce5-89c4-5f98772e7dbf",
+      "logicalIdIsServerRequestId": false,
+      "fixture": "previously verified self-addressed QA email only",
+      "promptCount": 1,
+      "result": "generic failure reply",
+      "failureAt": "2026-10-17T06:36:27.288Z",
+      "stage": "Cloud text request",
+      "httpStatus": 400,
+      "errorClass": "cloudTextRequestError",
+      "errorMessage": "Bad Request",
+      "code": "UNCLASSIFIED",
+      "gmailToolOrProviderResultObserved": false,
+      "accepted": false,
+      "repeated": false
+    },
+    "nativeSendOrCalendarWriteAttempted": false,
+    "credentialsOrRawReasoningIncluded": false,
+    "remaining": [
+      "Correlate the existing Cloud HTTP400 request and fix its cause",
+      "Native Gmail read, then send and independent delivery proof",
+      "Native Google Calendar deletion through prompts",
+      "Full installed per-view QA and human acceptance"
+    ]
   }
 }
