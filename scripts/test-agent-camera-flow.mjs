@@ -11,9 +11,10 @@ const request=source.slice(source.indexOf('  const takeRequestedPhoto='),source.
 function cameraFixture(browser=false){
  let calls=0,mode='ok',release;
  const camera={async capturePhoto(options){calls++;assert.equal(options.saveToGallery,true);if(mode==='hold')await new Promise(resolve=>{release=resolve});if(mode==='fail')throw Error('write unavailable');return {path:mode==='invalid'?'file:///tmp/45':browser?'browser-photo:///45':'content://media/external/images/media/45',format:'jpeg',base64:'jpeg-fixture',width:1280,height:720}}};
- const api={set(){},setView(){throw Error('An agent capture must not change views')}};
- const context=vm.createContext({camera,api,validateCameraCaptureResult,nativeId:id=>id.replace('native-camera-',''),browserMode:browser,disposed:false,captures:[],loaded:true,capturing:false,controlBusy:false,recording:false,recordingStarting:false,finalizing:false,phase:'ready',active:()=>true,message(){},Date});
- vm.runInContext(stripTypeScriptTypes(save+request+';globalThis.capture=takeRequestedPhoto;',{mode:'transform'}),context);
+ const api={S:{chat:'hidden'},isActive:()=>true,set(){},setView(){throw Error('An agent capture must not change views')}};
+ const context=vm.createContext({camera,api,validateCameraCaptureResult,nativeId:id=>id.replace('native-camera-',''),browserMode:browser,disposed:false,captures:[],loaded:true,capturing:false,controlBusy:false,recording:false,recordingStarting:false,finalizing:false,phase:'ready',requestedCaptureActive:false,document:{hidden:false,querySelector:()=>({})},finder:'#camera',schedule(){},message(){},Date});
+ const visibility=source.match(/  const cameraViewVisible[^\n]+\n  const active[^\n]+/)[0];
+ vm.runInContext(stripTypeScriptTypes(visibility+'\n'+save+request+';globalThis.capture=takeRequestedPhoto;',{mode:'transform'}),context);
  return {capture:context.capture,context,get calls(){return calls},setMode:value=>{mode=value},release:()=>release?.()};
 }
 function flow(camera){
@@ -34,5 +35,7 @@ for(const mode of ['fail','invalid']){const camera=cameraFixture();camera.setMod
 const held=cameraFixture();held.setMode('hold');const first=held.capture('operation-one',signal(),()=>{});await Promise.resolve();assert.equal(held.context.capturing,true);assert.equal((await held.capture('operation-two',signal(),()=>{})).status,'failed');assert.equal(held.context.capturing,true,'a refused concurrent capture cannot clear the active capture lock');held.release();assert.equal((await first).status,'succeeded');assert.equal(held.calls,1);
 const browser=cameraFixture(true);assert.equal((await browser.capture('browser-operation',signal(),()=>{})).cameraResult.mediaId,'45');assert.equal(browser.calls,1);
 const changed=cameraFixture();let checks=0;assert.equal((await changed.capture('changed',signal(),()=>{if(++checks===2)throw Error('owner changed')})).status,'failed');assert.equal(changed.calls,0);
+const overlay=cameraFixture();overlay.context.api.S.chat='full';assert.equal((await overlay.capture('overlay-operation',signal(),()=>{})).status,'succeeded');assert.equal(overlay.context.requestedCaptureActive,false);assert.equal(overlay.calls,1);
+const background=cameraFixture();background.context.document.hidden=true;assert.equal((await background.capture('background-operation',signal(),()=>{})).status,'failed');assert.equal(background.calls,0);
 const cancelled=cameraFixture();const abort=new AbortController();abort.abort();assert.equal((await cancelled.capture('cancelled',abort.signal,()=>{})).status,'failed');assert.equal(cancelled.calls,0);
 console.log('PASS: actual camera save/request code and DeviceActions journal/receipt flow; current-message binding, visible view, capability, cancellation, concurrency and lost-receipt non-replay. Synthetic camera boundary only.');

@@ -546,7 +546,9 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     const frame = screen.parentElement?.firstElementChild;
     if (frame instanceof HTMLElement && frame !== screen && !frame.contains(screen)) { frame.setAttribute('data-alpha-camera-frame', ''); marked.add(frame); }
   }
-  const active = () => !disposed && !document.hidden && !!api?.isActive() && !['sheet', 'full'].includes(api?.S.chat) && !!document.querySelector(finder);
+  let requestedCaptureActive=false;
+  const cameraViewVisible = () => !disposed && !document.hidden && !!api?.isActive() && !!document.querySelector(finder);
+  const active = () => cameraViewVisible() && (requestedCaptureActive || !['sheet', 'full'].includes(api?.S.chat));
   function hideAccess(){accessPanel?.remove();accessPanel=undefined;}
   function showAccess(kind:AccessKind){
     denied=kind;hideAccess();
@@ -683,8 +685,8 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     let dispatched=false,ownsCapture=false;
     try{
       signal.throwIfAborted();current();
-      if(!active()||!api||capturing||controlBusy||recording||recordingStarting||finalizing)return {status:'failed',summary:'Open Camera and finish the current capture before taking another photo.'};
-      capturing=true;ownsCapture=true;
+      if(!cameraViewVisible()||!api||capturing||controlBusy||recording||recordingStarting||finalizing)return {status:'failed',summary:'Open Camera and finish the current capture before taking another photo.'};
+      capturing=true;ownsCapture=true;requestedCaptureActive=true;
       if(phase!=='ready')await start(true);
       signal.throwIfAborted();current();
       if(!active()||phase!=='ready')return {status:'failed',summary:'Camera access or preview is unavailable. No photo was taken.'};
@@ -694,7 +696,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       if(active())message('');
       return {status:'succeeded',summary:'Photo saved in Photos.',cameraResult};
     }catch{return {status:dispatched?'unknown':'failed',summary:dispatched?'The photo outcome is unconfirmed. Check Photos before taking another.':'The Camera request changed. No photo was taken.'};}
-    finally{if(ownsCapture)capturing=false;}
+    finally{if(ownsCapture){capturing=false;requestedCaptureActive=false;schedule();}}
   };
   requestedPhoto=takeRequestedPhoto;
   async function keepScan(photo:Photo,signal:AbortSignal,owner:Bag):Promise<string>{
