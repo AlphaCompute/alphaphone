@@ -12,6 +12,10 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.provider.MediaStore;
+import android.system.ErrnoException;
+import android.system.Os;
+import android.system.OsConstants;
+import android.system.StructStat;
 import androidx.annotation.OptIn;
 import androidx.media3.common.Effect;
 import androidx.media3.common.MediaItem;
@@ -37,6 +41,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,6 +49,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.BooleanSupplier;
 import org.json.JSONObject;
 
 /** Native edit-as-copy over an admitted video. The encoder reads a frozen private
@@ -59,6 +65,7 @@ final class VideoCopyEdits {
  private static final Uri OUTPUTS=MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
  private final Context context;
  private final Sources sources;
+ private final BooleanSupplier foreground;
  private final SharedPreferences journal;
  private final File directory;
  private final ExecutorService io=Executors.newSingleThreadExecutor();
@@ -84,11 +91,13 @@ final class VideoCopyEdits {
   volatile PluginCall saveCall;
  }
 
- VideoCopyEdits(Context context,Sources sources)throws IOException {
+ VideoCopyEdits(Context context,Sources sources)throws IOException {this(context,sources,()->false);}
+ VideoCopyEdits(Context context,Sources sources,BooleanSupplier foreground)throws IOException {
   this.context=context.getApplicationContext();this.sources=sources;
+  this.foreground=foreground;
   journal=context.getSharedPreferences("alpha-video-copy-results-v1",Context.MODE_PRIVATE);
   directory=new File(context.getCacheDir(),"alpha-video-edits");
-  if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("Video edit storage is unavailable");
+  if(directory.exists()&&!directory.isDirectory())throw new IOException("Video edit storage is unavailable");
   if(!directory.getCanonicalFile().getParentFile().equals(context.getCacheDir().getCanonicalFile()))throw new IOException("Video edit storage changed");
  }
  static boolean isVideoOperation(String token){return token!=null&&token.startsWith("video-");}
@@ -109,6 +118,86 @@ final class VideoCopyEdits {
  }
  private JSObject receipt(String token,String status,String id){
   JSObject value=new JSObject();value.put("operationId",token);value.put("status",status);if(id!=null)value.put("id","v:"+id);return value;
+ }
+ // Native-only forensic custody. Never called by result/reconcile or a JS bridge.
+ private static final long PRESERVATION_MAX_BYTES=4L*1024*1024;
+ private static final String PRESERVATION_ROOT="video-copy-preservation-v1";
+ private static String hex(byte[] value){StringBuilder out=new StringBuilder(value.length*2);for(byte b:value){out.append(Character.forDigit((b>>>4)&15,16));out.append(Character.forDigit(b&15,16));}return out.toString();}
+ private static String textHash(String value)throws Exception{return hex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));}
+ private String requirePreservationState(String token,String expected,long admittedEpoch)throws Exception{
+  if(Build.VERSION.SDK_INT<30||retired||epoch.get()!=admittedEpoch||active!=null||!foreground.getAsBoolean())throw new IOException("Video copy review is not idle and foreground");
+  String raw=journal.getString(token,null);
+  if(raw==null||raw.length()>16384||!textHash(raw).equals(expected)||!new JSONObject(raw).optString("status").equals("failed"))throw new IOException("Reviewed failed-copy record changed");
+  return raw;
+ }
+ @SuppressWarnings("deprecation")
+ private JSONObject preservationMetadata(Uri uri,String token)throws Exception{
+  String[] columns={"_id","volume_name","_display_name","_data","relative_path","mime_type","_size","owner_package_name","is_pending","is_trashed","date_added","date_modified","date_expires","generation_added","generation_modified","duration","width","height"};
+  try(Cursor row=context.getContentResolver().query(MediaStore.setIncludePending(uri),columns,"owner_package_name=? AND _display_name=? AND is_pending=1 AND is_trashed=0",new String[]{context.getPackageName(),name(token)},null)){
+   if(row==null||!row.moveToFirst())throw new IOException("Owned pending output is unavailable");
+   JSONObject result=new JSONObject();for(int i=0;i<columns.length;i++){switch(row.getType(i)){case Cursor.FIELD_TYPE_NULL:result.put(columns[i],JSONObject.NULL);break;case Cursor.FIELD_TYPE_INTEGER:result.put(columns[i],row.getLong(i));break;case Cursor.FIELD_TYPE_STRING:result.put(columns[i],row.getString(i));break;default:throw new IOException("Unexpected pending metadata type");}}
+   if(row.moveToNext())throw new IOException("Pending output is ambiguous");return result;
+  }
+ }
+ private void requirePrivateDirectory(File directory)throws Exception{
+  File anchor=context.getFilesDir().getCanonicalFile(),current=directory.getAbsoluteFile();
+  while(!current.equals(anchor)){
+   if(current.getParentFile()==null||!current.toPath().startsWith(anchor.toPath()))throw new IOException("Recovery directory escaped private storage");
+   StructStat stat=Os.lstat(current.getAbsolutePath());
+   if(!OsConstants.S_ISDIR(stat.st_mode)||stat.st_uid!=android.os.Process.myUid()||(stat.st_mode&077)!=0||!current.getCanonicalFile().equals(current))throw new IOException("Recovery directory is unsafe");
+   current=current.getParentFile();
+  }
+ }
+ private File newPreservationDirectory(String token)throws Exception{
+  File anchor=context.getFilesDir().getCanonicalFile(),root=new File(anchor,PRESERVATION_ROOT);
+  try{Os.mkdir(root.getAbsolutePath(),0700);}catch(ErrnoException exists){if(exists.errno!=OsConstants.EEXIST)throw exists;}
+  requirePrivateDirectory(root);File directory=new File(root,token);Os.mkdir(directory.getAbsolutePath(),0700);requirePrivateDirectory(directory);return directory;
+ }
+ private FileOutputStream preservationOutput(File directory,String name)throws Exception{
+  requirePrivateDirectory(directory);if(name.equals(".")||name.equals("..")||!new File(name).getName().equals(name)||name.contains("/")||name.contains("\\"))throw new IOException("Invalid recovery artifact name");
+  File file=new File(directory,name);java.io.FileDescriptor fd=Os.open(file.getAbsolutePath(),OsConstants.O_WRONLY|OsConstants.O_CREAT|OsConstants.O_EXCL|OsConstants.O_NOFOLLOW,0600);
+  try{StructStat stat=Os.fstat(fd);if(!OsConstants.S_ISREG(stat.st_mode)||stat.st_uid!=android.os.Process.myUid()||(stat.st_mode&077)!=0||stat.st_nlink!=1)throw new IOException("Recovery artifact is unsafe");return new FileOutputStream(fd);}catch(Exception failure){Os.close(fd);throw failure;}
+ }
+ private void preservationFile(File directory,String name,String value)throws Exception{
+  byte[] bytes=value.getBytes(StandardCharsets.UTF_8);if(bytes.length>65536)throw new IOException("Recovery metadata exceeds its limit");
+  try(FileOutputStream output=preservationOutput(directory,name)){output.write(bytes);output.flush();output.getFD().sync();}
+ }
+ private void syncPreservationDirectory(File directory)throws Exception{
+  requirePrivateDirectory(directory);java.io.FileDescriptor fd=Os.open(directory.getAbsolutePath(),OsConstants.O_RDONLY|OsConstants.O_DIRECTORY|OsConstants.O_NOFOLLOW,0);try{Os.fsync(fd);}finally{Os.close(fd);}
+ }
+ private JSONObject preservationDigest(InputStream input,FileOutputStream output,String token,String recordHash,long admittedEpoch)throws Exception{
+  if(input==null)throw new IOException("Pending output could not be opened");MessageDigest hash=MessageDigest.getInstance("SHA-256");byte[] chunk=new byte[64*1024];long bytes=0;int emptyReads=0;
+  while(true){requirePreservationState(token,recordHash,admittedEpoch);int length=input.read(chunk);if(length<0)break;if(length==0){if(++emptyReads>4)throw new IOException("Pending output read stalled");continue;}emptyReads=0;bytes+=length;if(bytes>PRESERVATION_MAX_BYTES)throw new IOException("Pending output exceeds reviewed recovery limit");hash.update(chunk,0,length);if(output!=null)output.write(chunk,0,length);}
+  return new JSONObject().put("bytes",bytes).put("sha256",hex(hash.digest()));
+ }
+ /** Only native callers on this actual editor instance; no URI/path or permission authority. */
+ void preserveClosedFailure(String token,String expectedRecordHash,PluginCall call){
+  long admittedEpoch=epoch.get();submit(call,()->{
+   File archive=null;String stage="admission";
+   try{
+    token(token);if(expectedRecordHash==null||!expectedRecordHash.matches("[a-f0-9]{64}"))throw new IOException("Invalid reviewed record hash");
+    String original=requirePreservationState(token,expectedRecordHash,admittedEpoch);JSONObject record=new JSONObject(original);Uri source=copy(token,record);if(source==null)throw new IOException("Owned pending output is unavailable");
+    JSONObject before=preservationMetadata(source,token);String volume=before.getString("volume_name");if(!MediaStore.getExternalVolumeNames(context).contains(volume))throw new IOException("Pending output volume is unavailable");source=ContentUris.withAppendedId(MediaStore.Video.Media.getContentUri(volume),before.getLong("_id"));requirePreservationState(token,expectedRecordHash,admittedEpoch);archive=newPreservationDirectory(token);
+    preservationFile(archive,"ATTEMPT.json",new JSONObject().put("operationId",token).put("recordSHA256",expectedRecordHash).put("maxBytes",PRESERVATION_MAX_BYTES).put("createdAt",System.currentTimeMillis()).toString());
+    preservationFile(archive,"journal-original.json",original);preservationFile(archive,"metadata-before.json",before.toString());syncPreservationDirectory(archive);
+    stage="source-copy";JSONObject first;
+    try(FileOutputStream output=preservationOutput(archive,"bytes.bin");InputStream input=context.getContentResolver().openInputStream(source)){first=preservationDigest(input,output,token,expectedRecordHash,admittedEpoch);output.flush();output.getFD().sync();}
+    stage="escrow-readback";requirePrivateDirectory(archive);JSONObject escrow;
+    java.io.FileDescriptor fd=Os.open(new File(archive,"bytes.bin").getAbsolutePath(),OsConstants.O_RDONLY|OsConstants.O_NOFOLLOW,0);
+    try{StructStat stat=Os.fstat(fd);if(!OsConstants.S_ISREG(stat.st_mode)||stat.st_uid!=android.os.Process.myUid()||(stat.st_mode&077)!=0||stat.st_nlink!=1)throw new IOException("Recovery artifact changed");}catch(Exception failure){Os.close(fd);throw failure;}
+    try(InputStream input=new FileInputStream(fd)){escrow=preservationDigest(input,null,token,expectedRecordHash,admittedEpoch);}
+    stage="source-second-read";JSONObject second;try(InputStream input=context.getContentResolver().openInputStream(source)){second=preservationDigest(input,null,token,expectedRecordHash,admittedEpoch);}
+    stage="stable-readback";requirePreservationState(token,expectedRecordHash,admittedEpoch);Uri foundAfter=copy(token,record);if(foundAfter==null)throw new IOException("Pending output disappeared");JSONObject after=preservationMetadata(foundAfter,token);requirePreservationState(token,expectedRecordHash,admittedEpoch);
+    if(!first.toString().equals(escrow.toString())||!first.toString().equals(second.toString())||!before.toString().equals(after.toString()))throw new IOException("Pending output changed during preservation");
+    preservationFile(archive,"metadata-after.json",after.toString());requirePreservationState(token,expectedRecordHash,admittedEpoch);
+    JSONObject complete=new JSONObject().put("operationId",token).put("status","preserved").put("recordSHA256",expectedRecordHash).put("sourceURI",source.toString()).put("sourceBefore",before).put("sourceAfter",after).put("bytes",first.getLong("bytes")).put("sha256",first.getString("sha256")).put("forensicOnly",true);
+    stage="complete";preservationFile(archive,"COMPLETE.json",complete.toString());syncPreservationDirectory(archive);
+    JSObject result=new JSObject();result.put("operationId",token);result.put("artifactId",token);result.put("status","preserved");result.put("bytes",first.getLong("bytes"));result.put("sha256",first.getString("sha256"));call.resolve(result);
+   }catch(Exception failure){
+    if(archive!=null)try{preservationFile(archive,"INCOMPLETE.json",new JSONObject().put("operationId",token).put("stage",stage).put("errorClass",failure.getClass().getSimpleName()).put("sourceWritesPerformed",false).put("journalWritesPerformed",false).toString());syncPreservationDirectory(archive);}catch(Exception retained){/* Keep existing evidence; never overwrite or clean up. */}
+    call.reject("Video copy preservation refused: "+stage+"/"+failure.getClass().getSimpleName());
+   }
+  });
  }
  private boolean terminal(String status){return status.equals("saved")||status.equals("failed")||status.equals("not-started");}
  private interface Work {void run()throws Exception;}
@@ -203,6 +292,7 @@ final class VideoCopyEdits {
  void begin(String id,String expected,PluginCall call){long admittedEpoch=epoch.get();submit(call,()->{
   if(retired||admittedEpoch!=epoch.get())throw new IOException("Video editor closed");
   if(active!=null)throw new IOException("Close the current video editor first");
+  if(!directory.isDirectory()&&!directory.mkdirs())throw new IOException("Video edit storage is unavailable");
   for(String key:journal.getAll().keySet()){JSONObject row=read(key);if(!terminal(row.optString("status")))reconcile(key);}
   retainSpace();Session session=new Session();session.epoch=admittedEpoch;session.token="video-"+UUID.randomUUID();session.id=id;session.revision=expected;session.source=sources.read(id,expected);session.version=version(session.source.uri);
   session.input=file(session.token,"-input.mp4");session.output=file(session.token,"-output.mp4");

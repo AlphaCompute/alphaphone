@@ -41,7 +41,7 @@ import org.junit.runner.RunWith;
 public final class VideoCopyInstrumentedTest {
  private final Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
  private final ArrayList<Uri> owned=new ArrayList<>();
- private static final class Response extends PluginCall {
+ static final class Response extends PluginCall {
   final CountDownLatch done=new CountDownLatch(1);volatile JSObject value;volatile String error;
   Response(){super(null,"VideoFixture",UUID.randomUUID().toString(),"fixture",new JSObject());}
   @Override public void resolve(JSObject value){this.value=value;done.countDown();}
@@ -182,6 +182,7 @@ public final class VideoCopyInstrumentedTest {
    java.util.concurrent.atomic.AtomicBoolean sourceRead=new java.util.concurrent.atomic.AtomicBoolean();
    VideoCopyEdits editor=new VideoCopyEdits(context,(id,revision)->{sourceRead.set(true);throw new AssertionError("Custody hold must happen before source read/export");});
    java.io.File directory=new java.io.File(context.getCacheDir(),"alpha-video-edits"),input=new java.io.File(directory,token+"-input.mp4"),output=new java.io.File(directory,token+"-output.mp4");
+   if(!directory.isDirectory())assertTrue(directory.mkdirs());
    byte[] inputBytes=new byte[]{11,22,33,44},outputBytes=new byte[]{55,66,77,88};
    try{
     try(java.io.FileOutputStream f=new java.io.FileOutputStream(input)){f.write(inputBytes);}try(java.io.FileOutputStream f=new java.io.FileOutputStream(output)){f.write(outputBytes);}

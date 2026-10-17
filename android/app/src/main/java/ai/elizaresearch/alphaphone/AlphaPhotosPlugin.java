@@ -120,7 +120,12 @@ public class AlphaPhotosPlugin extends Plugin {
  @PluginMethod public void saveEdit(PluginCall call){submit(call,()->{try{call.resolve(edits.save(call.getString("sessionId"),call.getInt("rotation",0),call.getBoolean("crop",false),call.getString("filter","none")));}catch(Exception e){call.reject(e.getMessage()==null?"Save outcome unknown; inspect Photos before retrying":e.getMessage());}});}
  @PluginMethod public void editResult(PluginCall call){if(VideoCopyEdits.isVideoOperation(call.getString("operationId"))){try{videoCopies().result(call.getString("operationId"),call);}catch(Exception unavailable){call.reject("Saved-copy outcome could not be confirmed");}return;}submit(call,()->{try{call.resolve(edits.result(call.getString("operationId")));}catch(Exception e){call.reject("Saved-copy outcome could not be confirmed");}});}
  @PluginMethod public void cancelEdit(PluginCall call){edits.cancel(call.getString("sessionId"));submit(call,()->{edits.releaseCancelled();call.resolve();});}
- private synchronized VideoCopyEdits videoCopies()throws java.io.IOException{if(destroyed)throw new java.io.IOException("Photo library closed");if(videoCopies==null)videoCopies=new VideoCopyEdits(getContext(),this::videoSource);return videoCopies;}
+ private synchronized VideoCopyEdits videoCopies()throws java.io.IOException{if(destroyed)throw new java.io.IOException("Photo library closed");if(videoCopies==null)videoCopies=new VideoCopyEdits(getContext(),this::videoSource,()->!destroyed&&getActivity()!=null&&getActivity().hasWindowFocus());return videoCopies;}
+ // Native-only reviewed recovery; deliberately absent from the Capacitor/JS API.
+ void preserveClosedVideoCopy(String operationId,String expectedRecordHash,PluginCall call){
+  if(destroyed||getActivity()==null||!getActivity().hasWindowFocus()){call.reject("Video copy preservation refused");return;}
+  try{videoCopies().preserveClosedFailure(operationId,expectedRecordHash,call);}catch(Exception refused){call.reject("Video copy preservation refused");}
+ }
  /** The renderer supplies an existing catalog identity/revision, never a URI or file path. */
  private VideoCopyEdits.Source videoSource(String key,String expected)throws Exception{
   if(destroyed||getActivity()==null||!getActivity().hasWindowFocus()||expected==null)throw new IllegalStateException("Return to Photos and reopen the video");
