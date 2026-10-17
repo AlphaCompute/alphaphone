@@ -69,7 +69,7 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
- assert.equal(stamp.baseCommit,'9365c9bb0d1771f17eedafcb5b3240ae129b276a');assert.equal(stamp.projectionVersion,4);
+ assert.equal(stamp.baseCommit,'6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a');assert.equal(stamp.projectionVersion,4);
  const mapPath='plugins/plugin-maps/src/client/map-plane.ts';
  assert.equal(stamp.sourceFiles[mapPath],stamp.files[mapPath]);
  assert.match(fs.readFileSync(path.join(source,mapPath),'utf8'),/export interface GlobalBasemap/);

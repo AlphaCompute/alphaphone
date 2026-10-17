@@ -2408,7 +2408,7 @@ export function ConnectionChooser() {
       {snapshot.kind==='recovering'&&!snapshot.session&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry</button></div>}
       {snapshot.session&&!planPanel&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
     </section>
-    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.cloudAccount&&!residentSignInRejected?'Your agent uses Eliza Cloud for AI.':'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
+    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this phone.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
       {snapshot.cloudAccount&&!residentSignInRejected?<>
         {accountCreatedNotice}
         {(planPanel||residentNeedsPlan)&&<p>{snapshot.cloudAccount.email||`Account ${snapshot.cloudAccount.userId}`}</p>}
@@ -2432,12 +2432,12 @@ export function ConnectionChooser() {
       </>}
       </div>
     </section>
-    {conversations}
-    {actionReview}
     {snapshot.replyNotice&&<p role="status">{snapshot.replyNotice}</p>}
     {snapshot.message&&<p role="status">{snapshot.message}</p>}
     {snapshot.error&&<p role="alert">{snapshot.error===errorMessage({status:401})?'Your saved Cloud sign-in is no longer valid.':snapshot.error}</p>}
     {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
+    {conversations}
+    {actionReview}
     {snapshot.busy&&!snapshot.residentStarting&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
     {testMocksEnabled&&residentQa()&&<p><button disabled={snapshot.busy} onClick={()=>connectionController.setResidentQa(null)}>Leave subscription gate QA ({residentEnvironment()})</button></p>}
   </div></div>;

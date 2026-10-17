@@ -1,4 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
+import {cloudNotesVoiceFixture,noPhysicalOrLocalVoice} from './cloud-notes-voice-fixture';
 
 // Issue #411: surfaces that need seeded mail, photos or the scripted voice session, so they run in
 // the labelled mock mode of the development server. Production behaviour of the same layout rules
@@ -63,10 +64,22 @@ test('Inbox folder filters and the list keep 44px targets and a readable list wi
 });
 
 test('the listening panel stays compact beside the page in landscape and keeps the same session', async ({ page }) => {
-  await openMock(page, 'Files');
+  await cloudNotesVoiceFixture(page);
+  await page.evaluate(async()=>{
+    const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{alphaClient}=await import('/src/runtime/alpha-client.ts'),{BrowserVoice}=await import('/src/browser/voice.ts');
+    const session={origin:'https://layout.invalid',ownerId:'layout-owner',agentId:'layout-agent',sessionId:'layout-session'},conversationId=crypto.randomUUID(),snapshot={...c.getSnapshot(),kind:'remote',open:false,busy:false,session};
+    c.getSnapshot=()=>snapshot as any;
+    c.prepareVoiceConversation=async signal=>{signal.throwIfAborted();return {conversationId,session,connectionEpoch:1};};
+    c.voiceConversationCurrent=(binding,foreground=true)=>binding.connectionEpoch===1&&binding.conversationId===conversationId&&(!foreground||!document.hidden);
+    BrowserVoice.prototype.getRecordingMetrics=async input=>({recordingId:input.recordingId,peak:0});
+    c.close();alphaClient.attachVerifiedTransport({session,send:async()=>{throw Error('Layout checks must send no turns');},execute:async()=>{throw Error('Layout checks must execute no actions');}});
+  });
+  await page.getByRole('button',{name:'Files',exact:true}).click();
+  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
   await page.getByRole('button', { name: 'Talk', exact: true }).click();
-  const panel = page.locator('[data-alpha-voice-panel]');
-  const stop = panel.getByRole('button', { name: 'Stop', exact: true });
+  const panel = page.getByRole('region',{name:'Voice conversation',exact:true});
+  await expect(panel).toHaveAttribute('data-voice-state','listening');
+  const stop = panel.getByRole('button', { name: 'Stop voice conversation', exact: true });
   await expect(stop).toBeVisible();
   const original = await stop.elementHandle();
   for (const viewport of MATRIX) {
@@ -76,7 +89,7 @@ test('the listening panel stays compact beside the page in landscape and keeps t
     const bounds = await box(panel);
     if (viewport.width > viewport.height) expect(bounds.x).toBeGreaterThan(viewport.width / 2 - 1);
     else if (viewport.width >= 760) expect(bounds.width).toBeLessThanOrEqual(561);
-    for (const control of [stop, panel.getByRole('button', { name: 'Switch to keyboard', exact: true })]) {
+    for (const control of await panel.getByRole('button').all()) {
       const target = await box(control);
       expect(target.width).toBeGreaterThanOrEqual(43.5); expect(target.height).toBeGreaterThanOrEqual(43.5);
     }
@@ -84,6 +97,8 @@ test('the listening panel stays compact beside the page in landscape and keeps t
   }
   await stop.click();
   await expect(panel).toHaveCount(0);
+  await noPhysicalOrLocalVoice(page);
+  expect(await page.evaluate(()=>(window as any).cloudNotesVoice.starts)).toBe(1);
 });
 
 test('the Photos grid reflows into more columns and the album grid keeps square covers', async ({ page }) => {

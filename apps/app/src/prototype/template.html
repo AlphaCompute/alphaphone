@@ -4005,7 +4005,7 @@
 <div data-alpha-layer="conversation" aria-hidden="{{conversationHidden}}" inert="{{conversationHidden}}" style="position: absolute; left: 0; right: 0; bottom: 0; z-index: 50; height: {{panelH}}px; border-radius: {{panelR}}; background: var(--s1); overflow: hidden; display: flex; flex-direction: column; opacity: {{panelOp}}; pointer-events: {{panelPE}}; box-shadow: 0 -1px 0 var(--line), 0 -20px 60px var(--shc); transition: {{panelTransition}}">
   <div style="height: {{panelTop}}px; flex-shrink: 0; transition: height .4s"></div>
   <div data-alpha-chat-header style="display:grid;grid-template-columns:minmax(0,1fr) 44px minmax(0,1fr);align-items:center;padding:0 12px 4px;gap:0;flex-shrink:0">
-    <button class="tap" data-alpha-chat-home aria-label="Go Home" onPointerDown="{{chatHomePointer}}" onClick="{{backToApps}}" style="display:flex;align-items:center;gap:12px;min-width:0;min-height:44px;text-align:left;border-radius:12px">
+    <button class="tap" data-alpha-chat-home aria-label="Go Home" onPointerDown="{{chatControlPointer}}" onClick="{{backToApps}}" style="display:flex;align-items:center;gap:12px;min-width:0;min-height:44px;text-align:left;border-radius:12px">
       <span style="width:34px;height:34px;border-radius:17px;flex-shrink:0;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center"><span class="alpha-compute-mark" aria-hidden="true"></span></span>
       <span style="font-weight:600;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{name}}</span>
     </button>
@@ -4195,7 +4195,7 @@
     <div style="display: flex; align-items: center; gap: 6px; margin: 0 12px 30px; min-height: 56px; padding: 6px 6px 6px 20px; border-radius: 28px; background: var(--s2); flex-shrink: 0">
       <textarea disabled="{{draftOpening}}" onPointerDown="{{composerPointer}}" data-alpha-composer="true" rows="1" aria-label="Message {{name}}" placeholder="Message {{name}}" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" style="flex-grow: 1; min-width: 0; height: 44px; min-height:44px; max-height:min(168px,28dvh); resize:none; overflow-y:auto; font-family:inherit; line-height:22px; padding-top:11px; padding-bottom:11px; box-sizing:border-box; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px"></textarea>
       <sc-if value="{{hasDraft}}"><button aria-label="Send" onClick="{{sendNow}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.send}}"></path></svg></button></sc-if>
-      <sc-if value="{{noDraft}}"><button title="Voice assistant" aria-label="Talk" onClick="{{startVoice}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--fg); color: var(--bg); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
+      <sc-if value="{{noDraft}}"><button title="Voice assistant" aria-label="Talk" onPointerDown="{{chatControlPointer}}" onClick="{{startVoice}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--fg); color: var(--bg); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
     </div>
   </sc-if>
   <sc-if value="{{voiceOn}}"><div style="height: 150px; flex-shrink: 0"></div></sc-if>
@@ -4213,7 +4213,7 @@
     <button data-alpha-input-drag-alpha aria-label="Open conversation" onClick="{{openSheet}}" style="position:relative;z-index:1;touch-action:none;width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 24px; flex-shrink: 0"><span class="alpha-compute-mark" aria-hidden="true"></span></button>
     <textarea disabled="{{draftOpening}}" onPointerDown="{{inputComposerPointer}}" data-alpha-composer="true" rows="1" aria-label="{{cmpPlaceholder}}" placeholder="{{cmpPlaceholder}}" value="{{draft}}" onChange="{{onDraft}}" onKeyDown="{{onKey}}" style="position:relative;z-index:1;touch-action:{{inputComposerTouchAction}};flex-grow: 1; min-width: 0; height: 44px; min-height:44px; max-height:min(168px,28dvh); resize:none; overflow-y:auto; font-family:inherit; line-height:22px; padding-top:11px; padding-bottom:11px; box-sizing:border-box; border: 0; outline: 0; background: transparent; color: var(--fg); font-size: 16px; padding-left: 8px"></textarea>
     <sc-if value="{{hasDraft}}"><button aria-label="Send" onClick="{{sendNow}}" style="position:relative;z-index:1;width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.send}}"></path></svg></button></sc-if>
-    <sc-if value="{{noDraft}}"><button class="ib" style="position:relative;z-index:1" title="Voice assistant" aria-label="Talk" onClick="{{startVoice}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
+    <sc-if value="{{noDraft}}"><button class="ib" style="position:relative;z-index:1" title="Voice assistant" aria-label="Talk" onPointerDown="{{chatControlPointer}}" onClick="{{startVoice}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
   </div>
 </div>
 </sc-if>
@@ -4224,7 +4224,7 @@
   <div class="enter" onPointerDown="{{pillSw.down}}" onPointerMove="{{pillSw.move}}" onPointerUp="{{pillSw.up}}" onPointerCancel="{{pillSw.cancel}}" onLostPointerCapture="{{pillSw.lost}}" style="{{pillDragStyle}}; pointer-events: auto; display: flex; align-items: center; gap: 2px; padding: 5px; border-radius: 30px; background: var(--s2); box-shadow: 0 12px 34px var(--shc); touch-action: none">
     <sc-if value="{{pillVoiceInactive}}">    <button aria-label="Open conversation" onClick="{{openSheet}}" style="width: 44px; height: 44px; border-radius: 22px; background: var(--acc); color: #fff; display: flex; align-items: center; justify-content: center; font-family: Denton, Fraunces, Georgia, serif; font-style: italic; font-size: 24px"><span class="alpha-compute-mark" aria-hidden="true"></span></button>
     <button class="ib" aria-label="Type" onClick="{{toInput}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.kbd}}"></path></svg></button>
-    <button class="ib" title="Voice assistant" aria-label="Talk" onClick="{{startVoice}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
+    <button class="ib" title="Voice assistant" aria-label="Talk" onPointerDown="{{chatControlPointer}}" onClick="{{startVoice}}"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button></sc-if>
     <sc-if value="{{pillVoice}}"><div data-alpha-pill-voice class="alpha-pill-voice-controls" onPointerDown="{{pillVoice.controlDown}}">
       <button class="alpha-pill-voice-synth" aria-label="Open conversation" onClick="{{openSheet}}"><span class="alpha-voice-waveform">{{pillVoice.activity}}</span></button>
       <sc-if value="{{pillVoice.canMute}}"><button class="ib" aria-label="{{pillVoice.muteLabel}}" disabled="{{pillVoice.muteDisabled}}" aria-pressed="{{pillVoice.muted}}" onClick="{{pillVoice.toggleMute}}"><span aria-hidden="true" class="mail-toolbar-icon" style="mask-image:url('{{pillVoice.muteAsset}}');-webkit-mask-image:url('{{pillVoice.muteAsset}}')"></span></button></sc-if>
@@ -4310,7 +4310,7 @@
   <div data-alpha-lock-clock class="serif" style="font-size: 132px; line-height: .9; margin-top: 44px; letter-spacing: -.035em">{{clock}}</div>
   <div style="margin-top: 16px; color: var(--mut); font-size: 15px">{{dateStr}}</div>
   <div style="position: absolute; bottom: 58px; left: 34px; right: 34px; display: flex; justify-content: space-between; align-items: center">
-    <button aria-label="Talk to {{name}}" onClick="{{startVoice}}" style="width: 58px; height: 58px; border-radius: 29px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button>
+    <button aria-label="Talk to {{name}}" onPointerDown="{{chatControlPointer}}" onClick="{{startVoice}}" style="width: 58px; height: 58px; border-radius: 29px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.mic}}"></path></svg></button>
     <button aria-label="Unlock with fingerprint" onClick="{{unlock}}" style="width: 76px; height: 76px; border-radius: 38px; box-shadow: inset 0 0 0 1px var(--line); display: flex; align-items: center; justify-content: center; color: var(--acct)"><svg class="i" viewBox="0 0 24 24" style="width: 34px; height: 34px"><path d="{{ic.fp}}"></path></svg></button>
     <sc-if value="{{lockCameraOffered}}"><button aria-label="Camera" onClick="{{lockCamera}}" style="width: 58px; height: 58px; border-radius: 29px; background: var(--s2); display: flex; align-items: center; justify-content: center"><svg class="i" viewBox="0 0 24 24"><path d="{{ic.camera}}"></path></svg></button></sc-if>
     <sc-if value="{{noLockCamera}}"><div aria-hidden="true" style="width: 58px; height: 58px"></div></sc-if>
@@ -4419,7 +4419,7 @@
       </sc-for>
     </div>
     <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 6px">
-      <button onClick="{{startVoice}}" style="height: 40px; border-radius: 20px; background: #0000FF; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.mic}}"></path></svg>Talk</button>
+      <button onPointerDown="{{chatControlPointer}}" onClick="{{startVoice}}" style="height: 40px; border-radius: 20px; background: #0000FF; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.mic}}"></path></svg>Talk</button>
       <button onClick="{{fireHeads}}" style="height: 40px; border-radius: 20px; border: 1px solid #262626; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px"><svg class="i" viewBox="0 0 24 24" style="width: 16px; height: 16px"><path d="{{ic.bell}}"></path></svg>Incoming text</button>
     </div>
   </div>
