@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T01:26:29.244994+00:00",
+  "updatedAt": "2026-10-17T01:29:26.461003+00:00",
   "preview": "http://127.0.0.1:5209/",
   "productSource": "94bef8bc",
   "agentSource": "9116ba8696afc3a17d58aa565a66fec504e4cca5",
@@ -1054,9 +1054,10 @@
       "seeker": "Exact production exporter component passes real trim/clockwise rotate/crop and timestamps. Full Alpha editor UI has not yet been installed/qualified.",
       "userApproval": "Pending",
       "evidence": [
-        "docs/evidence/native-video-component-20261017.json"
+        "docs/evidence/native-video-component-20261017.json",
+        "docs/evidence/native-video-callback-20261017.json"
       ],
-      "notes": "Physical exporter evidence binds the source hashes in docs/evidence/native-video-component-20261017.json. Later callback-shutdown repair e530eb51 passes 33 focused checks plus Android compilation/lint; current-source physical rerun and full packaged Alpha UI qualification remain pending."
+      "notes": "Current 8b12bbb2 production exporter sources passed all3 isolated offline Seeker tests (59.198s), including late callback after worker shutdown, with installed fixture APK SHA joined to staged production sources. See docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain pending."
     },
     {
       "id": "photos-09",
@@ -1068,9 +1069,10 @@
       "seeker": "Two actual offline Seeker component tests pass: decoded audio, original bytes/revision, physical trim samples, publish-receipt recovery, no duplicate, changed binding/source refusal and background cancellation. Full Alpha UI/revocation/process-death qualification remains pending.",
       "userApproval": "Pending",
       "evidence": [
-        "docs/evidence/native-video-component-20261017.json"
+        "docs/evidence/native-video-component-20261017.json",
+        "docs/evidence/native-video-callback-20261017.json"
       ],
-      "notes": "Physical exporter evidence binds the source hashes in docs/evidence/native-video-component-20261017.json. Later callback-shutdown repair e530eb51 passes 33 focused checks plus Android compilation/lint; current-source physical rerun and full packaged Alpha UI qualification remain pending."
+      "notes": "Current 8b12bbb2 production exporter sources passed all3 isolated offline Seeker tests (59.198s), including late callback after worker shutdown, with installed fixture APK SHA joined to staged production sources. See docs/evidence/native-video-callback-20261017.json. Full packaged Alpha UI, grant revocation and process-death qualification remain pending."
     },
     {
       "id": "photos-10",
