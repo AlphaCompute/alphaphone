@@ -23,8 +23,40 @@ export class BrowserLocation extends WebPlugin {
    const settings=await readDevicePreferences();
    if(cancelled||!settings.locationEnabled||!foreground())return {location:'denied',accuracy:'none'};
    if(simulatedCoordinates())return {location:'granted',accuracy:'precise'};
-   return await new Promise((resolve,reject)=>{let id:number|undefined,settled=false;const finish=(granted:boolean,failure?:MapsFailure)=>{if(settled)return;settled=true;if(id!==undefined)navigator.geolocation.clearWatch(id);if(failure)reject(failure);else resolve({location:granted?'granted':'denied',accuracy:granted?'precise':'none'});};finishPending=finish;
-    try{id=navigator.geolocation.watchPosition(()=>finish(!cancelled&&browserSensorEnabled('locationEnabled')),error=>error.code===1?finish(false):finish(false,new MapsFailure('unavailable',error.code===3?'Finding your location timed out. Try again, or check that location services are enabled for your browser.':'Your browser could not provide a location. Check location services for your browser in system settings, or enter coordinates.')),{timeout:10000});if(settled)navigator.geolocation.clearWatch(id);}catch{finish(false,new MapsFailure('unavailable','Location services are unavailable in this browser. Try another browser, or enter coordinates.'));}
+   let permission:PermissionStatus|undefined;
+   try{permission=await navigator.permissions.query({name:'geolocation'});}catch{/* Browsers without Permissions API still use the cancellable geolocation probe. */}
+   if(cancelled||!browserSensorEnabled('locationEnabled')||!foreground())return {location:'denied',accuracy:'none'};
+   if(permission?.state==='granted')return {location:'granted',accuracy:'precise'};
+   if(permission?.state==='denied')return {location:'denied',accuracy:'none'};
+   return await new Promise((resolve,reject)=>{
+    let id:number|undefined,settled=false,removePermissionListener=()=>{};
+    const finish=(granted:boolean,failure?:MapsFailure)=>{
+     if(settled)return;settled=true;removePermissionListener();
+     if(id!==undefined)navigator.geolocation.clearWatch(id);
+     if(failure)reject(failure);else resolve({location:granted?'granted':'denied',accuracy:granted?'precise':'none'});
+    };
+    finishPending=finish;
+    const permissionChanged=()=>{
+     if(permission?.state==='granted')finish(!cancelled&&browserSensorEnabled('locationEnabled')&&foreground());
+     else if(permission?.state==='denied')finish(false);
+    };
+    const observing=!!permission&&typeof permission.addEventListener==='function';
+    if(observing){
+     removePermissionListener=()=>permission?.removeEventListener('change',permissionChanged);
+     permission!.addEventListener('change',permissionChanged);permissionChanged();
+     if(settled)return;
+    }
+    try{
+     id=navigator.geolocation.watchPosition(()=>finish(!cancelled&&browserSensorEnabled('locationEnabled')),error=>{
+      // Permission approval is independent of obtaining the first GPS/network fix.
+      if(permission?.state==='granted'){permissionChanged();return;}
+      if(error.code===1){finish(false);return;}
+      // Do not let the acquisition timer reject a still-open permission prompt.
+      if(error.code===3&&observing&&permission?.state==='prompt')return;
+      finish(false,new MapsFailure('unavailable',error.code===3?'Finding your location timed out. Try again, or check that location services are enabled for your browser.':'Your browser could not provide a location. Check location services for your browser in system settings, or enter coordinates.'));
+     },{timeout:10000});
+     if(settled)navigator.geolocation.clearWatch(id);
+    }catch{finish(false,new MapsFailure('unavailable','Location services are unavailable in this browser. Try another browser, or enter coordinates.'));}
    });
   }finally{if(this.pending.get(requestId)===cancel)this.pending.delete(requestId);}
  }

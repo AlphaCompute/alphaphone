@@ -85,9 +85,29 @@ test('another tab changing location cancels the first tab permission request',as
 for(const code of [1,2,3])test(`browser location distinguishes permission denial from provider failure ${code}`,async({page})=>{
  const result=await page.evaluate(async code=>{
   const {BrowserLocation}=await import('/src/browser/location.ts');const cleared:number[]=[];
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>{throw Error('Permissions API unsupported');}}});
   Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(_success:unknown,error:(value:{code:number})=>void)=>{queueMicrotask(()=>error({code}));return 97;},clearWatch:(id:number)=>cleared.push(id)}});
   try{return {permission:await new BrowserLocation().requestPermissions(),cleared};}catch(error){return {error:{code:(error as any).code,message:(error as Error).message},cleared};}
  },code);expect(result.cleared).toEqual([97]);
  if(code===1)expect(result.permission).toEqual({location:'denied',accuracy:'none'});
  else {expect(result.error?.code).toBe('unavailable');expect(result.error?.message).toContain(code===3?'timed out':'could not provide');}
+});
+
+
+for(const outcome of ['grant','cancel'] as const)test(`permission grant is independent of a timed-out fix: ${outcome}`,async({page})=>{
+ const result=await page.evaluate(async outcome=>{
+  const {BrowserLocation}=await import('/src/browser/location.ts');
+  const status=Object.assign(new EventTarget(),{state:'prompt'});let removed=0;const remove=status.removeEventListener.bind(status);status.removeEventListener=(...args:Parameters<typeof status.removeEventListener>)=>{removed++;remove(...args);};
+  let fail!: (e:{code:number})=>void,success!:()=>void;const started=Promise.withResolvers<void>(),cleared:number[]=[];
+  Object.defineProperty(navigator,'permissions',{configurable:true,value:{query:async()=>status}});
+  Object.defineProperty(navigator,'geolocation',{configurable:true,value:{watchPosition:(ok:()=>void,error:(e:{code:number})=>void)=>{success=ok;fail=error;started.resolve();return 198;},clearWatch:(id:number)=>cleared.push(id)}});
+  const location=new BrowserLocation();let settled=false;
+  const pending=location.requestPermissions({requestId:'permission-fix-race'}).then(result=>{settled=true;return result;});
+  await started.promise;fail({code:3});await new Promise(resolve=>setTimeout(resolve,0));const settledWhilePrompt=settled;
+  if(outcome==='cancel')await location.cancelPermissionRequest({requestId:'permission-fix-race'});
+  status.state='granted';status.dispatchEvent(new Event('change'));
+  const result=await pending;success();status.state='denied';status.dispatchEvent(new Event('change'));
+  return {result,settledWhilePrompt,cleared,removed};
+ },outcome);
+ expect(result).toEqual({result:{location:outcome==='grant'?'granted':'denied',accuracy:outcome==='grant'?'precise':'none'},settledWhilePrompt:false,cleared:[198],removed:1});
 });
