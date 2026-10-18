@@ -4,6 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
+import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+import {sourceDirectory} from '../scripts/local-agent-source.mjs';
 import {voiceFakeClock} from './fixtures/shared-batch-voice.mjs';
 import {cloudVoiceViewFixture} from './fixtures/cloud-voice-view.mjs';
 
@@ -32,10 +35,75 @@ test('native production Cloud voice pins host and Cartesia; staging and other ou
  execFileSync(binary('javac'),['--release','11','-d',out,'android/app/src/main/java/ai/elizaresearch/alphaphone/CloudSpeechPolicy.java','test/fixtures/CloudSpeechPolicyTest.java']);
  assert.match(execFileSync(binary('java'),['-cp',out,'ai.elizaresearch.alphaphone.CloudSpeechPolicyTest'],{encoding:'utf8'}),/PASS Cloud speech production host and Cartesia admission/);
  const native=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java','utf8');
+ const upload=native.slice(native.indexOf('@PluginMethod public void transcribeRecording('),native.indexOf('private void submitLocal('));
+ assert.match(upload,/AlphaVoicePcm\.decode\(file,\(\)->request\.cancelled\|\|destroyed\)/,'Cloud uploads real decoded PCM rather than relabelling the MPEG_4 recorder');
+ assert.match(upload,/filename=\\"recording\.wav\\"\\r\\nContent-Type: audio\/wav/);
+ assert.match(upload,/finally\{Arrays\.fill\(audio,\(byte\)0\);\}/,'uploaded PCM is cleared after the request body write');
  assert.match(native,/CloudSpeechPolicy\.host\(BuildConfig\.ELIZA_RUNTIME_PROFILE,BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS,environment\)/);
  assert.match(native,/if\(!paired\)CloudSpeechPolicy\.requireTtsProvider\(BuildConfig\.ELIZA_RUNTIME_PROFILE,c\.getHeaderField\("X-Eliza-TTS-Provider"\)\)/);
  const paired=native.slice(native.indexOf('private HttpURLConnection connectPaired(PluginCall call,boolean status,Pending request,boolean asr)'));
  assert.match(paired,/if\(!BuildConfig\.ELIZA_DEV_ALLOW_TEST_MOCKS\)throw new IOException\("Network speech is not enabled"\)/);
+ }finally{fs.rmSync(out,{recursive:true,force:true});}
+});
+
+let fileTypeModule;
+try{fileTypeModule=createRequire(path.join(sourceDirectory(process.cwd()),'packages/cloud/api/package.json')).resolve('file-type');}
+catch(error){if(error.code!=='MODULE_NOT_FOUND')throw error;}
+test('Cloud signature classifier rejects actual Android mp42 header and accepts PCM WAV',{skip:!fileTypeModule?'Prepared Cloud file-type dependency unavailable':false},async()=>{
+ const {fileTypeFromBuffer}=await import(pathToFileURL(fileTypeModule));
+ // Exactly the first twelve format bytes of the silent, owner-controlled Android QA capture.
+ const recordedHeader=Buffer.from('00000018667479706d703432','hex');
+ assert.deepEqual(await fileTypeFromBuffer(recordedHeader),{ext:'mp4',mime:'video/mp4'});
+ // Audio-only PCM container matching AlphaVoicePcm's mono16k/16bit output; no recording frames.
+ const wav=Buffer.alloc(76);wav.write('RIFF');wav.writeUInt32LE(68,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(16000,24);wav.writeUInt32LE(32000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(32,40);
+ assert.deepEqual(await fileTypeFromBuffer(wav),{ext:'wav',mime:'audio/wav'});
+});
+
+test('real native multipart method uploads decoded WAV and clears it on credential, setup, cancellation and write failures',()=>{
+ const source=fs.readFileSync('android/app/src/main/java/ai/elizaresearch/alphaphone/AlphaVoiceCloudPlugin.java','utf8');
+ const method=source.slice(source.indexOf('@PluginMethod public void transcribeRecording('),source.indexOf('private void submitLocal(')).replace('@PluginMethod ','');
+ const out=fs.mkdtempSync(path.join(os.tmpdir(),'alpha-cloud-wav-upload-'));
+ try{
+ const file=path.join(out,'CloudWavUploadTest.java');
+ fs.writeFileSync(file,`import java.io.*;import java.net.*;import java.util.*;import java.nio.charset.StandardCharsets;import java.util.function.BooleanSupplier;
+public class CloudWavUploadTest {
+ boolean destroyed;String failure="";Exception error;Pending pending;Connection connection;Capture capture=new Capture();
+ static class PluginCall{String getString(String key){return "selected-recording";}}
+ static class Pending{boolean cancelled;JSObject result;}
+ static class JSObject{void put(String key,Object value){}}
+ static class JSONObject{JSONObject(String value){}Object get(String key){return "transcript";}}
+ static class Capture{File file=new File("opaque-selected-recording");File selected(String id){return file;}}
+ interface Work{void run(Pending request)throws Exception;}
+ void submit(PluginCall call,Work work){pending=new Pending();try{work.run(pending);}catch(Exception e){error=e;}}
+ String required(String value,int limit){return value;}
+ static class AlphaVoicePcm{static byte[] last;static File selected;static byte[] decode(File file,BooleanSupplier cancelled)throws Exception{if(cancelled.getAsBoolean())throw new IOException();selected=file;last=new byte[]{82,73,70,70,0,0,0,0,87,65,86,69};return last;}}
+ class Connection extends HttpURLConnection {
+  ByteArrayOutputStream bytes=new ByteArrayOutputStream();Connection()throws Exception{super(new URL("http://fixture.invalid"));}
+  public void setRequestProperty(String key,String value){if(failure.equals("properties"))throw new IllegalStateException();super.setRequestProperty(key,value);}
+  public OutputStream getOutputStream()throws IOException{if(failure.equals("output"))throw new IOException();if(failure.equals("write"))return new OutputStream(){public void write(int value)throws IOException{throw new IOException();}};return bytes;}
+  public InputStream getInputStream(){return new ByteArrayInputStream("{}".getBytes(StandardCharsets.UTF_8));}
+  public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}
+ }
+ HttpURLConnection connect(PluginCall call,String route,Pending request)throws Exception{if(!route.equals("stt"))throw new AssertionError();if(failure.equals("connect"))throw new IOException();if(failure.equals("cancel"))request.cancelled=true;return connection=new Connection();}
+ void successful(HttpURLConnection c){}
+ byte[] read(InputStream in,int max,Pending request)throws Exception{return in.readAllBytes();}
+ ${method}
+ public static void main(String[] args)throws Exception{
+  for(String mode:new String[]{"","connect","properties","output","write","cancel"}){
+   CloudWavUploadTest host=new CloudWavUploadTest();host.failure=mode;host.transcribeRecording(new PluginCall());
+   if(AlphaVoicePcm.selected!=host.capture.file)throw new AssertionError("Selected recording changed");
+   for(byte value:AlphaVoicePcm.last)if(value!=0)throw new AssertionError("Decoded PCM not cleared on "+mode);
+   if(mode.isEmpty()){
+    if(host.error!=null||host.pending.result==null)throw new AssertionError("Upload failed");
+    String wire=host.connection.bytes.toString("ISO-8859-1");if(!wire.contains("filename=\\\"recording.wav\\\"")||!wire.contains("Content-Type: audio/wav")||!wire.contains("RIFF")||!wire.contains("WAVE")||wire.contains("ftyp"))throw new AssertionError("Wrong multipart format");
+   }else if(host.error==null)throw new AssertionError("Failure was swallowed");
+  }
+  System.out.println("PASS real native multipart WAV upload and cleanup");
+ }
+}`);
+ const binary=name=>process.env.JAVA_HOME?path.join(process.env.JAVA_HOME,'bin',name):name;
+ execFileSync(binary('javac'),['--release','11','-d',out,file]);
+ assert.match(execFileSync(binary('java'),['-cp',out,'CloudWavUploadTest'],{encoding:'utf8'}),/PASS real native multipart WAV upload and cleanup/);
  }finally{fs.rmSync(out,{recursive:true,force:true});}
 });
 

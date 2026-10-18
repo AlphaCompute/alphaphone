@@ -173,13 +173,16 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private static void successful(HttpURLConnection c)throws Exception{int status=c.getResponseCode();if(status<200||status>=300)throw new VoiceHttpException(status);}
  @PluginMethod public void transcribeRecording(PluginCall call){submit(call,request->{
   String recordingId=required(call.getString("recordingId"),256);File file=capture.selected(recordingId);if(file==null)throw new IOException();
-  // Copy the chosen bounded draft before upload; cancellation cannot substitute another recording.
-  byte[] audio;try(InputStream in=new FileInputStream(file)){audio=read(in,4*1024*1024,request);}if(audio.length==0)throw new IOException();
+  // Android's MPEG_4 recorder emits mp42, which the Cloud signature gate classifies as video.
+  // Decode the selected bounded mono draft to real PCM WAV; changing its MIME label is insufficient.
+  HttpURLConnection c;byte[] audio=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);
+  try{
   String boundary="AlphaVoice"+UUID.randomUUID().toString().replace("-","");
-  byte[] prefix=("--"+boundary+"\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"recording.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
+  byte[] prefix=("--"+boundary+"\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"recording.wav\"\r\nContent-Type: audio/wav\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
   byte[] suffix=("\r\n--"+boundary+"--\r\n").getBytes(StandardCharsets.US_ASCII);
-  HttpURLConnection c=connect(call,"stt",request);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
-  try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(prefix);out.write(audio);out.write(suffix);}finally{Arrays.fill(audio,(byte)0);}
+  c=connect(call,"stt",request);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
+  try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(prefix);out.write(audio);out.write(suffix);}
+  }finally{Arrays.fill(audio,(byte)0);}
   successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,256*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object transcript=data.get("transcript");if(!(transcript instanceof String))throw new IOException();
   if(request.cancelled||destroyed)throw new IOException();JSObject result=new JSObject();result.put("text",transcript);result.put("local",false);request.result=result;
  });}
