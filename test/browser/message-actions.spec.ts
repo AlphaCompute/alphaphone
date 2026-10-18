@@ -35,12 +35,12 @@ test('quoted message retains visible paragraphs, indentation and exact clipboard
 });
 test('keyboard focus, arrow navigation and Escape return to the selected message',async({page})=>{
  await conversation(page);await agent(page).focus();await agent(page).press('Enter');await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true})).toBeFocused();
- await page.keyboard.press('End');await expect(menu(page).getByRole('menuitem',{name:'Close message actions'})).toBeFocused();await page.keyboard.press('Home');await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(menu(page)).toHaveCount(0);await expect(agent(page)).toBeFocused();
+ await page.keyboard.press('End');await expect(menu(page).getByRole('menuitem').last()).toBeFocused();await page.keyboard.press('Home');await expect(menu(page).getByRole('menuitem',{name:'Copy',exact:true})).toBeFocused();await page.keyboard.press('Escape');await expect(menu(page)).toHaveCount(0);await expect(agent(page)).toBeFocused();
 });
 test('long press reveals actions, pointer movement cancels a held gesture',async({page})=>{
  await conversation(page);const b=await agent(page).boundingBox(),cdp=await page.context().newCDPSession(page),point={x:b!.x+20,y:b!.y+10};
  await expect(menu(page)).toHaveCount(0);expect(await agent(page).evaluate((element,point)=>element.contains(document.elementFromPoint(point.x,point.y)),point)).toBe(true);
- await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await expect(menu(page)).toBeVisible();await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect(menu(page)).toBeVisible();await menu(page).getByRole('menuitem',{name:'Close message actions'}).click();
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await expect(menu(page)).toBeVisible();await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await expect(menu(page)).toBeVisible();await agent(page).click();await expect(menu(page)).toHaveCount(0);
  await agent(page).dispatchEvent('pointerdown',{pointerType:'touch',clientX:30,clientY:30});await agent(page).dispatchEvent('pointermove',{pointerType:'touch',clientX:60,clientY:30});await page.waitForTimeout(550);await expect(menu(page)).toHaveCount(0);
 });
 test('copy denial stays in the menu and does not change the original messages',async({page})=>{
@@ -63,7 +63,7 @@ test('user messages copy without unsupported playback, reply or edit controls',a
 test('same bubble toggles; pointer close stays quiet and keyboard close restores visible focus',async({page},info)=>{
  await conversation(page);const message=agent(page);
  await message.tap();await expect(menu(page)).toBeVisible();await message.tap();await expect(menu(page)).toHaveCount(0);
- await message.tap();await menu(page).getByRole('menuitem',{name:'Close message actions'}).tap();await expect(menu(page)).toHaveCount(0);
+ await message.tap();await message.tap();await expect(menu(page)).toHaveCount(0);
  expect(await message.evaluate(element=>element.matches(':focus-visible'))).toBe(false);
  await page.screenshot({path:info.outputPath('pointer-close.png'),animations:'disabled'});
  await message.focus();await page.keyboard.press('Enter');await page.keyboard.press('Escape');await expect(message).toBeFocused();
