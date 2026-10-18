@@ -16,18 +16,24 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await page.setViewportSize({width:360,height:740});
  await page.addInitScript(()=>{
  const w=window as any;w.access={calls:[],accounts:[{connected:true,connectionId:'synthetic',grantedCapabilities:[]}],googleOpens:0};
- const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaCamera:['checkPermissions'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
- w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{w.access.calls.push({plugin,method,input});if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};if(plugin==='AlphaVoiceCloud')return {microphone:'denied'};if(plugin==='ElizaCamera')return {camera:'denied'};if(plugin==='AlphaPhotoLibrary')return {scope:'selected',locked:false};return {};}};
+ const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaCamera:['checkPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestPermissions'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
+ w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{w.access.calls.push({plugin,method,input});if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};if(plugin==='AlphaVoiceCloud')return {microphone:'denied'};if(plugin==='ElizaCamera')return {camera:'denied'};if(plugin==='ElizaLocation')return {location:'granted',accuracy:'approximate'};if(plugin==='AlphaCalendar')return {calendar:'denied'};if(plugin==='AlphaPhotoLibrary')return {scope:'selected',locked:false};return {};}};
  });
  await page.goto(origin+'/access-composition');await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
  const panel=page.getByRole('dialog',{name:'Set up Alpha access'});await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.signin());await expect(panel).toBeVisible();
+ await expect(panel.getByText('Approximate location allowed',{exact:true})).toBeVisible();
+ await expect(panel.getByRole('heading',{name:'On-phone Calendar',exact:true})).toBeVisible();
  await expect(panel.getByText('Selected photos and videos only',{exact:true})).toBeVisible();
  await expect(panel.getByText('Gmail: Not connected')).toBeVisible();
  expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([]);
  await panel.getByRole('button',{name:'Enable camera',exact:true}).click();
  await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
  expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([{plugin:'DailyApps',method:'requestPermissions',input:{permissions:['camera']}}]);
+ await panel.getByRole('button',{name:'Enable calendar',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'Manage on-phone calendar in Android',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([{plugin:'DailyApps',method:'requestPermissions',input:{permissions:['camera']}},{plugin:'AlphaCalendar',method:'requestPermissions',input:{permissions:['calendar']}}]);
+ expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['getCurrentPosition','watchPosition','list','sync','requestAccess'].includes(c.method)))).toEqual([]);
  await page.evaluate(()=>{(window as any).access.accounts=[{connected:true,connectionId:'synthetic',grantedCapabilities:['google.gmail.triage','google.calendar.read']}];window.dispatchEvent(new Event('alpha:google-accounts-changed'));});
  await expect(panel.getByText('Gmail: Connected with read access')).toBeVisible();
  await panel.getByRole('button',{name:'Review Google connections'}).click();expect(await page.evaluate(()=>(window as any).access.googleOpens)).toBe(1);

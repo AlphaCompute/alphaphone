@@ -5,7 +5,7 @@ import { connectionController } from './runtime/connection-ui';
 import { googleConnectionController } from './runtime/google-connection-ui';
 import { createGoogleAccounts, GOOGLE_ACCOUNTS_CHANGED } from './runtime/google-accounts';
 import { GMAIL_ACCOUNTS_CHANGED } from './runtime/gmail-mailbox';
-import { createStartupPermissionFlow, readStartupPermissionMemory, writeStartupPermissionMemory, startupPhotoAccess, startupGoogleAccess, STARTUP_PERMISSIONS_REOPEN, type StartupPermissionState } from './startup-permission-flow';
+import { createStartupPermissionFlow, readStartupPermissionMemory, writeStartupPermissionMemory, startupPhotoAccess, startupGoogleAccess, startupLocationAccess, STARTUP_PERMISSIONS_REOPEN, type StartupPermissionState } from './startup-permission-flow';
 import './startup-permissions.css';
 
 const notifications = registerPlugin<{status(): Promise<{permissionGranted: boolean; appEnabled: boolean}>}>('AlphaNotifications');
@@ -20,12 +20,16 @@ const microphone = registerPlugin<{
 const camera = registerPlugin<{checkPermissions(): Promise<{camera: string}>}>('ElizaCamera');
 const photos = registerPlugin<{scope(): Promise<unknown>; requestAccess(): Promise<unknown>}>('AlphaPhotoLibrary');
 const device = registerPlugin<{openSettings(options: {page: 'notifications' | 'privacy'}): Promise<unknown>}>('AlphaDevice');
-const keys = ['microphone', 'notifications', 'camera', 'photos'] as const;
+const location = registerPlugin<{checkPermissions(): Promise<unknown>; requestPermissions(): Promise<unknown>}>('ElizaLocation');
+const calendar = registerPlugin<{checkPermissions(): Promise<{calendar: string}>; requestPermissions(options: {permissions: ['calendar']}): Promise<unknown>}>('AlphaCalendar');
+const keys = ['microphone', 'notifications', 'camera', 'photos', 'location', 'calendar'] as const;
 type PermissionKey = typeof keys[number];
 const details = {
   notifications: {title: 'Notifications', description: 'Get reminders, scheduled briefs and approval requests when Alpha is in the background.'},
   microphone: {title: 'Microphone', description: 'Talk to Alpha when you choose voice input. Allowing access does not start recording.'},
   camera: {title: 'Camera', description: 'Take photos and scan documents in Alpha. Allowing access does not open the camera.'},
+  location: {title: 'Location for Maps', description: 'Choose approximate or precise access in Android. Allowing access does not fetch your location.'},
+  calendar: {title: 'On-phone Calendar', description: 'Allow viewing and saving events in Android calendar accounts. This is separate from connecting Google Calendar through Cloud; granting access does not read or change events.'},
   photos: {title: 'Photos and videos', description: 'Choose selected items or your library in Android. Access stays on this phone; sharing is a separate action.'},
 };
 function runtimeAccess(value: string) {
@@ -40,6 +44,8 @@ export function StartupPermissions() {
   const googleOpen = useSyncExternalStore(googleConnectionController.subscribe, googleConnectionController.getSnapshot);
   const photoDescription = useRef('');
   const [photoStatus, setPhotoStatus] = useState('');
+  const locationDescription = useRef('');
+  const [locationStatus, setLocationStatus] = useState('');
   const [flows] = useState(() => ({
     notifications: createStartupPermissionFlow({
       status: async () => { const status = await notifications.status(); return {granted: status.permissionGranted, enabled: status.appEnabled}; },
@@ -57,13 +63,23 @@ export function StartupPermissions() {
       request: () => permissions.requestPermissions({permissions: ['camera']}),
       openSettings: () => device.openSettings({page: 'privacy'}),
     }, {key: 'camera'}),
+    location: createStartupPermissionFlow({
+      status: async () => { const access = startupLocationAccess(await location.checkPermissions()); locationDescription.current = access.description; return access; },
+      request: () => location.requestPermissions(),
+      openSettings: () => device.openSettings({page: 'privacy'}),
+    }, {key: 'location'}),
+    calendar: createStartupPermissionFlow({
+      status: async () => runtimeAccess((await calendar.checkPermissions()).calendar),
+      request: () => calendar.requestPermissions({permissions: ['calendar']}),
+      openSettings: () => device.openSettings({page: 'privacy'}),
+    }, {key: 'calendar'}),
     photos: createStartupPermissionFlow({
       status: async () => { const access = startupPhotoAccess(await photos.scope()); photoDescription.current = access.description; return access; },
       request: () => photos.requestAccess(),
       openSettings: () => device.openSettings({page: 'privacy'}),
     }, {key: 'photos'}),
   }));
-  const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking', camera: 'checking', photos: 'checking'});
+  const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking', camera: 'checking', photos: 'checking', location: 'checking', calendar: 'checking'});
   const [dismissed, setDismissedState] = useState(() => readStartupPermissionMemory().dismissed);
   const [reopened, setReopened] = useState(false);
   const [busy, setBusy] = useState<PermissionKey | null>(null);
@@ -86,7 +102,7 @@ export function StartupPermissions() {
     let disposed = false;
     const refresh = (key: PermissionKey) => {
       void flows[key].refresh().then(value => {
-        if (!disposed && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); }
+        if (!disposed && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); }
       });
     };
     const resume = () => { if (!document.hidden && !actionPending.current) keys.forEach(refresh); };
@@ -135,7 +151,7 @@ export function StartupPermissions() {
     try {
       if (manage) await device.openSettings({page: 'privacy'});
       const value = manage || states[key] === 'unavailable' ? await flows[key].refresh() : await flows[key].enable();
-      if (alive.current && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); }
+      if (alive.current && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); }
     } catch { if (alive.current) setStates(previous => ({...previous, [key]: 'unavailable'})); }
     finally { actionPending.current = false; if (alive.current) setBusy(null); }
   }
@@ -146,12 +162,12 @@ export function StartupPermissions() {
     <p id="alpha-permission-description">Set up the features you want now, or choose Not now. You can change access later in Settings; skipped features ask when you use them.</p>
     {keys.map(key => <section key={key} aria-labelledby={`alpha-access-${key}`}>
       <h3 id={`alpha-access-${key}`}>{details[key].title}</h3><p>{details[key].description}</p>
-      {states[key] === 'ready' ? <p role="status">{key === 'photos' ? photoStatus : 'Allowed'}</p> : states[key] === 'checking' ? <p role="status">Checking access…</p> : <>
+      {states[key] === 'ready' ? <p role="status">{key === 'photos' ? photoStatus : key === 'location' ? locationStatus : 'Allowed'}</p> : states[key] === 'checking' ? <p role="status">Checking access…</p> : <>
         {states[key] === 'settings' && <p role="status">Access is off. You can enable it in Android settings.</p>}
         {states[key] === 'unavailable' && <p role="status">Access could not be checked. Try again, or manage it later in Settings.</p>}
         <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? `Manage ${details[key].title.toLowerCase()} in Android` : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`}</button></div>
       </>}
-      {key === 'photos' && states[key] === 'ready' && <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable('photos', true)}>Manage photo access</button></div>}
+      {(key === 'photos' || key === 'location') && states[key] === 'ready' && <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key, true)}>{key === 'photos' ? 'Manage photo access' : 'Manage location access'}</button></div>}
     </section>)}
     <section aria-labelledby="alpha-access-google"><h3 id="alpha-access-google">Gmail and Google Calendar</h3>
       <p>Connect your Google account through Eliza Cloud. Google shows the permissions before you approve. Sending email and changing Calendar events use additional optional consent in Google accounts.</p>

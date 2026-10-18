@@ -14,7 +14,7 @@ Approval is not implementation or acceptance. [Verification](verification.md) an
   Schedules only run while the phone is powered on; Doze is a separate constraint.
 - Eliza Cloud supplies authenticated text inference, subscription entitlements,
   Gmail integration, optional Google Calendar APIs and shared Maps APIs. Cloud services do not host the agent.
-- STT/TTS always run on device through the Android bridge to Eliza's native
+- In the default `native` profile, STT/TTS run on device through the Android bridge to Eliza's native
   inference/llama.cpp build. Dictation inserts editable text on Stop; voice
   assistant auto-submits at semantic/long-gap endpoints and supports barge-in.
 - Pixel 10a / Android 17 is the target. Standalone APK and Alpha AOSP image are
@@ -28,6 +28,17 @@ Approval is not implementation or acceptance. [Verification](verification.md) an
   context selection and reviewed writes/shares remain explicit boundaries.
 - No app-data import/export/backup/transfer feature; provide confirmed local reset.
   Ordinary Files and mail attachment operations remain daily-tool capabilities.
+
+## October 18 Cloud QA scope override
+
+For the owner's explicitly selected `cloud` QA profile, the resident Bun/PGlite
+agent remains local while authenticated Eliza Cloud supplies Cerebras text inference,
+embeddings, STT and Cartesia TTS. No local model payload is admitted. This scoped
+override applies to local-only speech statements in this plan; the default `native`
+profile and native/AOSP acceptance gates remain intact. Cloud voice still requires
+visible upload/plan disclosure, explicit start and current-account binding. Build
+success and synthetic tests do not replace real Cloud/device acceptance.
+See [profile selection](../README.md#explicit-cloud-qa-profile--october-18).
 
 ## Dependency order and work packages
 

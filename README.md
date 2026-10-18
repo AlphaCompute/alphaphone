@@ -4,8 +4,8 @@ Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, Contacts and SMS/MMS are
 AOSP-only capabilities; standalone APKs do not expose them. Wallet is outside MVP. Production Android onboarding requires an Eliza Cloud account with supported billing
-(Cloud credits or a subscription; codes depend on Cloud support), then offers microphone and notification setup. The agent runs on the phone. Eliza Cloud supplies text inference, subscriptions, Gmail
-and shared Maps services; STT/TTS run locally through the native speech integration.
+(Cloud credits or a subscription; codes depend on Cloud support), then offers optional device-permission and Google-connection setup. The agent runs on the phone. Eliza Cloud supplies text inference, subscriptions, Gmail
+and shared Maps services; the native default profile runs STT/TTS locally through the native speech integration.
 Local speech qualification and complete voice/device acceptance remain open. Remote pairing and hosted agents are unavailable in every production build. Explicit test-mocks tooling
 retains remote connections as non-product development infrastructure. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
@@ -49,7 +49,7 @@ the required evidence rather than treating a successful APK build as acceptance.
 The [implementation plan](docs/implementation-plan.md) and
 [32 implementation TODOs](docs/owner-approved-mvp-plan-2026-10-12.md) supersede older
 scope wording above. Agent execution is local only; Eliza Cloud provides inference,
-subscription billing, Gmail and shared Maps. All STT/TTS must move to the native
+subscription billing, Gmail and shared Maps. In the native default profile, STT/TTS must move to the native
 on-device route. Chat has one microphone control for the interruptible voice assistant. Active chat
 shows the inline blue synth, Mute/Unmute and Stop. Notes dictation remains separate;
 the retained chat-dictation API is not a second user-facing chat control.
@@ -58,6 +58,22 @@ Contacts and SMS are AOSP-only; Wallet is removed. Full permitted Photos access 
 reset-only data management are planned. These are requirements, not claims that the
 current Cloud voice/credit UI or other source already implements them.
 See [speech research](docs/local-speech-research-2026-10-12.md) for native candidates.
+
+## Explicit Cloud QA profile — October 18
+
+The owner-approved `cloud` runtime profile supersedes the local-speech-only wording
+above for this explicit QA configuration. It keeps the genuine Bun/PGlite resident
+agent, history and approvals on the phone, uses authenticated Eliza Cloud for
+Cerebras text inference, embeddings, speech input and Cartesia speech output, and
+packages no local inference models. Voice requires visible upload/plan disclosure
+and an explicit start; account changes retire the bound voice session.
+
+Select it explicitly with `--runtime-profile=cloud` for runtime staging and Android
+builds (`agent:stage-android` and `android:build`). Renderer, native and packaged
+runtime admission must agree on the profile; test mocks and unpackaged runtimes
+are rejected. The default remains `native` with its existing qualification gates.
+Cloud QA builds do not establish offline/native-speech, AOSP or release acceptance;
+real account, inference, microphone and playback evidence is still required.
 
 ## Setup
 

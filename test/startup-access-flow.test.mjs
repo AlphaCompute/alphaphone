@@ -28,3 +28,10 @@ test('checks never prompt, denial persists to settings, and a granted readback r
  flow.writeStartupPermissionMemory({dismissed:true},store);assert.equal(flow.readStartupPermissionMemory(store).dismissed,true);
  flow.reopenStartupPermissions(store);assert.equal(flow.readStartupPermissionMemory(store).dismissed,false);assert.equal(flow.readStartupPermissionMemory(store).attempted.camera,true);
 });
+
+test('location metadata labels approximate and precise grants without accepting malformed accuracy',()=>{
+ assert.match(flow.startupLocationAccess({location:'granted',accuracy:'approximate'}).description,/Approximate/);
+ assert.match(flow.startupLocationAccess({location:'granted',accuracy:'precise'}).description,/Precise/);
+ assert.equal(flow.startupLocationAccess({location:'denied',accuracy:'none'}).granted,false);
+ for(const value of [null,{location:'granted',accuracy:'none'},{location:'granted',accuracy:['precise']},{location:'denied',accuracy:'precise'},{location:'prompt'}])assert.throws(()=>flow.startupLocationAccess(value));
+});
