@@ -207,7 +207,7 @@ test('Inbox card never reads mail from Home and shows the account and read time 
  await expect(card).toContainText('1 unread');await expect(card).toContainText('Synthetic overview subject');
  await expect(card).not.toContainText('Synthetic body preview');await expect(card).not.toContainText('Synthetic read subject');
  const status=await card.getAttribute('aria-description');
- expect(times.map(time=>`Synthetic mailbox · Read ${time}`)).toContain(status);
+ expect(times.map(time=>`Synthetic mailbox · Updated ${time}`)).toContain(status);
  await expect(card).toContainText(status!);
  // Staying on Home does not refresh it.
  await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Another unsent rerender');
@@ -222,7 +222,7 @@ test('Inbox card never reads mail from Home and shows the account and read time 
  await page.getByRole('button',{name:'Refresh inbox',exact:true}).click();
  await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
  await returnToApps(page);
- await expect(card).toHaveAttribute('aria-description',/^Open to retry · last read \d{1,2}:\d{2}/);
+ await expect(card).toHaveAttribute('aria-description',/^Open to retry · last updated \d{1,2}:\d{2}/);
  await expect(card).not.toContainText('No unread');
 });
 

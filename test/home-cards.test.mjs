@@ -160,12 +160,12 @@ test('next item: an overdue reminder does not hide the next event, which keeps i
   const template = readFileSync(new URL('../apps/app/src/prototype/template.html', import.meta.url), 'utf8');
   assert.match(template, /data-alpha-home-calendar-next-line>.*\{\{homeCalendarNext\}\}.*\{\{homeCalendarNextSource\}\}/);
 });
-test('inbox status: account and read time of the loaded page, and every non-ready state', () => {
+test('inbox status: readable freshness and every non-ready state', () => {
   const base = {failure: false, pending: false, cached: null, connected: false, unchecked: false, now};
-  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: 'work@example.test', readAt: at(15, 4)}}), 'work@example.test · Read 3:04 PM');
-  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: true, label: 'work@example.test', readAt: at(8, 15, 6)}}), 'From loaded messages · Read Tue, Oct 6 8:15 AM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: 'work@example.test', readAt: at(15, 4)}}), 'work@example.test · Updated 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, cached: {more: true, label: 'work@example.test', readAt: at(8, 15, 6)}}), 'Recent email · Updated Tue, Oct 6 8:15 AM');
   assert.equal(H.presentHomeInboxStatus({...base, cached: {more: false, label: '', readAt: null}}), '');
-  assert.equal(H.presentHomeInboxStatus({...base, failure: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Open to retry · last read 3:04 PM');
+  assert.equal(H.presentHomeInboxStatus({...base, failure: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Open to retry · last updated 3:04 PM');
   assert.equal(H.presentHomeInboxStatus({...base, failure: true}), 'Open to retry');
   assert.equal(H.presentHomeInboxStatus({...base, pending: true, cached: {more: false, label: 'a', readAt: at(15, 4)}}), 'Updating email…');
   assert.equal(H.presentHomeInboxStatus({...base, connected: true}), 'Open to load email');

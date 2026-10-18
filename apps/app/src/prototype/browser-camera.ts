@@ -141,7 +141,7 @@ function selectedMedia(items:SelectedMedia[]){
  return items.map(item=>({id:item.id,revision:item.revision}));
 }
 function downloadPhoto(row:Row){
- const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-photo-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);try{link.click();}finally{link.remove();}
+ const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-${row.kind==='video'?'video':'photo'}-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);try{link.click();}finally{link.remove();}
 }
 async function saveVideoCopy(input:{id:string;revision:string;operationId:string;edit:VideoEdit},signal:AbortSignal):Promise<EditResult>{
  const key=editKey(input.operationId),edit={...input.edit},source=await read(input.id);signal.throwIfAborted();
@@ -171,7 +171,7 @@ export const browserPhotoLibrary={
    if(!/^data:(image|video)\//.test(source))throw Error('Select saved local media.');
    const response=await fetch(source),blob=await response.blob();
    const extension=blob.type==='video/mp4'?'mp4':blob.type.startsWith('video/')?'webm':blob.type==='image/png'?'png':'jpg';
-   return {path:`Alpha-photo-${index+1}.${extension}`,bytes:new Uint8Array(await blob.arrayBuffer())};
+   return {path:`Alpha-${row.kind==='video'?'video':'photo'}-${index+1}.${extension}`,bytes:new Uint8Array(await blob.arrayBuffer())};
   }));
   const url=URL.createObjectURL(fileArchive(entries)),link=document.createElement('a');link.href=url;link.download='Alpha photos.zip';document.body.append(link);
   try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}

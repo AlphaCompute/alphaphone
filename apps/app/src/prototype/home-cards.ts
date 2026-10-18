@@ -149,9 +149,9 @@ export function presentHomeWorkflowFreshness(input: {loadedAt: number | null | u
 export function presentHomeInboxStatus(input: {failure: boolean; pending: boolean; cached: {more: boolean; label: string; readAt: number | null} | null; connected: boolean; unchecked: boolean; now: number}) {
   const {failure, pending, cached, now} = input;
   const read = cached?.readAt && Number.isFinite(cached.readAt) && cached.readAt > 0 ? whenLabel(cached.readAt, now) : '';
-  if (failure) return `Open to retry${read ? ` · last read ${read}` : ''}`;
+  if (failure) return `Open to retry${read ? ` · last updated ${read}` : ''}`;
   if (pending) return 'Updating email…';
-  if (cached) return [cached.more ? 'From loaded messages' : cached.label, read ? `Read ${read}` : ''].filter(Boolean).join(' · ');
+  if (cached) return [cached.more ? 'Recent email' : cached.label, read ? `Updated ${read}` : ''].filter(Boolean).join(' · ');
   return input.connected ? 'Open to load email' : input.unchecked ? 'Open to check email' : '';
 }
 
