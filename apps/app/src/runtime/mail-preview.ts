@@ -9,5 +9,5 @@ export function decodeMailPreview(text:string):string{
  }):text;
  // Marketing preheaders pad snippets with long runs of invisible characters.
  // Preserve individual language joiners and ordinary non-breaking spaces.
- return decoded.replace(/[ \u00a0\u00ad\u034f\u200b-\u200f\u2060\ufeff]{3,}/g,' ').trim();
+ return decoded.replace(/[ \u00a0\u00ad\u034f\u200b-\u200f\u2060\u2800\ufeff]{3,}/g,' ').trim();
 }
