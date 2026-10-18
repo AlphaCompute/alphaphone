@@ -14,7 +14,7 @@ const briefCard=(page:Page)=>home(page).locator('[data-alpha-home-brief]');
 /** The app's own time format for "now" and the neighbouring minutes, so a minute rollover cannot fail the comparison. */
 const nearNow=(page:Page)=>page.evaluate(async()=>{const {formatTime}=await import('/src/prototype/locale-time.ts'),now=Date.now();return [-60000,0,60000].map(offset=>formatTime(new Date(now+offset)));});
 
-test('calendar card names its source and read time for an event and for an empty calendar',async({page},info)=>{
+test('calendar card keeps source and time accessible without generic app labels',async({page},info)=>{
  await page.addInitScript(offline);await page.goto('/');
  const card=calendarCard(page);
  await expect(card).toContainText('No upcoming events');
@@ -35,7 +35,8 @@ test('calendar card names its source and read time for an event and for an empty
  await expect(card).toHaveAccessibleName(`Open calendar event: Synthetic overview event, ${expected.day}, ${expected.footer}`);
  await expect(card.locator('.home-calendar-footer')).toHaveText(expected.footer);
  await expect(source).toHaveCount(0);
- await expect(origin).toHaveText('In this app');
+ await expect(origin).toHaveText('');
+ await expect(card).not.toContainText('In this app');
  await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this app$/);
  // Successful read metadata stays accessible while the event time remains unclipped.
  expect(await card.evaluate(element=>{const footer=element.querySelector<HTMLElement>('.home-calendar-footer')!,a=footer.getBoundingClientRect(),box=element.getBoundingClientRect();return {footerClipped:footer.scrollWidth>footer.clientWidth,inside:a.right<=box.right&&a.bottom<=box.bottom,overflow:element.scrollWidth-element.clientWidth};})).toEqual({footerClipped:false,inside:true,overflow:0});

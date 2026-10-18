@@ -103,7 +103,7 @@ export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | '
   if (input.reminder) return reminder();
   if (state !== 'ready' || !readAt) return {origin: '', read: '', description: ''};
   const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
-  return {origin: name, read: '',
+  return {origin: name === 'In this app' || name === 'This app' ? '' : name, read: '',
     description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this app'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
 }
 /** The secondary line of the Home calendar card while an overdue reminder holds it: the first item
