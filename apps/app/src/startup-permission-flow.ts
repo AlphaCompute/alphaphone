@@ -1,5 +1,18 @@
 export type StartupPermissionState = 'checking' | 'request' | 'settings' | 'ready' | 'unavailable';
 
+/** A selected-photo grant is useful access, never described as the whole library. */
+export function startupPhotoAccess(value: unknown) {
+  const row = value as {scope?: unknown; locked?: unknown} | null;
+  if (!row || typeof row.scope !== 'string' || !['full', 'partial', 'selected', 'denied'].includes(row.scope) || typeof row.locked !== 'boolean' || row.locked) throw Error('Photo access unavailable');
+  return {granted: row.scope !== 'denied', enabled: row.scope !== 'denied', description: row.scope === 'full' ? 'All photos and videos allowed' : row.scope === 'selected' ? 'Selected photos and videos only' : row.scope === 'partial' ? 'Limited photo or video access allowed' : 'Not allowed'};
+}
+
+/** Connected identity alone does not establish Gmail or Calendar permission. */
+export function startupGoogleAccess(accounts: readonly {connected: boolean; connectionId?: string | null; grantedCapabilities: readonly string[]}[]) {
+  const connected = accounts.filter(account => account.connected === true && !!account.connectionId);
+  return {gmail: connected.some(account => account.grantedCapabilities.includes('google.gmail.triage')), calendar: connected.some(account => account.grantedCapabilities.includes('google.calendar.read'))};
+}
+
 /** Nonsecret startup-access memory: the "Not now" dismissal and which OS prompts were already
  * shown, so a chooser close or a cold start neither reopens the panel nor re-prompts. */
 export const STARTUP_PERMISSIONS_KEY = 'alpha.startup-permissions.v1';
