@@ -1,3 +1,4 @@
+import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
 import {readDevicePreferences} from '../browser/device-preferences';
 import type { ViewActionHandoff } from "@elizaos/core/protocol";
 import {developmentCloudRealtimeVoiceEnabled} from './development-cloud-voice';
@@ -61,7 +62,7 @@ export async function developmentCartesiaConversation(input:{binding:VoiceConver
    if(event.t==='stt_final'){if(submitted.size>=64)submitted.delete(submitted.values().next().value!);submitted.add(event.traceId);}
    if(['ready','stt_final','speaking_start','reply_complete','usage'].includes(event.t))reconcile();
    if(event.t==='navigate_view')navigate(event);
-   if(event.t==='reply_complete'&&event.traceId===currentTurn&&submitted.has(event.traceId)&&directActions&&'userMessageId' in event&&typeof event.userMessageId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(event.userMessageId)&&!performedMessages.has(event.userMessageId)){
+   if(event.t==='reply_complete'&&event.traceId===currentTurn&&submitted.has(event.traceId)&&directActions&&'userMessageId' in event&&typeof event.userMessageId==='string'&&validateUuid(event.userMessageId)&&!performedMessages.has(event.userMessageId)){
     const messageId=event.userMessageId,traceId=event.traceId;completedRequest={messageId,traceId};
     if(performedMessages.size>=64)performedMessages.delete(performedMessages.values().next().value!);performedMessages.add(messageId);
     navigationTask=navigationTask.then(async()=>{current();if(currentTurn!==traceId||!directActions)return;const receipts=await connectionController.performVoiceRequestedActions(input.binding,messageId,lifecycle.signal);current();for(const receipt of receipts)input.onActionResult?.(receipt.summary);reconcile();}).catch(error=>{if(!stopped)input.onError(error instanceof Error?error:Error('Voice action could not be verified.'));});
