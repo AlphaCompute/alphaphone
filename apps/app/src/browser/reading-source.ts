@@ -1,10 +1,11 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {sensitiveReadingUrl,sensitiveReadingText,sensitiveReadingDocument} from './reading-sensitive';
 export type ReadingSource={text:string;truncated:boolean;blocked?:false}|{blocked:true};
 /** A bounded public source fetch. The isolated live frame retains its opaque origin. */
 export async function browserReadingSource(address:string,signal:AbortSignal):Promise<ReadingSource|undefined>{
  if(sensitiveReadingUrl(address))return {blocked:true};
  const url=new URL(address);if(!['http:','https:'].includes(url.protocol)||url.username||url.password)return;
- const request=AbortSignal.any([signal,AbortSignal.timeout(5000)]);
+ const request=anyAbortSignal([signal,AbortSignal.timeout(5000)]);
  try{
   const response=await fetch(url.href,{signal:request,mode:'cors',credentials:'omit',redirect:'error',referrerPolicy:'no-referrer',cache:'no-store',headers:{Accept:'text/html,text/plain'}});
   const type=response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();

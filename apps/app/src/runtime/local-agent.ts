@@ -1,3 +1,4 @@
+import {anyAbortSignal} from './abort-signal';
 import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
 import { registerPlugin } from '../platform-plugins';
@@ -48,7 +49,7 @@ const unavailableBridge: LocalAgentBridge = {
 const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async start() { return { state: 'host-managed' }; },
   async stream(input,signal,onText,onReplyReady){
-    const bounded=AbortSignal.any([signal,AbortSignal.timeout(120000)]);
+    const bounded=anyAbortSignal([signal,AbortSignal.timeout(120000)]);
     const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
       body:JSON.stringify({...input,method:'POST',stream:true}),signal:bounded,redirect:'error'});
     return readLocalAgentStream(response,bounded,onText,onReplyReady);
@@ -56,7 +57,7 @@ const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
   async request(input, signal) {
     const response = await fetch('/__alpha-local-agent', {
       method:'POST', headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
-      body:JSON.stringify(input), signal:signal ? AbortSignal.any([signal,AbortSignal.timeout(input.timeoutMs)]) : AbortSignal.timeout(input.timeoutMs), redirect:'error',
+      body:JSON.stringify(input), signal:signal ? anyAbortSignal([signal,AbortSignal.timeout(input.timeoutMs)]) : AbortSignal.timeout(input.timeoutMs), redirect:'error',
     });
     if (!response.ok) throw new Error('Local agent development bridge unavailable. Check the development server.');
     return response.json();
@@ -156,7 +157,7 @@ export class LocalAgentProtocol {
     if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local agent first.');
     const session=this.session,generation=this.generation,controller=new AbortController();
     this.streams.add(controller);
-    const bounded=AbortSignal.any([signal,controller.signal]);
+    const bounded=anyAbortSignal([signal,controller.signal]);
     try{
       bounded.throwIfAborted();
       let audioBase64:string|undefined;
@@ -182,7 +183,7 @@ export class LocalAgentProtocol {
   async developmentCloudSpeech(input:{kind:'asr';audio:Uint8Array}|{kind:'tts';text:string},signal:AbortSignal){
     if(!developmentCloudVoiceEnabled||!this.browserSpeechAvailable||!this.session)throw Error('Developer Cloud speech is unavailable.');
     const session=this.session,generation=this.generation,controller=new AbortController(),requestId=crypto.randomUUID();
-    this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);
+    this.streams.add(controller);const bounded=anyAbortSignal([signal,controller.signal]);
     try{
       bounded.throwIfAborted();let audioBase64:string|undefined;
       if(input.kind==='asr'){if(!input.audio.byteLength||input.audio.byteLength>2*1024*1024)throw Error('Recording is too large.');let binary='';for(let i=0;i<input.audio.length;i+=8192)binary+=String.fromCharCode(...input.audio.subarray(i,i+8192));audioBase64=btoa(binary);}
@@ -201,7 +202,7 @@ export class LocalAgentProtocol {
     if(!this.browserSpeechAvailable||!this.session)throw Error('Connect the local agent first.');
     if(typeof text!=='string'||!text.trim()||text.length>500)throw Error('Local agent speech accepts up to 500 characters per phrase.');
     const session=this.session,generation=this.generation,controller=new AbortController(),requestId=crypto.randomUUID();
-    this.streams.add(controller);const bounded=AbortSignal.any([signal,controller.signal]);
+    this.streams.add(controller);const bounded=anyAbortSignal([signal,controller.signal]);
     try{
       bounded.throwIfAborted();
       const response=await this.bridge.request({path:'/api/tts/paradee',ownerId:session.ownerId,method:'POST',headers:{},requestId,body:JSON.stringify({text}),timeoutMs:45000},bounded);
@@ -247,7 +248,7 @@ export class LocalAgentProtocol {
     if(this.bridge.stream&&options.onText){
       if(!this.session)throw Error('Start the local agent first.');
       const controller=new AbortController();this.streams.add(controller);
-      const generation=this.generation,session=this.session,signal=options.signal?AbortSignal.any([options.signal,controller.signal]):controller.signal;
+      const generation=this.generation,session=this.session,signal=options.signal?anyAbortSignal([options.signal,controller.signal]):controller.signal;
       const valid=()=>{signal.throwIfAborted();if(generation!==this.generation||session!==this.session)throw Error('Local agent connection changed.');};
       try{
         valid();

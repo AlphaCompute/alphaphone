@@ -1,10 +1,11 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {googleAuthorizationUrlAllowed} from '../runtime/google-authorization';
 import {WebPlugin} from '@capacitor/core';
 
 const endpoint='/__alpha-browser-cloud';
 const references=new Map<string,string|null>();
 export async function browserCloudCall(data:Record<string,unknown>,signal?:AbortSignal):Promise<Response>{
- return fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1'},body:JSON.stringify(data),signal:signal?AbortSignal.any([signal,AbortSignal.timeout(120000)]):AbortSignal.timeout(120000),redirect:'error'});
+ return fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1'},body:JSON.stringify(data),signal:signal?anyAbortSignal([signal,AbortSignal.timeout(120000)]):AbortSignal.timeout(120000),redirect:'error'});
 }
 async function rpc(data:Record<string,unknown>,signal?:AbortSignal){const response=await browserCloudCall(data,signal);if(!response.ok)throw Object.assign(Error('Cloud development connection unavailable.'),{status:response.status});return response.json();}
 /** Development host storage references only. Cloud bearers never enter browser storage. */
@@ -45,7 +46,7 @@ export async function browserCloudVoice(input:{environment:string;credentialId:s
  const values={operation,environment:input.environment,credentialId:input.credentialId,requestId:input.requestId,credentialReference:credential.credentialReference};let response:Response;
  if(operation==='stt'){
   if(!(payload instanceof Blob))throw Error('Recorded audio required');const form=new FormData();for(const [key,value]of Object.entries(values))form.append(key,value);form.append('audio',payload,'recording');
-  response=await fetch(endpoint,{method:'POST',headers:{'X-Alpha-Browser-Cloud':'1'},body:form,signal:AbortSignal.any([signal,AbortSignal.timeout(120000)]),redirect:'error'});
+  response=await fetch(endpoint,{method:'POST',headers:{'X-Alpha-Browser-Cloud':'1'},body:form,signal:anyAbortSignal([signal,AbortSignal.timeout(120000)]),redirect:'error'});
  }else response=await browserCloudCall({...values,text:payload},signal);
  signal.throwIfAborted();if(!response.ok){await response.body?.cancel();throw Object.assign(Error('Cloud voice request failed.'),{code:'voice-http-'+response.status,status:response.status});}return response;
 }

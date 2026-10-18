@@ -1,3 +1,4 @@
+import {anyAbortSignal} from './abort-signal';
 import {CALENDAR_APPROVAL_READ_PATH,calendarApprovalFromList,calendarApprovalId} from './calendar-approval';
 import {resolveCloudEnvironment} from './cloud-environment-selection';
 import { withResidentMapsNavigation } from '../maps/resident-relay.ts';
@@ -1586,7 +1587,7 @@ export const connectionController = {
     if(!selected||!session||(testMocksEnabled&&selected.kind==='cloud'&&!selected.phoneTarget))return null;
     return {sessionId:session.sessionId,scope:selected.actions?.scope,request:async(path,method,body,signal)=>{
       if(!automationsRouteAllowed(path,method)||((method==='GET'||method==='DELETE')&&body!==undefined))throw Error('Unsupported automation request');
-      const controller=new AbortController(),bounded=AbortSignal.any([signal,controller.signal]);automationsRequests.add(controller);
+      const controller=new AbortController(),bounded=anyAbortSignal([signal,controller.signal]);automationsRequests.add(controller);
       const current=()=>{bounded.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw new DOMException('The connection changed','AbortError');};
       try{
         current();
