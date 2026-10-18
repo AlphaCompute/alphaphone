@@ -257,7 +257,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false,restoredReadAt?:number) => {
     const key=readKey();
     if (loadedQuery === 'in:inbox') inboxPreview=key?{key,sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():restoredReadAt??(inboxPreview?.key===key?inboxPreview.readAt:null)}:null;
-    if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:restoredReadAt??(revision||new Date().toISOString())});
+    if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:restoredReadAt!==undefined?new Date(restoredReadAt).toISOString():(revision||new Date().toISOString())});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
   };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
