@@ -12,6 +12,8 @@ import { BrowserReviews } from '../browser/review';
 import { browsingSnapshot, restoreBrowsing, MAX_SAVED_TABS as MAX_TABS, MAX_SAVED_HISTORY as MAX_HISTORY } from '../browser/browsing-session';
 type Bag = Record<string, any>;
 const Browser = registerPlugin<any>('AlphaBrowser');
+const PROFILE_UNSUPPORTED_NATIVE_MESSAGE='This Android WebView does not support isolated browser profiles';
+const PROFILE_UNSUPPORTED_MESSAGE='In-app browsing is unavailable with this Android WebView because isolated browser profiles are not supported. Use another installed browser to browse websites.';
 const newTabId = () => 'b' + crypto.randomUUID().replaceAll('-', '');
 
 /** Public browsing only. Install last, only outside visual fixture mode.
@@ -27,6 +29,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   const restored = new Map<string, {url: string; title: string}>();
   const restoreAttempts = new Map<string, number>();
   const reviews = new BrowserReviews();
+  let profileUnsupportedTab:string|undefined;
   let shell: any, lastGeometry = '', disposed = false, sharing = false, confirming = false, clearingData = false;
   // Saving waits for a successful read so a damaged saved record is never overwritten implicitly.
   let sessionRead = false, sessionHydrated = false, lastSaved = '', saveQueue = Promise.resolve();
@@ -158,7 +161,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
     void Browser.present({session,id:null}).catch(() => { if(lastGeometry === next) lastGeometry=''; });
   }
   function ensure(id: string, priv = isPrivate(id)) {
-    if (!created.has(id)) created.set(id, Browser.create({ session, id, private: priv }).catch((error: unknown) => { created.delete(id); throw error; }));
+    if (!created.has(id)) created.set(id, Browser.create({ session, id, private: priv }).catch((error: unknown) => { created.delete(id); if(!disposed&&Capacitor.isNativePlatform()&&state()?.cur===id&&error instanceof Error&&error.message===PROFILE_UNSUPPORTED_NATIVE_MESSAGE){profileUnsupportedTab=id;refresh();} throw error; }));
     return created.get(id)!;
   }
   async function navigate(raw: string, newTab = false, approvedSignal?: AbortSignal, privateTab = false, background = false) {
@@ -179,6 +182,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
       }
     } catch { if (approvedSignal) throw new Error('Invalid approved browser destination'); report(new Error('Enter search words or a valid HTTP or HTTPS address without credentials.')); return; }
     const s = state(); if (!s) { if (approvedSignal) throw new Error('Browser unavailable'); return; }
+    profileUnsupportedTab=undefined;
     const selectedTab=s.cur;
     const id = newTab ? newTabId() : s.cur, priv = newTab ? privateTab : isPrivate(id);
     // Keep the last committed address durable while a restored page is loading or fails.
@@ -372,12 +376,13 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   };
   const render = definition.render;
   definition.render = (s: Bag, api: Bag) => {
+    if(profileUnsupportedTab&&profileUnsupportedTab!==s.cur)profileUnsupportedTab=undefined;
     const out = render(s, api), info = metadata.get(s.cur), url = info?.url ? new URL(info.url) : null;
     const unavailable = () => api.toast('This browser currently supports public navigation only.');
     const openNew = (priv = false) => { if (s.tabs.length >= MAX_TABS) { api.toast('Close a tab before opening another.'); return; } const id=newTabId(); api.set({ tabs:[...s.tabs,{id,hist:['newtab'],pos:0,...(priv?{priv:true}:{})}],cur:id,tabsOpen:false,menu:false,editing:true,addr:'' }); };
     const priv = !!s.tabs.find((tab: Bag) => tab.id === s.cur)?.priv;
     const known = (id: string) => metadata.get(id) || restored.get(id);
-    return { ...out, isNews:false,isEnc:false,isBook:false,isSearch:false,isGeneric:false,isNew:!info,
+    return { ...out, profileUnsupportedPage:profileUnsupportedTab===s.cur&&!s.editing,profileUnsupportedEditing:profileUnsupportedTab===s.cur&&!!s.editing,profileUnsupportedMessage:PROFILE_UNSUPPORTED_MESSAGE,isNews:false,isEnc:false,isBook:false,isSearch:false,isGeneric:false,isNew:!info,
       isPrivate:priv,openPrivate:()=>openNew(true),clearData:()=>void clearBrowsingData(),clearSite:()=>void clearSiteData(),canClearSite:!!info?.committed&&!info?.error&&!!url,
       recents:[],sugg:[],people:[],agOn:false,confirm:false,
       // Find in page is native findAllAsync. A web build's page is an opaque-origin sandboxed frame the host
