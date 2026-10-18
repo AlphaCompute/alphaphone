@@ -126,8 +126,7 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  // The event in progress is not hidden: it is the next item, on its own line with its own source.
  const next=card.locator('[data-alpha-home-calendar-next-line]');
  await expect(next.locator('.home-calendar-next-text')).toHaveText('Next: Synthetic in-progress event Now');
- const nextRead=await next.locator('[data-alpha-home-calendar-next-source]').textContent();
- expect(nextRead).toBe('In this app');
+ await expect(next.locator('[data-alpha-home-calendar-next-source]')).toHaveCount(0);
  await expect(card).toHaveAttribute('aria-description',/^Overdue reminder saved on this browser, read .+\. Next: Synthetic in-progress event, Now\. In this app\. Read .+ from the calendar saved in this app$/);
  // The next line stays inside the card without clipping its text.
  expect(await card.evaluate(element=>{const line=element.querySelector<HTMLElement>('.home-calendar-next-text')!,a=line.getBoundingClientRect(),box=element.getBoundingClientRect();return {clipped:line.scrollWidth>line.clientWidth,inside:a.bottom<=box.bottom&&a.right<=box.right};})).toEqual({clipped:false,inside:true});
@@ -149,7 +148,7 @@ test('an overdue reminder stays on Home, marked overdue with its own source, and
  await expect(card).toHaveAttribute('data-alpha-home-calendar-overdue','false');
  await expect(card).toContainText('Synthetic in-progress event');
  await expect(card.locator('[data-alpha-home-calendar-next-line]')).toHaveCount(0);
- await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('In this app');
+ await expect(card.locator('[data-alpha-home-calendar-origin]')).toHaveText('');
  await expect(card).toHaveAttribute('aria-description',/^In this app\. Read \d{1,2}:\d{2}.* from the calendar saved in this app$/);
 });
 
@@ -189,6 +188,7 @@ async function mailFixture(page:Page){
 const mailReads=(page:Page)=>page.evaluate(()=>({reads:(window as any).overviewMail.reads,threads:(window as any).overviewMail.threadReads}));
 
 test('Inbox card never reads mail from Home and shows the account and read time of the loaded page',async({page},info)=>{
+ const renderErrors:string[]=[];page.on('console',message=>{if(message.type()==='error'&&message.text().includes('Cannot update during an existing state transition'))renderErrors.push(message.text());});
  await mailFixture(page);
  const card=inboxCard(page);
  // A connected account alone does not make Home read mail: re-render, wait, and come back to the foreground.
@@ -225,6 +225,7 @@ test('Inbox card never reads mail from Home and shows the account and read time 
  await returnToApps(page);
  await expect(card).toHaveAttribute('aria-description',/^Open to retry · last updated \d{1,2}:\d{2}/);
  await expect(card).not.toContainText('No unread');
+ expect(renderErrors,'Inbox cache restoration must not update React during render').toEqual([]);
 });
 
 test('the latest retained brief appears with its agent and run time, reports failure, and is absent otherwise',async({page},info)=>{

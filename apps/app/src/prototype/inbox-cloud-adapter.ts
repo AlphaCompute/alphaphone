@@ -236,9 +236,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const cachedList=folderLists.get(listKey());
     if(!cachedList||Date.now()-cachedList.at>=30*86400000||!readable().some(a=>a.connectionId===selected)){folderLists.delete(listKey());return false;}
     listReadAt=cachedList.at;firstPageRevision=cachedList.firstPageRevision??null;messages=cachedList.messages;loadedQuery=cachedList.query;nextPageToken=cachedList.cursor;revision=cachedList.revision;seenCursors=new Set(cachedList.cursors);newerMail=cachedList.newerMail;status=cachedList.status;phase='ready';cachedListShown=true;
-    // Rebuild Home from the same account-bound cache, keeping its actual read time.
-    recountUnread(cachedList.cursor!==null,false,cachedList.at);
-    queueMicrotask(()=>{if(api?.isActive()){prepareNextPage();prepareBodies();}});return true;
+    // Warm restoration can run during render; notify Home only after that render.
+    const restoredGeneration=generation,restoredKey=readKey();
+    queueMicrotask(()=>{
+      if(generation!==restoredGeneration||readKey()!==restoredKey||loadedQuery!==cachedList.query||messages!==cachedList.messages)return;
+      recountUnread(cachedList.cursor!==null,false,cachedList.at);
+      if(api?.isActive()){prepareNextPage();prepareBodies();}
+    });return true;
   }
 
   const publish = (patch: Bag = {}) => shell?.vset('inbox', { nativeMailTick: Date.now(), ...patch });
