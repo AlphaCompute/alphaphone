@@ -5,8 +5,9 @@ if (!paradee.isDirectory()) {
  apply from: new File(ext.elizaSpeechSourceDir, 'consumer.gradle')
 } else {
  def nativeOutput = file('../../.eliza/paradee-voice/native')
+ def cloudProfile = project.findProperty('ELIZA_RUNTIME_PROFILE')?.toString() == 'cloud'
  def unpackaged = project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME')?.toString() == '1'
- if (unpackaged && !nativeOutput.exists()) {
+ if ((unpackaged || cloudProfile) && !nativeOutput.exists()) {
   // Explicit developer APK: real Java API, no native engine or model assets.
   // Calls report unavailable; this lane cannot provide speech acceptance evidence.
   apply plugin: 'com.android.library'
@@ -28,7 +29,7 @@ if (!paradee.isDirectory()) {
  }
  def verifySpeechInputs = tasks.register('verifySpeechInputs', Exec) {
   workingDir rootProject.projectDir.parentFile
-  commandLine(['node', 'scripts/paradee-runtime.mjs'] + (unpackaged ? ['--allow-absent'] : []))
+  commandLine(['node', 'scripts/paradee-runtime.mjs'] + ((unpackaged || cloudProfile) ? ['--allow-absent'] : []))
  }
  tasks.named('preBuild').configure { dependsOn verifySpeechInputs }
 }

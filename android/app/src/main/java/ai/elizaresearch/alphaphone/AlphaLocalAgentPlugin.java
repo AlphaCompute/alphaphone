@@ -319,7 +319,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  // The provider rules live in LocalAgentProviderAdmission (host-JVM tested); these names stay for callers.
  static boolean validProviderToken(String token,int maximumLength){return LocalAgentProviderAdmission.validProviderToken(token,maximumLength);}
  static String cloudProviderToken(String saved,String credentialId,long now) throws Exception {return LocalAgentProviderAdmission.cloudProviderToken(saved,credentialId,now);}
- static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {LocalAgentProviderAdmission.applyProviderEnvironment(provider,cloudSaved,env,now);}
+ static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {if("cloud".equals(BuildConfig.ELIZA_RUNTIME_PROFILE)&&!"elizacloud".equals(provider.optString("provider")))throw new SecurityException("Cloud runtime requires Cloud provider admission");LocalAgentProviderAdmission.applyProviderEnvironment(provider,cloudSaved,env,now);}
  static final String PROVIDER_MODEL_PATTERN=LocalAgentProviderAdmission.PROVIDER_MODEL_PATTERN;
  /**
   * No admitted plan, Cloud unreachable without a recent plan, or signed out: the agent runs with no
@@ -381,6 +381,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  env.put("ELIZA_RUNTIME_PROFILE",BuildConfig.ELIZA_RUNTIME_PROFILE);
   final long epoch;
   synchronized(lifecycleLock){launchedGeneration=null;if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);

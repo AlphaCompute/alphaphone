@@ -194,6 +194,26 @@ and `android/paradee-voice/asr-inputs.json` by Gradle (`:local-speech:verifySpee
 unavailable. The record is not qualified: a release is distributable only after on-device
 qualification on both ABIs and device acceptance.
 
+An explicit Cloud resident build runs the genuine agent, workflow worker and database on the
+phone while Eliza Cloud supplies Cerebras text inference and embeddings. It packages no local
+inference engine or model. This profile requires the complete resident payload and cannot be
+combined with test mocks or the unpackaged developer option:
+
+```sh
+npm run agent:prepare
+npm run agent:build-workflow-worker
+npm run agent:stage-android -- --runtime-profile=cloud
+npm run licenses:packaged-runtime
+npm run android:build -- --runtime-profile=cloud
+```
+
+The original upstream runtime provenance stays intact. The Cloud profile receipt records the
+exact verified BGE model omitted after staging. Packaging checks verify Bun against the pinned
+artifact lock, the database and bundle against their prepared build, and the worker against its
+source receipt. Cloud profile verification rejects local inference and speech assets. The default
+native profile retains its existing qualification requirements. Build evidence alone does not
+establish Cloud account, chat, voice or device acceptance.
+
 Every Android build also needs the prepared resident runtime source in
 `artifacts/local-agent-resident-<commit>` (from `upstream.lock.json`): Gradle's
 `stageLocalAgentSources` step generates the native agent service classes from it.

@@ -33,13 +33,13 @@ function readHead(directory) {
 }
 
 /** Inputs no preparation step produces: the pinned checkout and the on-device voice outputs. */
-export function checkoutProblems(root, {voiceHost = verifyVoiceHost, allowUnpackagedRuntime = false} = {}) {
+export function checkoutProblems(root, {voiceHost = verifyVoiceHost, allowUnpackagedRuntime = false, runtimeProfile = "native"} = {}) {
   const problems = [];
   const pin = JSON.parse(fs.readFileSync(path.join(root, 'upstream.lock.json'), 'utf8')).commit;
   const head = readHead(path.join(root, 'vendor/eliza'));
   if (head !== pin)
     problems.push(`vendor/eliza is ${head ? `at ${head}` : 'not checked out'}; upstream.lock.json pins ${pin}. Run: git submodule update --init vendor/eliza`);
-  problems.push(...voiceHostProblems(root, {voiceHost, allowUnpackagedRuntime}));
+  if(runtimeProfile !== "cloud") problems.push(...voiceHostProblems(root, {voiceHost, allowUnpackagedRuntime}));
   return problems;
 }
 
@@ -63,7 +63,11 @@ export function voiceHostProblems(root, {allowUnpackagedRuntime = false, voiceHo
  * Prepared runtime inputs. `preparedSource` is the resolved prepared runtime
  * directory (sourceDirectory()). Distribution builds also need the staged runtime.
  */
-export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRuntime = false, testMocks = false, embeddingHost = verifyEmbeddingHost} = {}) {
+export function preparedRuntimeProblems(root, preparedSource, {allowUnpackagedRuntime = false, testMocks = false, embeddingHost = verifyEmbeddingHost, runtimeProfile = "native"} = {}) {
+  if(runtimeProfile === "cloud") {
+    if(allowUnpackagedRuntime || testMocks) return ["Cloud profile requires a genuine packaged resident and test mocks off"];
+    try { execFileSync(process.execPath,[path.join(root,'scripts/runtime-profile.mjs'),'--verify-cloud'],{cwd:root,stdio:['ignore','pipe','pipe']}); return []; } catch(error) { return [error.message]; }
+  }
   const stamp = path.join(preparedSource, '.alpha-runtime-source.json');
   if (!fs.existsSync(stamp))
     return [`Prepared runtime source ${path.relative(root, preparedSource)} is missing (Gradle :app:stageLocalAgentSources reads it). Run: ${FULL_CHAIN} for distributable APKs, or npm run agent:prepare before npm run android:build -- --allow-unpackaged-runtime for developer APKs.`];
@@ -174,7 +178,7 @@ export function formatReport(rows) {
 async function main() {
   const args = process.argv.slice(2);
   for (const arg of args)
-    if (!['--before-prepare', '--allow-unpackaged-runtime', '--test-mocks', '--report', '--json'].includes(arg)) throw new Error(`Unknown option ${arg}`);
+    if (!['--before-prepare', '--allow-unpackaged-runtime', '--test-mocks', '--report', '--json', '--runtime-profile=cloud'].includes(arg)) throw new Error(`Unknown option ${arg}`);
   const root = path.resolve(import.meta.dirname, '..');
   if (args.includes('--report')) {
     // The source guard imports the pinned checkout; without it the prepared path is unknown.
@@ -184,13 +188,14 @@ async function main() {
     console.log(args.includes('--json') ? JSON.stringify(rows, null, 2) : formatReport(rows));
     return;
   }
-  let problems = checkoutProblems(root,{allowUnpackagedRuntime:args.includes('--allow-unpackaged-runtime')});
+  const runtimeProfile=args.includes('--runtime-profile=cloud')?'cloud':'native';
+  let problems = checkoutProblems(root,{allowUnpackagedRuntime:args.includes('--allow-unpackaged-runtime'),runtimeProfile});
   if (!problems.length && !args.includes('--before-prepare')) {
     // The source guard imports the pinned checkout, so load it only once that is verified.
     const {sourceDirectory} = await import('./local-agent-source.mjs');
     problems = [...preparedRuntimeProblems(root, sourceDirectory(root), {
       allowUnpackagedRuntime: args.includes('--allow-unpackaged-runtime'),
-      testMocks: args.includes('--test-mocks'),
+      testMocks: args.includes('--test-mocks'),runtimeProfile,
     })];
   }
   if (problems.length) {
