@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import path from 'node:path';
+import {randomUUID} from 'node:crypto';
 import {parseBuildArgs,buildEnv,gradleFlagArgs} from '../scripts/build-android.mjs';
 import {preparedRuntimeProblems,checkoutProblems} from '../scripts/android-build-preflight.mjs';
 test('Cloud profile explicitly selects renderer and Gradle without mock switches',()=>{
@@ -16,8 +18,9 @@ test('Cloud profile cannot inherit the unpackaged or synthetic lane',()=>{
  assert.throws(()=>parseBuildArgs(['--runtime-profile=other']),/Unknown option/);
  for(const option of [{allowUnpackagedRuntime:true},{testMocks:true}])assert.match(preparedRuntimeProblems('/missing','/missing',{runtimeProfile:'cloud',...option})[0],/genuine packaged resident/);
 });
-test('Cloud profile fails closed before build when genuine resident payload is absent',()=>{
- assert.notDeepEqual(preparedRuntimeProblems(process.cwd(),'/missing',{runtimeProfile:'cloud'}),[]);
+test('Cloud profile checks the explicitly selected prepared source even when another runtime is staged',()=>{
+ const missing=path.join(process.cwd(),'artifacts','missing-cloud-source-'+randomUUID());
+ assert.notDeepEqual(preparedRuntimeProblems(process.cwd(),missing,{runtimeProfile:'cloud'}),[]);
 });
 test('Cloud profile keeps native speech and embeddings guards as default',()=>{
  const gradle=fs.readFileSync('android/app/build.gradle','utf8');

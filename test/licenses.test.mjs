@@ -10,7 +10,7 @@ import {
 import {FLAGS, classifyLicence, licenceFlagLines, licenceFlagRecords, obligationNote} from '../scripts/licence-policy.mjs';
 import {releaseBlockers} from '../scripts/release-blockers.mjs';
 
-const fresh = generate(ROOT);
+const fresh = generate(ROOT, {packagedRuntime: false});
 const lock = JSON.parse(fs.readFileSync(path.join(ROOT, 'package-lock.json'), 'utf8'));
 
 // Policy P-09: a licence never fails generation. Copyleft, unknown, unverified and text-less
@@ -140,8 +140,10 @@ test('a package without a licence file gets the canonical text and a flag; an un
 });
 
 test('checked-in notices are byte-identical to a fresh generation', () => {
-  assert.equal(fs.readFileSync(path.join(ROOT, JSON_OUTPUT), 'utf8'), fresh.json, `${JSON_OUTPUT} is stale; run node scripts/generate-licenses.mjs`);
-  assert.equal(fs.readFileSync(path.join(ROOT, TEXT_OUTPUT), 'utf8'), fresh.text, `${TEXT_OUTPUT} is stale; run node scripts/generate-licenses.mjs`);
+  const shipped = generate(ROOT);
+  assert.deepEqual(shipped.errors, []);
+  assert.equal(fs.readFileSync(path.join(ROOT, JSON_OUTPUT), 'utf8'), shipped.json, `${JSON_OUTPUT} is stale; run node scripts/generate-licenses.mjs`);
+  assert.equal(fs.readFileSync(path.join(ROOT, TEXT_OUTPUT), 'utf8'), shipped.text, `${TEXT_OUTPUT} is stale; run node scripts/generate-licenses.mjs`);
 });
 
 test('generation fails when the shipped OCR cores or their pinned license copies change', t => {
@@ -149,9 +151,9 @@ test('generation fails when the shipped OCR cores or their pinned license copies
   const file = path.join(dir, 'licenses/tesseract-core/sources.json');
   const pinned = JSON.parse(fs.readFileSync(file, 'utf8'));
   fs.appendFileSync(path.join(dir, 'licenses/tesseract-core/leptonica-license.txt'), '\nmodified');
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('leptonica-license.txt does not match')));
+  assert.ok(collectNotices(dir, {packagedRuntime: false}).errors.some(error => error.includes('leptonica-license.txt does not match')));
   fs.writeFileSync(file, JSON.stringify({...pinned, version: '0.0.0', cores: {...pinned.cores, 'tesseract-core-lstm.wasm.js': '0'.repeat(64)}}));
-  const errors = collectNotices(dir).errors;
+  const errors = collectNotices(dir, {packagedRuntime: false}).errors;
   assert.ok(errors.some(error => error.includes('differs from licenses/tesseract-core/sources.json (0.0.0)')));
   assert.ok(errors.some(error => error.includes('tesseract-core-lstm.wasm.js differs from the core pinned')));
 });
@@ -162,7 +164,7 @@ test('an item with no recorded reason is still listed and flagged; reason files 
   const allowlist = JSON.parse(fs.readFileSync(file, 'utf8'));
   const quickjs = result => result.entries.find(entry => entry.name === 'pdf.js QuickJS sandbox');
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: allowlist.entries.filter(entry => entry.name !== 'pdf.js QuickJS sandbox')}));
-  let result = collectNotices(dir);
+  let result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual(result.errors, []);
   assert.ok(result.warnings.some(warning => warning.startsWith('pdf.js QuickJS sandbox') && warning.includes('no reason recorded')));
   assert.deepEqual([quickjs(result).license, quickjs(result).flags.includes('unverified')], [UNVERIFIED, true]);
@@ -170,12 +172,12 @@ test('an item with no recorded reason is still listed and flagged; reason files 
   assert.match(unverified(quickjs(fresh)), /^pdfjs-dist ships quickjs-eval\.js\/\.wasm without a license file/);
   assert.doesNotMatch(unverified(quickjs(result)), /quickjs-eval/);
   fs.writeFileSync(file, JSON.stringify({...allowlist, entries: [...allowlist.entries, {name: 'Removed font', reason: 'no longer shipped anywhere in the product'}]}));
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual(result.errors, []);
   assert.ok(result.warnings.some(warning => warning.includes('stale entry Removed font')));
   // A bundled font with no licence record is listed as proprietary with no licence recorded, flagged, and not an error.
   fs.writeFileSync(path.join(dir, 'licenses/font-licenses.json'), JSON.stringify({entries: []}));
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual(result.errors, []);
   const denton = result.entries.find(entry => entry.name === 'Denton typeface');
   assert.deepEqual([denton.license, denton.flags], [NO_FONT_LICENCE, ['proprietary-no-licence-recorded']]);
@@ -185,13 +187,13 @@ test('an item with no recorded reason is still listed and flagged; reason files 
 
 test('a production dependency with a copyleft or unknown licence is listed and flagged, never an error', t => {
   const dir = scratchRoot(t);
-  const before = collectNotices(dir).entries.length;
+  const before = collectNotices(dir, {packagedRuntime: false}).entries.length;
   const altered = structuredClone(lock);
   altered.packages['node_modules/react'].license = 'SSPL-1.0';
   altered.packages['node_modules/react-dom'].license = 'AGPL-3.0-or-later';
   altered.packages['node_modules/scheduler'].license = 'LGPL-3.0-only';
   fs.writeFileSync(path.join(dir, 'package-lock.json'), JSON.stringify(altered));
-  const result = collectNotices(dir);
+  const result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual(result.errors, []);
   assert.equal(result.entries.length, before, 'no entry is dropped');
   const entry = name => result.entries.find(item => item.name === name);
@@ -225,7 +227,7 @@ test('broken input still fails: a corrupted or missing package manifest is an er
   fs.mkdirSync(path.join(dir, 'node_modules/broken-manifest'));
   fs.writeFileSync(path.join(dir, 'node_modules/broken-manifest/package.json'), '{"name": "broken-manifest", "version": ');
   fs.writeFileSync(path.join(dir, 'node_modules/broken-manifest/index.js'), 'module.exports = 1;');
-  const result = collectNotices(dir);
+  const result = collectNotices(dir, {packagedRuntime: false});
   assert.ok(result.errors.some(error => /^broken-manifest@1\.0\.0: unreadable or corrupted package\.json/.test(error)), result.errors.join('\n'));
   assert.ok(result.errors.some(error => error === 'not-installed@2.0.0: not installed at node_modules/not-installed; run npm ci'));
   assert.equal(result.errors.length, 2);
