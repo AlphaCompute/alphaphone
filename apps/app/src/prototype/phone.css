@@ -507,3 +507,7 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 .calendar-approval-review p { font-size:15px;line-height:1.5;overflow-wrap:anywhere;white-space:pre-wrap; }
 .calendar-approval-review footer button { min-height:44px;font:inherit; }
 .calendar-approval-review footer .calendar-approval-primary { background:var(--acc,#0000ff);color:#fff; }
+
+/* Older Android WebViews ignore popover; React visibility must still hide the menu. */
+.mail-folder-menu[hidden]{display:none!important}
+.mail-folder-menu{z-index:1000}

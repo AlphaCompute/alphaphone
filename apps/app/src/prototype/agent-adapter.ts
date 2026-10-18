@@ -1,3 +1,4 @@
+import {dismissMailFolderMenu} from './mail-folder-picker';
 import {aospImage} from '../runtime/aosp-image';
 import {smsSubscriptionRevision} from '../runtime/sms-subscription-revision';
 import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
@@ -502,6 +503,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]:not([data-alpha-layer="drawer"])')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
       if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
+      if(dismissMailFolderMenu()){event.preventDefault();event.stopImmediatePropagation();return;}
       // Back that only collapses the chat or a sheet keeps a reply streaming; it arrives in the
       // transcript. Back that changes the view retires the request through the view context, which
       // the connection reports with the Stop reconciliation (one cancel, one later history check).
