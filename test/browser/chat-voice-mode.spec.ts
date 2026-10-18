@@ -98,3 +98,36 @@ for(const theme of ['light','dark'])test(`paused Notes voice keeps real review a
  expect(geometry.stopHeight).toBeGreaterThanOrEqual(44);expect(geometry.reviewHeight).toBeGreaterThanOrEqual(44);expect(geometry).toMatchObject({stopFits:true,reviewFits:true,disjoint:true,starts:1,speech:0,sends:1,active:null});await review.click();expect(await page.evaluate(()=>(window as any).chatVoiceFixture.reviewClicks)).toBe(1);await page.screenshot({path:info.outputPath('paused-review-'+theme+'.png'),animations:'disabled'});
  await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);await expect(page.locator('[data-alpha-layer="conversation"]')).toBeVisible();await expect(review).toBeVisible();await noMedia(page);
 });
+
+for(const viewport of [{width:390,height:740},{width:1280,height:900}])test(`text and voice keep the same composer footprint: ${viewport.width}`,async({page},info)=>{
+ await page.setViewportSize(viewport);await setup(page);
+ await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+ const panel=page.locator('[data-alpha-layer="conversation"]');
+ const settle=()=>panel.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+ const box=()=>panel.locator('textarea[data-alpha-composer]').evaluate(el=>{const node=el.parentElement!,r=node.getBoundingClientRect(),s=getComputedStyle(node);return {x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius};});
+ const voiceBox=()=>voice(page).evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius};});
+ for(const detent of ['half','full']){
+  if(detent==='full')await panel.getByRole('button',{name:'Expand chat',exact:true}).click();await settle();
+  const text=await box();await page.evaluate(()=>(window as any).chatVoiceFixture.holdStart=true);
+  await panel.getByRole('button',{name:'Talk',exact:true}).click();await expect(voice(page)).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>typeof(window as any).chatVoiceFixture.releaseStart)).toBe('function');await settle();
+  const starting=await voiceBox();await page.evaluate(()=>{const f=(window as any).chatVoiceFixture;f.holdStart=false;f.releaseStart();});await expect(voice(page)).toHaveAttribute('data-voice-state','listening');const listening=await voiceBox();
+  await info.attach(`composer-${detent}`,{body:JSON.stringify({text,starting,listening},null,2),contentType:'application/json'});
+  for(const state of [starting,listening]){expect(state.radius).toBe(text.radius);for(const key of ['x','y','width','height'] as const)expect(Math.abs(state[key]-text[key]),`${detent} ${key} remains fixed`).toBeLessThan(1);}
+  await page.screenshot({path:info.outputPath(`composer-${detent}.png`),animations:'disabled'});
+  await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);await settle();
+  const restored=await box();for(const key of ['x','y','width','height'] as const)expect(Math.abs(restored[key]-text[key])).toBeLessThan(1);
+ }
+ await noMedia(page);
+});
+
+test('compact pill keeps its footprint while voice connects and listens',async({page},info)=>{
+ await setup(page);await page.getByRole('button',{name:'Notes',exact:true}).click();
+ const pill=page.locator('[data-alpha-layer="pill"]'),outer=pill.locator(':scope > div');await expect(pill).toBeVisible();
+ const settled=()=>outer.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));await settled();
+ const measure=()=>outer.evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius};});
+ const text=await measure();await page.evaluate(()=>(window as any).chatVoiceFixture.holdStart=true);await pill.getByRole('button',{name:'Talk',exact:true}).click();await expect(pill.locator('[data-alpha-pill-voice]')).toBeVisible();await expect.poll(()=>page.evaluate(()=>typeof(window as any).chatVoiceFixture.releaseStart)).toBe('function');await expect(pill.locator('[data-alpha-voice-animation]')).toHaveAttribute('data-phase','connecting');await expect(pill.locator('button[aria-pressed]')).toBeDisabled();
+ await settled();const starting=await measure();await page.evaluate(()=>{const f=(window as any).chatVoiceFixture;f.holdStart=false;f.releaseStart();});await expect.poll(()=>page.evaluate(()=>(window as any).chatVoiceFixture.active)).not.toBe(null);await expect(pill.locator('[data-alpha-voice-animation]')).toHaveAttribute('data-phase','listening');await settled();const listening=await measure();
+ console.log(JSON.stringify({pill:{text,starting,listening}}));for(const state of [starting,listening]){expect(state.radius).toBe(text.radius);for(const key of ['x','y','width','height'] as const)expect(Math.abs(state[key]-text[key])).toBeLessThan(1);}
+ await page.screenshot({path:info.outputPath('pill-voice.png'),animations:'disabled'});await pill.getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(pill.getByRole('button',{name:'Talk',exact:true})).toBeVisible();await settled();const restored=await measure();for(const key of ['x','y','width','height'] as const)expect(Math.abs(restored[key]-text[key])).toBeLessThan(1);await noMedia(page);
+});
