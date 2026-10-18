@@ -62,10 +62,11 @@ public class AlphaPhotosPlugin extends Plugin {
   if(destroyed||!getActivity().hasWindowFocus()){call.reject("Return to Photos to review access");return;}
   try{getActivity().startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.fromParts("package",getContext().getPackageName(),null)));call.resolve();}catch(RuntimeException unavailable){call.reject("Android app settings could not open");}
  }
+ static String[] libraryPermissionAliases(){return Build.VERSION.SDK_INT>=34?new String[]{"libraryImages","libraryVideos","librarySelected"}:Build.VERSION.SDK_INT>=33?new String[]{"libraryImages","libraryVideos"}:new String[]{"libraryLegacy"};}
  /** Only the explicit Photos permission control invokes this, never list/read/resume. */
  @PluginMethod public void requestLibraryAccess(PluginCall call){
   if(destroyed||!getActivity().hasWindowFocus()){call.reject("Return to Photos to choose access");return;}
-  String[] aliases=Build.VERSION.SDK_INT>=34?new String[]{"libraryImages","libraryVideos","librarySelected"}:Build.VERSION.SDK_INT>=33?new String[]{"libraryImages","libraryVideos"}:new String[]{"libraryLegacy"};
+  String[] aliases=libraryPermissionAliases();
   LateLaunch.ask(call,()->requestPermissionForAliases(aliases,call,"libraryPermissionResult"));
  }
  @PermissionCallback private void libraryPermissionResult(PluginCall call){permitted.invalidate();libraryAccess(call);}
