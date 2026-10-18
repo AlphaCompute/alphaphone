@@ -236,6 +236,8 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     const cachedList=folderLists.get(listKey());
     if(!cachedList||Date.now()-cachedList.at>=30*86400000||!readable().some(a=>a.connectionId===selected)){folderLists.delete(listKey());return false;}
     listReadAt=cachedList.at;firstPageRevision=cachedList.firstPageRevision??null;messages=cachedList.messages;loadedQuery=cachedList.query;nextPageToken=cachedList.cursor;revision=cachedList.revision;seenCursors=new Set(cachedList.cursors);newerMail=cachedList.newerMail;status=cachedList.status;phase='ready';cachedListShown=true;
+    // Rebuild Home from the same account-bound cache, keeping its actual read time.
+    recountUnread(cachedList.cursor!==null,false,cachedList.at);
     queueMicrotask(()=>{if(api?.isActive()){prepareNextPage();prepareBodies();}});return true;
   }
 
@@ -252,10 +254,10 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   const grants = () => accounts.find(a => a.connectionId === selected)?.grantedCapabilities ?? [];
   // `fresh` marks a completed first-page provider read. Later pages and local recounts keep that
   // time, so the time shown is never newer than the oldest data counted; no time is invented.
-  const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false) => {
+  const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false,restoredReadAt?:number) => {
     const key=readKey();
-    if (loadedQuery === 'in:inbox') inboxPreview=key?{key,sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():inboxPreview?.key===key?inboxPreview.readAt:null}:null;
-    if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:revision||new Date().toISOString()});
+    if (loadedQuery === 'in:inbox') inboxPreview=key?{key,sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():restoredReadAt??(inboxPreview?.key===key?inboxPreview.readAt:null)}:null;
+    if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:restoredReadAt??(revision||new Date().toISOString())});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
   };
   drafts.setFromSwitch({ count: () => readable().length, cycle: () => void switchFrom() });
