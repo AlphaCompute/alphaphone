@@ -136,6 +136,12 @@ export function updateRows(updatedAt: unknown, format: (at: number) => string = 
   rows.push(['Updates', 'Alpha does not check for updates']);
   return rows;
 }
+/** Cloud QA profile facts replace prototype navigation, not device settings links. */
+export function cloudPrivacyRow(label: string): [string, string] | null {
+  if (label === 'Leaves this device') return ['Shared with Cloud', 'Messages and selected content when you use AI'];
+  if (label === 'On-device model') return ['Voice', 'Recordings for transcription and text for playback, when used'];
+  return null;
+}
 // settings-facts:end
 /** Saved appearance choice. 'system' follows prefers-color-scheme, which Android WebView also reports. */
 export type AppearanceChoice = 'system' | 'light' | 'dark';
@@ -633,6 +639,10 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         page.groups = [group([info('Alpha notifications', topValues.Notifications),info('Do Not Disturb',interruptionLabels[delivery.interruption]||'Unavailable'),info('Delivery timing','Android battery policies may delay alerts'),Capacitor.isNativePlatform()?nav('Manage Alpha notifications', 'notifications'):custom('Manage Alpha notifications',()=>void run(async()=>{await notifications.openAppSettings();}))]),
           ...((delivery.channels||[]).map((channel:Bag)=>group([info(channel.name,channel.blocked?'Channel blocked':channel.groupBlocked?'Channel group blocked':!delivery.appEnabled||!delivery.permissionGranted?'App notifications off':channel.importance<=2?'Silent channel':'Channel allowed'),{kNav:true,label:`Manage ${channel.name}`,lbl:`Manage ${channel.name}`,chev:true,noAB:true,go:()=>void notifications.openChannelSettings({id:channel.id}).catch(()=>api.toast('This notification channel is unavailable.'))}]))),group(crossRows)];
       } else if (page.title === 'Privacy & data') {
+        if (cloudRuntimeEnabled) page.groups = page.groups.map((g: Bag) => ({ ...g, rows: g.rows.map((row: Bag) => {
+          const fact = cloudPrivacyRow(row.label);
+          return fact ? info(...fact) : row;
+        }) }));
         // Alpha declares no Contacts permission; Calendar is the fourth runtime grant it uses.
         const permissionLabels=new Set(['Microphone','Location','Camera','Calendar']);
         const permissionValue=(label:string)=>{

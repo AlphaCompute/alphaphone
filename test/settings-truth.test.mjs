@@ -35,3 +35,24 @@ test('native system facts are read without new permissions and are omitted when 
  const manifest=readFileSync('android/app/src/main/AndroidManifest.xml','utf8');
  for(const permission of ['ACCESS_WIFI_STATE','CHANGE_WIFI_STATE','BLUETOOTH_CONNECT','READ_PHONE_STATE','WRITE_SECURE_SETTINGS','ACCESS_NOTIFICATION_POLICY'])assert.doesNotMatch(manifest,new RegExp(`<uses-permission[^>]*android\\.permission\\.${permission}"(?![^>]*tools:node="remove")`),permission);
 });
+
+test('Cloud privacy facts describe AI and speech without model-navigation claims',()=>{
+ assert.deepEqual(m.cloudPrivacyRow('Leaves this device'),['Shared with Cloud','Messages and selected content when you use AI']);
+ assert.deepEqual(m.cloudPrivacyRow('On-device model'),['Voice','Recordings for transcription and text for playback, when used']);
+ assert.equal(m.cloudPrivacyRow('Manage Alpha permissions'),null);
+});
+
+test('Cloud privacy hero includes speech while retaining native and offline/startup truth',async()=>{
+ const nativeSource=readFileSync('apps/app/src/prototype/native-adapter.ts','utf8');
+ const wording=nativeSource.slice(nativeSource.indexOf('export function egressPrivacy('),nativeSource.indexOf('/** Only a verified resident session'));
+ const load=async cloud=>import('data:text/javascript;base64,'+Buffer.from(`const cloudRuntimeEnabled=${cloud};const testMocksEnabled=false;const Capacitor={isNativePlatform:()=>true};`+stripTypeScriptTypes(wording,{mode:'transform'})).toString('base64'));
+ const cloud=await load(true),native=await load(false);
+ const connected={kind:'resident',session:{sessionId:'qa'},cloudAccount:null};
+ for(const isNative of [true,false]){
+  const fact=cloud.egressPrivacy(connected,isNative);
+  assert.equal(fact.big,'Uses Eliza Cloud');
+  for(const content of ['When used','messages','selected content','Voice recordings','text for playback'])assert.ok(fact.sub.includes(content),content);
+ }
+ assert.equal(native.egressPrivacy(connected,true).big,'Identifier swap only');
+ for(const [kind,label]of [['starting','Agent starting'],['recovering','Agent not running'],['none','Offline']])assert.equal(cloud.egressPrivacy({kind,session:null,cloudAccount:null},true).big,label);
+});

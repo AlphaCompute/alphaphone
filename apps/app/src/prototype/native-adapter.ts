@@ -1,5 +1,5 @@
 import {browserDevProfile} from '../browser/dev-profile';
-import { testMocksEnabled } from '../build-flags';
+import { cloudRuntimeEnabled, testMocksEnabled } from '../build-flags';
 import { Capacitor } from '@capacitor/core';
 import { DailyApps, type Action, type NativeResult } from '../daily';
 import { registerPlugin } from '../platform-plugins';
@@ -28,6 +28,8 @@ export type EgressPrivacy = { big: string; sub: string };
 /** Per-connection wording. Only the packaged Android resident runtime is known to enable
  * the upstream secret and PII swaps; every other agent decides for itself and does not report it. */
 export function egressPrivacy(connection: Pick<ConnectionSnapshot, 'kind' | 'session' | 'cloudAccount'>, native = Capacitor.isNativePlatform()): EgressPrivacy {
+  if (cloudRuntimeEnabled && (connection.session || connection.cloudAccount))
+    return { big: 'Uses Eliza Cloud', sub: 'When used, messages and selected content go to Eliza Cloud for AI. Voice recordings and text for playback also go to Cloud.' };
   if (connection.session && connection.kind === 'resident' && native)
     return { big: 'Identifier swap only', sub: 'Secret and contact identifiers are swapped before hosted inference; names and free text are not covered' };
   if (connection.session || connection.cloudAccount) return { big: 'Not reported', sub: 'Depends on the selected agent; not reported' };
