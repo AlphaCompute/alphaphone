@@ -149,7 +149,7 @@ test('presentation uses only Cloud numbers and never mentions credits or top-ups
   assert.equal(describeSubscription(views[5]).headline, 'Synthetic plan has ended');
   assert.equal(describeSubscription(views[2]).manage, true);
   assert.match(describeSubscription(views[3]).detail, /^20% of this billing period's plan allowance is left\./);
-  assert.match(describeSubscription(views[6]).detail, /Local apps and on-device speech keep working/);
+  assert.match(describeSubscription(views[6]).detail, /Local apps keep working/);
   // Only an explicit no-plan answer stops Cloud-backed AI from starting.
 });
 
@@ -334,7 +334,7 @@ test('Cloud limit refusals carry retry information and never imply a purchase or
   const allowance = readServiceLimit({status: 429, data: {error: {code: 'allowance_exhausted', resetsAt: new Date(NOW + 86400000).toISOString()}}}, NOW);
   assert.equal(allowance.kind, 'allowance-exhausted');
   assert.equal(allowance.resetsAt, NOW + 86400000);
-  assert.match(serviceLimitMessage(allowance, NOW), /allowance for this period is used up\. It resets .+\. Nothing is purchased automatically\. Local apps and on-device speech keep working\.$/);
+  assert.match(serviceLimitMessage(allowance, NOW), /allowance for this period is used up\. It resets .+\. Nothing is purchased automatically\. Local apps keep working\.$/);
   const subscription = readServiceLimit({status: 402, data: {error: 'subscription_required'}}, NOW);
   assert.equal(subscription.kind, 'subscription-required');
   assert.match(serviceLimitMessage(subscription, NOW), /active Eliza Cloud plan.*Nothing is purchased automatically/);
@@ -431,7 +431,7 @@ test('upstream terminalFailure.rateLimit scopes: period is the allowance with it
   const {resetAt: _a, resetAfterSeconds: _b, ...bare} = period.rateLimit;
   const unknown = readServiceLimit({failureKind: 'rate_limited', terminalFailure: {...period, rateLimit: bare}}, NOW);
   assert.deepEqual(unknown, {kind: 'allowance-exhausted', retryAfterMs: null, resetsAt: null});
-  assert.equal(serviceLimitMessage(unknown, NOW), "Your plan's AI allowance for this period is used up. Nothing is purchased automatically. Local apps and on-device speech keep working.");
+  assert.equal(serviceLimitMessage(unknown, NOW), "Your plan's AI allowance for this period is used up. Nothing is purchased automatically. Local apps keep working.");
   // (c) burst and sustained stay rate limits with the existing countdown rules.
   for (const scope of ['burst', 'sustained']) {
     const terminalFailure = {kind: 'rate_limited', message: 'Provider wait', transient: true, rateLimit: {kind: 'rate_limited', retryAfterMs: 2400, planId: 'pro', scope}};
@@ -629,4 +629,45 @@ test('credit billing refreshes in the background and stops on revoked authentica
   await timers.advance(FALLBACK_REFRESH_MS);assert.equal(checks,2);revoked=true;
   await timers.advance(FALLBACK_REFRESH_MS);assert.equal(auth,1);const stopped=checks;
   await timers.advance(FALLBACK_REFRESH_MS*3);assert.equal(checks,stopped);refresher.stop();
+});
+
+
+test('Settings retains unknown, expired, inactive and credit-funded admission states', () => {
+  const ui = fs.readFileSync('apps/app/src/runtime/connection-ui.tsx', 'utf8');
+  const start = ui.indexOf('  residentPlanSettings(){');
+  const end = ui.indexOf('\n  },', start);
+  assert.ok(start >= 0 && end > start, 'actual Settings summary method located');
+  const summarize = new Function('state', 'residentCloudFlow', 'describeSubscription', 'readPlanAdmission', 'CLOUD_KEY_EXPIRY_WARNING_MS',
+    `return ({${ui.slice(start, end + 5)}}).residentPlanSettings();`);
+  const account = {email:'qa@example.invalid', userId:USER};
+  const snapshot = {cloudAccount:account, residentPlanNotice:'needs-plan', residentInference:'unavailable'};
+  const read = overrides => summarize({...snapshot, ...overrides}, () => true, describeSubscription, () => null, 86400000);
+  for (const reason of ['outage', 'not-published', 'invalid']) {
+    const result = read({residentSubscription:{kind:'unavailable', reason}});
+    assert.equal(result.plan, 'Plan status unavailable', reason);
+    assert.equal(result.status, null, reason);
+    assert.equal(result.inference, 'Unavailable · Cloud status unconfirmed', reason);
+  }
+  const expired = read({residentSubscription:{kind:'expired', planName:'Previously verified plan'}});
+  assert.equal(expired.plan, 'Previously verified plan');
+  assert.equal(expired.status, null);
+  assert.doesNotMatch(expired.inference, /needs a plan/);
+  for (const [status, planName, headline] of [['none', null, 'No active plan'], ['canceled', 'Synthetic plan', 'Synthetic plan has ended']]) {
+    const result = read({residentSubscription:{kind:'inactive', status, planName, source:'billing-limits'}});
+    assert.equal(result.plan, headline);
+    assert.equal(result.status, status);
+    assert.equal(result.inference, 'Unavailable · needs a plan');
+  }
+  const credits = read({residentSubscription:{kind:'credits', source:'billing-limits'}, residentPlanNotice:null, residentInference:'cloud'});
+  assert.equal(credits.plan, 'Eliza Cloud credits');
+  assert.equal(credits.inference, 'Eliza Cloud');
+  const active = read({residentSubscription:{kind:'active', planName:'Synthetic plan', status:'active', allowance:null, expiresAt:NOW, refreshFailed:false}, residentPlanNotice:null, residentInference:'cloud'});
+  assert.equal(active.plan, 'Synthetic plan');
+  assert.equal(active.status, 'active');
+  assert.equal(read({residentSubscription:null, residentPlanNotice:null}).plan, 'Checking plan…');
+  assert.equal(read({cloudAccount:null, residentSubscription:null, residentPlanNotice:null}).plan, 'Not signed in');
+  const offline = read({cloudAccount:null, residentSubscription:{kind:'unavailable', reason:'outage'}, residentPlanNotice:'offline'});
+  assert.equal(offline.plan, 'Offline');
+  assert.equal(offline.inference, 'Unavailable · Cloud unreachable');
+  assert.equal(summarize(snapshot, () => false, describeSubscription, () => null, 86400000), null);
 });

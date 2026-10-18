@@ -1670,10 +1670,10 @@ export const connectionController = {
     const view=state.residentSubscription,account=state.cloudAccount,plan=view&&view.kind!=='checking'?describeSubscription(view):null;
     const expiresAt=account?.expiresAt??null;
     // The agent always runs; this says only whether Eliza Cloud AI is connected to it.
-    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?'Unavailable · needs a plan':'Unavailable · sign in'):'Starting…';
+    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?(view?.kind==='inactive'?'Unavailable · needs a plan':'Unavailable · Cloud status unconfirmed'):'Unavailable · sign in'):'Starting…';
     if(state.residentPlanNotice==='offline'&&!account){const recent=readPlanAdmission();return {signedIn:false,offline:true,account:null,plan:recent?`${recent.planName} · offline`:'Offline',status:recent?.status??null,endsAt:state.planEndsAt??null,keyExpiresAt:null,keyExpiring:false,inference};}
     return {signedIn:!!account,offline:false,inference,account:account?(account.email||`Account ${account.userId.slice(0,8)}`):null,
-      plan:state.residentPlanNotice==='needs-plan'&&view?.kind!=='inactive'?'No active plan':plan?.headline??(account?'Checking plan…':'Not signed in'),
+      plan:plan?.headline??(account?'Checking plan…':'Not signed in'),
       status:view?.kind==='active'?view.status:view?.kind==='inactive'?view.status:null,
       endsAt:state.planEndsAt??null,keyExpiresAt:expiresAt,keyExpiring:expiresAt!==null&&expiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS};
   },

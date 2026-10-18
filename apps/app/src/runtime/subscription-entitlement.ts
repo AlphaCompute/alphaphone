@@ -13,7 +13,7 @@
  *    with a warning, and shows "needs plan" (Redeem code / Choose a plan) for a canceled plan or
  *    no plan without starting the agent. Unknown plan state is "needs plan" with a retry.
  *  - Once a plan was verified recently on this phone, a billing outage or an offline start keeps
- *    local apps, on-device speech and local tools available (see connection-ui's admission cache).
+ *    local apps and local tools available (see connection-ui's admission cache).
  *
  * Nothing here selects a price, quota, allowance or burst/sustained limit. Every number shown to
  * the owner comes from a verified Cloud entitlement or a Cloud refusal body. The proposed Cloud
@@ -228,7 +228,7 @@ export function allowanceText(allowance: PlanAllowance | null, now: number = Dat
   if (allowance.used !== null) return `${allowance.used.toLocaleString()} ${allowance.unit} used ${per}.${reset}`;
   return `Plan allowance details are in Eliza Cloud.${reset}`;
 }
-const LOCAL_KEEPS_WORKING = 'Local apps and on-device speech keep working.';
+const LOCAL_KEEPS_WORKING = 'Local apps keep working.';
 export const MANAGE_PLAN_LABEL = 'Manage plan in Eliza Cloud';
 export const CHOOSE_PLAN_LABEL = 'Choose a plan';
 /** What the plan gate does with a view. Only the gate decides; turns never read billing. */
