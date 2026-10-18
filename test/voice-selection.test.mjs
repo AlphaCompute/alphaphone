@@ -13,7 +13,7 @@ function load(store, f = {account: true, dev: false}) {
   if (typeof f === 'boolean') f = {account: true, dev: false, mocks: f};
   const events = [];
   const box = {
-    testMocksEnabled: f.mocks === true, localStorage: store, Date, JSON, Number, Event: class { constructor(type) { this.type = type; } },
+    cloudRuntimeEnabled: f.cloud === true, testMocksEnabled: f.mocks === true, localStorage: store, Date, JSON, Number, Event: class { constructor(type) { this.type = type; } },
     window: {dispatchEvent: event => { events.push(event.type); return true; }},
     get browserDevProfile() { return f.dev; },
     connectionController: {getCloudEnvironment: () => f.account ? 'production' : null, getCloudClient: () => f.account ? {sessionId: 'synthetic-session', credentialId: 'synthetic-credential'} : null},
@@ -64,4 +64,13 @@ test('Speak replies is opt-in, persisted and off for anything but an explicit en
   assert.equal(load(store).speakRepliesEnabled(), false);
   store.bytes.set('alphaphone:speak-replies:v1', '{"version":1,"enabled":"yes"}');
   assert.equal(load(store).speakRepliesEnabled(), false);
+});
+
+test('explicit production Cloud profile never silently selects local speech or enables mocks', () => {
+  for(const account of [true,false]) {
+    const v=load(storage(),{cloud:true,account,dev:false});
+    for(const route of ['default','device','agent','manual'])assert.equal(v.selectVoiceRoute(route),'cloud');
+    assert.equal(v.cloudVoiceAvailable(),account);assert.equal(v.voiceRoutePreference(),'cloud');
+    assert.equal(v.setVoiceSendPolicyForTests('review'),false);
+  }
 });

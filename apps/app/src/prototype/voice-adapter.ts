@@ -1,7 +1,7 @@
 import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import React from 'react';
 import {VoiceActivity} from './voice-activity';
-import {testMocksEnabled} from '../build-flags';
+import {cloudRuntimeEnabled,testMocksEnabled} from '../build-flags';
 import {developmentCartesiaConversation,developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-conversation';
 import {BatchVoiceConversation,type BatchVoiceState} from '@elizaos/ui/voice/batch-conversation';
 import {recordingRevision} from './summary-source';
@@ -497,10 +497,11 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
         const direct=await developmentCartesiaConversation({binding:prepared.binding,assertCurrent:current,onState:phase=>{if(token!==generation)return;conversationState={phase:phase==='connecting'?'starting':['listening','thinking','speaking'].includes(phase)?phase as 'listening'|'thinking'|'speaking':'idle'};refresh();},onPlaybackUnlockChange:()=>{if(token===generation)refresh();},onTranscript:text=>{if(token===generation){conversationLastTranscript=text;conversationInterim=text;refresh();}},onError:failure=>{if(token===generation){error=failure.message;conversationState={phase:'error',error:failure};refresh();}}});
         current();conversationVoice=direct;await direct.start();current();return;
       }
-      const local = testMocksEnabled ? null : createOnDeviceVoice();
-      if(!testMocksEnabled&&(!local||!await local.ready(controller.signal)))throw Error('On-device speech is unavailable. Retry local speech or use the keyboard.');
+      const networkSpeech = cloudRuntimeEnabled || testMocksEnabled;
+      const local = networkSpeech ? null : createOnDeviceVoice();
+      if(!networkSpeech&&(!local||!await local.ready(controller.signal)))throw Error('On-device speech is unavailable. Retry local speech or use the keyboard.');
       current();
-      const cloudDriver = testMocksEnabled ? createCloudVoice() : null;
+      const cloudDriver = networkSpeech ? createCloudVoice() : null;
       const selected = cloudDriver ?? {
         startRecording:()=>deviceVoice.startRecording({maxDurationMs:29000}),
         stopRecording:()=>deviceVoice.stopRecording(),
@@ -630,13 +631,13 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const chat:ChatDestination={shell:this,view:state.view||null,chat:state.chat,draft:String(state.draft||''),reply:this.messageReplyTarget,edit:this.messageEditTarget,binding:composerBinding(),...(typeof HTMLElement!=='undefined'&&document.activeElement instanceof HTMLElement?{opener:document.activeElement}:{})};
     const readingStopped=stopLocalSpeechPlayback();
     enter(undefined,undefined,'default',chat);stopping=Promise.all([stopping,Promise.resolve(readingStopped)]).then(()=>{}).catch(failure=>{mediaUnconfirmed=failure;throw failure;});void stopping.catch(()=>{});conversationLastTranscript='';conversationLastReply='';const token=generation;
-    await new Promise<void>(resolve=>this.setState({chat:state.chat==='hidden'?'hidden':state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>(state.chat==='hidden'?'[data-alpha-pill-voice] button':'[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token)void beginConversation().finally(resolve);else resolve();}));
+    await new Promise<void>(resolve=>this.setState({chat:state.chat==='hidden'&&!cloudRuntimeEnabled?'hidden':state.chat==='full'?'full':'sheet',voice:'off'},()=>{document.querySelector<HTMLElement>(state.chat==='hidden'&&!cloudRuntimeEnabled?'[data-alpha-pill-voice] button':'[data-alpha-chat-recorder] button')?.focus({preventScroll:true});if(chatDestination===chat&&generation===token){if(cloudRuntimeEnabled){conversationState={phase:'idle'};refresh();resolve();}else void beginConversation().finally(resolve);}else resolve();}));
   };
   function conversationRecorderView(icons:Bag){
     const token=generation,chat=chatDestination,owned=()=>token===generation&&chatDestination===chat&&chatCurrent();
     const phase=conversationState.phase,live=phase==='listening',seconds=live?(Date.now()-started)/1000:(clip?.durationMs||0)/1000;
-    const messages:Record<string,string>={idle:'Voice conversation stopped.',starting:'Starting voice conversation…',listening:developmentCartesiaVoiceEnabled?'Listening · Cartesia development. Replies use the local agent’s direct Cerebras provider.':(testMocksEnabled?(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.'):(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed on this device and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed on this device and sent to this conversation; matching replies play aloud.')),transcribing:testMocksEnabled?'Transcribing your speech with Eliza Cloud…':'Transcribing your speech on this device…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':testMocksEnabled?'Preparing the matching reply with Eliza Cloud…':'Preparing the matching reply on this device…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
-    const recover=()=>{if(!owned()||mediaUnconfirmed)return;if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if(phase==='error'&&!conversationReviewRequired)void beginConversation();else cancelChat(false,true);};
+    const messages:Record<string,string>={idle:cloudRuntimeEnabled?'Eliza Cloud uploads your recordings and reply text to your selected Cloud account and uses your plan allowance. Replies use Cartesia. Choose Start Cloud voice to enable the microphone.':'Voice conversation stopped.',starting:'Starting voice conversation…',listening:developmentCartesiaVoiceEnabled?'Listening · Cartesia development. Replies use the local agent’s direct Cerebras provider.':(cloudMode?(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed with Eliza Cloud and sent to this conversation; matching replies play aloud.'):(voiceSendPolicy()==='review'?'Listening. Pause when finished. Speech is transcribed on this device and shown to you before anything is sent; matching replies play aloud.':'Listening. Pause when finished. Speech is transcribed on this device and sent to this conversation; matching replies play aloud.')),transcribing:cloudMode?'Transcribing your speech with Eliza Cloud…':'Transcribing your speech on this device…',thinking:'Waiting for your agent’s reply…','awaiting-user-input':'Microphone off. Review the Notes request in this conversation. Only the note you explicitly share can be used for the answer.','preparing-speech':cloudMode?'Preparing the matching reply with Eliza Cloud…':'Preparing the matching reply on this device…',speaking:'Alpha is speaking. The microphone is off.',error:error||'Voice stopped. Check history before starting again.'};
+    const recover=()=>{if(!owned()||mediaUnconfirmed)return;if(cloudConnectRequired){cleanup();connectionController.openCloudAccount();}else if(!connectionController.getSnapshot().session){cleanup();connectionController.open();}else if((phase==='error'&&!conversationReviewRequired)||phase==='idle')void beginConversation();else cancelChat(false,true);};
     const awaiting=phase==='awaiting-user-input'||conversationReviewRequired;
     const reviewing=conversationReview,reviewOwned=()=>owned()&&conversationReview===reviewing;
     if(reviewing&&!mediaUnconfirmed)return {regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:'review',flex:'1',clockSize:28,clock:'Review',live:false,levels:[],lines:[{t:(cloudMode?'Review what Eliza Cloud heard':'Review what was heard on this device')+' and edit it if needed. Nothing has been sent. Send adds it to this conversation; Discard closes voice without sending.'}],
@@ -653,7 +654,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     }
     const assistantControls=assistant&&phase!=='error'?{canMute:phase!=='awaiting-user-input',muted:assistant.muted?'true':'false',muteLabel:assistant.muted?'Unmute microphone':'Mute microphone',toggleMute:()=>{if(owned())void assistant.setMuted(!assistant.muted).finally(refresh);},canInterrupt:phase==='speaking',interrupt:()=>{if(owned()&&assistant.interruptSpeech())refresh();}}:{};
     const extra=assistant?assistantControls:direct?{canMute:true,muteLabel:direct.microphoneMuted?'Unmute microphone':'Mute microphone',muted:direct.microphoneMuted?'true':'false',toggleMute:()=>{if(owned()){direct.setMicrophoneMuted(!direct.microphoneMuted);refresh();}},needsPlaybackUnlock:direct.needsPlaybackUnlock,unlockPlayback:()=>{if(owned())void direct.unlockPlayback().then(refresh).catch(failure=>{error=failure instanceof Error?failure.message:'Playback could not unlock.';refresh();});}}:{};
-    return {...extra,regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:phase,flex:awaiting?'0 0 auto':'1',clockSize:awaiting?28:48,clock:awaiting?'Review':`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:conversationReviewRequired?'Microphone off. Review the phone action in this conversation. Switch to keyboard to continue; voice cannot resume this older request.':error||messages[phase]},...(phase==='error'&&conversationLastTranscript?[{t:'Last transcript: '+conversationLastTranscript}]:[])],review:false,typeChoice:false,lastTranscript:awaiting?'':conversationLastTranscript,interimTranscript:awaiting||!['listening','transcribing'].includes(phase)?'':conversationInterim,lastReply:awaiting?'':conversationLastReply,primaryLabel:'Stop voice conversation',primaryIcon:icons.stop,primaryDisabled:false,stop:()=>{if(owned())cancelChat(false,true);},recoveryLabel:mediaUnconfirmed?'':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'&&!conversationReviewRequired?'Try voice again':'',recover,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
+    return {...extra,regionLabel:'Voice conversation',closeLabel:'Close voice conversation',state:phase,flex:awaiting?'0 0 auto':'1',clockSize:awaiting?28:48,clock:awaiting?'Review':`${Math.floor(seconds/60)}:${String(Math.floor(seconds%60)).padStart(2,'0')}`,live,levels:conversationLevels.map(peak=>({h:4+Math.round(44*peak)})),lines:[{t:conversationReviewRequired?'Microphone off. Review the phone action in this conversation. Switch to keyboard to continue; voice cannot resume this older request.':error||messages[phase]},...(phase==='error'&&conversationLastTranscript?[{t:'Last transcript: '+conversationLastTranscript}]:[])],review:false,typeChoice:false,lastTranscript:awaiting?'':conversationLastTranscript,interimTranscript:awaiting||!['listening','transcribing'].includes(phase)?'':conversationInterim,lastReply:awaiting?'':conversationLastReply,primaryLabel:'Stop voice conversation',primaryIcon:icons.stop,primaryDisabled:false,stop:()=>{if(owned())cancelChat(false,true);},recoveryLabel:mediaUnconfirmed?'':cloudRuntimeEnabled&&phase==='idle'&&!cloudConnectRequired?'Start Cloud voice':cloudConnectRequired?'Connect Eliza Cloud':!connectionController.getSnapshot().session?'Connect agent':phase==='error'&&!conversationReviewRequired?'Try voice again':'',recover,discard:()=>{if(owned())cancelChat();},keyboard:()=>{if(owned())cancelChat(true);}};
   }
   async function deletionReceipt(row:AudioDeletion,status:'removed'|'restored'){
     const result=await noteAudio.deletionStatus({audioId:row.audioId,noteId:row.note.id,operationId:row.id});
@@ -959,14 +960,16 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       vo.toEvent=()=>void draftFromNote('event');
       vo.eventLabel='Review calendar event draft';vo.eventText='Review event';
 
-      // A saved recording's reviewed transcript is read by the same qualified local speech route as text notes.
+      // A saved recording's reviewed transcript uses the same disclosed speech route as text notes.
       const voText = noteSpeechText(selected), voReading = currentNoteReading()?.noteId === selected.id;
+      vo.readLabel = cloudRuntimeEnabled ? 'Read with Eliza Cloud' : 'Read aloud';
+      vo.cloudSpeechDisclosure = cloudRuntimeEnabled ? 'Read with Eliza Cloud uploads this note’s text to your selected Cloud account for Cartesia speech and uses your plan allowance.' : '';
       vo.stopReading = voReading ? () => stopSpeaking() : undefined;
       vo.readAloud = voText && !voReading ? () => {
         stopSaved();
         void speakNote(voText, { noteId: selected.id }).then(outcome => {
-          if (outcome === 'unavailable') current.toast('On-device speech is unavailable. The note is unchanged.');
-          else if (outcome === 'unsupported') current.toast('This note has text that on-device speech cannot read. Nothing was read.');
+          if (outcome === 'unavailable') current.toast(cloudRuntimeEnabled?'Eliza Cloud speech is unavailable. Check your account and connection. The note is unchanged.':'On-device speech is unavailable. The note is unchanged.');
+          else if (outcome === 'unsupported') current.toast('This note has text that cannot be read aloud. Nothing was read.');
           else if (outcome === 'failed') current.toast('Reading stopped before the end. The note is unchanged.');
         });
       } : undefined;
@@ -990,7 +993,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       const end = editor && editor.value === body ? editor.selectionEnd : body.length;
       enter({ id: n.id, body, revision: JSON.stringify(n), start, end });
     };
-    // Read aloud uses only the qualified local speech route. Closing, leaving or editing the note stops it.
+    // Read aloud follows the runtime profile. Closing, leaving or editing the note stops it.
     const readNote = (current.get('notes').list || []).find((item: Bag) => item.id === state.open);
     const readText = noteSpeechText(readNote), activeReading = currentNoteReading();
     // The read note was closed or changed. Stop after this render: stopping updates the view state.
@@ -1005,17 +1008,18 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
       ed.onBody = editing(onBody); ed.onTitle = editing(onTitle);
       const live = mine && currentNoteReading()?.noteId === note.id;
       ed.reading = live; ed.readAvailable = !!note && !!text;
-      ed.readLabel = live ? 'Stop reading' : 'Read aloud';
-      ed.stopReading = () => stopSpeaking();
-      ed.readAloud = () => {
+      ed.readLabel = live ? 'Stop reading' : cloudRuntimeEnabled ? 'Read with Eliza Cloud' : 'Read aloud';
+      ed.cloudSpeechDisclosure = cloudRuntimeEnabled ? 'Read with Eliza Cloud uploads this note’s text to your selected Cloud account for Cartesia speech and uses your plan allowance.' : '';
+      ed.stopReading = live ? () => stopSpeaking() : undefined;
+      ed.readAloud = ed.readAvailable && !live ? () => {
         if (!note || !text) return;
         if (currentNoteReading()?.noteId === note.id) { stopSpeaking(); return; }
         void speakNote(text, { noteId: note.id }).then(outcome => {
-          if (outcome === 'unavailable') current.toast('On-device speech is unavailable. The note is unchanged.');
-          else if (outcome === 'unsupported') current.toast('This note has text that on-device speech cannot read. Nothing was read.');
+          if (outcome === 'unavailable') current.toast(cloudRuntimeEnabled?'Eliza Cloud speech is unavailable. Check your account and connection. The note is unchanged.':'On-device speech is unavailable. The note is unchanged.');
+          else if (outcome === 'unsupported') current.toast('This note has text that cannot be read aloud. Nothing was read.');
           else if (outcome === 'failed') current.toast('Reading stopped before the end. The note is unchanged.');
         });
-      };
+      } : undefined;
     }
     if (stage === 'closed'||chatDestination) return result;
     result.recording=true;result.rec=recorderView(current.ic);return result;
@@ -1025,7 +1029,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     const owned=()=>token===generation&&chatDestination===chat&&(!chat||chatCurrent());
     const seconds = stage === 'recording' ? (Date.now() - started) / 1000 : (clip?.durationMs || 0) / 1000;
     const labels: Bag = { ready: 'Start recording', starting: 'Starting microphone', recording: 'Stop recording', recorded: onDeviceReady ? 'Transcribe on this phone' : pairedAsrReady ? 'Transcribe with agent Whisper' : deviceOnly ? 'Review recording' : cloudMode ? 'Transcribe with Eliza Cloud' : 'Transcribe locally', transcribing: 'Cancel transcription', review: chatDestination ? 'Use in conversation' : destination ? 'Apply transcript' : 'Save note' };
-    const messages: Bag = { ready: deviceOnly ? 'Record up to 59 seconds in this app. You can add a transcript manually and save without signing in. Nothing is uploaded.' : cloudMode ? 'Record up to 59 seconds. Audio stays in this app until you choose Transcribe with Eliza Cloud.' : 'Development voice: record up to 59 seconds. Audio goes to this computer only after you choose Transcribe locally.', starting: 'Waiting for microphone access.', recording: 'Recording. Waveform levels are unavailable. Stop does not upload audio.', recorded: deviceOnly ? 'Microphone is off. Review the recording and enter a transcript manually. Cloud transcription is not connected; nothing is uploaded.' : cloudMode ? 'Microphone is off. Choose Transcribe with Eliza Cloud to upload this recording to your selected Cloud account.' : 'Microphone is off. Choose Transcribe locally to process this clip on the connected development computer.', transcribing: cloudMode ? 'Transcribing with Eliza Cloud. Nothing has been saved.' : 'Transcribing on the local computer. Nothing has been saved.', review: deviceOnly ? 'Enter a transcript manually, then save it with this recording in this app. Nothing is uploaded or sent to an agent.' : chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save the recording and transcript in this app. Nothing is sent to the agent.' };
+    const messages: Bag = { ready: deviceOnly ? 'Record up to 59 seconds in this app. You can add a transcript manually and save without signing in. Nothing is uploaded.' : cloudMode ? 'Record up to 59 seconds. Audio stays in this app until you choose Transcribe with Eliza Cloud; uploads use your Cloud plan allowance.' : 'Development voice: record up to 59 seconds. Audio goes to this computer only after you choose Transcribe locally.', starting: 'Waiting for microphone access.', recording: 'Recording. Waveform levels are unavailable. Stop does not upload audio.', recorded: deviceOnly ? 'Microphone is off. Review the recording and enter a transcript manually. Cloud transcription is not connected; nothing is uploaded.' : cloudMode ? 'Microphone is off. Choose Transcribe with Eliza Cloud to upload this recording to your selected Cloud account.' : 'Microphone is off. Choose Transcribe locally to process this clip on the connected development computer.', transcribing: cloudMode ? 'Transcribing with Eliza Cloud. Nothing has been saved.' : 'Transcribing on the local computer. Nothing has been saved.', review: deviceOnly ? 'Enter a transcript manually, then save it with this recording in this app. Nothing is uploaded or sent to an agent.' : chatDestination ? 'Review the transcript, then use it in the conversation. Press Send there to send it to your agent.' : 'Review and edit the transcript, then save the recording and transcript in this app. Nothing is sent to the agent.' };
     if (pairedAsrReady) { messages.ready = 'Record up to 59 seconds. English transcription uses your selected agent. Audio stays in this app until you choose Transcribe with agent Whisper.'; messages.recorded = 'Microphone is off. Transcribe with agent Whisper uploads this recording to your selected agent for English speech recognition.'; messages.transcribing = 'Transcribing with your selected agent. Nothing has been saved.'; messages.review = chatDestination ? 'Review the agent transcript, then use it in the conversation. Press Send there to send the message.' : 'Review and edit the agent transcript, then save it with the recording in this app. Nothing is sent as a chat message.'; }
     if (onDeviceReady) {
       messages.ready = 'Record up to 29 seconds. English transcription runs on this phone. Nothing is uploaded.';
@@ -1110,7 +1114,7 @@ export function installPrototypeVoiceAdapter(Component: any, views: Record<strin
     out.legacyChatRecorder=!!recorder&&(chatDestination?.mode==='dictation'||recorder.review);
     out.inlineChatRecorder=!!recorder&&!out.legacyChatRecorder;
     out.voiceInterim=recorder?.interimTranscript&&!out.msgs?.some((message:Bag)=>message.isUser&&message.text===recorder.interimTranscript)?recorder.interimTranscript:'';
-    if(recorder){const phase=recorder.muted==='true'?'paused':recorder.state==='starting'?'connecting':recorder.state==='preparing-speech'?'thinking':recorder.state==='awaiting-user-input'?'paused':recorder.state==='stopping'?'interrupting':recorder.state;recorder.activity=React.createElement(VoiceActivity,{phase,theme:this.S().theme==='dark'?'dark':'light'});recorder.problem=recorder.state==='error';recorder.muteAsset=recorder.muted==='true'?'/icons/lucide/mic-off.svg':'/icons/lucide/mic.svg';}
+    if(recorder){const phase=recorder.muted==='true'?'paused':recorder.state==='starting'?'connecting':recorder.state==='preparing-speech'?'thinking':recorder.state==='awaiting-user-input'?'paused':recorder.state==='stopping'?'interrupting':recorder.state;recorder.activity=React.createElement(VoiceActivity,{phase,theme:this.S().theme==='dark'?'dark':'light'});recorder.problem=recorder.state==='error';recorder.cloudDisclosure=cloudRuntimeEnabled&&recorder.state==='idle';recorder.muteAsset=recorder.muted==='true'?'/icons/lucide/mic-off.svg':'/icons/lucide/mic.svg';}
     const pillVoice=active&&this.S().chat==='hidden'&&(retiring?retirement?.panelChat==='hidden':chatDestination?.chat==='hidden')&&!out.legacyChatRecorder;
     out.pillVoiceInactive=!pillVoice;out.pillVoice=pillVoice?{...recorder,activity:React.createElement(VoiceActivity,{phase:recorder.muted==='true'?'paused':recorder.state,theme:this.S().theme==='dark'?'dark':'light',compact:true}),controlDown:(event:PointerEvent)=>event.stopPropagation(),stop:()=>retiring?hold():cancelChat()}:null;
     if(retiring&&!pillVoice){out.conversationHidden=false;out.panelOp=1;out.panelPE='auto';if(!out.panelH)out.panelH=560;}

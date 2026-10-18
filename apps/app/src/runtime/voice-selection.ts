@@ -1,9 +1,9 @@
-import { testMocksEnabled } from '../build-flags';
+import { cloudRuntimeEnabled, testMocksEnabled } from '../build-flags';
 import { browserDevProfile } from '../browser/dev-profile';
 import { connectionController } from './connection-ui';
 
-/** Production speech stays on this device, including offline and signed-out use.
- * Unavailable local speech offers recovery/typing; it never changes to a network route. */
+/** The native profile stays on-device; the explicit Cloud profile requires Cloud sign-in.
+ * Neither deployment silently falls back to the other speech route. */
 // Plain constants and function exports only: Node contract tests evaluate this source directly.
 const voiceRouteKey = 'alphaphone:voice-route:v1';
 const speakRepliesKey = 'alphaphone:speak-replies:v1';
@@ -41,6 +41,7 @@ const record = (value: unknown): Record<string, unknown> | null => value && type
 
 /** The persisted route. Anything but a complete, disclosed Cloud record reads as on-device. */
 export function voiceRoutePreference(): VoiceRouteChoice {
+  if (cloudRuntimeEnabled) return 'cloud';
   if (!testMocksEnabled) return 'device';
   const value = record(read(voiceRouteKey));
   // 'cloud-speech-uses-credits' is the disclosure id earlier builds stored; it reads as the same choice.
@@ -52,6 +53,7 @@ export function voiceRoutePreference(): VoiceRouteChoice {
  * route then stays on-device.
  */
 export function chooseVoiceRoute(route: VoiceRouteChoice, disclosure?: { disclosed: 'cloud-speech-uses-plan' }): boolean {
+  if (cloudRuntimeEnabled) return route === 'cloud' && disclosure?.disclosed === 'cloud-speech-uses-plan';
   if (!testMocksEnabled && route !== 'device') return false;
   if (route === 'cloud' && disclosure?.disclosed !== 'cloud-speech-uses-plan') return false;
   return write(voiceRouteKey, route === 'cloud' ? { version: 1, route, disclosed: disclosure!.disclosed, chosenAt: Date.now() } : { version: 1, route: 'device', chosenAt: Date.now() });
@@ -66,11 +68,12 @@ export function setSpeakReplies(enabled: boolean): boolean { return write(speakR
 
 /** A usable Cloud speech account is signed in for this renderer. */
 export function cloudVoiceAvailable(): boolean {
-  return testMocksEnabled && !browserDevProfile && connectionController.getCloudEnvironment() !== null && connectionController.getCloudClient() !== null;
+  return (cloudRuntimeEnabled || testMocksEnabled) && !browserDevProfile && connectionController.getCloudEnvironment() !== null && connectionController.getCloudClient() !== null;
 }
 
 /** Explicit local/manual routes are available only in test-mocks builds. */
 export function selectVoiceRoute(preference: 'default' | 'device' | 'agent' | 'manual' = 'default'): 'device' | 'cloud' | 'agent' | 'manual' {
+  if (cloudRuntimeEnabled) return 'cloud';
   if (!testMocksEnabled) return 'device';
   if (testMocksEnabled && (preference === 'device' || preference === 'manual')) return preference;
   return 'cloud';

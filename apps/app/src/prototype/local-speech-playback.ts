@@ -1,3 +1,4 @@
+import {cloudRuntimeEnabled} from '../build-flags';
 import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import { Capacitor } from '@capacitor/core';
 import { speakLocalText } from '../local-speech-playback';
@@ -48,20 +49,20 @@ export function stopSpeaking() {
   noteReading = undefined;if(active.pending)retainSpeechRetirement(active.pending); active.controller.abort(new DOMException('Speech cancelled', 'AbortError')); noteReadingChanged();
 }
 /**
- * Read note text aloud on the qualified local speech route only: nothing is uploaded and
- * no Cloud or agent voice is used. Leaving the note or editing it cancels the reading
+ * Read note text aloud on the explicit runtime profile. The Cloud profile uploads text
+ * to the selected account; its Notes control discloses that before a user starts it. Leaving the note or editing it cancels the reading
  * (the Notes adapter calls stopSpeaking). Resolves with the outcome; never throws.
  */
 export function speakNote(text: string, owner: { noteId?: string } = {}) { return readNote(text, owner); }
 async function readNote(text: string, owner: { noteId?: string }): Promise<'finished' | 'stopped' | 'unavailable' | 'unsupported' | 'failed'> {
   const retirement = stopLocalSpeechPlayback();
   const passage = typeof text === 'string' ? text.trim() : '';
-  if (!passage || passage.length > 16000) return 'unsupported';
+  if (!passage || passage.length > (cloudRuntimeEnabled ? 5000 : 16000)) return 'unsupported';
   // The same preflight as message Listen, on every platform: text with credentials, card
   // numbers, links or unsupported characters is refused before any audio or local-agent
   // request. The browser still speaks the original passage; the native engine speaks its plan.
   try { planLocalSpeech(passage); } catch { return 'unsupported'; }
-  const voice = createOnDeviceVoice(); if (!voice) return 'unavailable';
+  const voice = (() => { try { return cloudRuntimeEnabled ? createCloudVoice() : createOnDeviceVoice(); } catch { return null; } })(); if (!voice) return 'unavailable';
   const reading: NoteReading = { noteId: owner.noteId, text: passage, controller: new AbortController(), state: 'preparing' };
   noteReading = reading; noteReadingChanged();
   const signal = reading.controller.signal;
@@ -69,7 +70,8 @@ async function readNote(text: string, owner: { noteId?: string }): Promise<'fini
     await retirement;
     if ('playbackReady' in voice && !await voice.playbackReady(signal)) { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } return 'unavailable'; }
     if (noteReading !== reading || signal.aborted) return 'stopped';
-    const pending=reading.pending=speakOnDevice(passage, signal, () => { if (noteReading === reading) { reading.state = 'reading'; noteReadingChanged(); } });await pending;
+    const started=() => { if (noteReading === reading) { reading.state = 'reading'; noteReadingChanged(); } };
+    const pending=reading.pending=cloudRuntimeEnabled ? voice.speak(passage, signal, started) : speakOnDevice(passage, signal, started);await pending;
     return noteReading === reading && !signal.aborted ? 'finished' : 'stopped';
   } catch { return noteReading !== reading || signal.aborted ? 'stopped' : 'failed'; }
   finally { if (noteReading === reading) { noteReading = undefined; noteReadingChanged(); } }
