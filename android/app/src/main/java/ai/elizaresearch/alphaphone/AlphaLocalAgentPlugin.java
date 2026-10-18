@@ -24,6 +24,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long lifecycleEpoch;
  private static volatile long credentialMutationEpoch=-1;
  private static long credentialShutdownRequest=-1;
+ private static long credentialShutdownRetryEpoch=-1;
  private static String startRequestId;
  private static long startRequestEpoch;
  private static boolean startOwnsLaunch;
@@ -451,7 +452,62 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");launchedGeneration=LocalAgentProviderAdmission.launchGeneration(saved,cloudSaved);}
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
+ /** Explicit Retry reissues strict teardown; an old failed acknowledgment never grants start. */
+ private boolean retryCredentialShutdown(PluginCall call,String requestId) {
+  final long retryEpoch,retryIntent;
+  synchronized(lifecycleLock){
+   if(credentialShutdownRetryEpoch>=0){call.reject("Provider shutdown is already being checked; wait before retrying.");return true;}
+   if(credentialShutdownRequest==-1||credentialShutdownRequest>=0&&ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))return false;
+   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()){call.reject("Return to the app before retrying provider shutdown.");return true;}
+   if(credentialMutationEpoch>=0){call.reject("Provider shutdown is already being checked; wait before retrying.");return true;}
+   if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return true;}
+   retryIntent=credentialIntentEpoch;invalidateCalls();retryEpoch=++lifecycleEpoch;credentialShutdownRetryEpoch=retryEpoch;
+   accepting=false;stopping=true;clearEnrollment();pending.add(call);
+   startRequestId=requestId;startRequestEpoch=retryEpoch;startOwnsLaunch=false;
+  }
+  PluginWorkers.submit(workers,()->{
+   try{
+    final long stopRequest;
+    synchronized(lifecycleLock){
+     requireShutdownRetry(call,retryEpoch,retryIntent);
+     credentialShutdownRequest=-2;
+     stopRequest=ElizaAgentService.stopForCredentialChange(getContext());
+     credentialShutdownRequest=stopRequest;
+    }
+    ResidentCredentialShutdownRetry.await(
+     ()->{synchronized(lifecycleLock){requireShutdownRetry(call,retryEpoch,retryIntent);}},
+     ()->ElizaAgentService.isCredentialShutdownConfirmed(stopRequest),
+     ()->shutdownConfirmed(ElizaAgentService.getLocalAgentBootState(getContext())),
+     android.os.SystemClock::elapsedRealtime,Thread::sleep,15000);
+    synchronized(lifecycleLock){
+     requireShutdownRetry(call,retryEpoch,retryIntent);
+     if(credentialShutdownRequest!=stopRequest||!ElizaAgentService.isCredentialShutdownConfirmed(stopRequest))throw new Superseded();
+     credentialShutdownRequest=-1;credentialShutdownRetryEpoch=-1;stopping=false;accepting=true;pending.remove(call);
+    }
+    // Exact continuation epoch rejects cancellation/account changes between acknowledgment and start.
+    startAfterShutdown(call,retryEpoch,retryIntent);
+   }catch(Exception unconfirmed){
+    if(unconfirmed instanceof InterruptedException)Thread.currentThread().interrupt();
+    synchronized(lifecycleLock){
+     if(credentialShutdownRetryEpoch==retryEpoch)credentialShutdownRetryEpoch=-1;
+     if(pending.remove(call))call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");
+    }
+   }
+  },()->{synchronized(lifecycleLock){if(credentialShutdownRetryEpoch==retryEpoch)credentialShutdownRetryEpoch=-1;if(pending.remove(call))call.reject("Local agent bridge is closed.");}});
+  return true;
+ }
+ /** Caller holds lifecycleLock. Never lets focus loss or another intent authorize this retry. */
+ private void requireShutdownRetry(PluginCall call,long epoch,long intent)throws Superseded {
+  if(disposed||intent!=credentialIntentEpoch||epoch!=lifecycleEpoch||credentialShutdownRetryEpoch!=epoch||credentialMutationEpoch>=0||!pending.contains(call)
+    ||getActivity()==null||!getActivity().hasWindowFocus())throw new Superseded();
+ }
  @PluginMethod public void start(PluginCall call) {
+  String requestId=call.getString("requestId");
+  if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
+  if(retryCredentialShutdown(call,requestId))return;
+  startAfterShutdown(call,-1,-1);
+ }
+ private void startAfterShutdown(PluginCall call,long continuationEpoch,long continuationIntent) {
   String requestId=call.getString("requestId");
   if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
@@ -466,6 +522,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    for(int attempt=0;attempt<3;attempt++){
     final long observedEpoch;
     synchronized(lifecycleLock){
+     if(continuationEpoch>=0&&(continuationEpoch!=lifecycleEpoch||continuationIntent!=credentialIntentEpoch)){call.reject("Local agent connection changed; retry from the app.");return;}
+     if(continuationEpoch>=0&&(disposed||getActivity()==null||!getActivity().hasWindowFocus())){call.reject("Return to the app before starting.");return;}
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(cancelledStarts.size()>=128){call.reject("Startup cancellation capacity reached; reopen the app.");return;}
      observedEpoch=lifecycleEpoch;
@@ -475,7 +533,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     String currentGeneration=storedProviderGeneration(providerStore),currentRoot=ElizaAgentService.localAgentToken();
     synchronized(lifecycleLock){
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
-     if(observedEpoch!=lifecycleEpoch)continue;
+     if(observedEpoch!=lifecycleEpoch||continuationEpoch>=0&&continuationIntent!=credentialIntentEpoch){if(continuationEpoch>=0){call.reject("Local agent connection changed; retry from the app.");return;}continue;}
+     if(continuationEpoch>=0&&(getActivity()==null||!getActivity().hasWindowFocus())){call.reject("Return to the app before starting.");return;}
      if(disposed){call.reject("Local agent bridge is closed.");return;}
      if(credentialMutationEpoch>=0){call.reject("Local provider is changing; wait before starting.");return;}
      if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
