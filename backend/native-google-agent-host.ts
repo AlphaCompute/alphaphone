@@ -3,7 +3,6 @@ import {timingSafeEqual} from 'node:crypto';
 import {createManagedGoogleAgentHost} from './managed-google-agent-host.ts';
 import {createManagedGoogleAgentBroker} from './managed-google-agent-broker.ts';
 import {createNativeGoogleCloudPort,type NativeGoogleBinding} from './native-google-cloud-port.ts';
-import {cloudInferenceDiagnosticFetch} from './cloud-inference-diagnostics.ts';
 
 /** Signed in-process application host; no renderer, browser profile or credential writes. */
 export async function startNativeGoogleAgentHost(options:{binding:NativeGoogleBinding;apiToken:string;request?:typeof fetch;assertCurrent?:()=>void}) {
@@ -23,14 +22,8 @@ export async function startNativeGoogleAgentHost(options:{binding:NativeGoogleBi
  server.requestTimeout=35000;server.headersTimeout=5000;
  await new Promise<void>((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',()=>{server.removeListener('error',reject);resolve();});});
  const address=server.address();if(!address||typeof address==='string')throw Error('Native Google host did not bind');
- // Explicit Cloud QA profile only; the immutable agent/SDK source remains unchanged.
- const previousFetch=globalThis.fetch;
- const observedFetch=process.env.ELIZA_PLATFORM==='android'&&process.env.ELIZA_RUNTIME_PROFILE==='cloud'
-  ?cloudInferenceDiagnosticFetch(previousFetch,value=>console.warn('[AlphaCloudInferenceDiagnostic]',JSON.stringify(value)),retired.signal):undefined;
- if(observedFetch)globalThis.fetch=observedFetch;
  return {port:address.port,async close(){
   if(!retired.signal.aborted)retired.abort();
-  if(observedFetch&&globalThis.fetch===observedFetch)globalThis.fetch=previousFetch;
   await new Promise<void>((resolve,reject)=>{
    server.close(error=>error?reject(error):resolve());
    server.closeAllConnections();
