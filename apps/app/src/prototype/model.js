@@ -1950,7 +1950,7 @@ registerView("camera", {
       showZoom: !isScan && !front,
       zooms: CAM_ZOOM.map(function (z, i) {
         var on = st.zoom === i;
-        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;padding:2px;box-sizing:content-box;background-clip:content-box;font-size:13px" : "background:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;padding:5px;box-sizing:content-box;background-clip:content-box;font-size:12px", pick: function () { api.set({ zoom: i }); } };
+        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background-color:#ffffff;color:#000000;width:40px;height:40px;padding:2px;box-sizing:content-box;background-clip:content-box;font-size:13px" : "background-color:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;padding:5px;box-sizing:content-box;background-clip:content-box;font-size:12px", pick: function () { api.set({ zoom: i }); } };
       }),
       scanFound: isScan && st.found, scanning: isScan && !st.found,
       posterDay: poster.short,

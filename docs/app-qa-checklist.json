@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-10-17T17:16:40.041052+00:00",
+  "updatedAt": "2026-10-17T23:08:00Z",
   "preview": "http://127.0.0.1:5209/",
-  "productSource": "2446a5677cc6671bc04a7e5eca2f8e650f22bf77",
-  "agentSource": "6ef36b8d6aa1f7fd4d522567823756b1de9e3d0a",
+  "productSource": "f0c7a79a7067954cbf077e69c893bad2f223f5fd",
+  "agentSource": "623b3f8d6da8e86b4f4d996ce1fd668af0d29529",
   "rules": [
     "Every shipped view and its dialogs/flows get a row; add discovered branches before closing coverage.",
     "Prior preview evidence does not establish latest integrated retest or Seeker acceptance.",
@@ -30,7 +30,7 @@
       "viewOrFlow": "Home cards and current calendar summary",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "EC7 live Home checked: current calendar card has no This app or Read-time clutter.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -42,7 +42,7 @@
       "viewOrFlow": "App grid and All apps search",
       "scope": "MVP",
       "implementation": "Core-only Home defaults; explicit native favorites and All apps retained. 34 unit and 6 browser checks pass.",
-      "preview": "Focused synthetic browser proof; real 5209 remains available for human QA.",
+      "preview": "EC7 live Home and All apps opened; all 10 shipped app entries present.",
       "seeker": "Installed2446 read-only: Home has exactly11 core navigation controls and no ordinary Android app grid in observed area. All apps reports84 apps; core favorites and installed app rows visible. No edits/launches; custom-shortcut preservation lacks a prior baseline.",
       "userApproval": "Pending",
       "evidence": [
@@ -56,7 +56,7 @@
       "viewOrFlow": "Full-height layout and chat-pill clearance",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "EC7 live Home labels and Settings bottom rows clear the dock. Other viewport combinations pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -92,7 +92,7 @@
       "viewOrFlow": "Conversation history after reload",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "EC7/623b controlled transition preserved 14 rooms and 233 message hashes. Selected UI conversation replay remains unverified.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -120,7 +120,7 @@
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
-      "notes": ""
+      "notes": "Separate 5219 trial reached server ready but produced no transcript/audio; client readiness/microphone-resume fixes have local regression proof only. Live retest required."
     },
     {
       "id": "shell-and-home-10",
@@ -176,7 +176,7 @@
       "viewOrFlow": "Inbox and unread rows",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Latest browser QA pending.",
+      "preview": "EC7 live Inbox rendered 25 real rows and account connection. No message was opened or marked read during this pass.",
       "seeker": "Real native Gmail rows loaded;10 cached rows visible on574.",
       "userApproval": "Pending",
       "evidence": [],
@@ -826,7 +826,7 @@
       "viewOrFlow": "Photo mode and actual capture",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Current Chromium: real encoded synthetic frame persists and reloads; failed storage creates no photo. Physical sensor pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -838,7 +838,7 @@
       "viewOrFlow": "Video mode, recording clock and stop",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Browser MediaRecorder and edit-copy cases passed with synthetic video/audio; native recording pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -850,7 +850,7 @@
       "viewOrFlow": "Mode switching, front/back and zoom",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Current browser camera control tests pass for zoomed pixels, front mirroring and switching reset.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -862,7 +862,7 @@
       "viewOrFlow": "Focus, exposure and supported flash controls",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Current browser control tests pass for focus/zoom and confirmed torch capability; physical hardware pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -946,7 +946,7 @@
       "viewOrFlow": "Compact Ask Alpha review and OCR",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Compact image/content review tests pass at150% text in light and dark; device/OCR acceptance remains separate.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -970,7 +970,7 @@
       "viewOrFlow": "Library groups and thumbnail loading",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Pending",
+      "preview": "Browser encoded-photo persistence/reload passes with synthetic camera. Native library acceptance remains pending.",
       "seeker": "Pending",
       "userApproval": "Pending",
       "evidence": [],
@@ -982,7 +982,7 @@
       "viewOrFlow": "Stable top-bar layout across Photos/Albums",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Stable header slots implemented; browser visual QA pending.",
+      "preview": "EC7 live empty Photos and Albums checked: stable toolbar and Select present.",
       "seeker": "Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review.",
       "userApproval": "Pending",
       "evidence": [],
@@ -1116,7 +1116,7 @@
       "viewOrFlow": "Recently Deleted opens preview on tap",
       "scope": "MVP",
       "implementation": "Needs review against current source",
-      "preview": "Prior preview pass; latest retest pending",
+      "preview": "Current Chromium: opening a deleted photo keeps it deleted until Recover; delete-review focus/explicit actions pass in light/dark and compact height. Synthetic photos only.",
       "seeker": "Passed574: tapping the deleted QA item opened Deleted photo preview; no restore occurred.",
       "userApproval": "Pending",
       "evidence": [],
@@ -2110,6 +2110,45 @@
       "userApproval": "Pending",
       "evidence": [],
       "notes": "Keep the callback verification gate; fix proof issuance/return UX through its owning backend lane."
+    },
+    {
+      "id": "shell-agent-app-navigation",
+      "area": "Shell and Home",
+      "viewOrFlow": "Agent switches to every Home app",
+      "scope": "MVP",
+      "implementation": "Completed-action navigation with native fallbacks for missing optional views; Inbox fallback uses the owning plugin.",
+      "preview": "11 route-delivery and 2 registry tests passed; live prompt sweep on merged 5209 pending.",
+      "seeker": "Pending",
+      "userApproval": "Pending",
+      "evidence": [
+        "test/home-agent-navigation.test.mjs",
+        "test/native-view-fallback-installation.test.mjs"
+      ],
+      "notes": "Opening a view does not prove that its plugin can complete a requested action."
+    },
+    {
+      "id": "camera-agent-capture",
+      "area": "Camera",
+      "viewOrFlow": "Agent takes and saves one requested photo",
+      "scope": "MVP",
+      "implementation": "Foreground Camera-only source wired through the existing capture adapter and durable device-action receipt. Runtime integration and Home continuation remain open.",
+      "preview": "Product/bridge fixtures and shared real-SQL receipt lifecycle pass. No live camera or agent-prompt success claimed.",
+      "seeker": "Pending; no capture success claimed.",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "No hidden polling or image upload. Existing Camera view is required; Home-to-capture continuation is still unimplemented."
+    },
+    {
+      "id": "camera-13",
+      "area": "Camera",
+      "viewOrFlow": "Agent takes one photo from Home or visible Camera",
+      "scope": "MVP",
+      "implementation": "Corrected foreground camera candidate; runtime capability required; not live",
+      "preview": "12 browser cases pass, including25-digit encoded-photo persistence, Home navigation, old-request refusal and ask-first. Realtime ordering14 source cases pass. Physical camera/provider prompt pending.",
+      "seeker": "Pending; no installation or capture performed",
+      "userApproval": "Pending",
+      "evidence": [],
+      "notes": "No hidden background capture, image upload or replay after unknown result."
     }
   ],
   "registeredViewInventory": [
@@ -2450,5 +2489,22 @@
     "original640ByteArchiveStillMissing": true,
     "fullAlphaUIAcceptance": false,
     "evidence": "docs/evidence/native-video-preservation-bd0e-seeker-20261017.json"
+  },
+  "candidateIntegration": {
+    "sdk": "985322b5df96a91e9dc913c73280a97b82890642",
+    "runtime": "e52c019f9b2762a97222129a74a4b77b28a942cc",
+    "state": "Corrected camera/Files successor; isolated, final full verification pending",
+    "validation": "Prior baseline1626/1624pass/2skip; 49 cross-view cases pass. Corrected browser photo IDs pass12 browser cases and18 focused tests. Shared8SQL+11schema pass. Five production review cases pass. No real sensor, provider prompt or Seeker acceptance.",
+    "baselineProductSource": "1f1a8d043d3bede9d2fe786d700398c939059f49"
+  },
+  "currentPreviewPreservation": {
+    "rooms": 14,
+    "messageHashes": 233,
+    "scope": "5209 browser-agent profile; current Cloud account retained",
+    "acceptance": "Read-only navigation checked. Fresh provider writes, live audio and current Seeker remain separate."
+  },
+  "browserLayoutQualification": {
+    "passed": 49,
+    "scope": "synthetic Chromium, compact/large text, light/dark; not device or human acceptance"
   }
 }

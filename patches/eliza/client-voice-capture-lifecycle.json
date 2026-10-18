@@ -1,0 +1,12 @@
+{
+  "baseCommit": "985322b5df96a91e9dc913c73280a97b82890642",
+  "paths": [
+    {
+      "path": "packages/ui/src/voice/voice-session-mic-capture.ts",
+      "beforeSha256": "8cd5465d8b7df4597419c7763100a5cb8b26ede5e6ed42d1b70eed8f85f896e6",
+      "afterSha256": "0b7ed80e7bff0dcb740e850f307a08680e4b958889df4a7f6751ca5a172e3caa"
+    }
+  ],
+  "patchSha256": "c824a25676d6711f759bdc370c1b5a5af3a5dc5d9b1c01df6478c1f2a7f50952",
+  "sourceScope": "Stop and release capture when its track ends or AudioContext closes; preserve mute, explicit Stop and visibility-resume behavior."
+}

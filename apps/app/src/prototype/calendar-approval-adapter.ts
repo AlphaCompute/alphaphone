@@ -26,7 +26,7 @@ export function installCalendarApprovalAdapter(Component:Shell){
   const out=render.call(this),value=state(this),key=binding();
   out.msgs=(out.msgs||[]).map((message:Shell)=>{
    if(!message.isAgent)return message;const parsed=calendarReviewText(String(message.text||''));
-   return {...message,displayText:parsed.displayText,hasCalendarText:!!parsed.displayText,messageActionsLabel:message.messageActionsLabel?'Message actions: '+(parsed.displayText||'Calendar request'):message.messageActionsLabel,calendarReviews:parsed.ids.map(id=>({id,status:value.statuses.get(key+id)||'Check current status',open:()=>void review(this,id)}))};
+   return {...message,displayText:parsed.displayText,hasCalendarText:message.hasCalendarText!==false&&!!parsed.displayText,messageActionsLabel:message.messageActionsLabel?'Message actions: '+(parsed.displayText||'Calendar request'):message.messageActionsLabel,calendarReviews:parsed.ids.map(id=>({id,status:value.statuses.get(key+id)||'Check current status',open:()=>void review(this,id)}))};
   });return out;
  };
  p.componentWillUnmount=function(){states.get(this)?.abort?.abort();states.delete(this);return unmount?.call(this);};

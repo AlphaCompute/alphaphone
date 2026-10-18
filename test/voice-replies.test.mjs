@@ -13,7 +13,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function fixture({native = true} = {}) {
   const f = {spoken: [], signals: [], hold: false, releases: [], store: new Map(), session: 'agent-session', conversation: 'conversation-1', open: false, events: []};
   const box = {
-    developmentCloudVoiceEnabled:false, testMocksEnabled: false, browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
+    developmentCartesiaVoiceEnabled:false,developmentCloudVoiceEnabled:false, testMocksEnabled: false, browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
     crypto, performance,
     Event: class { constructor(type) { this.type = type; } },
     Capacitor: {isNativePlatform: () => native, getPlatform: () => native ? 'android' : 'web'},
@@ -38,7 +38,7 @@ function fixture({native = true} = {}) {
     constructor() { this.state = {chat: 'sheet', msgs: []}; this.live = true; }
     S() { return this.state; }
     setState(patch) { Object.assign(this.state, typeof patch === 'function' ? patch(this.state) : patch); this.componentDidUpdate(); }
-    renderVals() { return {msgs: this.state.msgs.map(m => ({text: m.text}))}; }
+    renderVals() { return {ic:{copy:'copy',check:'check',wave:'wave',stop:'stop'},msgs: this.state.msgs.map(m => ({text: m.text}))}; }
     componentDidUpdate() {}
     componentWillUnmount() {}
   }
@@ -84,7 +84,9 @@ test('a spoken reply can be cancelled from its Stop reading control and by the n
   await tick(); await tick();
   assert.equal(f.spoken.length, 1);
   const row = f.shell.renderVals().msgs[1];
-  assert.equal(row.localSpeechLabel, 'Stop reading');
+  assert.equal(row.localSpeechControlLabel, 'Stop reading');
+  assert.equal(row.localSpeechLabel, 'Read aloud');
+  assert.equal(row.localSpeechMessage, '');
   row.localSpeech(); await tick();
   assert.equal(f.signals[0].aborted, true);
   text = f.voiceTurn('Second question');
@@ -105,7 +107,7 @@ test('Listen on an earlier reply is not stopped by user messages that were alrea
   assert.deepEqual(f.spoken.map(item => item.text), ['Earlier reply.']);
   f.shell.setState({}); await tick();
   assert.equal(f.signals[0].aborted, false, 'an older user message does not stop Listen');
-  assert.equal(f.shell.renderVals().msgs[1].localSpeechLabel, 'Stop reading');
+  assert.equal(f.shell.renderVals().msgs[1].localSpeechControlLabel, 'Stop reading');
   f.say({id: 'u3', from: 'user', text: 'Third'}); await tick();
   assert.equal(f.signals[0].aborted, true, 'a user message sent after Listen began stops it');
 });

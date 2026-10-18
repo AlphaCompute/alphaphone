@@ -116,7 +116,7 @@ for (const mode of ['place', 'route', 'stale-before-approval', 'stale-after-read
     if(mode==='stale-before-approval') {
       await page.evaluate(async()=>{const {clearMapsSelection}=await import('/src/maps/agent-context.ts');clearMapsSelection();});
     }
-    await page.getByText('Approve: maps read selected',{exact:true}).click();
+    await page.getByText('maps read selected',{exact:true}).click();
     if(mode==='stale-after-read'){
       await expect.poll(()=>page.evaluate(()=>typeof (window as any).releaseMapsFinish)).toBe('function');
       await page.evaluate(async()=>{const {clearMapsSelection}=await import('/src/maps/agent-context.ts');clearMapsSelection();(window as any).releaseMapsFinish();});

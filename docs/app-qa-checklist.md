@@ -1,8 +1,8 @@
 # Alpha app QA and approval checklist
 
-Live preview: <http://127.0.0.1:5209/>. Functional source `2446a567`; Shared `6ef36b8d`, including the recorded main integration `f1d4baa6`. All13 prior conversations and228 messages survived the preview update; Cloud identity and fresh agent Gmail search passed. Seeker now has the same functional source, with its original UID/data retained. Test-only CI repairs are on `ab523907`. Updated October 17, 2026.
+Live preview: <http://127.0.0.1:5209/>. Product `f0c7a79a7` (microphone lifecycle hotfix), runtime `623b3f8d6d`, SDK `985322b5`. The controlled update retained the Cloud account, 14 rooms and 233 message hashes. A read-only EC7 navigation pass covered Home, Settings, Connections, Inbox, Calendar, Photos/Albums, Files, Notes, Workflows, Browser, Maps and All apps. Current sensor, provider-write, voice and Seeker acceptance remain separate. Updated October 17, 2026.
 
-The JSON companion tracks 171 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
+The JSON companion tracks 174 flows across 12 areas and all14 registered view modules. Implementation, preview QA, Seeker QA and your approval are separate. Only you mark approval.
 
 For each applicable flow check light/dark, compact portrait, landscape, large text, keyboard and safe areas, Back, reload/resume, empty/loading/offline/error/denied states. Add discovered branches before closing coverage.
 
@@ -10,17 +10,19 @@ Review order: latest preview → deployed backend/prompt proof → installed See
 
 Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, existing certificate, UID10250 and original install date preserved. Normal SDK/product verification, four variants, lint and APK checks passed. The valid saved credential now commits a provider binding; resident is now running with Cloud inference and connected Google permissions after all eight retired IPC directories were archived intact. One known-QA Gmail read prompt failed at Cloud text HTTP400; no Gmail tool/provider result was observed. Native send and Calendar write were not attempted. See [native read evidence](evidence/seeker-cloud-read-20261017.json). Prior row evidence stays labeled by its observed build; human approval remains separate.
 
+Prepared camera successor: the SDK remains `985322b5`; the separate runtime candidate is `e52c019f`. The corrected foreground capture flow passes 12 browser cases, including encoded-photo persistence, Home navigation, old-request refusal and ask-first. Realtime completion/navigation ordering passes 14 source tests. The prior baseline passed 1,624 of 1,626 checks with 2 skips, and 49 cross-view layout cases passed. Five production review cases also pass. Final combined verification, a real camera prompt and Seeker acceptance remain pending.
+
 ## Shell and Home
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
 | shell-and-home-01 | Cold launch and saved connection restoration | Installed574 launches and resident reconnects; existing account retained. Human startup QA pending. | Exact installed APK hash verified; running resident visible. | Pending |
-| shell-and-home-02 | Home cards and current calendar summary | Pending | Pending | Pending |
-| shell-and-home-03 | App grid and All apps search | Core-only defaults;34 unit/6 browser pass. All apps and chosen native shortcuts retained. | Integrated native retest pending | Pending |
-| shell-and-home-04 | Full-height layout and chat-pill clearance | Prior preview pass; latest retest pending | Pending | Pending |
+| shell-and-home-02 | Home cards and current calendar summary | EC7 live Home checked: current calendar card has no This app or Read-time clutter. | Pending | Pending |
+| shell-and-home-03 | App grid and All apps search | EC7 live Home and All apps opened; all 10 shipped app entries present. | Integrated native retest pending | Pending |
+| shell-and-home-04 | Full-height layout and chat-pill clearance | EC7 live Home labels and Settings bottom rows clear the dock. Other viewport combinations pending. | Pending | Pending |
 | shell-and-home-05 | Back gesture and cross-app return | Current source tests cover modal/popover Back; latest preview visual QA pending. | Google panel Back closes to Accounts; folder popup Back keeps Inbox open at574. | Pending |
 | shell-and-home-06 | Chat pill, half sheet and full conversation | Pending | Pending | Pending |
-| shell-and-home-07 | Conversation history after reload | Prior preview pass; latest retest pending | Pending | Pending |
+| shell-and-home-07 | Conversation history after reload | EC7/623b controlled transition preserved 14 rooms and 233 message hashes. Selected UI conversation replay remains unverified. | Pending | Pending |
 | shell-and-home-08 | Prompt cancellation and stale approval refusal | Pending | Pending | Pending |
 | shell-and-home-09 | Voice start, interrupt, mute and stop | Pending | Pending | Pending |
 | shell-and-home-10 | Keyboard opening, dismissal and focus | Pending | Pending | Pending |
@@ -33,7 +35,7 @@ Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, e
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| inbox-01 | Inbox and unread rows | Latest browser QA pending. | Real native Gmail rows loaded;10 cached rows visible on574. | Pending |
+| inbox-01 | Inbox and unread rows | EC7 live Inbox rendered 25 real rows and account connection. No message was opened or marked read during this pass. | Real native Gmail rows loaded;10 cached rows visible on574. | Pending |
 | inbox-02 | Account and folder switching | Pending | Pending | Pending |
 | inbox-03 | Search on Enter and mobile keyboard | Search implementation retained; latest browser visual QA pending. | Enter returned10 matching Coinbase rows at4d; no separate Search Gmail button. | Pending |
 | inbox-04 | Themed folder menu and removal of More/Search clutter | Custom themed folder menu implemented; browser visual QA pending. | Themed popup visibly verified; Android Back corrected and verified at574. | Pending |
@@ -103,25 +105,27 @@ Latest installed Seeker evidence: `2446a567`, signed APK `06df1c83…36572fb`, e
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| camera-01 | Photo mode and actual capture | Prior preview pass; latest retest pending | Pending | Pending |
-| camera-02 | Video mode, recording clock and stop | Pending | Pending | Pending |
-| camera-03 | Mode switching, front/back and zoom | Pending | Pending | Pending |
-| camera-04 | Focus, exposure and supported flash controls | Pending | Pending | Pending |
+| camera-01 | Photo mode and actual capture | Current Chromium: real encoded synthetic frame persists and reloads; failed storage creates no photo. Physical sensor pending. | Pending | Pending |
+| camera-02 | Video mode, recording clock and stop | Browser MediaRecorder and edit-copy cases passed with synthetic video/audio; native recording pending. | Pending | Pending |
+| camera-03 | Mode switching, front/back and zoom | Current browser camera control tests pass for zoomed pixels, front mirroring and switching reset. | Pending | Pending |
+| camera-04 | Focus, exposure and supported flash controls | Current browser control tests pass for focus/zoom and confirmed torch capability; physical hardware pending. | Pending | Pending |
 | camera-05 | Permission denied, device busy and track termination | Prior preview pass; latest retest pending | Pending | Pending |
 | camera-06 | Transient toast timeout and centered logo | Pending | Pending | Pending |
 | camera-07 | Capture review and session gallery | Pending | Pending | Pending |
 | camera-08 | Scan capture, add/reorder/remove pages | Pending | Pending | Pending |
 | camera-09 | Scan draft save, load and explicit removal | Pending | Pending | Pending |
 | camera-10 | Image PDF and searchable PDF export | Pending | Pending | Pending |
-| camera-11 | Compact Ask Alpha review and OCR | Pending | Pending | Pending |
+| camera-11 | Compact Ask Alpha review and OCR | Compact image/content review tests pass at150% text in light and dark; device/OCR acceptance remains separate. | Pending | Pending |
 | camera-12 | Exit/background recording and save behavior | Pending | Pending | Pending |
+
+| camera-13 | Agent takes one photo from Home or visible Camera | Isolated successor: 4 rendered synthetic tests and 16 focused tests pass; real sensor/provider prompt pending. | Pending | Pending |
 
 ## Photos
 
 | ID | View / flow | Preview evidence | Seeker | Your approval |
 | --- | --- | --- | --- | --- |
-| photos-01 | Library groups and thumbnail loading | Pending | Pending | Pending |
-| photos-02 | Stable top-bar layout across Photos/Albums | Stable header slots implemented; browser visual QA pending. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review. | Pending |
+| photos-01 | Library groups and thumbnail loading | Browser encoded-photo persistence/reload passes with synthetic camera. Native library acceptance remains pending. | Pending | Pending |
+| photos-02 | Stable top-bar layout across Photos/Albums | EC7 live empty Photos and Albums checked: stable toolbar and Select present. | Search/select x-positions stayed943/1101 between Photos and Albums at4d. Mode accessibility names need review. | Pending |
 | photos-03 | Albums list, contents, selection and batch actions | Albums list/contents implemented; selection and batch-action review pending. | Native Albums list opened. Current Select photos action targets library; native custom-album selection remains open. | Pending |
 | photos-04 | Search, favorites and empty results | Pending | Pending | Pending |
 | photos-05 | Photo viewer, zoom and previous/next | Pending | Opened the newly captured960x1280 QA photo on574; local viewer controls rendered. | Pending |
@@ -286,3 +290,12 @@ Pending-video custody correction1d29 now passes both Java compiles, fixture APK 
 Exact1d29 real synthetic exporter component passed11.291s on Seeker: trim/rotate/crop/audio and timestamp markers, lost-publication-receipt recovery, same-operation duplicate identity, changed-binding refusal and cancel-without-copy. MainAlpha2446/source639/pending640/8e43 and11 prior fixture journal records unchanged. This is component proof; original mainAlpha writecause and normal SaveCopy acceptance remain open. See [exporter evidence](evidence/native-video-exporter-1d29-20261017.json).
 
 Observer coordination correctiond35dd318: renderer/native-bridge regression reproduced2libraryChanged notifications causing3nativecancellations duringpendingSave; fix keepsobserveractive and rechecks source/access while deferringvalidcatalogrefresh.8focusedbrowserchecks andnormalproduct1495pass/2existingskips/types/build/audit404pass. Nativequalification/install pending; mainSave remainsheldbyexact640preservationreview. Historical8e43cause is not proven bythe reproduction. See [observer evidence](evidence/native-video-library-observer-20261017.json).
+
+## Explicit agent capability gaps
+
+| ID | View / flow | Preview evidence | Seeker | Your approval |
+| --- | --- | --- | --- | --- |
+| shell-agent-app-navigation | Agent switches to every Home app | 11 route-delivery and 2 registry tests pass; merged live prompt sweep pending | Pending | Pending |
+| camera-agent-capture | Agent takes and saves one requested photo | Foreground Camera source + journal/receipt fixtures pass; live capture and Home continuation remain open | Pending | Pending |
+
+The separate 5219 voice trial reached server ready but produced no transcript or audio. Client state and microphone-resume fixes have local regression proof; they have not passed another live audio trial.

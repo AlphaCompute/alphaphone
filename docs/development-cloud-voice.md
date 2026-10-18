@@ -13,7 +13,9 @@ Cloud service fails visibly; it does not switch to direct Cartesia or native
 speech. Normal production on-device speech policy is unchanged.
 
 The host forwards only POST `/api/asr/cloud` (bounded WAV) and POST
-`/api/tts/cloud` (`text`, `modelId: sonic-3`). It retains the existing same-origin,
+`/api/tts/cloud` (`text` only, retaining the gateway’s default billing model).
+Actual synthesis is verified from the provider response; the billing model is
+not used as evidence of the synthesis engine. It retains the existing same-origin,
 private owner enrollment, selected owner, request cancellation and size checks.
 The paired runtime proxy must verify the actual gateway provider and normalize
 successful replies with `X-Eliza-Speech-Provider: cartesia` and

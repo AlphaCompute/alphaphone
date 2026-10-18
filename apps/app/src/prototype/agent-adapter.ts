@@ -1,3 +1,6 @@
+import {CAMERA_CONTEXT_NOTICE} from '../runtime/device-actions';
+import {captureAgentPhoto} from './camera-adapter';
+import {isCameraCapture} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
 import {aospImage} from '../runtime/aosp-image';
 import {smsSubscriptionRevision} from '../runtime/sms-subscription-revision';
 import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
@@ -219,7 +222,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
   }
   function proposalCard(proposal:import('../runtime/alpha-client').ActionProposal){
     const home=proposal.reviewDestination==='home';
-    return {type:'generic',icon:'check',title:home?'Review Notes on Home':'Approve: '+proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':'Tap to approve this exact action',proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
+    return {type:'generic',icon:'check',title:home?'Review Notes on Home':proposal.title,sub:home?'Open Home to choose and review a note. Nothing is shared yet.':proposal.description,proposalId:proposal.id,privateNotesRead:proposal.privateNotesRead,reviewDestination:proposal.reviewDestination,expiresAt:proposal.expiresAt};
   }
   p.cancelReadReplyCompletions=function(onlyProposalId?:string){
     for(const [proposalId,lease] of this.readReplyLeases||[]){
@@ -623,6 +626,11 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     connectionController.setDeviceExecutor(async (operation, operationId, expectedContext, signal, bindingHash, workflowRoute, journalIdentity) => {
       signal.throwIfAborted(); context(this);
       if (!this.live || JSON.stringify(alphaClient.getState().context) !== JSON.stringify(expectedContext)) throw new Error('Phone context changed');
+      if(isCameraCapture(operation)){
+        const ownerSession=connectionController.getSnapshot().session;
+        const current=()=>{signal.throwIfAborted();context(this);if(!this.live||document.hidden||expectedContext.sensitive||expectedContext.view!=='camera'||ownerSession!==connectionController.getSnapshot().session||JSON.stringify(alphaClient.getState().context)!==JSON.stringify(expectedContext))throw Error('Camera request changed');};
+        return captureAgentPhoto(operationId,signal,current);
+      }
       if(isSmsSend(operation)){
         if(!aospImage||expectedContext.sensitive||document.hidden||expectedContext.view!=='messages'||expectedContext.selectedObject?.kind!=='sms-subscription'||expectedContext.selectedObject.id!==String(operation.subscriptionId))throw Error('Open Messages on the Alpha image and select the approved SIM');
         const plugin=registerPlugin<AlphaTelephonyPlugin>('AlphaTelephony'),client=createAospTelephony(plugin,true);
@@ -998,9 +1006,9 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const c=m.c||{};if(!c.proposalId||c.done||c.reviewUnavailable||!m.cGeneric)return m;
       const message=live.find(item=>item.card===c);if(!message)return m;
       const ic=out.ic||{},busy=!!this.decliningProposal||!!this.pendingActionApproval;
-      return {...m,cGeneric:false,cDigest:true,rows:[
-        {ini:'',who:c.title,text:c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
-        {ini:'',who:'Decline',text:this.decliningProposal===c.proposalId?'Declining…':'Reject this proposal. Nothing runs.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
+      return {...m,hasCalendarText:m.hasCalendarText&&m.displayText!==c.sub,cGeneric:false,cDigest:true,actionReviewClass:'alpha-action-review',rows:[
+        {ini:'',who:busy?'Working…':c.title,text:typeof c.sub==='string'&&c.sub.startsWith(c.title+'\n')?c.sub.slice(c.title.length+1):c.sub,icon:ic.right,open:()=>{if(!busy)void this.cardAct(message);}},
+        {ini:'',who:this.decliningProposal===c.proposalId?'Cancelling…':'Cancel',text:'Keep things as they are.',icon:ic.x,open:()=>{if(!busy)void this.declineCard(message);}},
       ]};
     });
     out.canStopReply=!!this.S().typing&&alphaClient.getState().pending;
@@ -1075,6 +1083,23 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(binding)||JSON.stringify(alphaClient.getState().context)!==expected)throw Error('The voice conversation changed.');
     return {binding,context:alphaClient.getState().context};
   };
+  // An authenticated voice socket carries only navigation targets, never record parameters.
+  // Reuse the same shell projection and post-React context fence as completed chat actions.
+  p.applyRealtimeVoiceNavigation = async function(input:import("../runtime/development-cartesia-conversation").RealtimeVoiceNavigation & {binding:import('../runtime/alpha-client').VoiceConversationBinding;assertCurrent:()=>void;navigation:import('../runtime/alpha-client').VoiceNavigationContinuation}){
+    input.assertCurrent();const target=input.viewId==='chat'?'home':input.viewId==='automations'?'workflows':input.viewId==='reminders'?'calendar':input.viewId;
+    if(input.subview||!['home','notifications'].includes(target)&&!isMvpView(target)||input.viewPath&&!['/'+input.viewId,'/apps/'+input.viewId,...(target==='home'?['/']:[])].includes(input.viewPath))throw Error('That voice screen is not available.');
+    const current=()=>{input.assertCurrent();if(!this.live||document.hidden||!connectionController.voiceConversationCurrent(input.binding))throw Error('The voice conversation changed.');};
+    let delivered=false;try{
+      const prepared=Object.hasOwn(input,'navigationPrepared')||Object.hasOwn(input,'navigationBinding')||Object.hasOwn(input,'completedActionHandoffId');
+      if(prepared){
+        const capture=connectionController.captureViewNavigation(this.voiceConversationContext(input.binding));
+        const result={actionName:'VIEWS_SHOW',success:true,values:{mode:'show',viewId:input.viewId,...(input.viewPath?{viewPath:input.viewPath}:{}),...(input.subview?{subview:input.subview}:{}),navigationPrepared:input.navigationPrepared,navigationBinding:input.navigationBinding,completedActionHandoffId:input.completedActionHandoffId}};
+        delivered=await deliverChatNavigation(this,capture,[result],current,input.navigation);
+        if(!delivered)throw Error('The voice screen change could not be confirmed.');
+        return true;
+      }
+      delivered=await input.navigation.apply(target,current,(chat,onCommitted)=>new Promise<boolean>((resolve,reject)=>{try{current();if(!openInternalView(this,target,chat)){resolve(false);return;}this.setState({},()=>{try{current();context(this);const switched=(this.S().view||'home')===target&&!alphaClient.getState().context.sensitive;if(switched)onCommitted(alphaClient.getState().context);resolve(switched);}catch(error){reject(error);}});}catch(error){reject(error);}}));return delivered;}finally{input.navigation.finish(delivered);}
+  };
   p.sendVoiceTurn = async function(input:{text:string;turnId:string;voiceTurnSignal:import('../runtime/alpha-client').VoiceTurnSignal;signal:AbortSignal;binding:import('../runtime/alpha-client').VoiceConversationBinding;context:import('../runtime/alpha-client').ContextEnvelope;assertCurrent:()=>void;navigation?:import('../runtime/alpha-client').VoiceNavigationContinuation}){
     const {text,turnId,signal,binding}=input;let acceptedContext=input.context;
     const belongs=()=>{try{signal.throwIfAborted();input.assertCurrent();return this.live&&!document.hidden&&connectionController.voiceConversationCurrent(binding)&&JSON.stringify(alphaClient.getState().context)===JSON.stringify(acceptedContext);}catch{return false;}};
@@ -1092,6 +1117,10 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       const delivered=await deliverChatNavigation(this,navigation,reply.actionResults,current,input.navigation);
       const nextContext=input.navigation?.finish(delivered);if(nextContext)acceptedContext=nextContext;
       current();
+      if(delivered&&reply.userMessageId){
+        const results=await connectionController.continueRequestedCamera(reply.userMessageId,signal);
+        for(const result of results)this.agentSay(result.summary);
+      }
       const awaiting=reply.proposals?.filter(proposal=>proposal.readReply?.origin.requestId===turnId&&proposal.readReply.origin.conversationId===identity.conversationId&&proposal.readReply.origin.inReplyTo===reply.userMessageId);
       if(awaiting&&awaiting.length>1)throw Error('More than one Notes review was returned. Use action history.');
       for(const proposal of reply.proposals||[]){retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal),undefined,belongs);}
@@ -1161,10 +1190,21 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===streamedId?{...m,id:reply.messageId||m.id,messageBinding:reply.messageId?identity:undefined,text:reply.text,streaming:false,...(planCard?{card:planCard}:{})}:m)}));else this.agentSay(reply.text,planCard,reply.messageId&&identity?{id:reply.messageId,messageBinding:identity}:undefined);
       if(reply.userMessageId&&identity)this.setState((previous:Shell)=>({msgs:previous.msgs.map((m:Shell)=>m.id===userId?{...m,id:reply.userMessageId,messageBinding:identity}:m)}));
       if(this.messageReplyTarget===replyTarget)this.messageReplyTarget=undefined;
-      for(const notice of replyNotices(reply))this.agentSay(notice,{type:'generic',icon:'info',title:'Phone action not shown here',sub:notice,systemNotice:true,done:true});
+      let cameraOpened=false;
       if(sourceDraft&&sourceSession&&JSON.stringify(sourceSession)===JSON.stringify(connectionController.getSnapshot().session))this.agentSay('Review this answer before saving it with its source.',{type:'generic',icon:'note',title:'Review summary note',sub:sourceDraft.name,sourceSummary:{source:sourceDraft,text:reply.text,session:sourceSession}});
       for (const proposal of reply.proposals || []) {retainReadReply(this,proposal,identity,reply.userMessageId);this.agentSay(proposal.description,proposalCard(proposal));}
-      try{await deliverNavigation(reply.actionResults);}catch(error){if(this.live)this.toast(error instanceof AlphaClientError?error.message:'Could not confirm the screen change. Check your screen.');}
+      try{
+        const delivered=await deliverNavigation(reply.actionResults);
+        cameraOpened=delivered&&alphaClient.getState().context.view==='camera';
+        if(delivered&&reply.userMessageId){
+          const results=await connectionController.continueRequestedCamera(reply.userMessageId,new AbortController().signal);
+          for(const result of results)if(this.live)this.agentSay(result.summary);
+        }
+      }catch(error){if(this.live)this.toast(error instanceof Error?error.message:'Could not confirm the screen change. Check your screen.');}
+      for(const notice of replyNotices(reply)){
+        if(cameraOpened&&alphaClient.getState().context.view==='camera'&&notice==='Take photo: '+CAMERA_CONTEXT_NOTICE)continue;
+        this.agentSay(notice,{type:'generic',icon:'info',title:'Phone action not shown here',sub:notice,systemNotice:true,done:true});
+      }
     } catch (e) {
       let opened=false;
       if(this.live&&e instanceof AlphaClientError&&e.code==='transport-failed'&&readyNavigation){try{opened=await deliverNavigation(readyNavigation);}catch{}}
@@ -1288,7 +1328,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
         this.pendingActionRecoveryAbort?.abort();
         const approval=this.pendingActionApproval=new AbortController();
         this.pendingActionApprovalProposalId=card.proposalId;
-        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;
+        this.pendingActionApprovalContext=alphaClient.getState().context;this.pendingActionApprovalSession=session;this.setState({});
         const sessionId = session?.sessionId;
         const beforeView = this.S().view;
         let receipt;
@@ -1311,7 +1351,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           else this.agentSay(receipt.summary);
         }
       } catch (e) { const readLease=this.readReplyLeases?.get(card.proposalId);if(this.live&&(!readLease||readLease.phase!=='cancelled'&&connectionController.readReplyCurrent(readLease.binding))&&(!card.recovered||JSON.stringify(card.proposalSession)===JSON.stringify(connectionController.getSnapshot().session)))this.agentSay(e instanceof Error ? e.message : 'Action could not complete.'); }
-      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live)context(this);}
+      finally {this.pendingActionApproval=null;this.pendingActionApprovalProposalId=null;if(this.live){context(this);this.setState({});}}
     } else if (card.go) this.openView(card.go.view, card.go.patch);
   };
   p.startVoice = async function () {

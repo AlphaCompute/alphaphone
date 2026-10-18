@@ -1,0 +1,19 @@
+--- a/packages/ui/src/voice/voice-session-client.ts
++++ b/packages/ui/src/voice/voice-session-client.ts
+@@ -528,0 +529,13 @@
++    let currentUiContext: VoiceUiContext | undefined;
++    if (uiContextSupported && options.getUiContext) {
++      try {
++        currentUiContext = options.getUiContext();
++      } catch {
++        // A retired renderer cannot keep an apparently live mic while every
++        // packet is discarded. Do not retry through a changed owner/context.
++        mark("not_reached(voice_context_changed)", state.traceId);
++        emitError(new Error("Voice context changed. Start voice again."));
++        void stop();
++        return;
++      }
++    }
+@@ -531 +544 @@
+-        const context = parseVoiceUiContext(options.getUiContext());
++        const context = parseVoiceUiContext(currentUiContext);

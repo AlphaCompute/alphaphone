@@ -207,7 +207,7 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await queueAction(page,{type:'create_reminder',title:'Email the caterer',dueAt});
  await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).fill('Review my reminder action');
  await page.getByRole('textbox',{name:'Ask Alpha',exact:true}).press('Enter');
- const approveReminder=page.getByRole('button',{name:/^Approve: Create reminder/});
+ const approveReminder=page.getByRole('button',{name:/^Create reminder/});
  await expect(approveReminder).toHaveCount(1);
  // Queued and shown, but nothing runs before approval.
  expect(await liveReminders(page)).toEqual(['Book the venue']);
@@ -233,7 +233,7 @@ test('Journey B: recorded note is read aloud, summarized, and becomes an event a
  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).fill('Review my calendar action');
  await page.getByRole('textbox',{name:'Message Alpha',exact:true}).press('Enter');
- const approveEvent=page.getByRole('button',{name:/^Approve: Create event/});
+ const approveEvent=page.getByRole('button',{name:/^Create event/});
  await expect(approveEvent).toHaveCount(1);
  expect(await eventTitles(page)).toEqual(['Venue walkthrough']);
  await approveEvent.click();
@@ -373,7 +373,7 @@ test('Journey B: a calendar proposal for a changed source is refused, and leavin
  await propose({type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:stale},fields:fields('Stale source event',source.timeZone)},'Review my stale calendar action');
  // The reply arrives, and the proposal for another source revision is not offered for approval at all.
  await expect(page.getByRole('button',{name:/^Message actions: Development reply/})).toHaveCount(1);
- await expect(page.getByRole('button',{name:/^Approve: Create event/})).toHaveCount(0);
+ await expect(page.getByRole('button',{name:/^Create event/})).toHaveCount(0);
  await expect(page.getByText('Stale source event',{exact:false})).toHaveCount(0);
  await expect(review).toHaveCount(0);
  expect(await eventTitles(page)).toEqual([]);
@@ -382,7 +382,7 @@ test('Journey B: a calendar proposal for a changed source is refused, and leavin
  // ---- A current proposal whose review is left open, then abandoned with Back ----
  await page.getByRole('button',{name:'Minimize chat',exact:true}).click();
  await propose({type:'calendar_create',source:{sourceId:source.selectedObject.id,sourceRevision:source.selectedObject.revision},fields:fields('Abandoned review event',source.timeZone)},'Review my calendar action');
- const approve=page.getByRole('button',{name:/^Approve: Create event/});
+ const approve=page.getByRole('button',{name:/^Create event/});
  await expect(approve).toHaveCount(1);
  await approve.click();
  await expect(review).toContainText('“Abandoned review event”');
