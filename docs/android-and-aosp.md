@@ -241,8 +241,9 @@ The approved physical target is **Pixel 10a (stallion), Android 17**. The
 [Pixel 10a source contract](pixel10a-source-contract.md) records the exact AOSP manifest,
 device-tool revisions, factory archive, kernel and generated vendor inputs of the inspected
 development baseline. Licensed binaries stay outside Git. The owner has built a development
-AOSP image for stallion from these inputs on the separate image host; that is development
-image evidence at an older app pin, not a release-signed or current-app image. The former
+AOSP image for stallion from these inputs. The [October 19 code6 evidence](pixel10a-code6-boot-evidence.md)
+records a verified Cloud-profile image and initial physical boot at the exact e240 Alpha
+commit and 0296 Eliza pin; it does not qualify a production release or device integrations. The former
 all-UNSET Pixel 10 placeholder lock is retired. Production staging uses
 `android/aosp/pixel10a-product.json` and refuses while its release inputs are unset
 ([Pixel 10a staging](pixel10a-staging.md)). Cuttlefish boot, source-input verification, a
