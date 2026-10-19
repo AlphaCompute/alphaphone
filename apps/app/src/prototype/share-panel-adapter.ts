@@ -9,7 +9,7 @@ export function installSharePanelAdapter(Component:any,views:Record<string,Bag>)
  prototype.componentWillUnmount=function(){if(owner===this){owner=undefined;setShareEmailComposer(undefined);}unmount.call(this);};
  prototype.renderVals=function(){
   const values=render.call(this),shell=this;
-  const bind=(module:string,target:Bag,key:string,options:{title:string;email?:()=>unknown;text?:string;copy?:()=>unknown})=>{
+  const bind=(module:string,target:Bag,key:string,options:{title:string;email?:()=>unknown;copy?:()=>unknown})=>{
    const external=target?.[key];if(typeof external!=='function')return;
    target[key]=()=>{
     const before=JSON.stringify(shell.vget(module)),browser=module==='browser'?JSON.stringify(shell.browserSelection?.()):'',google=module==='calendar'?JSON.stringify(shell.googleCalendarRows):'';
