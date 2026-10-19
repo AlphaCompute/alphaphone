@@ -42,3 +42,40 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await page.reload();await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');await page.evaluate(()=>(window as any).access.signin());await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.reopen());await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
 });
+
+test('reopening an allowed checklist starts at its heading without requesting access',async({page})=>{
+ await page.setViewportSize({width:360,height:740});
+ await page.addInitScript(()=>{
+  const w=window as any;w.access={calls:[],accounts:[{connected:true,connectionId:'synthetic',grantedCapabilities:['google.gmail.triage','google.calendar.read']}],googleOpens:0};
+  const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaCamera:['checkPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestPermissions'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
+  w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{
+   w.access.calls.push({plugin,method,input});
+   if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
+   if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
+   if(plugin==='ElizaCamera')return {camera:'granted'};
+   if(plugin==='ElizaLocation')return {location:'granted',accuracy:'approximate'};
+   if(plugin==='AlphaCalendar')return {calendar:'granted'};
+   if(plugin==='AlphaPhotoLibrary')return {scope:'full',locked:false};
+   return {};
+  }};
+ });
+ await page.goto(origin+'/access-composition');
+ await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
+ await page.evaluate(()=>(window as any).access.signin());
+ await page.evaluate(()=>(window as any).access.reopen());
+ const panel=page.getByRole('dialog',{name:'Set up Alpha access'});
+ await expect(panel.getByRole('button',{name:'Done',exact:true})).toBeAttached();
+ const assertTop=async()=>{
+  await expect(panel.getByRole('heading',{name:'Set up Alpha access',exact:true})).toBeFocused();
+  expect(await panel.evaluate(element=>element.scrollTop)).toBe(0);
+  const box=await panel.boundingBox(),heading=await panel.getByRole('heading',{name:'Set up Alpha access',exact:true}).boundingBox(),microphone=await panel.getByRole('heading',{name:'Microphone',exact:true}).boundingBox();
+  expect(heading!.y).toBeGreaterThanOrEqual(box!.y);
+  expect(microphone!.y+microphone!.height).toBeLessThan(box!.y+box!.height);
+ };
+ await assertTop();
+ await page.keyboard.press('Tab');await expect(panel.getByRole('button',{name:'Manage photo access',exact:true})).toBeFocused();
+ await panel.getByRole('button',{name:'Done',exact:true}).click();await expect(panel).toHaveCount(0);
+ await page.evaluate(()=>(window as any).access.reopen());await assertTop();
+ expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['requestPermissions','requestAccess','openSettings'].includes(c.method)))).toEqual([]);
+ await page.screenshot({path:'test-results/startup-access-reopen-top-360.png'});
+});

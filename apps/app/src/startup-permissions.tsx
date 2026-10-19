@@ -84,6 +84,7 @@ export function StartupPermissions() {
   const [reopened, setReopened] = useState(false);
   const [busy, setBusy] = useState<PermissionKey | null>(null);
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus>({state: 'checking', gmail: false, calendar: false});
+  const heading = useRef<HTMLHeadingElement>(null);
   const dialog = useRef<HTMLDialogElement>(null), alive = useRef(false), actionPending = useRef(false);
   const native = Capacitor.getPlatform() === 'android';
   const cloud = connectionController.getCloudClient();
@@ -140,6 +141,10 @@ export function StartupPermissions() {
       const phone = document.querySelector('.os');
       if (phone) { const theme = getComputedStyle(phone); for (const token of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.style.setProperty(`--connection-${token}`, theme.getPropertyValue(token === 'acc' ? '--acct' : `--${token}`)); }
       panel.showModal();
+      // A granted checklist may start with its first button far below the introduction.
+      // Focus the heading instead, so reopening starts at the top without changing access.
+      heading.current?.focus({preventScroll: true});
+      panel.scrollTop = 0;
     }
     const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); setDismissed(true); };
     if (visible) window.addEventListener('alpha-back', back, true);
@@ -158,7 +163,7 @@ export function StartupPermissions() {
   if (!visible) return null;
   const googleText = (connected: boolean) => googleStatus.state === 'checking' ? 'Checking connection…' : googleStatus.state === 'unavailable' ? 'Connection could not be verified. Check Google accounts.' : connected ? 'Connected with read access' : 'Not connected';
   return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={() => setDismissed(true)}>
-    <h2 id="alpha-permission-title">Set up Alpha access</h2>
+    <h2 ref={heading} tabIndex={-1} id="alpha-permission-title">Set up Alpha access</h2>
     <p id="alpha-permission-description">Set up the features you want now, or choose Not now. You can change access later in Settings; skipped features ask when you use them.</p>
     {keys.map(key => <section key={key} aria-labelledby={`alpha-access-${key}`}>
       <h3 id={`alpha-access-${key}`}>{details[key].title}</h3><p>{details[key].description}</p>
