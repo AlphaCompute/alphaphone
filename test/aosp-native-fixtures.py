@@ -140,6 +140,95 @@ class Packaging(unittest.TestCase):
         entries.update({prefix + n: data for n, data in worker_files.items()})
         return trust, entries
 
+    def cloud_fixture(self):
+        trust, entries = self.resident_fixture()
+        omitted = native.CLOUD_OMITTED_MODEL
+        del entries[omitted['path']]
+        provenance_path = 'assets/agent/android-agent-runtime-provenance.json'
+        provenance = json.loads(entries[provenance_path])
+        for row in provenance['files']:
+            if row['path'] == omitted['path']:
+                row['sha256'] = omitted['sha256']
+        entries[provenance_path] = json.dumps(provenance).encode()
+        entries['assets/agent/alpha-runtime-profile.json'] = json.dumps({
+            'version': 1, 'runtimeProfile': 'cloud', 'omittedLocalModels': [omitted]}).encode()
+        entries['assets/public/build-flags.json'] = json.dumps({'testMocks': False, 'runtimeProfile': 'cloud'}).encode()
+        return trust, entries
+
+    def test_cloud_stages_exact_resident_without_requiring_omitted_local_model(self):
+        trust, entries = self.cloud_fixture()
+        self.archive(list(entries.items()))
+        before = self.apk.read_bytes()
+        self.overlay()
+        with patch.object(native, 'ROOT', trust):
+            report = native.stage(self.apk, self.output, 'AlphaPhone')
+        self.assertEqual(self.apk.read_bytes(), before)
+        self.assertEqual(report['runtimeAdmission']['runtimeProfile'], 'cloud')
+        self.assertEqual(report['runtimeAdmission']['omittedLocalModels'], [native.CLOUD_OMITTED_MODEL])
+        self.assertTrue(report['residentAgentIncluded'])
+        self.assertFalse(report['runtimeVerified'])
+        self.assertFalse(report['deployReady'])
+        for name in native.RUNTIME_MODES:
+            self.assertEqual((self.output / 'native-arm64' / name).read_bytes(), ELF)
+
+    def test_cloud_refuses_mixed_profiles_and_missing_or_changed_original_provenance(self):
+        trust, original = self.cloud_fixture()
+        self.overlay()
+        profile_path = 'assets/agent/alpha-runtime-profile.json'
+        flags_path = 'assets/public/build-flags.json'
+        provenance_path = 'assets/agent/android-agent-runtime-provenance.json'
+        variants = []
+        for profile in [None, {'version': 1, 'runtimeProfile': 'unknown'},
+                        {'version': 1, 'runtimeProfile': 'native'},
+                        {'version': 1, 'runtimeProfile': 'cloud', 'omittedLocalModels': []}]:
+            entries = dict(original)
+            if profile is None:
+                del entries[profile_path]
+            else:
+                entries[profile_path] = json.dumps(profile).encode()
+            variants.append(entries)
+        for flags in [None, {'testMocks': True, 'runtimeProfile': 'cloud'}, {'testMocks': False, 'runtimeProfile': 'native'}]:
+            entries = dict(original)
+            if flags is None:
+                del entries[flags_path]
+            else:
+                entries[flags_path] = json.dumps(flags).encode()
+            variants.append(entries)
+        for name in [native.CLOUD_OMITTED_MODEL['path'], 'assets/extra.onnx',
+                     'assets/paradee-voice/config.json', 'lib/arm64-v8a/libelizainference.so']:
+            variants.append({**original, name: ELF})
+        for alteration in ['missing-model-record', 'changed-model-hash', 'changed-bundle', 'missing-worker']:
+            entries = dict(original)
+            provenance = json.loads(entries[provenance_path])
+            if alteration == 'missing-model-record':
+                provenance['files'] = [row for row in provenance['files'] if row['path'] != native.CLOUD_OMITTED_MODEL['path']]
+            elif alteration == 'changed-model-hash':
+                for row in provenance['files']:
+                    if row['path'] == native.CLOUD_OMITTED_MODEL['path']:
+                        row['sha256'] = '0' * 64
+            elif alteration == 'changed-bundle':
+                entries['assets/agent/agent-bundle.js'] += b'changed'
+            else:
+                del entries['assets/agent/workflow-worker/dependencies.json']
+            entries[provenance_path] = json.dumps(provenance).encode()
+            variants.append(entries)
+        for index, entries in enumerate(variants):
+            with self.subTest(index=index):
+                self.archive(list(entries.items()))
+                with patch.object(native, 'ROOT', trust), self.assertRaises((ValueError, KeyError)):
+                    native.stage(self.apk, self.output, 'AlphaPhone')
+                self.assertEqual((self.output / 'Android.bp').read_text(), BP)
+                self.assertEqual(len(list(self.output.iterdir())), 1)
+
+    def test_native_profile_still_requires_its_original_local_model(self):
+        trust, entries = self.resident_fixture()
+        del entries[native.CLOUD_OMITTED_MODEL['path']]
+        self.archive(list(entries.items()))
+        self.overlay()
+        with patch.object(native, 'ROOT', trust), self.assertRaises(KeyError):
+            native.stage(self.apk, self.output, 'AlphaPhone')
+        self.assertEqual(len(list(self.output.iterdir())), 1)
+
     def test_complete_resident_payload_gets_explicit_modes_without_execution_claim(self):
         trust, entries = self.resident_fixture()
         self.archive(list(entries.items()))
