@@ -99,7 +99,7 @@ for(const theme of ['light','dark'])test(`paused Notes voice keeps real review a
  await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);await expect(page.locator('[data-alpha-layer="conversation"]')).toBeVisible();await expect(review).toBeVisible();await noMedia(page);
 });
 
-for(const viewport of [{width:390,height:740},{width:1280,height:900}])test(`text and voice keep the same composer footprint: ${viewport.width}`,async({page},info)=>{
+for(const viewport of [{width:390,height:740},{width:800,height:1200},{width:1280,height:900}])test(`text and voice keep the same composer footprint: ${viewport.width}`,async({page},info)=>{
  await page.setViewportSize(viewport);await setup(page);
  await page.getByRole('button',{name:'Open conversation',exact:true}).click();
  const panel=page.locator('[data-alpha-layer="conversation"]');
@@ -108,7 +108,7 @@ for(const viewport of [{width:390,height:740},{width:1280,height:900}])test(`tex
  const voiceBox=()=>voice(page).evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius};});
  for(const detent of ['half','full']){
   if(detent==='full')await panel.getByRole('button',{name:'Expand chat',exact:true}).click();await settle();
-  const text=await box();await page.evaluate(()=>(window as any).chatVoiceFixture.holdStart=true);
+  const text=await box();if(viewport.width>=760&&viewport.height>viewport.width)expect(text.width).toBeLessThanOrEqual(561);await page.evaluate(()=>(window as any).chatVoiceFixture.holdStart=true);
   await panel.getByRole('button',{name:'Talk',exact:true}).click();await expect(voice(page)).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>typeof(window as any).chatVoiceFixture.releaseStart)).toBe('function');await settle();
   const starting=await voiceBox();await page.evaluate(()=>{const f=(window as any).chatVoiceFixture;f.holdStart=false;f.releaseStart();});await expect(voice(page)).toHaveAttribute('data-voice-state','listening');const listening=await voiceBox();
