@@ -41,6 +41,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  // Each Activity bridge (MainActivity, AlphaAssistActivity) has its own plugin instance. Calls,
  // streams and their invalidators belong to the instance that admitted them, so one surface's
  // destruction cancels only its own work. The runtime, epoch and enrollment stay process-wide.
+ private final ResidentRecoveryReview recoveryReview=new ResidentRecoveryReview();
  private final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
  private final java.util.Map<String,ElizaAgentService.LocalStreamHandle> streams=new java.util.HashMap<>();
  private final java.util.Map<String,Runnable> streamInvalidators=new java.util.HashMap<>();
@@ -48,6 +49,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  @Override public void load(){super.load();synchronized(lifecycleLock){if(!disposed)instances.add(this);}}
  /** This instance only: used when its own bridge is destroyed. Caller holds lifecycleLock. */
  private void invalidateOwnCalls(){
+  recoveryReview.clear();
   for(var notify:streamInvalidators.values())notify.run();streamInvalidators.clear();
   for(var handle:streams.values())handle.cancel();streams.clear();
   for(PluginCall call:pending)call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");
@@ -627,20 +629,25 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   if(archive&&(token==null||!token.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))){call.reject("Review recovery again before continuing.");return;}
   final long epoch,intent;
   synchronized(lifecycleLock){
-   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){call.reject("Recovery is unavailable right now. Your records were kept.");return;}
+   if(!archive)recoveryReview.clear();
+   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){recoveryReview.clear();call.reject("Recovery is unavailable right now. Your records were kept.");return;}
    epoch=lifecycleEpoch;intent=credentialIntentEpoch;pending.add(call);
   }
   try{workers.execute(()->{
    try{
     // SDK processLock is acquired before this authority takes lifecycleLock, matching startup.
     ElizaAgentService.RecoveryAuthority authority=operation->{synchronized(lifecycleLock){
-     if(disposed||epoch!=lifecycleEpoch||intent!=credentialIntentEpoch||!pending.contains(call)||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1)
-      return new JSONObject().put("status","unavailable").put("reason","active-owner").put("retainedCount",0).put("archivedCount",0);
-     return operation.run();
+     if(disposed||epoch!=lifecycleEpoch||intent!=credentialIntentEpoch||!pending.contains(call)||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){
+      recoveryReview.clear();return new JSONObject().put("status","unavailable").put("reason","active-owner").put("retainedCount",0).put("archivedCount",0);
+     }
+     if(archive&&!recoveryReview.consume(token,lifecycleEpoch,credentialIntentEpoch))return new JSONObject().put("status","unavailable").put("reason","records-changed").put("retainedCount",0).put("archivedCount",0);
+     JSONObject result=operation.run();
+     if(!archive&&"reviewable".equals(result.optString("status")))recoveryReview.bind(result.getString("reviewToken"),lifecycleEpoch,credentialIntentEpoch);
+     return result;
     }};
     JSONObject result=archive?ElizaAgentService.archiveIpcRecovery(token,authority):ElizaAgentService.reviewIpcRecovery(authority);
-    synchronized(lifecycleLock){if(pending.remove(call))call.resolve(new JSObject(result.toString()));}
-   }catch(Exception error){rejectPending(call,"Recovery could not be confirmed. Your records were kept. Review again before restarting.");}
+    synchronized(lifecycleLock){if(archive)recoveryReview.clear();if(pending.remove(call))call.resolve(new JSObject(result.toString()));}
+   }catch(Exception error){synchronized(lifecycleLock){recoveryReview.clear();}rejectPending(call,"Recovery could not be confirmed. Your records were kept. Review again before restarting.");}
   });}catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Recovery is unavailable right now. Your records were kept.");}
  }
  @PluginMethod public void getStatus(PluginCall call) {
