@@ -178,9 +178,9 @@ test('Share by email from Notes opens a prefilled local draft without sending',a
  await page.getByRole('textbox',{name:'Title',exact:true}).fill('Shared plan');
  await page.getByRole('textbox',{name:'Note',exact:true}).fill('First line\nSecond line');
  await page.getByRole('button',{name:'Share note',exact:true}).click();
- await page.getByRole('button',{name:'Share by email',exact:true}).click();
+ await page.getByRole('button',{name:'Share to email',exact:true}).click();
  await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Shared plan');
- await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('· First line\n· Second line');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Shared plan\n\nFirst line\nSecond line');
  await expect(page.getByRole('status').filter({hasText:'nothing has been sent'})).toBeVisible();
  expect((await gm(page)).prepares).toEqual([]);
 });
