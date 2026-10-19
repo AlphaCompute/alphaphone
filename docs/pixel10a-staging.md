@@ -42,7 +42,13 @@ emits `config.fs` with executable modes for Bun and its loader. A resident paylo
 must match the current source stamp, stable Bun binary pin, complete runtime
 provenance, workflow-worker closure, and native-view policy. A self-consistent
 replacement Bun cannot bypass its independent binary pin. The original APK is not
-rewritten. A compressed or malformed native payload is refused. Failed physical
+rewritten. For an explicitly built Cloud QA APK, the packaged renderer profile and
+exact `alpha-runtime-profile.json` receipt must agree. Staging verifies every retained
+resident provenance entry and the original pinned BGE omission record, while requiring
+that BGE and all other local inference/speech payloads are absent. Unknown profiles,
+missing resident components and mixed native/Cloud packages are refused. The native
+profile still requires its original local model. This permits Cloud QA image staging;
+it does not qualify offline speech, the image boot, Cloud services or release signing. A compressed or malformed native payload is refused. Failed physical
 staging removes its temporary output and leaves an existing destination untouched.
 
 `physical-product.json`, `native-libraries.json` and the camera receipt distinguish

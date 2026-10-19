@@ -23,6 +23,10 @@ RUNTIME_ASSETS = {
     'libeliza_gcc_s.so': 'libgcc_s.so.1',
     'libsigsys-handler.so': 'libsigsys-handler.so',
 }
+CLOUD_OMITTED_MODEL = {
+    'path': 'assets/agent/models/bge-small-en-v1.5-f16.gguf',
+    'sha256': 'f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999',
+}
 REQUIRED_AGENT_ASSETS = {
     'agent-bundle.js', 'pglite.wasm', 'pglite.data', 'initdb.wasm',
     'plugins-manifest.json', 'launch.sh', 'launch-child.sh',
@@ -58,7 +62,31 @@ def read_json(archive, path):
     return json.loads(archive.read(path), object_pairs_hook=unique_object)
 
 
-def verify_runtime(archive, runtime_names):
+def runtime_profile(archive):
+    names = set(archive.namelist())
+    marker = 'assets/agent/alpha-runtime-profile.json'
+    profile = read_json(archive, marker) if marker in names else {'version': 1, 'runtimeProfile': 'native'}
+    native = {'version': 1, 'runtimeProfile': 'native'}
+    cloud = {'version': 1, 'runtimeProfile': 'cloud', 'omittedLocalModels': [CLOUD_OMITTED_MODEL]}
+    if not isinstance(profile, dict) or type(profile.get('version')) is not int or profile not in (native, cloud):
+        raise ValueError('Unknown or malformed runtime profile')
+    kind = profile['runtimeProfile']
+    flags_path = 'assets/public/build-flags.json'
+    flags = read_json(archive, flags_path) if flags_path in names else {}
+    if not isinstance(flags, dict) or flags.get('runtimeProfile', 'native') != kind:
+        raise ValueError('Renderer and resident runtime profiles differ')
+    if kind == 'cloud':
+        if flags.get('testMocks') is not False:
+            raise ValueError('Cloud requires flag-off renderer admission')
+        for name in names:
+            if (name.startswith('assets/paradee-voice/')
+                    or re.search(r'\.(gguf|onnx|safetensors|pt|pth)$', name)
+                    or re.match(r'^(lib(?:elizainference|elizavoicejni|paradeevoicejni|llama|ggml|omnivoice)|llama-server)', Path(name).name)):
+                raise ValueError('Cloud APK includes local inference or speech')
+    return kind
+
+
+def verify_runtime(archive, runtime_names, profile='native'):
     if runtime_names != set(RUNTIME_MODES):
         raise ValueError('Incomplete or unknown ARM64 resident runtime')
     provenance = read_json(archive, 'assets/agent/android-agent-runtime-provenance.json')
@@ -75,6 +103,12 @@ def verify_runtime(archive, runtime_names):
                 or not re.fullmatch(r'[a-f0-9]{64}', expected)):
             raise ValueError('Invalid runtime provenance entry')
         seen.add(name)
+        if not isinstance(item.get('size_bytes'), int) or isinstance(item['size_bytes'], bool) or not 0 < item['size_bytes'] <= 1024 ** 3:
+            raise ValueError('Invalid runtime size: ' + name)
+        if profile == 'cloud' and name == CLOUD_OMITTED_MODEL['path']:
+            if expected != CLOUD_OMITTED_MODEL['sha256'] or name in archive.namelist():
+                raise ValueError('Cloud model omission differs from original provenance')
+            continue
         entry = archive.getinfo(name)
         if entry.file_size != item['size_bytes'] or not 0 < entry.file_size <= 1024 ** 3:
             raise ValueError('Runtime size mismatch: ' + name)
@@ -156,7 +190,8 @@ def verify_runtime(archive, runtime_names):
     if len(index) != len(index_files) or set(index) != {digest + '\t' + name for name, digest in index_files.items()}:
         raise ValueError('Workflow extraction index mismatch')
     return {'runtimeFilesVerified': len(records), 'workerFilesVerified': len(files),
-            'sourceCommit': stamp['base'], 'bunVersion': bun['version']}
+            'sourceCommit': stamp['base'], 'bunVersion': bun['version'],
+            'runtimeProfile': profile, 'omittedLocalModels': [CLOUD_OMITTED_MODEL] if profile == 'cloud' else []}
 
 
 def stage(apk, output, module, target='stallion'):
@@ -168,6 +203,7 @@ def stage(apk, output, module, target='stallion'):
         names = archive.namelist()
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK entries')
+        profile = runtime_profile(archive)
         selected = [e for e in archive.infolist() if e.filename.startswith('lib/arm64-v8a/')]
         payloads = []
         for entry in selected:
@@ -183,7 +219,7 @@ def stage(apk, output, module, target='stallion'):
         if not payloads:
             raise ValueError('No ARM64 native libraries')
         runtime_names = {name for name, _ in payloads if name.startswith('libeliza_') or name == 'libsigsys-handler.so'}
-        runtime = verify_runtime(archive, runtime_names) if runtime_names or 'assets/agent/agent-bundle.js' in names else None
+        runtime = verify_runtime(archive, runtime_names, profile) if runtime_names or 'assets/agent/agent-bundle.js' in names or profile == 'cloud' else None
     expected_bp = ('// Generated from a hash- and signer-verified downstream launcher.\n'
                    'android_app_import {\n' + f'    name: "{module}",\n' +
                    '    apk: "Launcher.apk",\n    presigned: true,\n'
