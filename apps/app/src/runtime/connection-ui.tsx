@@ -1,3 +1,4 @@
+import {browserCloudResidentEnabled,browserCloudResidentEnvironment} from './browser-cloud-resident';
 import {CAMERA_CAPTURE_CAPABILITY} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
 import {sanitizeCloudInferenceFailure,type CloudInferenceFailure} from './crash-log';
 import {residentRecoveryReason,residentRecoveryMessage,RESIDENT_RECOVERY_PENDING,type ResidentRecoveryReason,type ResidentRecoveryView} from './resident-recovery';
@@ -141,8 +142,8 @@ const SELECTION = 'alpha.connection.selection.v1';
 // The development chooser exists only on an explicitly flagged development server.
 const browserDevProfile = devSurfacesEnabled && devProfileQuery;
 /** Production builds offer only the production Cloud environment. */
-const cloudEnvironmentPolicy = {development: import.meta.env.DEV, testMocks: testMocksEnabled, android: isAndroid, previewEnvironment: import.meta.env.VITE_ALPHA_CLOUD_ENVIRONMENT};
-const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => environment === 'production' || (testMocksEnabled && environment === 'staging');
+const cloudEnvironmentPolicy = {development: import.meta.env.DEV, testMocks: testMocksEnabled, android: isAndroid, previewEnvironment: import.meta.env.VITE_ALPHA_CLOUD_ENVIRONMENT, cloudResident:browserCloudResidentEnabled};
+const cloudEnvironmentAllowed = (environment: unknown): environment is CloudEnvironment => browserCloudResidentEnabled ? environment===browserCloudResidentEnvironment : environment === 'production' || (testMocksEnabled && environment === 'staging');
 /** Eliza Cloud admits no request from the production web origin, so no Cloud route is started there. */
 const webCloudUnavailable = () => !testMocksEnabled && !isAndroid && !browserLocalAgentEnabled;
 /** Decision P-43 (owner, 2026-10-13): the agent always runs locally. On Android production and in
@@ -197,7 +198,7 @@ function residentQa(): CloudEnvironment | null {
  * test-mocks builds only in QA mode. The flow never withholds the agent: it decides only whether
  * Eliza Cloud inference is bound into it.
  */
-function residentCloudFlow(): boolean { return (isAndroid && !testMocksEnabled) || residentQa() !== null; }
+function residentCloudFlow(): boolean { return browserCloudResidentEnabled || (isAndroid && !testMocksEnabled) || residentQa() !== null; }
 /** The on-device agent is never stopped or disconnected on a product phone (owner directive 2026-10-13). */
 const ALWAYS_LOCAL = 'Your agent always runs on this phone. Sign out of Eliza Cloud or change your plan in Settings; the agent keeps running.';
 /**
@@ -205,9 +206,9 @@ const ALWAYS_LOCAL = 'Your agent always runs on this phone. Sign out of Eliza Cl
  * runs meanwhile (without Cloud inference). Offline is not a sign-in requirement.
  */
 function residentSignInRequired(): boolean { return residentCloudFlow() && !state.cloudAccount && state.residentPlanNotice !== 'offline' && !state.residentStarting; }
-function residentEnvironment(): CloudEnvironment { return residentQa() ?? 'production'; }
+function residentEnvironment(): CloudEnvironment { return browserCloudResidentEnabled?browserCloudResidentEnvironment:residentQa() ?? 'production'; }
 /** The on-device agent's Cloud inference binding is production-only (native reads cloud:production). */
-function residentBindable(): boolean { return isAndroid && residentEnvironment() === 'production'; }
+function residentBindable(): boolean { return browserCloudResidentEnabled || isAndroid && residentEnvironment() === 'production'; }
 /** Warn this long before this phone's Cloud sign-in key expires (CLI keys last 90 days). */
 export const CLOUD_KEY_EXPIRY_WARNING_MS = 14 * 24 * 60 * 60 * 1000;
 /**
@@ -392,7 +393,7 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
 function detachCloudTarget() { if (testMocksEnabled && active?.kind === 'cloud') retire(); }
 // Only the Android transport admits Cloud's self-revocation DELETE; elsewhere sign-out reports a local removal.
 // Product builds construct only the managed-services adapter; the hosted-agent fixture exists only with test mocks.
-function makeCloud(environment: CloudEnvironment): CloudProtocol { return testMocksEnabled ? new DevelopmentCloudAgentProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid, signIn: cloudSignIn }) : new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid, signIn: cloudSignIn }); }
+function makeCloud(environment: CloudEnvironment): CloudProtocol { return testMocksEnabled ? new DevelopmentCloudAgentProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid || browserCloudResidentEnabled, signIn: cloudSignIn }) : new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid || browserCloudResidentEnabled, signIn: cloudSignIn }); }
 /** The client for an in-app sign-in in this environment; replaced when the environment changes. */
 function signInClient(environment: CloudEnvironment): CloudProtocol {
   if (cloud.environment !== environment) cloud = makeCloud(environment);
@@ -2435,6 +2436,7 @@ export function ConnectionChooser() {
   const cloudAccountControls=<>
     {browserOnly&&<p>{WEB_CLOUD_UNAVAILABLE}</p>}
     {snapshot.cloudAccount&&<section className="alpha-connection-current alpha-cloud-account-summary"><strong>{snapshot.cloudAccount.email||'Signed in to Eliza Cloud'}</strong>{!snapshot.cloudAccount.email&&<span>Account {snapshot.cloudAccount.userId}</span>}<button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out of Eliza Cloud</button></section>}
+    {browserCloudResidentEnabled&&<p role="status">Cloud environment: {browserCloudResidentEnvironment==='staging'?'Staging QA':'Production'}. Your agent runs on this computer.</p>}
     {testMocksEnabled&&snapshot.purpose!=='cloud-account'&&<label>Environment<select aria-label="Environment" ref={environment} disabled={snapshot.busy} defaultValue={resolveCloudEnvironment(cloudEnvironmentPolicy, snapshot.signIn?.environment ?? cloud.environment)} onChange={()=>connectionController.cloudEnvironment(env())}><option value="production">Production</option><option value="staging">Staging</option></select></label>}
     {!browserOnly&&(!snapshot.cloudAccount||snapshot.purpose!=='cloud-account')&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.cloudLogin(env())}>Sign in with Eliza Cloud</button></div>}
   </>;

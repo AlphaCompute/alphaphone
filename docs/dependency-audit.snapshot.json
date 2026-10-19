@@ -103,7 +103,7 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "cc52bef586997875047d9a9c74276084fad8610c",
+    "upstreamCommit": "0296e2c929d45bf66873a1e360a1d260e8b1125d",
     "input": "vendor/eliza/bun.lock",
     "auditedOn": "2026-10-19",
     "inputSha256": "e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e",

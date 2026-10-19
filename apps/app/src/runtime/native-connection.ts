@@ -1,3 +1,4 @@
+import {browserCloudResidentEnabled,browserCloudManagedServiceAllowed} from './browser-cloud-resident';
 import {managedServiceRequest} from './managed-service-routes';
 import {automationsRouteAllowed} from './automations-route-policy';
 import {BrowserCloudConnection,BrowserCloudSignIn} from '../browser/cloud-connection';
@@ -9,7 +10,7 @@ import type { CloudSignInPort } from './cloud-sign-in';
 import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
 const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
-const browserCloudHost=devSurfacesEnabled&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
+const browserCloudHost=(devSurfacesEnabled||browserCloudResidentEnabled)&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
 const nativeSignInHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaCloudSignIn')??false;
 /**
  * In-app Eliza Cloud sign-in host: AlphaCloudSignInPlugin on Android, or the development Cloud bridge
@@ -223,7 +224,7 @@ export const remoteCredentialStore:RemoteCredentialStore={
 };
 export const nativeCloudRequest:CloudNativeRequest=async input=>{
   input.signal.throwIfAborted();
-  if(!testMocksEnabled&&!managedServiceRequest(input.url,input.method,input.body!==undefined))throw new Error('Only managed Cloud services are available.');
+  if(!testMocksEnabled&&!browserCloudManagedServiceAllowed(input.url,input.method,input.body!==undefined))throw new Error('Only managed Cloud services are available.');
   const requestId=crypto.randomUUID();
   let rejectAbort:(reason:unknown)=>void=()=>{};
   const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});

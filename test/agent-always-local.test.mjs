@@ -92,7 +92,7 @@ test('the connection controller has no local-apps-only mode and migrates old sel
   assert.match(ui, /value\?\.kind === 'offline' \|\| value\?\.kind === 'none'\) return residentAlwaysPresent \? \{ kind: 'resident' \}/);
   // Saving a no-agent choice there stores the resident instead.
   assert.match(ui, /residentAlwaysPresent && \(selection\.kind === 'none' \|\| selection\.kind === 'offline'\) \? \{ kind: 'resident' \}/);
-  assert.match(ui, /function residentCloudFlow\(\): boolean \{ return \(isAndroid && !testMocksEnabled\) \|\| residentQa\(\) !== null; \}/);
+  assert.match(ui, /function residentCloudFlow\(\): boolean \{ return browserCloudResidentEnabled \|\| \(isAndroid && !testMocksEnabled\) \|\| residentQa\(\) !== null; \}/);
   assert.doesNotMatch(ui, /if\(!await admitCloudResident\(signal\)\)return;/);
 });
 

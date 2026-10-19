@@ -34,15 +34,16 @@ test('Cloud browser login admits only one session and the optional fixed Alpha h
   assert.equal(opened.length,count,'refused destinations never open a window');
  }finally{if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else delete globalThis.window;}
 });
-async function fixture(){
+async function fixture(resident,environment){
  const profile=await mkdtemp(join(tmpdir(),'alpha-browser-cloud-')),file=join(profile,'existing-secret');await writeFile(file,secret,{mode:0o600});
  const seed={environment:'production',credentialFile:file,credentialSha256:createHash('sha256').update(secret).digest('hex'),userId:owner,organizationId:org,credentialReference:reference,credentialId};await writeFile(join(profile,'initial-credential.json'),JSON.stringify(seed),{mode:0o600});
- const calls=[];let signIn=null,response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
+ const calls=[],diagnostics=[];let signIn=null,response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
  const request=async(url,input={})=>{
   const path=new URL(url).pathname;calls.push({url,input});
   if(signIn){const handled=await signIn(path,input);if(handled)return handled;}
   if(path==='/api/auth/cli-session')return Response.json({sessionId:session,expiresAt:new Date(Date.now()+60000).toISOString()});
   if(path==='/api/auth/cli-session/'+session)return pollResponse();
+  if(path==='/api/v1/subscription/entitlement-keys')return response(url,input);
   assert.equal(new Headers(input.headers).get('Authorization'),'Bearer '+secret);
   if(path==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:org,email:'owned@example.invalid'}});
   if(path==='/api/v1/billing/limits')return Response.json({success:true,data:{v2:{subscription:{status:'available',value:{planKey:'plus_monthly',state:'active'}}}}});
@@ -50,10 +51,10 @@ async function fixture(){
   return response(url,input);
  };
  let server,origin,host;
- const start=async()=>{host=createBrowserCloudDevHandler({profile,request});server=createServer(host);await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
+ const start=async()=>{host=createBrowserCloudDevHandler({profile,request,resident,environment,diagnostic:event=>diagnostics.push(event)});server=createServer(host);await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
  const send=(data,options={})=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1',...(options.headers||{})},body:JSON.stringify(data),signal:options.signal});
  const rpc=async data=>{const r=await send(data);return {status:r.status,data:await r.json()};};
- return {profile,file,calls,send,rpc,host:()=>host,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
+ return {profile,file,calls,diagnostics,send,rpc,host:()=>host,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
 }
 test('existing Mac credential becomes a real canonical identity/credit reference, never a browser bearer',async()=>{
  const f=await fixture();try{
@@ -276,6 +277,7 @@ test('development host email sign-in mints a mobile key server-side and commits 
    await assert.rejects(client.verifyEmailSignIn(started.attemptId,'000000',new AbortController().signal),error=>error.code==='invalid-code');
    const outcome=await client.verifyEmailSignIn(started.attemptId,'123456',new AbortController().signal);
    assert.equal(outcome.status,'authenticated');assert.equal(outcome.accountCreated,true);
+   assert.ok(f.diagnostics.some(row=>row.operation==='/api/v1/app-auth/mobile/token'&&row.status===200));assert.ok(f.diagnostics.every(row=>Object.keys(row).every(key=>['environment','operation','status','code'].includes(key))));assert.ok(!JSON.stringify(f.diagnostics).includes(minted));
    assert.deepEqual(order.filter(path=>path!=='/steward/auth/email/code/verify'&&path!=='/steward/auth/logout'),['/steward/auth/email/code/send','/api/v1/app-auth/connect','/api/v1/app-auth/mobile/token','/api/v1/app-auth/mobile/ack','/api/v1/user'],'acknowledged before the identity read and the commit');
    for(let wait=0;wait<50&&!order.includes('/steward/auth/logout');wait++)await new Promise(resolve=>setTimeout(resolve,10));
    assert.ok(order.includes('/steward/auth/logout'),'the Steward session is revoked, best effort');
@@ -414,4 +416,48 @@ test('Maps data returning after a Cloud owner switch is discarded',async()=>{
   await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
   const result=await pending;assert.notEqual(result.status,200);assert.equal(JSON.stringify(result).includes('Previous owner result'),false);
  }finally{release?.();await f.close();}
+});
+
+
+test('Cloud resident binding is host-owned, exact-account scoped, and retired before sign-out persists',async()=>{
+ const events=[],resident={async bind(value){events.push({kind:'bind',value});return {provider:'elizacloud',configured:true};},async clear(){events.push({kind:'clear'});return {provider:'elizacloud',configured:false};},status(){return {provider:'elizacloud',configured:false};},async ready(){return {state:'host-managed'};}};
+ const f=await fixture(resident);try{
+  const wrong=await f.rpc({operation:'residentBind',environment:'production',credentialId:randomUUID()});assert.equal(wrong.status,409);assert.equal(events.length,0);
+  const staged=await f.rpc({operation:'residentBind',environment:'staging',credentialId});assert.equal(staged.status,400);assert.equal(events.length,0);
+  const bound=await f.rpc({operation:'residentBind',environment:'production',credentialId});assert.equal(bound.status,200);assert.equal(events[0].value.token,secret);assert.equal(events[0].value.reference,reference);assert.ok(!JSON.stringify(bound).includes(secret));
+  const removed=await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});assert.equal(removed.status,200);assert.equal(events.at(-1).kind,'clear');
+  const stale=await f.rpc({operation:'residentBind',environment:'production',credentialId});assert.equal(stale.status,409);
+ }finally{await f.close();}
+});
+
+test('failed Cloud resident retirement preserves the saved credential and fails sign-out',async()=>{
+ const resident={async bind(){throw Error('unused');},async clear(){throw Error('shutdown unconfirmed');},status(){return {};},async ready(){return {};}};
+ const f=await fixture(resident);try{
+  assert.equal((await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference})).status,400);
+  const stored=await f.rpc({operation:'secureRead',slot:'cloud:production'});assert.equal(JSON.parse(stored.data.value).credentialId,credentialId);
+ }finally{await f.close();}
+});
+
+test('explicit Cloud resident rejects a different issuer before dispatch',async()=>{
+ const f=await fixture(undefined,'staging');try{
+  const before=f.calls.length;
+  const result=await f.rpc({operation:'secureRead',slot:'cloud:production'});
+  assert.notEqual(result.status,200);assert.equal(f.calls.length,before);
+ }finally{await f.close();}
+});
+
+test('real CloudProtocol verifies a signed plan through public host keys without a credential reference',async()=>{
+ const {checkEntitlement,ENTITLEMENT_TYPE,ENTITLEMENT_AUDIENCE}=await import('../apps/app/src/runtime/subscription-entitlement.ts');
+ const pair=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+ const key={...await crypto.subtle.exportKey('jwk',pair.publicKey),kid:'host-public-keys-regression'};
+ const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');const now=Math.floor(Date.now()/1000);
+ const unsigned=encode({alg:'ES256',typ:ENTITLEMENT_TYPE,kid:key.kid})+'.'+encode({iss:'https://api.eliza.app',aud:ENTITLEMENT_AUDIENCE,sub:owner,org,jti:'synthetic-plan',iat:now-1,exp:now+300,plan:{id:'none',name:'No plan',status:'none'}});
+ const token=unsigned+'.'+Buffer.from(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},pair.privateKey,Buffer.from(unsigned))).toString('base64url');
+ const f=await fixture();try{
+  let publicRead=false;f.setResponse(async(url,input)=>{if(new URL(url).pathname==='/api/v1/subscription/entitlement-keys'){assert.equal(new Headers(input.headers).get('Authorization'),null);publicRead=true;return Response.json({keys:[key]});}if(new URL(url).pathname==='/api/v1/subscription/entitlement')return Response.json({entitlement:token});return Response.json({},{status:404});});
+  const stored=JSON.parse((await f.rpc({operation:'secureRead',slot:'cloud:production'})).data.value);
+  const client=new CloudProtocol('production',async input=>{const r=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input});assert.equal(r.status,200);return r.data;},{acceptsReferences:true,read:async()=>stored,write:async()=>{},clear:async()=>{}},async()=>{});
+  const checked=await checkEntitlement(client.entitlementSource(),{userId:owner,organizationId:org},new AbortController().signal);
+  assert.equal(publicRead,true);assert.equal(checked.view.kind,'inactive');assert.equal(checked.view.status,'none');assert.ok(checked.entitlement);
+ }finally{await f.close();}
 });
