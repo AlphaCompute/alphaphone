@@ -222,6 +222,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   const text=await current(page).innerText();visited.push(label);
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
+  if(label==='Privacy & data')await expect(current(page).getByText('Memory',{exact:true})).toHaveCount(0);
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
   if(label==='About'){await expect(current(page).getByRole('button',{name:'Problem log',exact:true})).toBeVisible();await expect(current(page).getByRole('button',{name:'Export diagnostics',exact:true})).toBeVisible();}
   // A switch must be backed by app-owned state; the email preference is exercised here and across reload below.
@@ -359,6 +360,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   const text=await current(page).innerText();
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
+  if(label==='Privacy & data')await expect(current(page).getByText('Memory',{exact:true})).toHaveCount(0);
   expect(text).not.toMatch(/Wi-Fi\s*(On|Off)\b|Bluetooth\s*(On|Off)\b|Airplane mode\s*(On|Off)\b/);
   if(label==='Connections'){expect(text).toMatch(/Other connectors\s*Not available in this version/);expect(text).not.toMatch(/Other connectors\s*Not connected/);}
   if(label==='Notifications'){

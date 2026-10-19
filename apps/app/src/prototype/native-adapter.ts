@@ -329,7 +329,6 @@ export function installPrototypeNativeAdapters(
       }
       if (result.label === 'On-device model') result.val = 'Not loaded';
       if (st.page === 'privacy' && ['Microphone','Location','Camera','Contacts'].includes(result.label)) result.val = 'Review access';
-      if (st.page === 'privacy' && result.label === 'Memory') result.val = connectionController.getSnapshot().session ? 'Usage not reported by agent' : 'Not connected';
       if (st.page === 'privacy' && result.label === 'Activity') result.val = activityValue(connectionController.getSnapshot());
     }
     return result;
@@ -394,7 +393,7 @@ export function installPrototypeNativeAdapters(
         page.groups = [...groups, { rows: [nav('Workflow runs', () => api.open('workflows'))] }];
       }
       // Memory deletion is not connected; do not offer a control that only explains that.
-      for (const group of page.groups) if (Array.isArray(group?.rows)) group.rows = group.rows.filter((row: Bag) => row?.label !== 'Wipe memory');
+      for (const group of page.groups) if (Array.isArray(group?.rows)) group.rows = group.rows.filter((row: Bag) => row?.label !== 'Wipe memory' && (page.title !== 'Privacy & data' || row?.label !== 'Memory'));
       page.groups = page.groups.filter((group: Bag) => !Array.isArray(group?.rows) || group.rows.length);
     }
     return out;

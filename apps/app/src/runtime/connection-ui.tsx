@@ -200,7 +200,7 @@ function residentQa(): CloudEnvironment | null {
  */
 function residentCloudFlow(): boolean { return browserCloudResidentEnabled || (isAndroid && !testMocksEnabled) || residentQa() !== null; }
 /** The on-device agent is never stopped or disconnected on a product phone (owner directive 2026-10-13). */
-const ALWAYS_LOCAL = 'Your agent always runs on this phone. Sign out of Eliza Cloud or change your plan in Settings; the agent keeps running.';
+const ALWAYS_LOCAL = 'Your agent always runs on this device. Sign out of Eliza Cloud or change your plan in Settings; the agent keeps running.';
 /**
  * First run and a rejected sign-in: the Eliza Cloud sign-in dialog cannot be dismissed. The agent
  * runs meanwhile (without Cloud inference). Offline is not a sign-in requirement.
@@ -245,18 +245,18 @@ function cloudUnreachable(error: unknown): boolean {
   if (error instanceof EntitlementError) return false;
   return error instanceof Error && /^(Connection request failed|Connection timed out|Request cancelled)$/.test(error.message);
 }
-const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Your agent is running on this phone; AI replies return when Cloud is reachable again, checked when the network returns or you come back to Alpha Phone.';
+const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Your agent is running on this device; AI replies return when Cloud is reachable again, checked when the network returns or you come back to Alpha Phone.';
 /** Notice shown when Cloud inference is unavailable or account access is unconfirmed. */
-const NEEDS_PLAN_NOTICE = 'Your agent is running on this phone. AI replies aren’t available right now. Check your Eliza Cloud account in Settings.';
+const NEEDS_PLAN_NOTICE = 'Your agent is running on this device. AI replies aren’t available right now. Check your Eliza Cloud account in Settings.';
 /**
  * The on-device agent's honest answer to a chat or assistant request while Eliza Cloud inference
  * is not bound (the local runtime reports it as a provider-less turn). Local tools keep working.
  */
 export function inferenceUnavailableReply(notice: ConnectionSnapshot['residentPlanNotice'], signedIn: boolean): string {
   const local = 'Local apps keep working.';
-  if (notice === 'offline') return `I'm running on this phone, but I can't reach Eliza Cloud for AI replies right now. ${local} Check your connection and try again.`;
-  if (!signedIn) return `I'm running on this phone, but AI replies need Eliza Cloud. Sign in with Eliza Cloud to continue. ${local}`;
-  return `I'm running on this phone, but AI replies aren’t available right now. Check your Eliza Cloud account in Settings. ${local} Nothing was purchased.`;
+  if (notice === 'offline') return `I'm running on this device, but I can't reach Eliza Cloud for AI replies right now. ${local} Check your connection and try again.`;
+  if (!signedIn) return `I'm running on this device, but AI replies need Eliza Cloud. Sign in with Eliza Cloud to continue. ${local}`;
+  return `I'm running on this device, but AI replies aren’t available right now. Check your Eliza Cloud account in Settings. ${local} Nothing was purchased.`;
 }
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -1085,7 +1085,7 @@ function pairingError(error: unknown, withCode: boolean): unknown {
 }
 /** After the provider key is removed or Cloud is signed out: the agent keeps running with AI off. */
 const AI_OFF_MESSAGE = 'Your agent is running. Sign in to Eliza Cloud to turn AI back on.';
-const PAIRING_RETIRED = 'Pairing is unavailable. Your agent runs on this phone; sign in to Eliza Cloud for inference.';
+const PAIRING_RETIRED = 'Pairing is unavailable. Your agent runs on this device; sign in to Eliza Cloud for inference.';
 const RESIDENT_SIGN_IN_EXPIRED = 'Your Eliza Cloud sign-in has expired. Sign in with Eliza Cloud again.';
 /** Shown beside the composer while the resident is connected and the phone has no network. */
 export const INFERENCE_OFFLINE_NOTICE = 'Your agent is running; AI needs a connection. Nothing is sent until this phone is back online.';
@@ -1631,7 +1631,7 @@ export const connectionController = {
         current();
         let result:unknown;
         if(selected.kind==='resident')result=await selected.remote.request(path,body,bounded,{},method);
-        else if(!hosted)throw Error('Your agent runs on this phone.');
+        else if(!hosted)throw Error('Your agent runs on this device.');
         else if(selected.kind==='cloud')result=await selected.cloud.phoneRequest(selected.phoneTarget!,path,bounded,body,method);
         else result=await hosted.pairedRequest(selected,session,path,method,body,bounded,current,true);
         current();return result;
@@ -1647,7 +1647,7 @@ export const connectionController = {
       signal.throwIfAborted();
       if (generation !== epoch) throw new Error('Agent changed');
       if(selected.kind==='resident'){try{const response=await selected.remote.request(path,body,signal);if(generation!==epoch)throw Error('Agent changed');return response;}catch(error){if(error&&typeof error==='object'&&'status' in error&&typeof error.status==='number')throw new WorkflowHttpError(error.status,'data' in error?error.data:undefined);throw error;}}
-      if (!hosted) throw new Error('Your agent runs on this phone.');
+      if (!hosted) throw new Error('Your agent runs on this device.');
       if (selected.kind==='cloud') { try { const response=await selected.cloud.phoneRequest(selected.phoneTarget!,path,signal,body); if(generation!==epoch)throw new Error('Agent changed');return response; } catch(error) { if(error instanceof CloudProtocolError && error.status)throw new WorkflowHttpError(error.status,error.data); throw error; } }
       return hosted.pairedRequest(selected,session,path,body === undefined ? 'GET' : 'POST',body,signal,()=>{if (generation !== epoch) throw new Error('Agent changed');},false);
     }) };
@@ -2482,7 +2482,7 @@ export function ConnectionChooser() {
     {snapshot.busy&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
   </div></div>;
 
-  // P-43 (owner, 2026-10-13): the agent always runs on this phone. This dialog is its status
+  // P-43 (owner, 2026-10-13): the agent always runs on this device. This dialog is its status
   // (Starting / Running on this device / Not running, with Retry) and its Eliza Cloud AI: sign-in
   // (which every Alpha Phone needs), plan, redeem code and sign-out. Plan state never stops the agent.
   const residentSignInRejected=snapshot.error===errorMessage({status:401});
@@ -2499,7 +2499,7 @@ export function ConnectionChooser() {
   const residentPlan=residentNeedsPlan&&residentPlanView?.kind==='unavailable'&&residentPlanView.reason!=='not-published'
     ?{...residentPlanDescribed,detail:'Eliza Cloud could not confirm a plan for this account right now. Check again, redeem a subscription code or choose a plan. Your data on this phone is kept.'}:residentPlanDescribed;
   const residentPlanRecheck=residentPlanUnchecked||residentPlanView.kind==='inactive'||residentPlanView.kind==='unavailable';
-  const residentAiOff=residentMustSignIn&&!snapshot.residentSavedCredential?'Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud for AI.';
+  const residentAiOff=residentMustSignIn&&!snapshot.residentSavedCredential?'Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this device meanwhile, with AI off until you sign in.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud for AI.';
   const keyExpiresAt=snapshot.cloudAccount?.expiresAt;
   const keyExpiring=keyExpiresAt!==undefined&&keyExpiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS;
   const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -2509,7 +2509,7 @@ export function ConnectionChooser() {
   </form>;
   if(residentCloudFlow())return <div className="alpha-connection-scrim"><div className="alpha-connection alpha-connection-native alpha-connection-resume" role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-busy={snapshot.residentStarting||undefined} tabIndex={-1} ref={panel}>
     <header><h1 id="connection-title" className="serif">{planPanel&&snapshot.cloudAccount?(residentPlanView?.kind==='credits'?'Eliza Cloud account':'Eliza Cloud account & plan'):'Your agent'}</h1>{!residentMustSignIn&&<button aria-label="Close connection settings" disabled={snapshot.busy&&!snapshot.residentStarting} onClick={()=>connectionController.close()}>×</button>}</header>
-    <section aria-label="Agent status"><p role="status"><strong>{residentStatus}</strong>{!snapshot.session&&snapshot.kind!=='recovering'?' · Your agent runs on this phone.':''}</p>
+    <section aria-label="Agent status"><p role="status"><strong>{residentStatus}</strong>{!snapshot.session&&snapshot.kind!=='recovering'?' · Your agent runs on this device.':''}</p>
       {snapshot.kind==='recovering'&&!snapshot.session&&!snapshot.residentRecoveryReason&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry</button></div>}
       {snapshot.residentRecoveryReason==='ipc-recovery-retention-limit'&&!snapshot.session&&<section aria-label="Agent recovery">
         <p>Your notes, chats and sign-in stay unchanged.</p>
@@ -2524,7 +2524,7 @@ export function ConnectionChooser() {
       </section>}
       {snapshot.session&&!planPanel&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
     </section>
-    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.residentRecoveryReason?'AI is unavailable while your agent needs recovery.':snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this phone.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
+    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.residentRecoveryReason?'AI is unavailable while your agent needs recovery.':snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this device.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
       {snapshot.cloudAccount&&!residentSignInRejected?<>
         {accountCreatedNotice}
         {(planPanel||residentNeedsPlan)&&<p>{snapshot.cloudAccount.email||`Account ${snapshot.cloudAccount.userId}`}</p>}
@@ -2597,7 +2597,7 @@ export function ConnectionChooser() {
   return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="connection-title" tabIndex={-1} ref={panel}>
     <header><span className="alpha-connection-logo alpha-compute-mark" aria-label="Alpha Compute"/><button aria-label="Close connection settings" disabled={snapshot.busy} onClick={() => connectionController.close()}><span aria-hidden="true" data-alpha-icon="/icons/lucide/x.svg" style={iconStyle("x")}/></button></header>
     <h1 id="connection-title" className="serif">Your agent.<br />Your phone.</h1>
-    <p>{testMocksEnabled ? 'Run your agent locally, or use a development connection below.' : 'Your agent runs on this phone.'} Model inference uses the provider configured for that agent.</p>
+    <p>{testMocksEnabled ? 'Run your agent locally, or use a development connection below.' : 'Your agent runs on this device.'} Model inference uses the provider configured for that agent.</p>
     <section><h3>{isAndroid ? 'On-device agent' : 'Agent on this computer'}</h3>
       <p>{isAndroid ? 'Agent execution and state stay on this Android device. Hosted inference, when configured, receives your prompts and selected context.' : 'The agent runs on your development computer. This preview connects to it; the Android app runs its own agent.'}</p>
       {testMocksEnabled && isAndroid && localPackaging==='available' && <details onToggle={event=>{if((event.currentTarget as HTMLDetailsElement).open)void connectionController.refreshProviderStatus();}}><summary>Model provider</summary><p role="status">{providerStatusLabel(snapshot.providerStatus)}</p><p>Cerebras receives prompts and selected context for inference with {LOCAL_PROVIDER_MODEL}. Your key is checked with Cerebras, then stored using Android Keystore. A new key takes effect after the agent restarts.</p><form onSubmit={event=>{event.preventDefault();const key=providerKey.current?.value||'';if(providerKey.current)providerKey.current.value='';void connectionController.configureLocal(key);}}><label>Cerebras API key<input ref={providerKey} type="password" autoComplete="off" required disabled={snapshot.busy}/></label><p>Model: {LOCAL_PROVIDER_MODEL}</p><button disabled={snapshot.busy}>Save provider</button></form>

@@ -91,7 +91,7 @@ for (const frame of ['done', 'error'] as const) test(`a provider-less turn witho
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('configureCloudProvider')))).toEqual([]);
   await setStub(page, { stream: { failure: 'no_provider', frame } });
   await send(page, 'Asked without a plan');
-  await expect(conversation(page).getByText(/^I'm running on this phone, but AI replies aren’t available right now\./)).toHaveCount(1);
+  await expect(conversation(page).getByText(/^I'm running on this device, but AI replies aren’t available right now\./)).toHaveCount(1);
   await expect(page.getByText(/Set up AI/)).toHaveCount(0);
   await expect(page.getByText(/PRIVATE_PROVIDER_ERROR_CANARY/)).toHaveCount(0);
   const plan = page.getByRole('button', { name: /^Redeem code or choose a plan/ });

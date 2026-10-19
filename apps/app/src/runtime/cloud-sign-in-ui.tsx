@@ -11,8 +11,7 @@ export interface CloudSignInActions {
 }
 export function CloudSignInPanel({ view, busy, google, message, error, actions, extra }: {
   view: SignInView; busy: boolean; google: boolean; message: string; error: string; actions: CloudSignInActions;
-  /** Test-mocks builds only (the retired browser hand-off, for one release); built by the caller so a
-   * flag-off bundle carries none of its text. */
+  /** Optional hosted sign-in entry supplied by the caller's build gate. */
   extra?: ReactNode;
 }) {
   const email = useRef<HTMLInputElement>(null), code = useRef<HTMLInputElement>(null);
@@ -36,7 +35,7 @@ export function CloudSignInPanel({ view, busy, google, message, error, actions, 
   return <>
     <header><h1 id="cloud-sign-in-title" className="serif">Sign in to Eliza Cloud</h1></header>
     {view.step === 'choose' && <>
-      <p>Sign in to Eliza Cloud to use AI. Your agent keeps running on this phone.</p>
+      <p>Sign in to Eliza Cloud to use AI. Your agent keeps running on this device.</p>
       {google && <div className="alpha-connection-actions"><button disabled={busy} onClick={actions.google}>Continue with Google</button></div>}
       <form className="alpha-cloud-sign-in-email" aria-label="Sign in with email" onSubmit={event => { event.preventDefault(); actions.email(email.current?.value || ''); }}>
         <label>Email<input ref={email} type="email" name="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" maxLength={320} required disabled={busy} /></label>
