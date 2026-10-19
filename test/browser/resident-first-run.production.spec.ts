@@ -90,7 +90,7 @@ test('first run: Cloud sign-in in the browser, credits, provider binding, then t
   expect(at('configureCloudProvider ' + stored.credentialId)).toBeLessThan(order.lastIndexOf('Agent.start'));
   expect(order.indexOf('Agent.start')).toBeLessThan(at('openExternal https://eliza.app'));
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual([]);
-  expect(await stub(page, s => s.opened)).toEqual(['https://eliza.app/auth/cli-login?session=b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d']);
+  expect(await stub(page, s => s.opened)).toEqual(['https://eliza.app/auth/cli-login?session=b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d&app=alpha']);
   // Every Cloud request went to the Cloud API through the native transport.
   expect((await stub(page, s => s.cloud) as Array<{ path: string }>).map(row => row.path)).toEqual(expect.arrayContaining(['/api/auth/cli-session', '/api/v1/user', '/api/v1/billing/limits']));
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({ kind: 'resident' });

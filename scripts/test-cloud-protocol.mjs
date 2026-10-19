@@ -255,7 +255,8 @@ try {
   const legacy = make();
   await legacy.login(signal());
   assert.equal(saved.token, token, 'session token preferred over legacy API key');
-  assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}`);
+  assert.equal(opened.at(-1), `https://eliza.app/auth/cli-login?session=${sessionId}&app=alpha`);
+  assert.ok(!opened.at(-1).includes(token) && !opened.at(-1).includes('synthetic-legacy-key'), 'the browser URL carries neither the session token nor the legacy API key');
   await legacy.disconnect();
   mode = 'consumed'; await assert.rejects(legacy.login(signal()), error => error.code === 'credential-consumed');
   assert.equal(saved, null);
@@ -292,7 +293,8 @@ try {
   assert.deepEqual(replacement, ['write ' + token]);
   saved = null;
   mode = 'ok'; await make('staging').login(signal());
-  assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}`);
+  assert.equal(opened.at(-1), `https://staging.eliza.app/auth/cli-login?session=${sessionId}&app=alpha`);
+  assert.ok(!opened.at(-1).includes(token) && !opened.at(-1).includes('synthetic-legacy-key'), 'the browser URL carries neither the session token nor the legacy API key');
   await client.disconnect();
   process.stdout.write('PASS: synthetic in-app Cloud sign-in (email, MFA, Google, cancellation, one at a time, refused foreign/extra/unstored outcomes, previous-key revocation outcome), synthetic HTTP Cloud sign-in hand-off, credential preference/storage, restart, revocation of a replaced key before the new one is stored (failed revocation does not block), agent list/detail, dedicated/shared conversation routing and send, Gmail scopes (cumulative grants)/status/account/search/read/thread, complete HTML preservation and malformed/oversized HTML handling, search paging, read-state capability, disconnect, URL rejection, outage without retry, consumed claim, expiry, cancellation and staging routing. No live account acceptance.\n');
 } finally {
