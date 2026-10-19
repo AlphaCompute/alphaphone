@@ -148,7 +148,7 @@ test.describe('first run requires Eliza Cloud sign-in while the agent runs',()=>
   const dialog=agentDialog(page);await expect(dialog).toBeVisible();
   await started(page);
   await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();
-  await expect(page.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
+  await expect(page.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this device meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Use local apps without AI',exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/Close/})).toHaveCount(0);
   // Back and Escape cannot dismiss the sign-in.
@@ -388,7 +388,7 @@ test.describe('outages and offline use',()=>{
   await boot(page,{identity:'offline',storage:{'alpha.connection.plan-admission.v1':recent}});
   await started(page);await idle(page);await expect(agentDialog(page)).toHaveCount(0);
   const dialog=await openAgent(page);
-  await expect(page.getByText(/Eliza Cloud cannot be reached right now\. Your agent is running on this phone/)).toBeVisible();
+  await expect(page.getByText(/Eliza Cloud cannot be reached right now\. Your agent is running on this device/)).toBeVisible();
   await expect(page.getByRole('button',{name:'Try again',exact:true})).toBeVisible();
   expect(await configured(page)).toBe(0);
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('offline-recent-plan.png'),animations:'disabled'});

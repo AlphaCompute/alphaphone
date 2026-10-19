@@ -36,7 +36,7 @@ async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
   await expect(welcome.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] ?? null)).toBeNull();
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
-  await expect(welcome.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this phone meanwhile, with AI off until you sign in.', { exact: true })).toBeVisible();
+  await expect(welcome.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this device meanwhile, with AI off until you sign in.', { exact: true })).toBeVisible();
   await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   return { foreign, welcome };
 }

@@ -105,7 +105,7 @@ for (const [name, panel] of Object.entries(PANELS)) {
       expect(await agentCalls(page)).not.toContain('configureCloudProvider');
       // Beside the running agent, a closable notice says Cloud is unreachable; the owner dismisses it.
       const notice = page.getByRole('region', { name: 'Eliza Cloud plan notice' });
-      await expect(notice).toContainText('Eliza Cloud cannot be reached right now. Your agent is running on this phone');
+      await expect(notice).toContainText('Eliza Cloud cannot be reached right now. Your agent is running on this device');
       await notice.getByRole('button', { name: 'Dismiss plan notice', exact: true }).click();
       await expect(notice).toHaveCount(0);
       await panel.open(page);
