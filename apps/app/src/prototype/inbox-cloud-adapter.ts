@@ -133,7 +133,9 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // Home retains only metadata from Inbox pages the user already loaded, never message bodies.
   // `key` is the P-37 read-cache identity (Cloud session, connection, read grant): Home shows the
   // preview only while the selected account still has that identity.
-  let inboxPreview: {key:string;sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number|null}|null=null;
+  type InboxPreview = {key:string;sessionId:string;accountId:string;messages:Pick<GmailMessage,'id'|'subject'|'from'|'unread'>[];more:boolean;readAt:number|null};
+  let inboxPreview:InboxPreview|null=null;
+  let homePreview:(InboxPreview&{owner:string;label:string})|null=null;
   let homeFailure:GmailFailureKind|null=null;
   let hasUnread = false;
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
@@ -198,16 +200,42 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let listReadAt=0,cachedListShown=false;
   type CachedList={key:string;at:number;firstPageRevision:string|null;messages:GmailMessage[];query:string;cursor:string|null;revision:string;cursors:string[];newerMail:boolean;status:string};
   const folderLists=new Map<string,CachedList>();
-  let offline:ServiceReadCache|null=null,offlineIdentity='',mailCacheEpoch=0;
+  let offline:ServiceReadCache|null=null,offlineIdentity='',mailCacheEpoch=0,homeRestoreAttempt='';
+  type CachedMailbox = {accounts:GmailAccount[];selected:string;spamTrashSearch:boolean;lists:CachedList[];bodies:{at:number;body:MailBody}[]};
   const offlineOwner=()=>{const account=connectionController.getSnapshot().cloudAccount,binding=connectionController.getCloudClient();return account?.organizationId&&binding?{environment:account.environment,userId:account.userId,organizationId:account.organizationId,credentialId:binding.credentialId}:null;};
   async function offlineStore(){const owner=offlineOwner();if(!owner)return null;const identity=JSON.stringify(owner),cache=await serviceReadCache(owner);if(JSON.stringify(offlineOwner())!==identity)return null;offline=cache;offlineIdentity=identity;return cache;}
+  /** One local, owner-bound startup read; no mailbox refresh, body read or draft binding. */
+  async function restoreHomeMailbox(){
+    const binding=connectionController.getCloudClient(),owner=offlineOwner();
+    if(!binding||!owner||!shell||selected||api?.isActive()||Object.values(owner).some(v=>typeof v!=='string'||!v))return;
+    const identity=JSON.stringify(owner),attempt=JSON.stringify([identity,binding.sessionId]);
+    if(homeRestoreAttempt===attempt)return;
+    homeRestoreAttempt=attempt;
+    const token=generation,epoch=mailCacheEpoch;
+    try{
+      const saved=await(await offlineStore())?.get<CachedMailbox>('gmail:mailbox'),active=connectionController.getCloudClient();
+      if(!saved||!shell||selected||api?.isActive()||generation!==token||mailCacheEpoch!==epoch||identity!==JSON.stringify(offlineOwner())||binding.client!==active?.client||binding.sessionId!==active?.sessionId)return;
+      const value=saved.value,hint=readGmailAccountChoice(connectionController.getSnapshot().cloudAccount);
+      if(!Array.isArray(value.accounts)||!Array.isArray(value.lists)||hint&&hint!==value.selected)return;
+      const account=value.accounts.find(a=>a&&a.connectionId===value.selected&&typeof a.label==='string'&&Array.isArray(a.grantedCapabilities)&&gmailReadable(a));
+      if(!account)return;
+      const now=Date.now(),row=value.lists.filter(r=>r?.query==='in:inbox'&&Number.isFinite(r.at)&&r.at<=now&&now-r.at<30*86400000).sort((a,b)=>b.at-a.at)[0];
+      if(!row||!Array.isArray(row.messages)||row.messages.length>100||row.cursor!==null&&typeof row.cursor!=='string'||row.messages.some(m=>!m||typeof m.id!=='string'||typeof m.subject!=='string'||typeof m.from!=='string'||typeof m.unread!=='boolean'))return;
+      const key=gmailReadCacheKey(binding.sessionId,account);if(!key)return;
+      const messages=row.messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),unread=messages.filter(m=>m.unread).length;
+      homePreview={key,owner:identity,label:account.label,sessionId:binding.sessionId,accountId:value.selected,messages,more:row.cursor!==null,readAt:row.at};
+      hasUnread=unread>0;
+      setAttention({state:'stale',unread,unreadMore:row.cursor!==null,source:account.label,updatedAt:new Date(row.at).toISOString()});
+      publish();
+    }catch{/* Inbox can still open normally when its optional saved Home summary is unavailable. */}
+  }
   // Cost: one bounded local snapshot write after a successful page/body read. No credentials or timers.
   function persistMailbox(){const epoch=mailCacheEpoch;if(!accountsChecked||!selected||failure)return;const accountId=selected,snapshot={accounts,selected,spamTrashSearch,lists:[...folderLists.values()].filter(row=>JSON.parse(row.key)[2]===selected),bodies:[...messageBodies.values()]};void offlineStore().then(cache=>{if(cache&&epoch===mailCacheEpoch&&selected===accountId)return cache.put('gmail:mailbox',snapshot);}).catch(()=>{});}
-  function purgeOffline(){++mailCacheEpoch;if(offline)void offline.clear().catch(()=>{});offline=null;offlineIdentity='';}
+  function purgeOffline(){++mailCacheEpoch;if(offline)void offline.clear().catch(()=>{});offline=null;offlineIdentity='';homePreview=null;homeRestoreAttempt='';}
   async function restoreMailbox(){
     const binding=connectionController.getCloudClient(),token=generation;
     try{
-      const cache=await offlineStore(),saved=await cache?.get<{accounts:GmailAccount[];selected:string;spamTrashSearch:boolean;lists:CachedList[];bodies:{at:number;body:MailBody}[]}>('gmail:mailbox');
+      const cache=await offlineStore(),saved=await cache?.get<CachedMailbox>('gmail:mailbox');
       const active=connectionController.getCloudClient();if(!saved||generation!==token||binding?.client!==active?.client||binding?.sessionId!==active?.sessionId||!api?.isActive())return false;
       const value=saved.value,hint=readGmailAccountChoice(connectionController.getSnapshot().cloudAccount);
       if(!Array.isArray(value.accounts)||!value.accounts.every(a=>a&&typeof a.label==='string'&&Array.isArray(a.grantedCapabilities))||!Array.isArray(value.lists)||!Array.isArray(value.bodies)||hint&&hint!==value.selected)return false;
@@ -260,6 +288,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // time, so the time shown is never newer than the oldest data counted; no time is invented.
   const recountUnread = (more=inboxPreview?.more??nextPageToken!==null,fresh=false,restoredReadAt?:number) => {
     const key=readKey();
+    if(loadedQuery==='in:inbox')homePreview=null;
     if (loadedQuery === 'in:inbox') inboxPreview=key?{key,sessionId:connectionController.getCloudClient()?.sessionId||'',accountId:selected,messages:messages.map(({id,subject,from,unread})=>({id,subject,from,unread})),more,readAt:fresh?Date.now():restoredReadAt??(inboxPreview?.key===key?inboxPreview.readAt:null)}:null;
     if(loadedQuery==='in:inbox')setAttention({state:'ready',unread:messages.filter(m=>m.unread).length,unreadMore:more,source:accountLabel(),updatedAt:restoredReadAt!==undefined?new Date(restoredReadAt).toISOString():(revision||new Date().toISOString())});
     hasUnread=!!inboxPreview?.messages.some(m=>m.unread);
@@ -289,7 +318,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     void attachmentNative.cancel().catch(()=>{});contextReview=null;attachmentView=null;provider.reset(); drafts.reset();
     generation++; operation?.abort(); operation = null;
     thread=null; accounts = []; accountsChecked = false;accountsSession=''; messages = []; selected = ''; loadedQuery = ''; nextPageToken = null; body = null; phase = 'idle'; revision = '';
-    hasUnread = false; inboxPreview=null;homeFailure=null; failure = null; pendingCompose = null; resumeDraftFor = '';
+    hasUnread = false; inboxPreview=null;homePreview=null;homeRestoreAttempt='';homeFailure=null; failure = null; pendingCompose = null; resumeDraftFor = '';
     readStateInFlight.clear(); readStateUnconfirmed.clear(); seenCursors = new Set();
     status = 'Connect Eliza Cloud to use Gmail';
     publish({ mails: [], sent: [], open: null, compose: null, nativeMailSelection: null });
@@ -617,14 +646,15 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   // Home uses only already-authorized cached metadata; opening Home never reads mail.
   const homeRender = p.renderVals;
   p.renderVals = function () {
-    const out = homeRender.call(this), binding=connectionController.getCloudClient(),connected = readable().length > 0;
+    const out = homeRender.call(this), binding=connectionController.getCloudClient(),key=readKey();
+    const restored=binding&&homePreview&&homePreview.sessionId===binding.sessionId&&homePreview.owner===JSON.stringify(offlineOwner())&&(!selected||selected===homePreview.accountId&&key===homePreview.key)?homePreview:null,connected=readable().length>0||!!restored;
     // An unresolved startup has not established that email is disconnected.
     const disconnected=connectionController.getSnapshot().startupResolved===true&&(!binding||accountsChecked&&!connected);
-    const key=readKey(),cached=key&&inboxPreview?.key===key&&inboxPreview.sessionId===binding?.sessionId&&inboxPreview.accountId===selected?inboxPreview:null;
+    const cached=key&&inboxPreview?.key===key&&inboxPreview.sessionId===binding?.sessionId&&inboxPreview.accountId===selected?inboxPreview:restored;
     const unread=cached?.messages.filter(m=>m.unread)||[],pending=phase==='busy'||phase==='scheduled';
     const count=unread.length?`${unread.length}${cached?.more?'+':''} unread`:'';
     // Account and read time of the page the user loaded in Inbox; Home never reads mail to refresh it.
-    const homeInboxStatus=presentHomeInboxStatus({failure:!!homeFailure,pending,cached:cached?{more:cached.more,label:accounts.find(a=>a.connectionId===selected)?.label||'',readAt:cached.readAt}:null,connected,unchecked:!!binding&&!accountsChecked,now:Date.now()});
+    const homeInboxStatus=presentHomeInboxStatus({failure:!!homeFailure,pending,cached:cached?{more:cached.more,label:accounts.find(a=>a.connectionId===selected)?.label||restored?.label||'',readAt:cached.readAt}:null,connected,unchecked:!!binding&&!accountsChecked,now:Date.now()});
     // The loaded page was dropped (an account change or disconnect elsewhere) after a real read:
     // the card says when it last updated, with the last count only in the accessible name.
     const stale=binding&&!cached&&!homeFailure&&!pending&&attention.state==='stale'&&attention.updatedAt?presentHomeAttention({state:'stale',unread:attention.unread,...(attention.source?{source:attention.source}:{}),updatedAt:attention.updatedAt},Date.now()):null;
@@ -811,6 +841,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       if (next !== sessionId) {if(offlineIdentity&&JSON.stringify(offlineOwner())!==offlineIdentity)purgeOffline(); sessionId = next; clear(); if(next)void openNotice(); }
       const nextAgent = connectionController.getSnapshot().session?.sessionId;
       if (nextAgent !== agentSession) { contextReview=null;agentSession = nextAgent; publish({ nativeMailSelection: null }); }
+      void restoreHomeMailbox();
     });
     this.gmailNoticeListener=onGmailNotice(()=>void openNotice());void openNotice();
     this.inboxVisibility=()=>{if(document.hidden){readAhead.pause();stopBodyReads();}else void openNotice();};
@@ -829,6 +860,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       phase = 'idle'; status = 'Checking Gmail connection…'; publish({ open: null, nativeMailSelection: null });
     };
     window.addEventListener(GMAIL_ACCOUNTS_CHANGED, this.inboxAccountsChanged);window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, this.inboxAccountsChanged);
+    void restoreHomeMailbox();
   };
   p.componentWillUnmount = function () {
     closeMailQuestion?.();closeMailQuestion=undefined;noticeAttempt++;void this.gmailNoticeListener?.then((handle:Bag)=>handle.remove()).catch(()=>{});

@@ -180,8 +180,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     } finally { listenerBusy = false; if (owner === instance) changed(); }
   }
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
-  async function refreshCapabilities() {
-    capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
+  async function refreshCapabilities(enteringSettings=false) {
+    capabilityAbort?.abort();
+    // Hidden Settings must not turn a Home cache restore or account switch into remote discovery.
+    if(!enteringSettings&&owner?.S?.().view!=='settings'){
+      capabilityAbort=null;gmailAccounts=[];gmail='Not checked';digests='Not checked';inferenceProvider='Not reported by agent';return;
+    }
+    const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
     digests = workflow ? 'Checking agent support…' : agentAvailabilityNotice();
@@ -382,7 +387,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.openView = function (key: string, ...args: any[]) {
     const result = openView.call(this, key, ...args);
-    if (key === 'settings') { void refresh(); void refreshCapabilities(); }
+    if (key === 'settings') { void refresh(); void refreshCapabilities(true); }
     return result;
   };
   definition.render = (state: Bag, api: Bag) => {
@@ -557,7 +562,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([{ kNav:true,label:'Manage Google accounts',lbl:'Manage Google accounts',chev:true,noAB:true,go:()=>googleConnectionController.open() },info('Gmail', gmail),
-          ...connected.map(a => info(a.label, googleAccountAccessLabel(a))),
+          ...connected.map(a => ({...info(a.label, ''), hasSub:true, sub:googleAccountAccessLabel(a)})),
           ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
