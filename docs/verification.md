@@ -1532,3 +1532,11 @@ regenerated notices differ only in the pin. Reachability: `behind`, no pin-only 
 test exercises the upstream code. Upstream's default-off `ELIZA_MANAGED_CALENDAR_DELETE_ENABLED`,
 `ELIZA_NATIVE_GOOGLE_GMAIL_SEND_ENABLED` and `ELIZA_MANAGED_GMAIL_MAILBOX_CHANGES_ENABLED` are removed from the resident
 agent's environment, so those paths stay refused until Seeker acceptance and the production service exist.
+
+### Source pin 3d76ff5acacb (2026-10-18)
+
+The pin moved from `985322b5df96` to the eliza `develop` tip `3d76ff5acacb369e2c58fc8512e69e59f53ce69b` (223 commits ahead,
+none behind). The llama.cpp gitlink (`6e6a4401aae4`), every native build input, the elizavoice-jni Java class and the voice
+projection inputs are byte-identical, so the recorded native bytes are unchanged and no rebuild was needed; regenerated
+notices differ only in the pin. `bun.lock` changed, so the resident audit was re-run (`dependency-audit.mjs --resident
+--write`). Reachability: `behind`, no pin-only commits. The carried patches apply unchanged.
