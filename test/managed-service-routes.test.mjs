@@ -34,7 +34,7 @@ test('compiled test-mocks transports retain development hosts while flag-off tra
  const transport=module.slice(module.indexOf('export const nativeCloudRequest:'),module.indexOf('export const nativeRemoteRequest:'));
  for(const testMocksEnabled of [false,true]){
   const calls=[];
-  const sandbox={testMocksEnabled,devSurfacesEnabled:false,managedServiceRequest:allowed,URL,Headers,AbortController,DOMException,setTimeout,clearTimeout,crypto:globalThis.crypto,webDevelopmentHttp:false,allowedHeaders:new Set(['accept','content-type','authorization']),native:{request:async input=>{calls.push(input.url);return {status:200,data:{}};},cancel:async()=>{}}};
+  const sandbox={testMocksEnabled,devSurfacesEnabled:false,managedServiceRequest:allowed,browserCloudManagedServiceAllowed:allowed,URL,Headers,AbortController,DOMException,setTimeout,clearTimeout,crypto:globalThis.crypto,webDevelopmentHttp:false,allowedHeaders:new Set(['accept','content-type','authorization']),native:{request:async input=>{calls.push(input.url);return {status:200,data:{}};},cancel:async()=>{}}};
   vm.runInNewContext(stripTypeScriptTypes((factory+transport).replaceAll('export ',''))+';globalThis.factory=createBrowserConnection;globalThis.request=nativeCloudRequest;',sandbox);
   const url='https://agent.example.test/api/agents';
   const native=sandbox.request({url,method:'GET',headers:{},signal:new AbortController().signal,timeoutMs:1000});
