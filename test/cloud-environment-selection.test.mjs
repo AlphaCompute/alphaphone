@@ -36,3 +36,11 @@ test('the new resolver has no credential, profile, login or storage side effects
  const source=fs.readFileSync(new URL('../apps/app/src/runtime/cloud-environment-selection.ts',import.meta.url),'utf8');
  assert.doesNotMatch(source,/localStorage|credential|token|fetch\(|login\(|dirname|profile/);
 });
+
+test('explicit real Cloud resident fixes one issuer without enabling mock selection',()=>{
+ const cloud={development:true,testMocks:false,android:false,cloudResident:true,previewEnvironment:'staging'};
+ assert.equal(resolveCloudEnvironment(cloud,'production'),'staging');
+ assert.equal(resolveCloudEnvironment({...cloud,previewEnvironment:'production'},'staging'),'production');
+ assert.equal(resolveCloudEnvironment({...cloud,development:false},'staging'),'production');
+ assert.equal(resolveCloudEnvironment({...cloud,android:true},'staging'),'production');
+});

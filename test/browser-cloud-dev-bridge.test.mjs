@@ -34,7 +34,7 @@ test('Cloud browser login admits only one session and the optional fixed Alpha h
   assert.equal(opened.length,count,'refused destinations never open a window');
  }finally{if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else delete globalThis.window;}
 });
-async function fixture(){
+async function fixture(resident,environment){
  const profile=await mkdtemp(join(tmpdir(),'alpha-browser-cloud-')),file=join(profile,'existing-secret');await writeFile(file,secret,{mode:0o600});
  const seed={environment:'production',credentialFile:file,credentialSha256:createHash('sha256').update(secret).digest('hex'),userId:owner,organizationId:org,credentialReference:reference,credentialId};await writeFile(join(profile,'initial-credential.json'),JSON.stringify(seed),{mode:0o600});
  const calls=[];let signIn=null,response=async()=>new Response('{}'),pollResponse=async()=>Response.json({status:'authenticated',apiKey:secret});const session=randomUUID();
@@ -50,7 +50,7 @@ async function fixture(){
   return response(url,input);
  };
  let server,origin,host;
- const start=async()=>{host=createBrowserCloudDevHandler({profile,request});server=createServer(host);await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
+ const start=async()=>{host=createBrowserCloudDevHandler({profile,request,resident,environment});server=createServer(host);await new Promise(r=>server.listen(0,'127.0.0.1',r));origin=`http://127.0.0.1:${server.address().port}`;};await start();
  const send=(data,options={})=>fetch(origin,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json','X-Alpha-Browser-Cloud':'1',...(options.headers||{})},body:JSON.stringify(data),signal:options.signal});
  const rpc=async data=>{const r=await send(data);return {status:r.status,data:await r.json()};};
  return {profile,file,calls,send,rpc,host:()=>host,setSignIn:fn=>{signIn=fn;},setResponse:fn=>{response=fn;},setPollResponse:fn=>{pollResponse=fn;},origin:()=>origin,session,restart:async()=>{await new Promise(r=>server.close(r));await start();},close:async()=>{server.closeAllConnections();await new Promise(r=>server.close(r));await rm(profile,{recursive:true,force:true});}};
@@ -414,4 +414,32 @@ test('Maps data returning after a Cloud owner switch is discarded',async()=>{
   await entered;await writeFile(join(f.profile,'credentials.json'),JSON.stringify({production:{credentialReference:'browser-cloud-reference:'+randomUUID(),credentialId:randomUUID(),userId:owner,organizationId:org,token:secret}}),{mode:0o600});release();
   const result=await pending;assert.notEqual(result.status,200);assert.equal(JSON.stringify(result).includes('Previous owner result'),false);
  }finally{release?.();await f.close();}
+});
+
+
+test('Cloud resident binding is host-owned, exact-account scoped, and retired before sign-out persists',async()=>{
+ const events=[],resident={async bind(value){events.push({kind:'bind',value});return {provider:'elizacloud',configured:true};},async clear(){events.push({kind:'clear'});return {provider:'elizacloud',configured:false};},status(){return {provider:'elizacloud',configured:false};},async ready(){return {state:'host-managed'};}};
+ const f=await fixture(resident);try{
+  const wrong=await f.rpc({operation:'residentBind',environment:'production',credentialId:randomUUID()});assert.equal(wrong.status,409);assert.equal(events.length,0);
+  const staged=await f.rpc({operation:'residentBind',environment:'staging',credentialId});assert.equal(staged.status,400);assert.equal(events.length,0);
+  const bound=await f.rpc({operation:'residentBind',environment:'production',credentialId});assert.equal(bound.status,200);assert.equal(events[0].value.token,secret);assert.equal(events[0].value.reference,reference);assert.ok(!JSON.stringify(bound).includes(secret));
+  const removed=await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});assert.equal(removed.status,200);assert.equal(events.at(-1).kind,'clear');
+  const stale=await f.rpc({operation:'residentBind',environment:'production',credentialId});assert.equal(stale.status,409);
+ }finally{await f.close();}
+});
+
+test('failed Cloud resident retirement preserves the saved credential and fails sign-out',async()=>{
+ const resident={async bind(){throw Error('unused');},async clear(){throw Error('shutdown unconfirmed');},status(){return {};},async ready(){return {};}};
+ const f=await fixture(resident);try{
+  assert.equal((await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference})).status,400);
+  const stored=await f.rpc({operation:'secureRead',slot:'cloud:production'});assert.equal(JSON.parse(stored.data.value).credentialId,credentialId);
+ }finally{await f.close();}
+});
+
+test('explicit Cloud resident rejects a different issuer before dispatch',async()=>{
+ const f=await fixture(undefined,'staging');try{
+  const before=f.calls.length;
+  const result=await f.rpc({operation:'secureRead',slot:'cloud:production'});
+  assert.notEqual(result.status,200);assert.equal(f.calls.length,before);
+ }finally{await f.close();}
 });

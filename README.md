@@ -317,6 +317,24 @@ start their children without the variables it detects (`AI_AGENT`, `CLAUDECODE`,
 needed. Its other detector, a `/opt/.devin` directory, cannot be cleared this way; there
 the source check still rejects the modified checkout.
 
+For genuine browser Cloud QA with a resident running on your computer, prepare the
+pinned Eliza source and dependencies, then run `npm run dev:cloud`. This explicit
+mode disables simulated surfaces and direct-provider credentials. Sign in and
+activate or redeem a plan through Alpha; the host binds the admitted account to
+its local resident for Cloud inference. It never sends the Cloud bearer to the
+renderer. The default page is `http://127.0.0.1:5318`.
+
+Use `ALPHA_CLOUD_ENVIRONMENT=staging npm run dev:cloud` for staging, or leave it
+unset for production. The selected issuer is fixed for the server lifetime and
+shown in the connection UI. Each issuer has separate private account and resident
+profiles under `~/.local/share/alphaphone/`. The host stores its Linux vault
+passphrase there with owner-only permissions; resident Cloud credentials stay in
+process memory and the private account store. Sign-out retires the bound process.
+`ALPHA_ELIZA_SOURCE` can select an already prepared source at the exact pinned
+commit; `ALPHA_CLOUD_UI_PORT` and `ALPHA_REMOTE_PORT` select free loopback ports.
+This browser check exercises real login, subscription and inference only after
+those actions are completed; it does not establish Android or device acceptance.
+
 ```sh
 npm run android:build
 # Distribution APKs (switch off) are in artifacts/: debug-signed debug APKs and
