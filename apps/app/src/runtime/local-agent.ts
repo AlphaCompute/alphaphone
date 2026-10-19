@@ -1,3 +1,4 @@
+import {parseRecoveryReview,parseRecoveryArchive} from './resident-recovery';
 import {anyAbortSignal} from './abort-signal';
 import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {automationsRouteAllowed, isAutomationsPath, type AutomationsMethod} from './automations-route-policy.ts';
@@ -14,7 +15,9 @@ export interface LocalAgentBridge {
   start(input?:{requestId:string}): Promise<unknown>;
   cancelStart?(input:{requestId:string}):Promise<unknown>;
   stop?():Promise<unknown>;
-  getStatus?():Promise<{packaged?:boolean;state?:string;serviceActive?:boolean;socketListening?:boolean}>;
+  getStatus?():Promise<{packaged?:boolean;state?:string;reason?:string;serviceActive?:boolean;socketListening?:boolean}>;
+  reviewRecovery?():Promise<unknown>;
+  archiveRecovery?(input:{reviewToken:string}):Promise<unknown>;
   configureProvider?(input:{apiKey:string;model:string}):Promise<unknown>;
   providerStatus?():Promise<{provider?:unknown;configured?:unknown;model?:unknown}>;
   clearProvider?():Promise<{configured?:unknown}>;
@@ -383,4 +386,14 @@ export async function stopLocalAgent() {
     await new Promise(resolve=>setTimeout(resolve,200));
   }
   throw Error('Shutdown is still pending. Check local agent status before starting again.');
+}
+
+/** Recovery keeps opaque native review tokens in memory; the service owns inventory and archival. */
+export async function reviewLocalRecovery(){
+ if(!Capacitor.isNativePlatform())throw Error('Recovery is unavailable here. Your records were kept.');
+ try{return parseRecoveryReview(await native.reviewRecovery?.());}catch{throw Error('Recovery could not be checked. Your records were kept.');}
+}
+export async function archiveLocalRecovery(reviewToken:string){
+ if(!Capacitor.isNativePlatform())throw Error('Recovery is unavailable here. Your records were kept.');
+ try{return parseRecoveryArchive(await native.archiveRecovery?.({reviewToken}));}catch{throw Error('Recovery could not be confirmed. Review again before restarting your agent.');}
 }

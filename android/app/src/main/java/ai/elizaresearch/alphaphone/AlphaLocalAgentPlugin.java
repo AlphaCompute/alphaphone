@@ -605,8 +605,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  static String startupRefusalMessage(String reason){
-  if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
-  if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
+  if("ipc-recovery-retention-limit".equals(reason))return "Your agent needs recovery review. Your records were kept. Restarting will not fix this; do not clear app data.";
+  if("ipc-recovery-required".equals(reason))return "Your agent needs recovery review. Your records were kept. Do not clear app data or rerun unfinished work.";
   if("runtime-identity-unavailable".equals(reason))return "Local startup could not verify its runtime files. Your records were preserved. Check the installed runtime before reconnecting.";
   return null;
  }
@@ -618,6 +618,30 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  private static boolean shutdownConfirmed(JSONObject status){
   return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
+ }
+ /** Finite, foreground recovery review; all file ownership and archival remain service-owned. */
+ @PluginMethod public void reviewRecovery(PluginCall call){ipcRecovery(call,false);}
+ @PluginMethod public void archiveRecovery(PluginCall call){ipcRecovery(call,true);}
+ private void ipcRecovery(PluginCall call,boolean archive){
+  final String token=archive?call.getString("reviewToken",""):null;
+  if(archive&&(token==null||!token.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))){call.reject("Review recovery again before continuing.");return;}
+  final long epoch,intent;
+  synchronized(lifecycleLock){
+   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){call.reject("Recovery is unavailable right now. Your records were kept.");return;}
+   epoch=lifecycleEpoch;intent=credentialIntentEpoch;pending.add(call);
+  }
+  try{workers.execute(()->{
+   try{
+    // SDK processLock is acquired before this authority takes lifecycleLock, matching startup.
+    ElizaAgentService.RecoveryAuthority authority=operation->{synchronized(lifecycleLock){
+     if(disposed||epoch!=lifecycleEpoch||intent!=credentialIntentEpoch||!pending.contains(call)||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1)
+      return new JSONObject().put("status","unavailable").put("reason","active-owner").put("retainedCount",0).put("archivedCount",0);
+     return operation.run();
+    }};
+    JSONObject result=archive?ElizaAgentService.archiveIpcRecovery(token,authority):ElizaAgentService.reviewIpcRecovery(authority);
+    synchronized(lifecycleLock){if(pending.remove(call))call.resolve(new JSObject(result.toString()));}
+   }catch(Exception error){rejectPending(call,"Recovery could not be confirmed. Your records were kept. Review again before restarting.");}
+  });}catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Recovery is unavailable right now. Your records were kept.");}
  }
  @PluginMethod public void getStatus(PluginCall call) {
   try{
