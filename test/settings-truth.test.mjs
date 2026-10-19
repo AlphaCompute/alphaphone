@@ -56,3 +56,19 @@ test('Cloud privacy hero includes speech while retaining native and offline/star
  assert.equal(native.egressPrivacy(connected,true).big,'Identifier swap only');
  for(const [kind,label]of [['starting','Agent starting'],['recovering','Agent not running'],['none','Offline']])assert.equal(cloud.egressPrivacy({kind,session:null,cloudAccount:null},true).big,label);
 });
+
+// Exercise the policy used by the real adapter for both stale routes and navigation rows.
+test('production Settings refuses Developer routes and preserves real About diagnostics',()=>{
+ const rows=[{label:'Models'},{label:'Developer'},{label:'About'}, {lbl:'Developer'}];
+ assert.deepEqual(m.settingsNavigationRows(rows,false),[{label:'Models'},{label:'About'}]);
+ assert.equal(rows.length,4,'filtering must not mutate the reference model');
+ assert.equal(m.settingsPage('developer',false),null);
+ for(const page of ['about','problems','licenses','models',null,undefined])assert.equal(m.settingsPage(page,false),page);
+ assert.match(source,/page: settingsPage\(state\.page, devSurfacesEnabled\)/);
+ assert.match(source,/rows: settingsNavigationRows\(group\.rows, devSurfacesEnabled\)/);
+});
+test('explicit developer surfaces retain Developer navigation and route',()=>{
+ const rows=[{label:'Developer'},{label:'About'}];
+ assert.equal(m.settingsNavigationRows(rows,true),rows);
+ assert.equal(m.settingsPage('developer',true),'developer');
+});

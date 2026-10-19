@@ -197,7 +197,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   'Mobile data':[['Manage mobile networks','mobile'],['Airplane mode in Android','airplane']],'Display':[['Manage brightness in Android','display']],
   'Sound & vibration':[['Do Not Disturb in Android','dnd'],['Manage sound in Android','sound']],'Notifications':[['Manage Alpha notifications','notifications']],
   'Battery':[['Manage battery in Android','battery']],'Privacy & data':[['Location in Android','location'],['Manage Alpha permissions','privacy']],
-  'Developer':[['Android developer settings','developer']],'About':[['Android device information','about']],
+  'About':[['Android device information','about']],
  };
  const shown:Record<string,RegExp[]>={
   'Wi-Fi':[/On · connected/],'Bluetooth':[/Bluetooth\s*Off/],'Mobile data':[/Mobile data\s*On/,/Airplane mode\s*Off/],'Display':[/Adaptive brightness on/],
@@ -205,10 +205,10 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   'Notifications':[/Reminders\s*Channel allowed/,/Scheduled digest results\s*Channel allowed/],'Battery':[/64%/,/On battery/,/Battery saver\s*Off/],
   'Privacy & data':[/Device location\s*On/,/Microphone\s*Allowed for Alpha/,/Camera\s*Not allowed/],
   'About':[/Stub phone/,/Alpha Phone\s*0\.1\.0 \(7\)/,/Installed or last updated/,/Updates\s*Alpha does not check for updates/,/Android\s*16/,/Security patch\s*2026-09-05/,/Inference model\s*Not reported by agent/],
-  'Developer':[/App version\s*0\.1\.0/,/Agent memory\s*Not connected/],
   // Telegram, Discord and the other deferred connectors cannot be connected in this build.
   'Connections':[/Other connectors\s*Not available in this version/],'Models':[/Inference model\s*Not reported by agent/],
  };
+ await expect(current(page).getByRole('button',{name:'Developer',exact:true})).toHaveCount(0);
  const report:string[]=[`Settings: ${top.replace(/\s+/g,' ')}`];
  noFixtures(top,'Settings');
  // Each reload starts a fresh native stub, so the calls are gathered page by page.
@@ -222,6 +222,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
+  if(label==='About'){await expect(current(page).getByRole('button',{name:'Problem log',exact:true})).toBeVisible();await expect(current(page).getByRole('button',{name:'Export diagnostics',exact:true})).toBeVisible();}
   // A switch must be backed by app-owned state; the email preference is exercised here and across reload below.
   const switches=await current(page).locator('[role="switch"],[aria-pressed],[aria-checked],input[type="checkbox"],input[type="range"]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||e.tagName));
   const owned=label==='Display'?['Theme: System','Theme: Light','Theme: Dark','Text size']:label==='Connections'?['Automatically load email images']:[];
@@ -245,7 +246,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
  writeFileSync(test.info().outputPath('settings-rows.txt'),report.join('\n\n'));
  expect(visited).toEqual(expect.arrayContaining(Object.keys(handoffs)));
  // Every allowlisted Android page was asked for by name; the generic Settings action was never used.
- expect([...new Set(asked)].sort()).toEqual(['about','accounts','airplane','battery','bluetooth','developer','display','dnd','location','mobile','notifications','privacy','sound','wifi']);
+ expect([...new Set(asked)].sort()).toEqual(['about','accounts','airplane','battery','bluetooth','display','dnd','location','mobile','notifications','privacy','sound','wifi']);
  expect(names.filter(name=>/\.set(?!Flashlight)|\.perform$/i.test(name))).toEqual([]);
 
  // A page Android refuses to open says so; the row never reports success.
@@ -348,6 +349,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
  const labels=await current(page).getByRole('button').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||'').filter(Boolean));
  const report:string[]=[`Settings: ${(await current(page).innerText()).replace(/\s+/g,' ')}`];
  noFixtures(report[0],'Settings');
+ await expect(current(page).getByRole('button',{name:'Developer',exact:true})).toHaveCount(0);
  for(const label of labels.filter(name=>['Accounts','Connections','Privacy & data','Display','Notifications','Models','Developer','About','Calendar'].includes(name))){
   await openSettings(page);
   await current(page).getByRole('button',{name:label,exact:true}).first().click();
