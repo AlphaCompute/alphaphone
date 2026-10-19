@@ -23,12 +23,12 @@ export async function createCloudResidentHost({source,profile,port,environment='
  const privateProfile=await preparePrivateRuntimeProfile({tokenPath,configPath,createToken:()=>randomBytes(32).toString('hex'),initialConfig:{cloud:{enabled:true},serviceRouting:{llmText:{backend:'elizacloud',transport:'cloud-proxy',smallModel:CLOUD_MODEL,largeModel:CLOUD_MODEL}},plugins:{entries:{'personal-assistant':{enabled:false}}}}});
  const route=privateProfile.config.serviceRouting?.llmText;
  if(route?.backend!=='elizacloud'||route?.transport!=='cloud-proxy'||privateProfile.config.cloud?.enabled!==true||privateProfile.config.cloud?.apiKey)throw Error('Select a separate Cloud-only resident profile');
- let running=null,bound=null,queue=Promise.resolve(),expiry,closed=false;
+ let running=null,bound=null,queue=Promise.resolve(),expiry,closed=false,retiring=false;
  const serial=run=>{const next=queue.then(run,run);queue=next.catch(()=>{});return next;};
- async function stop(){clearTimeout(expiry);bound=null;const old=running;if(old)await old.stop();if(running===old)running=null;}
+ async function stop(){clearTimeout(expiry);retiring=true;const old=running;if(old)await old.stop();if(running===old){running=null;bound=null;}retiring=false;}
  async function replace(credential){
   if(closed)throw Error('Cloud resident host closed');
-  if(running&&bound?.credentialId===credential?.credentialId&&bound?.reference===credential?.reference&&bound?.expiresAt===credential?.expiresAt)return status(credential?.credentialId);
+  if(!retiring&&running&&bound?.credentialId===credential?.credentialId&&bound?.reference===credential?.reference&&bound?.expiresAt===credential?.expiresAt)return status(credential?.credentialId);
   await stop();
   if(credential&&(!credential.token||typeof credential.token!=='string'||!credential.credentialId||credential.expiresAt!==undefined&&(!Number.isFinite(credential.expiresAt)||credential.expiresAt<=Date.now())))throw Error('Invalid Cloud resident binding');
   const settings={ELIZA_VAULT_PASSPHRASE:vaultPassphrase,ELIZAOS_CLOUD_USE_INFERENCE:credential?'true':'false',ELIZAOS_CLOUD_USE_EMBEDDINGS:credential?'true':'false',ELIZA_DISABLE_LOCAL_EMBEDDINGS:'true',ELIZA_LOCAL_EMBEDDING_ENABLED:'0',ELIZA_ASR_ENABLED:'0',ELIZA_PARADEE_ENABLED:'0',...(credential?{ELIZAOS_CLOUD_API_KEY:credential.token,ELIZAOS_CLOUD_BASE_URL:environment==='staging'?'https://api-staging.eliza.app':'https://api.eliza.app',ELIZAOS_CLOUD_SMALL_MODEL:CLOUD_MODEL,ELIZAOS_CLOUD_LARGE_MODEL:CLOUD_MODEL,ELIZAOS_CLOUD_EMBEDDING_MODEL:'bge-small-en-v1.5',ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS:'384'}:{})};
@@ -40,8 +40,9 @@ export async function createCloudResidentHost({source,profile,port,environment='
   if(credential?.expiresAt){const expire=()=>{const remaining=credential.expiresAt-Date.now();if(remaining<=0){void serial(()=>replace(null));return;}expiry=setTimeout(expire,Math.min(remaining,2147483647));};expire();}
   return status(credential?.credentialId);
  }
- function status(id){return {provider:'elizacloud',configured:!!running&&!!bound,model:CLOUD_MODEL,attachable:!!running&&!!bound&&bound.credentialId===id};}
+ function status(id){return {provider:'elizacloud',configured:!!running&&!!bound,model:CLOUD_MODEL,attachable:!retiring&&!!running&&!!bound&&bound.credentialId===id};}
  async function ready(signal){
+  if(retiring)throw Error('Resident retirement unconfirmed');
   if(!running)await serial(()=>replace(null));
   const current=running,deadline=Date.now()+110000;
   while(Date.now()<deadline){signal.throwIfAborted();if(running!==current)throw Error('Resident changed during startup');
