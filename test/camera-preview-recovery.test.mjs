@@ -6,7 +6,7 @@ const ui=source.slice(source.indexOf('  function hideAccess()'),source.indexOf('
 const lifecycle=source.slice(source.indexOf('  async function start(retry'),source.indexOf('  async function finishVideo()'));
 const settle=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
 function fixture(permission=false){
- const env=new JSDOM('<div data-alpha-layer><button aria-label="Viewfinder. Tap to focus, hold to ask Alpha, swipe to change mode"></button></div>');const timers=new Map();let timerId=0;
+ const env=new JSDOM('<div data-alpha-camera-root data-alpha-layer><button aria-label="Viewfinder. Tap to focus, hold to ask Alpha, swipe to change mode"></button></div>');const timers=new Map();let timerId=0;
  env.window.setTimeout=(fn,ms)=>{timers.set(++timerId,{fn,ms});return timerId;};env.window.clearTimeout=id=>timers.delete(id);
  const calls={starts:0,masked:false,states:[]};let failed=true;
  const camera={startPreview:async()=>{calls.starts++;if(failed)throw {permission};}};
