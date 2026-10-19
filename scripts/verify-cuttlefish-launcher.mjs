@@ -38,7 +38,7 @@ export function verifyCuttlefishLauncher(run, expected, user) {
   const bootId = shell('cat', '/proc/sys/kernel/random/boot_id');
   requireThat(/^[a-f0-9-]{36}$/.test(bootId), 'Boot identity unavailable');
   requireThat(shell('am', 'get-current-user') === user, 'Selected user is not foreground');
-  requireThat(shell('am', 'get-started-user-state', user) === 'RUNNING_UNLOCKED', 'Selected user is not unlocked');
+  requireThat(shell('am', 'get-started-user-state', user) === 'RUNNING_UNLOCKED', 'Selected user is not in RUNNING_UNLOCKED state');
   requireThat(shell('getenforce') === 'Enforcing', 'SELinux is not enforcing');
   const installedPath = () => shell('pm', 'path', '--user', user, PACKAGE);
   requireThat(installedPath() === `package:${expected.apkPath}`, 'Alpha is missing, split, or overridden by a data APK');
@@ -63,6 +63,13 @@ export function verifyCuttlefishLauncher(run, expected, user) {
   const webview = /Current WebView package \(name, version\):\s*\(([^,\s]+),\s*([^\)]+)\)/
     .exec(shell('dumpsys', 'webviewupdate'));
   requireThat(webview, 'Current WebView provider unavailable');
+  // Re-observe mutable provisioning state; RUNNING_UNLOCKED is a user lifecycle state,
+  // not evidence that the keyguard is currently dismissed. These are sequential observations.
+  const finalHome = components(shell('cmd', 'package', 'resolve-activity', '--brief', ...homeArgs));
+  requireThat(finalHome.length === 1 && finalHome[0] === home[0] &&
+    shell('getenforce') === 'Enforcing' &&
+    shell('am', 'get-started-user-state', user) === 'RUNNING_UNLOCKED',
+  'HOME, SELinux or user running state changed during verification');
   // Reject a result assembled across a reboot, foreground-user change or APK replacement.
   requireThat(shell('cat', '/proc/sys/kernel/random/boot_id') === bootId &&
     prop('sys.boot_completed') === '1' && prop('ro.build.fingerprint') === fingerprint &&
