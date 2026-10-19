@@ -82,8 +82,11 @@ export function pixel10aProductProblems(root = process.cwd()) {
 export function writePixel10aProduct({root, output, apk, identity, sourceEvidence, production = false}) {
   execFileSync('python3', [path.join(root, 'scripts/stage-aosp-native.py'), '--apk', path.resolve(apk), '--output', output, '--module', identity.moduleName, '--target', 'stallion'], {stdio:'inherit'});
   const product = path.join(root, 'android/aosp/stallion');
-  for (const name of ['AndroidProducts.mk', 'alpha_stallion_phone.mk']) fs.copyFileSync(path.join(product, name), path.join(output, name), fs.constants.COPYFILE_EXCL);
-  fs.cpSync(product, path.join(output, 'stallion'), {recursive:true, errorOnExist:true, force:false});
+  const registrationFiles = ['AndroidProducts.mk', 'alpha_stallion_phone.mk'];
+  for (const name of registrationFiles) fs.copyFileSync(path.join(product, name), path.join(output, name), fs.constants.COPYFILE_EXCL);
+  // AOSP discovers AndroidProducts.mk recursively; register this product only at the overlay root.
+  fs.cpSync(product, path.join(output, 'stallion'), {recursive:true, errorOnExist:true, force:false,
+    filter: source => !registrationFiles.includes(path.relative(product, source))});
   fs.appendFileSync(path.join(output, 'product.mk'), `\n# Exact ARM64 bundled JNI modes for this ${production ? 'production' : 'development'} product.\nTARGET_FS_CONFIG_GEN += vendor/alphaphone/config.fs\n`);
   let descriptor = null;
   if (production) {

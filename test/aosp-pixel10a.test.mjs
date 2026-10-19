@@ -6,6 +6,20 @@ import path from 'node:path';
 import {execFileSync} from 'node:child_process';
 import {pixel10aOptions, writePixel10aProduct} from '../scripts/aosp-pixel10a.mjs';
 
+function assertSingleProductRegistration(output) {
+  const staged = fs.readdirSync(output, {recursive:true});
+  assert.deepEqual(staged.filter(file => path.basename(file) === 'AndroidProducts.mk'), ['AndroidProducts.mk']);
+  assert.deepEqual(staged.filter(file => path.basename(file) === 'alpha_stallion_phone.mk'), ['alpha_stallion_phone.mk']);
+  const source = path.resolve('android/aosp/stallion');
+  // Preserve every other board, policy and patch input, including future additions.
+  for (const relative of fs.readdirSync(source, {recursive:true})) {
+    if (['AndroidProducts.mk', 'alpha_stallion_phone.mk'].includes(relative)) continue;
+    if (fs.statSync(path.join(source, relative)).isFile()) {
+      assert.deepEqual(fs.readFileSync(path.join(output, 'stallion', relative)), fs.readFileSync(path.join(source, relative)), relative);
+    }
+  }
+}
+
 test('physical target requires explicit development or production and exact source/factory inputs', () => {
   const options = {target:'pixel10a', development:true, source:'/source', factory:'/factory'};
   assert.equal(pixel10aOptions(options), true);
@@ -25,6 +39,7 @@ test('physical overlay installs ARM64 JNI and development product without boot c
   fs.writeFileSync(path.join(output, 'Android.bp'), '// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "AlphaPhone",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n');
   fs.writeFileSync(path.join(output, 'product.mk'), '# existing camera, clock and image capability\n');
   writePixel10aProduct({root:process.cwd(), output, apk, identity:{moduleName:'AlphaPhone'}, sourceEvidence:{fixture:true}});
+  assertSingleProductRegistration(output);
   const product = fs.readFileSync(path.join(output, 'product.mk'), 'utf8');
   assert.match(product, /existing camera, clock and image capability/);
   assert.match(product, /TARGET_FS_CONFIG_GEN \+= vendor\/alphaphone\/config.fs/);
@@ -44,6 +59,7 @@ test('production physical overlay sets no board AVB variables and records no bui
   fs.writeFileSync(path.join(output, 'Android.bp'), '// Generated from a hash- and signer-verified downstream launcher.\nandroid_app_import {\n    name: "AlphaPhone",\n    apk: "Launcher.apk",\n    presigned: true,\n    preprocessed: true,\n    product_specific: true,\n    dex_preopt: { enabled: false },\n}\n');
   fs.writeFileSync(path.join(output, 'product.mk'), '# existing\n');
   writePixel10aProduct({root:process.cwd(), output, apk, identity:{moduleName:'AlphaPhone'}, sourceEvidence:{fixture:true}, production:true});
+  assertSingleProductRegistration(output);
   const productMk = fs.readFileSync(path.join(output, 'product.mk'), 'utf8');
   assert.doesNotMatch(productMk, /BOARD_AVB_|release-avb/);
   assert.equal(fs.existsSync(path.join(output, 'stallion/release-avb.mk')), false);
