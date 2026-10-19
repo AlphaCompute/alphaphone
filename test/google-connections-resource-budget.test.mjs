@@ -50,8 +50,12 @@ test('Google settings keep display choices local, revalidate grants and own Andr
   const refresh=[...dom.window.document.querySelectorAll('button')].find(button=>button.textContent==='Check Google connections');assert.ok(refresh);
   await React.act(async()=>{refresh.click();await flush();});
   assert.deepEqual(counts,{accounts:2,calendars:2});
+  account.grantedCapabilities=['google.calendar.read','google.gmail.read'];
   await React.act(async()=>{dom.window.dispatchEvent(new dom.window.Event(ACCOUNTS));await flush();});
   assert.deepEqual(counts,{accounts:3,calendars:3});
+  const upgrades=dom.window.document.querySelector('[aria-label="Google permission upgrades"]');
+  assert.ok(upgrades,'Reduced grants expose the actual permission upgrade panel');
+  assert.match(upgrades.textContent,/review email sends and Calendar changes, even when “Ask before agent actions” is off/,'Provider consent must not imply the optional local-action setting bypasses send or Calendar review');
   assert.equal(dom.window.document.querySelectorAll('input[type="radio"]')[1].checked,true);
   let underlyingBack=0;dom.window.addEventListener('alpha-back',()=>underlyingBack++);
   const back=new dom.window.Event('alpha-back',{cancelable:true});
