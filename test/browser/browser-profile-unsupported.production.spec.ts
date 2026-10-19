@@ -7,7 +7,7 @@ async function failingBrowser(page:Page,message:string){await page.addInitScript
  c.nativePromise=async(p:string,m:string,i:any)=>{if(p!=='AlphaBrowser')return previous(p,m,i);w.browserFailureCalls.push(m);if(m==='create')throw new Error(message);if(m==='bookmarks')return {urls:[]};if(m==='browsingState')return {};if(m==='readingSupport')return {available:false};return {};};
 },message);}
 for(const width of [360,412])for(const unsupported of [true,false])test(`Browser ${unsupported?'profile refusal stays explained':'unrelated error stays distinct'} ${width}px`,async({page},info)=>{
- await page.setViewportSize({width,height:780});await fenceNetwork(page);await flagOffAndroid(page);await failingBrowser(page,unsupported?'This Android WebView does not support isolated browser profiles':'Transient browser creation failed');await residentHome(page);await page.getByRole('button',{name:'Not now',exact:true}).click();
+ await page.setViewportSize({width,height:780});await fenceNetwork(page);await flagOffAndroid(page);await failingBrowser(page,unsupported?'This Android WebView does not support isolated browser profiles':'Transient browser creation failed');await residentHome(page);
  await page.getByRole('button',{name:'Browser',exact:true}).click();await page.getByRole('button',{name:'Search or type address',exact:true}).click();
  const address=page.getByRole('textbox',{name:'Address',exact:true});await address.fill('https://example.invalid/');await address.press('Enter');
  const notice=page.getByRole('status',{name:'In-app browsing unavailable',exact:true});await expect.poll(()=>page.evaluate(()=>(window as any).browserFailureCalls.filter((m:string)=>m==='create').length)).toBe(1);

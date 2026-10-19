@@ -1,3 +1,4 @@
+import { completeOptionalAccessSetup } from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 
 // B-13 on the FLAG-OFF bundle with the Android bridge stubbed (docs/core-loop-audit.md).
@@ -152,6 +153,7 @@ async function connected(page: Page) {
   if (await start.isVisible().catch(() => false)) await start.click();
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.installationId), { timeout: 30_000 }).not.toBe('');
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await completeOptionalAccessSetup(page);
 }
 
 test('Android: the proposal card states time zone, calendar and attendees, and Approve hands over exactly the reviewed operation once', async ({ page }) => {
