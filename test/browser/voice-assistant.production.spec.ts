@@ -136,3 +136,18 @@ test('semantic endpointing: a complete score submits after the short gap; an inc
  await button(page,'Stop voice conversation').click();
  await clean(page,foreign);
 });
+
+for(const viewport of [{width:390,height:740},{width:800,height:1200},{width:1280,height:900}])test(`production composer keeps text geometry through mute and speech: ${viewport.width}`,async({page},info)=>{
+ test.setTimeout(60000);await page.setViewportSize(viewport);const foreign=await setup(page);await button(page,'Open conversation').click();const panel=page.locator('[data-alpha-layer="conversation"]');
+ const settle=()=>panel.evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+ const measure=(voiceMode=false)=>panel.locator(voiceMode?'[data-alpha-chat-recorder]':'textarea[data-alpha-composer]').evaluate((el,voiceMode)=>{const node=voiceMode?el:el.parentElement!,r=node.getBoundingClientRect(),s=getComputedStyle(node);return {x:r.x,y:r.y,width:r.width,height:r.height,radius:s.borderRadius};},voiceMode);
+ for(const detent of ['half','full']){
+  if(detent==='full')await panel.getByRole('button',{name:'Expand chat',exact:true}).click();await settle();const text=await measure();if(await page.locator('html').evaluate(el=>el.classList.contains('alpha-wide')&&!el.classList.contains('alpha-landscape')))expect(text.width).toBeLessThanOrEqual(561);await panel.getByRole('button',{name:'Talk',exact:true}).click();await expect(voice(page)).toHaveAttribute('data-voice-state','listening');const listening=await measure(true);
+  await voice(page).getByRole('button',{name:'Mute microphone',exact:true}).click();await expect(voice(page).getByRole('button',{name:'Unmute microphone',exact:true})).toHaveAttribute('aria-pressed','true');const muted=await measure(true);
+  await voice(page).getByRole('button',{name:'Unmute microphone',exact:true}).click();await page.evaluate(()=>(window as any).flagOff.replies.push('Synthetic matching answer.'));await say(page,'Check my calendar');await expect(voice(page)).toHaveAttribute('data-voice-state','speaking');const speaking=await measure(true);
+  console.log(JSON.stringify({viewport,detent,text,listening,muted,speaking}));for(const state of [listening,muted,speaking]){expect(state.radius).toBe(text.radius);for(const key of ['x','y','width','height'] as const)expect(Math.abs(state[key]-text[key]),`${detent} ${key} remains fixed`).toBeLessThan(1);}
+  const targets=await voice(page).locator('button').evaluateAll(buttons=>buttons.map(button=>{const r=button.getBoundingClientRect();return {width:r.width,height:r.height};}));for(const target of targets){expect(target.width).toBeGreaterThanOrEqual(44);expect(target.height).toBeGreaterThanOrEqual(44);}
+  await page.screenshot({path:info.outputPath(`production-composer-${detent}.png`),animations:'disabled'});await voice(page).getByRole('button',{name:'Stop voice conversation',exact:true}).click();await expect(voice(page)).toHaveCount(0);await settle();const restored=await measure();for(const key of ['x','y','width','height'] as const)expect(Math.abs(restored[key]-text[key])).toBeLessThan(1);
+ }
+ await clean(page,foreign);
+});

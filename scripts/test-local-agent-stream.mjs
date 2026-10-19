@@ -3,12 +3,8 @@ import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import http from 'node:http';
-import {createLocalAgentDevHandler} from './local-agent-dev-bridge.ts';
-import {readLocalAgentStream} from '../apps/app/src/runtime/local-agent-stream.ts';
-import {AlphaClient} from '../apps/app/src/runtime/alpha-client.ts';
-import {LocalAgentProtocol} from '../apps/app/src/runtime/local-agent.ts';
-import {RemoteProtocol} from '../apps/app/src/runtime/remote-protocol.ts';
-import {streamNativeAgent} from '../apps/app/src/runtime/local-agent-native-stream.ts';
+import {loadBrowserModule} from '../test/fixtures/browser-source.mjs';
+const [{createLocalAgentDevHandler},{readLocalAgentStream},{AlphaClient},{LocalAgentProtocol},{RemoteProtocol},{streamNativeAgent}]=await loadBrowserModule(['scripts/local-agent-dev-bridge.ts', 'apps/app/src/runtime/local-agent-stream.ts', 'apps/app/src/runtime/alpha-client.ts', 'apps/app/src/runtime/local-agent.ts', 'apps/app/src/runtime/remote-protocol.ts', 'apps/app/src/runtime/local-agent-native-stream.ts'],{testMocks:true});
 const encoder=new TextEncoder(),signal=new AbortController().signal;
 const event=value=>`data: ${JSON.stringify(value)}\n\n`;
 function response(text,size=1){const bytes=encoder.encode(text);return new Response(new ReadableStream({start(c){for(let i=0;i<bytes.length;i+=size)c.enqueue(bytes.slice(i,i+size));c.close();}}),{headers:{'content-type':'text/event-stream'}});}

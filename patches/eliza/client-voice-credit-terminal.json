@@ -1,0 +1,13 @@
+{
+  "baseCommit": "cc52bef586997875047d9a9c74276084fad8610c",
+  "paths": [
+    {
+      "path": "packages/ui/src/voice/voice-session-client.ts",
+      "beforeSha256": "20ef94c8c4e01d4f1ec1ee6c64f62182eff28626ce50608b1cf0dae873495f63",
+      "afterSha256": "2d928e07ab1adfe9e0334d81599e82766cc654ea66908557a07ebcd0852de19e"
+    }
+  ],
+  "patchSha256": "dd3b34fe24e6eef50c383a984e86ddb06f73b63f3329726f48f20052e358445d",
+  "sourceCommit": "b802d486baad2770f193355f375f1ccfd1dec09e",
+  "sourceScope": "Treat insufficient credits as terminal, preserve a useful error, stop capture and never remint automatically."
+}

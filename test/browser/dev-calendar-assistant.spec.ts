@@ -97,7 +97,7 @@ for (const mode of ['confirm', 'cancel', 'read', 'update', 'delete'] as const) {
     const before=await page.evaluate(async ()=>JSON.parse((await (await import('/src/browser/calendar-store.ts')).calendarDocument.readRaw())!).events);expect(before).toHaveLength(creating?0:1);
     expect(JSON.stringify(await page.evaluate(()=>(window as any).calendarSent))).not.toContain('Private description');
     const operation=await page.evaluate(()=>(window as any).recoveryFixture.proposal.payload.operation);
-    await page.getByText('Approve: '+presentDeviceRecordOperation(operation,'UTC').title,{exact:true}).click();
+    await page.getByText(presentDeviceRecordOperation(operation,'UTC').title,{exact:true}).click();
     const review=page.getByRole('dialog',{name:mode==='read'?'Share calendar event with agent?':'Review calendar change'});
     await expect(review).toBeVisible();await expect(review).toContainText(creating||mode==='update'?'Assistant planned event':'Selected private event');
     await review.getByRole('button',{name:mode==='cancel'?'Cancel':'Confirm',exact:true}).click();

@@ -16,7 +16,7 @@ try {
   localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
   const media = { id: 'video-fixture-71', kind: 'video', revision: 'revision-2', width: 640, height: 480, duration: 2, date: 1700000000000, image: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>', path: 'content://PRIVATE_VIDEO_URI_CANARY', privateCaption: 'PRIVATE_VIDEO_CONTENT_CANARY' };
   const drafts = new Map();
-  window.Capacitor = { PluginHeaders: [{name:'AlphaNotifications',methods:['status','addListener','removeListener'].map(name=>({name,rtype:'promise'}))},{name:'AlphaVoiceCloud',methods:[{name:'checkPermissions',rtype:'promise'}]},{ name: 'AlphaConnection', methods: ['secureRead','secureCompareExchange','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }, { name: 'AlphaPhotos', methods: ['list','read','libraryAccess'].map(name => ({ name, rtype: 'promise' })) }], nativeCallback:()=> 'fixture-listener', nativePromise: async (plugin, method, input) => {
+  window.Capacitor = { PluginHeaders: [{name:'AlphaNotifications',methods:['status','addListener','removeListener'].map(name=>({name,rtype:'promise'}))},{name:'AlphaVoiceCloud',methods:[{name:'checkPermissions',rtype:'promise'}]},{ name: 'AlphaConnection', methods: ['secureRead','secureCompareExchange','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }, { name: 'AlphaPhotos', methods: ['list','read','libraryAccess','addListener','removeListener'].map(name => ({ name, rtype: 'promise' })) }], nativeCallback:()=> 'fixture-listener', nativePromise: async (plugin, method, input) => {
    if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:true,appEnabled:true};
    if(plugin==='AlphaNotifications'&&method==='addListener')return {callbackId:'fixture-listener'};
    if(plugin==='AlphaNotifications'&&method==='removeListener')return {};
@@ -29,6 +29,8 @@ try {
     throw Error('Unexpected credential operation');
    }
    if (plugin !== 'AlphaPhotos') throw Error('Unexpected native access');
+   if(method==='addListener')return {callbackId:'fixture-photo-listener'};
+   if(method==='removeListener')return {};
    if(method==='libraryAccess')return {scope:'denied',images:'denied',videos:'denied'};
    return method === 'list' ? { items: [media], next: '' } : media;
   }};
@@ -36,7 +38,7 @@ try {
  await page.goto(url, { waitUntil: 'load', timeout: 180000 });
  await page.getByRole('button', { name: 'Photos', exact: true }).click();
  await page.getByRole('button', { name: /^Captured video / }).click();
- await page.getByRole('button', { name: 'Ask Alpha about this photo', exact: true }).click();
+ await page.getByRole('button', { name: 'Ask Alpha about this video', exact: true }).click();
  // Ask opens the local content review first; only reviewed, synthetic text reaches the composer.
  const review = page.getByRole('dialog', { name: 'Ask about selected content' });
  await review.getByRole('textbox', { name: 'Content excerpt' }).fill('Synthetic description of the selected video frame');

@@ -118,15 +118,15 @@ for (const mode of ['pending', 'wrong-owner', 'expired', 'wrong-reminder-context
       await expect(page.locator('html')).toHaveAttribute('data-active-view','calendar');
       await page.getByText('Review Notes on Home',{exact:true}).click();
       await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
-      await expect(page.getByText('Approve: notes query',{exact:true})).toBeVisible();
+      await expect(page.getByText('notes query',{exact:true})).toBeVisible();
       expect(await counts()).toEqual({posts:1,decisions:0,claims:0,receipts:0,effects:0,journal:[]});
     } else if (mode === 'pending') {
       await expect(page.getByText(/Pending phone actions are available for separate review/)).toBeVisible();
-      await page.getByText('Approve: Create note', { exact: true }).click();
+      await page.getByText('Create note', { exact: true }).click();
       await expect(page.getByText('Synthetic approved effect recorded', { exact: true }).last()).toBeVisible();
       expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: 1, effects: 1, journal: ['reserve', 'markApplying', 'finish'] });
     } else {
-      await expect(page.getByText(/^Approve:/)).toHaveCount(0);
+      await expect(page.locator('.alpha-action-review')).toHaveCount(0);
       expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, effects: 0, journal: [] });
     }
   });

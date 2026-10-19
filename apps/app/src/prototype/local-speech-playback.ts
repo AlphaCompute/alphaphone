@@ -1,3 +1,4 @@
+import {developmentCartesiaVoiceEnabled} from '../runtime/development-cartesia-flag';
 import {cloudRuntimeEnabled} from '../build-flags';
 import {developmentCloudVoiceEnabled} from '../runtime/development-cloud-voice';
 import { Capacitor } from '@capacitor/core';
@@ -97,7 +98,7 @@ const replyDeadlineMs = 5 * 60 * 1000;
 export function installLocalSpeechPlayback(Component: Shell) {
   const p = Component.prototype, original = p.renderVals, mount = p.componentDidMount, update = p.componentDidUpdate, unmount = p.componentWillUnmount;
   const states = new WeakMap<object, Reading>();
-  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; announcement?:string; focus: boolean; binding: string }>();
+  const menus = new WeakMap<object, { id: string; text: string; trigger?: HTMLElement; notice: string; announcement?:string; copied?:boolean; focus: boolean; binding: string }>();
   const holds = new WeakMap<object, { timer?: ReturnType<typeof setTimeout>; x: number; y: number; opened?:boolean; selecting?:boolean; start?:{node:Node;offset:number} }>();
   const suppressedClicks = new WeakMap<object, string>();
   const listeners = new WeakMap<object, () => void>();
@@ -146,7 +147,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
     const knownUsers=new Set((shell.S().msgs||[]).filter((row:Shell)=>row.from==='user').map((row:Shell)=>row.id));
     const previousSpeech=stopLocalSpeechPlayback();stop(shell);
     const retiring=shell.stopVoiceConversation?.();
-    const cloud = selectVoiceRoute() === 'cloud';
+    const directReadAloud=developmentCartesiaVoiceEnabled;
+    const cloud = selectVoiceRoute() === 'cloud'||directReadAloud;
     const controller = new AbortController(), state: Reading = { id, text, controller, message: 'Waiting for the previous audio to stop…' };
     const current=()=>!(shell.S().msgs||[]).some((row:Shell)=>row.from==='user'&&!knownUsers.has(row.id))&&states.get(shell)===state&&!controller.signal.aborted&&shell.live!==false&&!document.hidden&&!connectionController.getSnapshot().open&&selection()===binding&&shell.S().view===view&&['sheet','full'].includes(shell.S().chat)&&(shell.S().msgs||[]).some((row:Shell)=>row.id===id&&row.text===text&&JSON.stringify(row.messageBinding)===messageBinding);
     state.current=current;states.set(shell,state);cancelOwner=shell;cancelCurrent=()=>{stop(shell);refresh(shell);return state.pending;};refresh(shell);
@@ -154,8 +156,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if(retiring){await retiring;if(!current())return;}
       if(previousSpeech){await previousSpeech;if(!current())return;}
       if(!current())return;
-      if (cloud && !developmentCloudVoiceEnabled && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
-      const voice = cloud ? createCloudVoice() : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
+      if (cloud && !developmentCloudVoiceEnabled && !directReadAloud && (!connectionController.getCloudEnvironment() || !connectionController.getCloudClient()?.credentialId)) { stop(shell);connectionController.openCloudAccount();return; }
+      const voice = cloud ? createCloudVoice(directReadAloud?'direct':'cloud') : createOnDeviceVoice(); if (!voice) {stop(shell);return;}
       state.message=cloud?'Preparing audio…':'Preparing audio on this phone…';refresh(shell);
       if ('playbackReady' in voice) {
         planLocalSpeech(text);
@@ -164,7 +166,7 @@ export function installLocalSpeechPlayback(Component: Shell) {
       if (!current()) return;
       state.message = 'Reading aloud…'; refresh(shell);
       if(!current())return;
-      const pending=state.pending=(cloud ? createCloudVoice().speak(text, controller.signal, onStarted) : speakOnDevice(text, controller.signal, onStarted));await pending;
+      const pending=state.pending=(cloud ? createCloudVoice(directReadAloud?'direct':'cloud').speak(text, controller.signal, onStarted) : speakOnDevice(text, controller.signal, onStarted));await pending;
       if (current()) { state.controller = undefined; state.message = 'Finished reading.'; refresh(shell); }
     } catch (error) {
       if((error as {code?:string})?.code==='speech-cleanup-unconfirmed'&&state.pending)retainSpeechRetirement(state.pending);
@@ -205,7 +207,8 @@ export function installLocalSpeechPlayback(Component: Shell) {
   }
   p.renderVals = function () {
     const out = original.call(this), source = this.S().msgs || [], state = states.get(this);
-    const cloud = selectVoiceRoute() === 'cloud';
+    const directReadAloud=developmentCartesiaVoiceEnabled;
+    const cloud = selectVoiceRoute() === 'cloud'||directReadAloud;
     const available = cloud || createOnDeviceVoice() !== null;
     out.msgs = (out.msgs || []).map((message: Shell, index: number) => {
       const entry = source[index];
@@ -237,13 +240,15 @@ export function installLocalSpeechPlayback(Component: Shell) {
         closeMessageActions: (event: MouseEvent) => closeMenu(this, event.detail===0), menuKey: (event: KeyboardEvent) => menuKey(this, event),
         copyMessage: async () => {
           if (!menu || menus.get(this) !== menu || menu.binding !== JSON.stringify(connectionController.getSnapshot().session)) return;
-          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = ''; menu.announcement = 'Copied.'; refresh(this); } }
-          catch { if (menus.get(this) === menu) { menu.announcement = ''; menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
+          try { await navigator.clipboard.writeText(entry.text); if (menus.get(this) === menu) { menu.notice = ''; menu.announcement = 'Copied.'; menu.copied=true; refresh(this);setTimeout(()=>{if(menus.get(this)===menu){menu.copied=false;refresh(this);}},1400); } }
+          catch { if (menus.get(this) === menu) { menu.copied=false; menu.announcement = ''; menu.notice = 'Copy unavailable. Select the message text to copy it.'; refresh(this); } }
         },
+        copyMessageLabel: opened&&menu?.copied?'Copied!':'Copy',
+        copyMessageIcon: opened&&menu?.copied?out.ic.check:out.ic.copy,
         messageActionsNotice: opened && menu ? menu.notice : '',
         messageActionsAnnouncement: opened && menu ? menu.announcement || '' : '',
-        localSpeechAvailable: available && entry.from === 'agent', localSpeechLabel: selected && state?.controller ? 'Stop reading' : 'Read aloud',
-        localSpeechMessage: selected ? state?.message : '',
+        localSpeechAvailable: available && entry.from === 'agent', localSpeechLabel: 'Read aloud', localSpeechControlLabel:selected&&state?.controller?'Stop reading':'Read aloud',localSpeechIcon:selected&&state?.controller?out.ic.stop:out.ic.wave,localSpeechActive:!!(selected&&state?.controller),
+        localSpeechMessage: selected&&!state?.controller&&state?.message!=='Finished reading.' ? state?.message : '',
         localSpeech: () => { void listen(this, entry.id, entry.text); }
       };
     });

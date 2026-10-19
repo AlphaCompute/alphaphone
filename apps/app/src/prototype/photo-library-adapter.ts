@@ -1,7 +1,8 @@
 /** Photos > Device library: the full permitted MediaStore library (issue 408, policy P-24).
  * Native reads go through AlphaPhotoLibrary; rules live in runtime/photo-library.ts.
  * The library is paged only while this album is open; nothing is copied or uploaded. */
-import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { registerPlugin } from '../platform-plugins';
 import { createCaptureRevisions } from './context-selection';
 import {
   LibraryCatalog, LibraryRevisions, LibrarySelection, parsePage, parseScope, parseValidation, parseItem, prepareReview, reviewCurrent, scopePresentation,

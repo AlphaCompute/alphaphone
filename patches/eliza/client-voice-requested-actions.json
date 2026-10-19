@@ -1,0 +1,18 @@
+{
+  "baseCommit": "cc52bef586997875047d9a9c74276084fad8610c",
+  "sourceCommit": "52b7ab59ea41be390cd33db99cf895851a84bc12",
+  "paths": [
+    {
+      "path": "packages/host/src/voice.ts",
+      "beforeSha256": "13c5baa47c9d1e8ecc1ca49fc9a17ffe2bd555bd7eab27c80cc1466a3294a86e",
+      "afterSha256": "19b5c0e5bbe03a27d3641e6edb4ab40bc989084a2bdd5aa9308e9494843aa0b1"
+    },
+    {
+      "path": "packages/ui/src/voice/voice-session-protocol.ts",
+      "beforeSha256": "6476281e74873613551adaef4aae2d941aeff97cc2c76bfd28e2de5443bc3146",
+      "afterSha256": "97cb6c036c3ade8c24b629065e9164f938166d0c773650473efac79832bd725a"
+    }
+  ],
+  "patchSha256": "b66aabe7efb7cfcd1c5c62a6c42d422e69722164dd5d73b59338d682d2e8cf6b",
+  "sourceScope": "Browser projection of shared voice request mode and terminal user message correlation, after existing prepared-navigation projection. Host requires the matching shared commit."
+}

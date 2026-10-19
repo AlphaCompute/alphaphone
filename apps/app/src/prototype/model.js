@@ -1950,7 +1950,7 @@ registerView("camera", {
       showZoom: !isScan && !front,
       zooms: CAM_ZOOM.map(function (z, i) {
         var on = st.zoom === i;
-        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background:#ffffff;color:#000000;width:40px;height:40px;padding:2px;box-sizing:content-box;background-clip:content-box;font-size:13px" : "background:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;padding:5px;box-sizing:content-box;background-clip:content-box;font-size:12px", pick: function () { api.set({ zoom: i }); } };
+        return { label: z[0], aria: "Zoom " + z[0].replace("×", "") + "x", css: on ? "background-color:#ffffff;color:#000000;width:40px;height:40px;padding:2px;box-sizing:content-box;background-clip:content-box;font-size:13px" : "background-color:rgba(0,0,0,.65);color:#ffffff;width:34px;height:34px;padding:5px;box-sizing:content-box;background-clip:content-box;font-size:12px", pick: function () { api.set({ zoom: i }); } };
       }),
       scanFound: isScan && st.found, scanning: isScan && !st.found,
       posterDay: poster.short,
@@ -2387,6 +2387,8 @@ registerView("photos", {
         chromeOp: st.chrome ? 1 : 0, chromePE: st.chrome ? "auto" : "none",
         notDeleted: true,
         favIcon: cur.fav ? "fill: currentColor" : "", favLabel: cur.fav ? "Remove from favorites" : "Add to favorites",
+        viewerLabel: (cur.kind === "video" ? "Video" : "Photo") + ". Tap to show or hide controls, swipe to browse",
+        askLabel: "Ask Alpha about this " + (cur.kind === "video" ? "video" : "photo"),
         editLabel: cur.kind === "video" ? "Edit video" : "Edit photo", shareLabel: cur.kind === "video" ? "Share video" : "Share photo", infoLabel: cur.kind === "video" ? "Video info" : "Photo info", deleteLabel: cur.kind === "video" ? "Delete video" : "Delete photo",
         vid: cur.kind === "video", playBtn: cur.kind === "video" && !st.playing, playing: !!st.playing,
         prog: "width: " + (st.ppos || 0) + "%; transition: " + (st.ppos ? "width " + phSecs(cur.dur) + "s linear" : "none"),

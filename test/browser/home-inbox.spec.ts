@@ -15,8 +15,8 @@ async function fixture(page:Page,theme='light'){
   const client={gmailAccounts:async()=>{f.accountReads++;return [{connectionId:'grant-'+f.owner,label:'Synthetic mailbox '+f.owner,connected:true,grantedCapabilities:['google.gmail.triage']}];},
    gmailSearch:async()=>{f.reads++;if(f.hold)await new Promise<void>(resolve=>f.release=resolve);if(f.fail)throw Error('Synthetic provider unavailable');return {messages:structuredClone(f.rows),syncedAt:'fixture',nextPageToken:f.more?'next-fixture-page':null};},
    gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false})};
-  c.getCloudClient=()=>({client,sessionId:'fixture-'+f.owner} as any);
-  const original=c.getSnapshot(),snapshots=new Map();c.getSnapshot=()=>{if(!snapshots.has(f.owner))snapshots.set(f.owner,{...original,cloudAccount:{environment:'production',userId:'fixture-'+f.owner,sessionId:'fixture-'+f.owner,credentialId:'fixture-only'}});return snapshots.get(f.owner);};
+  c.getCloudClient=()=>({client,sessionId:'fixture-'+f.owner,credentialId:'fixture-only'} as any);
+  const original=c.getSnapshot(),snapshots=new Map();c.getSnapshot=()=>{if(!snapshots.has(f.owner))snapshots.set(f.owner,{...original,cloudAccount:{environment:'production',userId:'fixture-'+f.owner,organizationId:'fixture-org',sessionId:'fixture-'+f.owner,credentialId:'fixture-only'}});return snapshots.get(f.owner);};
  });
 }
 async function load(page:Page){await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect(page.getByRole('button',{name:'Refresh inbox',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:/Unread, Synthetic sender A/})).toBeVisible();await returnToApps(page);}
@@ -32,7 +32,7 @@ for(const theme of ['light','dark'])test(`Home Inbox uses cached unread subjects
 });
 
 test('Home Inbox distinguishes complete empty results from partial loaded results',async({page})=>{
- await fixture(page);await page.evaluate(()=>{const f=(window as any).homeInboxFixture;f.rows=[];f.more=true;});await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect(page.getByText('Your Inbox is empty',{exact:true})).toBeVisible();await returnToApps(page);await expect(tile(page)).toContainText('From loaded messages');await expect(tile(page)).not.toContainText('No unread');
+ await fixture(page);await page.evaluate(()=>{const f=(window as any).homeInboxFixture;f.rows=[];f.more=true;});await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect(page.getByText('Your Inbox is empty',{exact:true})).toBeVisible();await returnToApps(page);await expect(tile(page)).toContainText('Recent email');await expect(tile(page)).not.toContainText('No unread');
  await page.evaluate(()=>{(window as any).homeInboxFixture.more=false;});await page.getByRole('button',{name:'Inbox',exact:true}).click();await page.getByRole('button',{name:'Refresh inbox',exact:true}).click();await expect(page.getByText('Your Inbox is empty',{exact:true})).toBeVisible();await returnToApps(page);await expect(tile(page)).toContainText('No unread email');await expect(tile(page).locator('[data-alpha-home-inbox-subjects]')).toHaveCount(0);
 });
 
@@ -47,4 +47,50 @@ test('Home Inbox retains failure and retires cached subjects on owner change',as
 
 test('Home Inbox does not publish a cancelled delayed load as empty or fetched',async({page})=>{
  await fixture(page);await page.evaluate(()=>(window as any).homeInboxFixture.hold=true);await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect.poll(()=>page.evaluate(()=>typeof(window as any).homeInboxFixture.release)).toBe('function');await returnToApps(page);await expect(tile(page)).toContainText('Open to load email');await expect(tile(page)).not.toContainText('No unread');await page.evaluate(()=>(window as any).homeInboxFixture.release());await expect(tile(page).locator('[data-alpha-home-inbox-subjects]')).toHaveCount(0);expect(await page.evaluate(()=>(window as any).homeInboxFixture.reads)).toBe(1);
+});
+
+for(const scenario of ['recent','expired','owner-change-during-restore'] as const)test(`Home restores only its own recent saved Inbox on reload without provider reads: ${scenario}`,async({page})=>{
+ await fixture(page);await load(page);
+ await expect.poll(()=>page.evaluate(async()=>{
+  const {serviceReadCache}=await import('/src/runtime/service-read-cache-store.ts');
+  const cache=await serviceReadCache({environment:'production',userId:'fixture-a',organizationId:'fixture-org',credentialId:'fixture-only'});
+  return !!(await cache.get('gmail:mailbox'));
+ })).toBe(true);
+ if(scenario==='expired')await page.evaluate(async()=>{
+  const {serviceReadCache}=await import('/src/runtime/service-read-cache-store.ts');
+  const cache=await serviceReadCache({environment:'production',userId:'fixture-a',organizationId:'fixture-org',credentialId:'fixture-only'});
+  const saved=await cache.get<any>('gmail:mailbox');
+  for(const row of saved!.value.lists)row.at=Date.now()-31*86400000;
+  await cache.put('gmail:mailbox',saved!.value);
+ });
+ await fixture(page);
+ await page.evaluate(async hold=>{
+  const {serviceReadCache}=await import('/src/runtime/service-read-cache-store.ts');
+  const cache=await serviceReadCache({environment:'production',userId:'fixture-a',organizationId:'fixture-org',credentialId:'fixture-only'}),read=cache.get.bind(cache),f=(window as any).homeInboxFixture;
+  f.cacheReads=0;
+  cache.get=async function<T>(key:string){const saved=await read<T>(key);if(key==='gmail:mailbox'){f.cacheReads++;if(hold)await new Promise<void>(resolve=>f.releaseCache=resolve);}return saved;};
+  (await import('/src/runtime/connection-ui.tsx')).connectionController.close();
+ },scenario==='owner-change-during-restore');
+ await expect.poll(()=>page.evaluate(()=>(window as any).homeInboxFixture.cacheReads)).toBe(1);
+ if(scenario==='owner-change-during-restore')await page.evaluate(async()=>{
+  const f=(window as any).homeInboxFixture;f.owner='b';(await import('/src/runtime/connection-ui.tsx')).connectionController.close();f.releaseCache();
+ });
+ await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))));
+ if(scenario!=='recent'){
+  await expect(tile(page)).not.toContainText('Synthetic quarterly planning subject');
+  await expect(tile(page)).not.toContainText('2 unread');
+  await expect(tile(page)).not.toContainText('No unread');
+ }else{
+  await expect(tile(page)).toContainText('Synthetic quarterly planning subject');
+  await expect(tile(page)).toContainText('2 unread');
+  await page.evaluate(async()=>{(window as any).homeInboxFixture.owner='b';(await import('/src/runtime/connection-ui.tsx')).connectionController.close();});
+  await expect(tile(page)).not.toContainText('Synthetic quarterly planning subject');
+  await expect(tile(page)).not.toContainText('2 unread');
+ }
+ expect(await page.evaluate(()=>({reads:(window as any).homeInboxFixture.reads,accounts:(window as any).homeInboxFixture.accountReads}))).toEqual({reads:0,accounts:0});
+ // Deferring hidden Settings is not removal: explicitly opening it still checks authorization once.
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).homeInboxFixture.accountReads)).toBe(1);
+ await returnToApps(page);
+ expect(await page.evaluate(()=>(window as any).homeInboxFixture.reads)).toBe(0);
 });

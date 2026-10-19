@@ -93,7 +93,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
     });
     expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, automationLists: 0, journal: [] });
     if (mode === 'pending') {
-      await page.getByText('Approve: open view', { exact: true }).click();
+      await page.getByText('open view', { exact: true }).click();
       await expect(page.getByRole('region',{name:'Workflows',exact:true}).getByText('No automations yet',{exact:true})).toBeVisible();
       await expect.poll(async()=> (await counts()).journal).toEqual(['reserve', 'markApplying', 'finish']);
       // Receipt upload can finish before navigation retires the request epoch.
@@ -113,7 +113,7 @@ for (const mode of ['pending', 'wrong-owner', 'expired'] as const) {
       expect(await counts()).toEqual({ posts: 1, decisions: 1, claims: 1, receipts: beforeSync+1, automationLists: 1, journal: ['reserve', 'markApplying', 'finish'] });
       expect(await page.evaluate(()=>new Set((window as any).navigationFixture.receiptBodies).size)).toBe(1);
     } else {
-      await expect(page.getByText(/^Approve:/)).toHaveCount(0);
+      await expect(page.locator('.alpha-action-review')).toHaveCount(0);
       expect(await counts()).toEqual({ posts: 1, decisions: 0, claims: 0, receipts: 0, automationLists: 0, journal: [] });
     }
   });

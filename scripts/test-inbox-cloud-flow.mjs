@@ -62,7 +62,7 @@ assert.equal(sandbox.inboxAttention().unread,undefined,'no count is claimed befo
 const realNow=Date.now,noon=new Date();noon.setHours(12,0,0,0);const clock=minutes=>{const value=noon.getTime()+minutes*60000;Date.now=()=>value;return formatTime(new Date(value));};
 const firstRead=clock(0);
 render();await tick();assert.equal(searches.length,1,'remembered first page starts before account discovery finishes');assert.equal(render().rows.length,0,'speculative mail is not displayed before account verification');delayAccounts=false;releaseAccounts();await tick();
-assert.equal(shell.renderVals().homeInboxStatus,`From loaded messages · Read ${firstRead}`,'a partial page names its read time');
+assert.equal(shell.renderVals().homeInboxStatus,`Recent email · Updated ${firstRead}`,'a partial page names its read time');
 assert.equal(shell.renderVals().homeInboxCount,'1+ unread');assert.deepEqual(local(shell.renderVals().homeInboxRows),[{subject:'Fixture mail-1',from:'Sender'}]);
 assert.deepEqual(searches.map(s=>s.pageToken),[null,'page-1'],'one first page plus one bounded read-ahead');
 assert.equal(render().rows.length,2);assert.equal(views.inbox.badge(),true,'badge reflects a real unread provider message');
@@ -70,7 +70,7 @@ assert.equal(render().hasMore,true,'provider page token offers Load more');
 const laterPage=clock(7);assert.notEqual(laterPage,firstRead);
 delay=true;render().loadMore();await tick();assert.equal(render().hasMore,true,'pending pagination stays visible');assert.equal(render().loadMoreLabel,'Loading more…');assert.equal(render().loadMoreDisabled,true);const pendingCount=searches.length;render().loadMore();await tick();assert.equal(searches.length,pendingCount,'double tap never starts another page');releaseSearch();delay=false;await tick();assert.equal(render().loadingMore,false);
 assert.deepEqual(searches.at(-1),{query:'in:inbox',size:25,pageToken:'page-1'},'Load more sends the opaque provider page token');
-assert.match(shell.renderVals().homeInboxStatus,new RegExp(` · Read ${firstRead.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a later page keeps the time of the oldest data counted');
+assert.match(shell.renderVals().homeInboxStatus,new RegExp(` · Updated ${firstRead.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a later page keeps the time of the oldest data counted');
 assert.equal(shell.renderVals().homeInboxDescription,shell.renderVals().homeInboxStatus);
 assert.deepEqual(local(render().rows.map(r=>r.subj)),['Fixture mail-1','Fixture mail-2','Fixture mail-3'],'pages append without duplicates');
 assert.equal(render().hasMore,false,'last page has no Load more');
@@ -79,7 +79,7 @@ assert.equal(shell.renderVals().homeInboxCount,'1 unread','complete paging remov
 render();[...swipes.values()].at(-1)(-120,4);await tick();assert.match(toasts.at(-1),/Enable Gmail changes in Settings/,'swipe without the grant changes nothing');
 const refreshed=clock(19);
 chip('Refresh').pick();await tick();assert.deepEqual(searches.filter(s=>!s.pageToken).at(-1),{query:'in:inbox',size:25,pageToken:null},'Refresh restarts from the first page');
-assert.match(shell.renderVals().homeInboxStatus,new RegExp(`Read ${refreshed.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a completed refresh moves the read time');
+assert.match(shell.renderVals().homeInboxStatus,new RegExp(`Updated ${refreshed.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}$`),'a completed refresh moves the read time');
 assert.equal(render().rows.length,2);
 const readsBeforeOpen=reads.length;render().rows[0].open();assert.equal(render().d.body,'Fixture body','a prepared message opens immediately');await tick();assert.equal(reads.length,readsBeforeOpen,'opening the prepared body never repeats its read');
 agent='remote-b';for(const fn of listeners)fn();assert.equal(shell.st.nativeMailSelection,null,'target change clears observation authority');assert.equal(render().d.body,'Fixture body','Cloud mailbox remains independent');
@@ -164,3 +164,20 @@ pages['in:inbox']=[[mail('mail-1')]];chip('Refresh').pick();await tick();render(
 assert.deepEqual(disconnects,[],'Inbox has no disconnect mutation');
 shell.componentWillUnmount();
 console.log('PASS: Inbox auto-load, Refresh, provider paging, Sent folder, unread badge, account/query fences, classified errors with explicit Retry, shared compose prefill, compact toolbar and immediate pagination feedback. Provider fixture only.');
+
+// A new adapter instance represents a reload: restore only the current owner's retained inbox.
+const cachedAt=Date.now()-30000,cachedReadLabel=formatTime(new Date(cachedAt));
+const retainedMailbox={accounts:[{connectionId:'grant-a',label:'Fixture account',connected:true,grantedCapabilities:['google.gmail.triage']}],selected:'grant-a',spamTrashSearch:false,lists:[{key:'old-session-key',at:cachedAt,firstPageRevision:null,messages:[mail('retained-unread',{unread:true})],query:'in:inbox',cursor:null,revision:'old-revision',cursors:[],newerMail:false,status:'Retained inbox'}],bodies:[]};
+sandbox.serviceReadCache=async()=>({get:async key=>key==='gmail:mailbox'?{value:structuredClone(retainedMailbox)}:null,put:async()=>{},clear:async()=>{}});
+const priorSnapshot=controller.getSnapshot;controller.getSnapshot=()=>({...priorSnapshot(),cloudAccount:{...priorSnapshot().cloudAccount,organizationId:'fixture-org'}});
+class ReloadShell {constructor(){this.st={q:null,compose:null};}renderVals(){return {};}componentDidMount(){}componentWillUnmount(){}vset(_,patch){Object.assign(this.st,patch);}}
+const reloadViews={inbox:{state:{}}};sandbox.installInboxCloudAdapter(ReloadShell,reloadViews);const reloaded=new ReloadShell();reloaded.componentDidMount();
+const reloadApi={...api,get:()=>reloaded.st,set:patch=>reloaded.vset('inbox',patch)};const searchesBeforeRestore=searches.length;
+reloadViews.inbox.render(reloaded.st,reloadApi);await tick();
+assert.equal(reloadViews.inbox.render(reloaded.st,reloadApi).rows.length,1,'cached Inbox renders after reload');
+assert.equal(reloaded.renderVals().homeInboxCount,'1 unread','Home rebuilds the same cached unread count after reload');
+assert.deepEqual(local(reloaded.renderVals().homeInboxRows),[{subject:'Fixture retained-unread',from:'Sender'}]);
+assert.equal(reloaded.renderVals().homeInboxStatus,`Fixture account · Updated ${cachedReadLabel}`,'restore keeps the original read time');
+assert.equal(searches.length,searchesBeforeRestore,'fresh retained snapshot needs no provider read to populate Home');
+reloaded.componentWillUnmount();
+console.log('PASS: Reloaded Inbox cache also restores Home subjects/count/time without a provider read.');

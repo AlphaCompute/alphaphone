@@ -1,0 +1,17 @@
+--- a/packages/ui/src/voice/voice-session-client.ts
++++ b/packages/ui/src/voice/voice-session-client.ts
+@@ -768,7 +768,13 @@
+           }
+         },
+         onError: (err) => {
+-          if (currentCapture()) emitError(err);
++          if (!currentCapture()) return;
++          try {
++            emitError(err);
++          } finally {
++            // A failed UI error callback must not retain a live microphone.
++            void stop();
++          }
+         },
+         getUserMedia: options.getUserMedia,
+         createAudioContext: options.createMicAudioContext,

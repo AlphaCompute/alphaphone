@@ -1,7 +1,9 @@
+import {CAMERA_CAPTURE_CAPABILITY} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
 import {sanitizeCloudInferenceFailure,type CloudInferenceFailure} from './crash-log';
 import {residentRecoveryReason,residentRecoveryMessage,RESIDENT_RECOVERY_PENDING,type ResidentRecoveryReason,type ResidentRecoveryView} from './resident-recovery';
 import {anyAbortSignal} from './abort-signal';
 import {CALENDAR_APPROVAL_READ_PATH,calendarApprovalFromList,calendarApprovalId} from './calendar-approval';
+import {readDevicePreferences} from '../browser/device-preferences';
 import {resolveCloudEnvironment} from './cloud-environment-selection';
 import { withResidentMapsNavigation } from '../maps/resident-relay.ts';
 import {aospImage} from './aosp-image';
@@ -10,7 +12,7 @@ import {automationsRouteAllowed, type AutomationsMethod} from './automations-rou
 import {iconStyle} from '../icon-style';
 import {validateUuid} from '../../../../vendor/eliza/packages/core/src/utils/uuid';
 import type {ConversationMessageTarget, ChatChannel, VoiceConversationBinding,VoiceTurnSignal,ReadReplyBinding,NativeNotesReadReplyHint} from './alpha-client';
-import {ViewNavigationClient} from './view-navigation';
+import {ViewNavigationClient,type NavigationAttempt} from './view-navigation';
 import {captureConversationChoice,selectConversation,conversationSelectionDocument} from './conversation-selection';
 import {developmentDigestDocument} from '../browser/development-digest-document';
 import {developmentExecutionDocument} from '../browser/development-execution-document';
@@ -268,6 +270,7 @@ const actionReceipts = new Map<string, { sessionId: string; result: Promise<Oper
 const readReplyOwners=new Map<ReadReplyBinding,{actions:DeviceActions;proposalId:string;digest:string;cancelled:boolean}>();
 function retireReadReplies(){for(const binding of [...readReplyOwners.keys()])void connectionController.cancelReadReply(binding).catch(()=>{});}
 let navigationContext:(()=>ContextEnvelope|null)|undefined;
+let requestedCameraContinuation:{messageId:string;selected:Active;session:VerifiedSession;generation:number;conversationId:string;client:ViewNavigationClient;attempt:NavigationAttempt;expiresAt:number}|undefined;
 let deviceRecovery: DeviceRecovery | undefined;
 let deviceExecutor: DeviceExecutor = async () => ({ status: 'failed', summary: 'Device action executor is unavailable.' });
 /** Foreground local reviews (free/busy over owner-chosen calendars). The phone shell supplies the
@@ -289,6 +292,7 @@ async function clockRepeatDaysSupported():Promise<boolean>{
 async function deviceCapabilities(offered:unknown):Promise<string>{
   const agent:unknown[]=Array.isArray(offered)?offered:[],android=Capacitor.getPlatform()==='android';
   const capabilities=['calendar.local-event.v1','notes.local-record.v1'];
+  if(agent.includes(CAMERA_CAPTURE_CAPABILITY)&&(Capacitor.isPluginAvailable('ElizaCamera')||!android&&typeof navigator!=='undefined'&&typeof navigator.mediaDevices?.getUserMedia==='function'))capabilities.push(CAMERA_CAPTURE_CAPABILITY);
   if(agent.includes('reminders.local-record.v2'))capabilities.push('reminders.local-record.v2');else if(agent.includes('reminders.local-record.v1'))capabilities.push('reminders.local-record.v1');
   for(const capability of ['notes.query.v1','reminders.create.v1',...(android?['calendar.create.v1','calendar.next-read.v1']:[]),'maps.selected-read.v1'])if(agent.includes(capability))capabilities.push(capability);
   if(availabilityNegotiated(agent))capabilities.push(CALENDAR_AVAILABILITY_CAPABILITY);
@@ -1447,6 +1451,31 @@ export const connectionController = {
   setDeviceRecovery(recovery: DeviceRecovery) { deviceRecovery=recovery; },
   cancelViewNavigation(){active?.viewNavigation?.cancel();},
   setNavigationContext(read:()=>ContextEnvelope|null){navigationContext=read;},
+  async performVoiceRequestedActions(binding:VoiceConversationBinding,messageId:string,signal:AbortSignal,operationType?:'camera_capture_photo'){
+    const selected=active,expected=navigationContext?.();
+    if(!selected?.actions||!expected||!validateUuid(messageId))return [];
+    const context=structuredClone(expected);
+    const current=()=>{signal.throwIfAborted();if(active!==selected||!this.voiceConversationCurrent(binding)||context.sensitive||JSON.stringify(navigationContext?.())!==JSON.stringify(context))throw Error('Voice action context changed');};
+    const allowed=async()=>{current();const preferences=await readDevicePreferences(signal);current();return !preferences.askBeforeAgentActions;};
+    if(!await allowed())return [];
+    await selected.actions.pendingReview(context,signal);current();
+    const receipts=await selected.actions.performRequested(messageId,context,signal,allowed,operationType);current();
+    return receipts;
+  },
+  async continueRequestedCamera(messageId:string,signal:AbortSignal):Promise<OperationReceipt[]> {
+    const pending=requestedCameraContinuation;
+    if(!pending||pending.messageId!==messageId)return [];
+    requestedCameraContinuation=undefined;
+    const context=pending.client.deliveredContext(pending.attempt);
+    if(!context||context.view!=='camera'||context.sensitive||!pending.selected.actions)return [];
+    const current=()=>{signal.throwIfAborted();if(document.hidden||pending.attempt.controller.signal.aborted||Date.now()>pending.expiresAt||epoch!==pending.generation||active!==pending.selected||state.session!==pending.session||conversationMemory.get(conversationKey(pending.session))!==pending.conversationId||JSON.stringify(navigationContext?.())!==JSON.stringify(context))throw Error('The camera request changed.');};
+    const allowed=async()=>{current();const preferences=await readDevicePreferences(signal);current();return !preferences.askBeforeAgentActions;};
+    if(!await allowed())return [];
+    await pending.selected.actions.pendingReview(context,signal);current();
+    return pending.selected.actions.performRequested(messageId,context,signal,allowed,'camera_capture_photo');
+  },
+  voiceRendererClientId(){return boundNavigation()?.clientId;},
+  voiceRendererMetadata(context:ContextEnvelope){return boundNavigation()?.metadata(context)??{};},
   captureViewNavigation(context:ContextEnvelope){const client=boundNavigation();return client?{client,attempt:client.capture(context)}:undefined;},
   setDeviceExecutor(executor: DeviceExecutor) { deviceExecutor = executor; },
   setForegroundExecutor(executor: ForegroundReviewExecutor) { foregroundExecutor = executor; },
@@ -2176,6 +2205,8 @@ export const connectionController = {
     const message = phoneContextMessage(text, context);
     if (sending) throw new Error('Wait for the current reply before sending another message.');
     const selected = active, session = state.session, generation = epoch;
+    requestedCameraContinuation=undefined;
+    const cameraNavigation=boundNavigation(),cameraAttempt=cameraNavigation?.currentAttempt(context);
     if (!selected || !session) throw noSessionError(NO_AGENT_SEND);
     const controller = new AbortController();
     const cancel = () => controller.abort(signal.reason);
@@ -2202,7 +2233,9 @@ export const connectionController = {
       // history. Other hosts retain the existing envelope and legacy alias.
       const nativeProse=isAndroid&&selected.kind==='resident'&&selected.userTextFormatVersion===1;
       const wireText=nativeProse?text:message.text;
-      const options = { signal: requestSignal, clientMessageId: requestId, channelType, metadata: { ...(channelType==='VOICE_DM'&&voiceTurnSignal?{voiceTurnSignal}:{}), ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
+      const actionPreferences=await readDevicePreferences(requestSignal).catch(()=>{requestSignal.throwIfAborted();return {askBeforeAgentActions:true};});assertCurrent();
+      const directRequestedActions=!actionPreferences.askBeforeAgentActions;
+      const options = { signal: requestSignal, clientMessageId: requestId, channelType, metadata: { ...(directRequestedActions?{agentActionMode:'direct-request-v1'}:{}), ...(channelType==='VOICE_DM'&&voiceTurnSignal?{voiceTurnSignal}:{}), ...(replyTo?{replyToMessageId:replyTo.messageId}:{}), ...(message.context.timeZone===undefined?{}:{uiTimeZone:message.context.timeZone}), clientDevice: { context: message.context }, ...boundNavigation()?.metadata(context), ...(nativeProse?{userTextFormat:'plain-v1'}:{alphaPhone:{context:message.context}}) } };
       dispatched = { conversationId: id, at: Date.now() };
       const progress=(value:string)=>{requestSignal.throwIfAborted();if(generation!==epoch||selected!==active||state.session?.sessionId!==session.sessionId)throw Error('The connection changed.');onText?.(value);};
       const replyReady=(results:readonly unknown[]|undefined)=>{assertCurrent();onReplyReady?.(results);};
@@ -2234,7 +2267,13 @@ export const connectionController = {
       if (selected.actions) {
         // A pending action that does not fit this screen, time zone or negotiated support is
         // named to the owner instead of being dropped; it stays unapprovable.
-        try { const items = await selected.actions.pendingReview(message.context, requestSignal); proposals = items.flatMap(item => item.proposal ? [item.proposal] : []); notices = items.flatMap(item => item.notice ? [item.notice.slice(0, 500)] : []).slice(0, 5); }
+        try { let items = await selected.actions.pendingReview(context, requestSignal);
+          if(!responseFailure&&directRequestedActions&&typeof reply.userMessageId==='string'&&validateUuid(reply.userMessageId)){
+            const performed=await selected.actions.performRequested(reply.userMessageId,context,requestSignal,async()=>!(await readDevicePreferences(requestSignal)).askBeforeAgentActions);
+            assertCurrent();
+            if(performed.length){notices.push(...performed.map(result=>result.summary.slice(0,500)));items=await selected.actions.pendingReview(message.context,requestSignal);}
+          }
+          proposals = items.flatMap(item => item.proposal ? [item.proposal] : []); notices.push(...items.flatMap(item => item.notice ? [item.notice.slice(0, 500)] : []));notices=notices.slice(0,5); }
         catch { update({ message: 'Reply received. Phone action proposals could not be checked; use action history.' }); }
       }
       requestSignal.throwIfAborted();
@@ -2242,6 +2281,9 @@ export const connectionController = {
       // A failed reply can follow a durably recorded proposal. Recover only the
       // existing identity/context-bound review; never retry chat or execute it.
       if (responseFailure && !proposals?.length) throw responseFailure;
+      if(!responseFailure&&directRequestedActions&&message.context.view==='home'&&cameraNavigation&&cameraAttempt&&typeof reply.userMessageId==='string'&&Array.isArray(reply.actionResults)){
+        requestedCameraContinuation={messageId:reply.userMessageId,selected,session,generation,conversationId:id,client:cameraNavigation,attempt:cameraAttempt,expiresAt:Date.now()+30_000};
+      }
       return { text: responseFailure
         ? `${responseFailure.message} Pending phone actions are available for separate review. Nothing has been approved or performed automatically.`
         : reply.text, ...(notices.length ? { notices } : {}), ...(!responseFailure?{...(typeof reply.messageId==='string'?{messageId:reply.messageId}:{}),...(typeof reply.userMessageId==='string'?{userMessageId:reply.userMessageId}:{}),messageBinding:{conversationId:id,session:{...session}}}:{}), ...(proposals ? { proposals } : {}), ...(!responseFailure&&Array.isArray(reply.actionResults)?{actionResults:reply.actionResults}:{}) };

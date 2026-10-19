@@ -103,7 +103,7 @@ export function presentHomeCalendarSource(input: {state: 'ready' | 'loading' | '
   if (input.reminder) return reminder();
   if (state !== 'ready' || !readAt) return {origin: '', read: '', description: ''};
   const name = typeof input.calendar === 'string' && input.calendar.trim() ? input.calendar.trim().slice(0, 60) : '';
-  return {origin: name, read: '',
+  return {origin: name === 'In this app' || name === 'This app' ? '' : name, read: '',
     description: `${name ? `${name}. ` : ''}Read ${whenLabel(readAt, now)} from ${native ? 'calendars on this device' : 'the calendar saved in this app'}${input.truncated ? '; only the first 2,000 events were read' : ''}`};
 }
 /** The secondary line of the Home calendar card while an overdue reminder holds it: the first item
@@ -149,9 +149,9 @@ export function presentHomeWorkflowFreshness(input: {loadedAt: number | null | u
 export function presentHomeInboxStatus(input: {failure: boolean; pending: boolean; cached: {more: boolean; label: string; readAt: number | null} | null; connected: boolean; unchecked: boolean; now: number}) {
   const {failure, pending, cached, now} = input;
   const read = cached?.readAt && Number.isFinite(cached.readAt) && cached.readAt > 0 ? whenLabel(cached.readAt, now) : '';
-  if (failure) return `Open to retry${read ? ` · last read ${read}` : ''}`;
+  if (failure) return `Open to retry${read ? ` · last updated ${read}` : ''}`;
   if (pending) return 'Updating email…';
-  if (cached) return [cached.more ? 'From loaded messages' : cached.label, read ? `Read ${read}` : ''].filter(Boolean).join(' · ');
+  if (cached) return [cached.more ? 'Recent email' : cached.label, read ? `Updated ${read}` : ''].filter(Boolean).join(' · ');
   return input.connected ? 'Open to load email' : input.unchecked ? 'Open to check email' : '';
 }
 

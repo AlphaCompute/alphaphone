@@ -52,7 +52,7 @@ export const voiceVisuals: Record<string,{scaleY:number[];opacity:number[];durat
   thinking: {
     scaleY: [0.24, 0.52, 0.24],
     opacity: [0.38, 0.92, 0.38],
-    duration: 1.18,
+    duration: 1.6,
   },
   speaking: {
     scaleY: [0.42, 1, 0.52, 0.84, 0.42],
@@ -76,10 +76,10 @@ export function VoiceActivity({phase,theme,compact=false}:{phase:string;theme:'l
  const visual=voiceVisuals[phase]??voiceVisuals.idle,paused=reduced||visual.duration===0;
  useLayoutEffect(()=>{
   if(paused)return;
-  const animations=[...(root.current?.children??[])].flatMap((element,index)=>typeof element.animate==='function'?[element.animate(visual.scaleY.map((scale,frame)=>({transform:`scaleY(${scale})`,opacity:visual.opacity[frame],easing:'ease-in-out'})),{duration:visual.duration*1000,iterations:Infinity,delay:(index%voiceBarHeights.length)*55,easing:'linear',fill:'both'})]:[]);
+  const animations=[...(root.current?.children??[])].flatMap((element,index)=>typeof element.animate==='function'?[element.animate(visual.scaleY.map((scale,frame)=>({transform:`scaleY(${scale})`,opacity:visual.opacity[frame],easing:'ease-in-out'})),{duration:visual.duration*1000,iterations:Infinity,delay:phase==='thinking'||phase==='transcribing'?index*(compact?110:32):(index%voiceBarHeights.length)*(phase==='speaking'?38:70),easing:'linear',fill:'both'})]:[]);
   const visibility=()=>{for(const animation of animations)if(document.hidden)animation.pause();else animation.play();};visibility();document.addEventListener('visibilitychange',visibility);
   return()=>{document.removeEventListener('visibilitychange',visibility);for(const animation of animations)animation.cancel();};
- },[visual,paused]);
+ },[visual,paused,phase,compact]);
  return <span ref={root} aria-hidden="true" data-alpha-voice-animation data-phase={phase} data-theme={theme} data-paused={paused}>
   {(compact?voiceBarHeights:composerBarHeights).map((height,index)=><span key={index} data-alpha-voice-bar style={{height,transform:`scaleY(${visual.scaleY.at(-1)})`,opacity:visual.opacity.at(-1)}}/>)}
  </span>;

@@ -119,6 +119,7 @@ else{console.error('Unexpected command '+JSON.stringify(a));process.exit(1);}
   // Source authentication alone can exceed the old whole-fixture deadline.
   // Surface process failures before reading output that may never have been created.
   assert.ifError(run.error);
+  if(!permissionCampaign&&!restartCampaign&&!reminderCampaign&&kind!=='workflow')assert.ok(fs.existsSync(path.join(root,'test-results')),`Native fixture exited before writing evidence (status ${run.status}):\n${run.stdout}\n${run.stderr}`);
   const directory=kind==='workflow'?path.join(root,'test-results/workflow'):permissionCampaign||restartCampaign||reminderCampaign?path.join(root,'output'):path.join(root,'test-results',fs.readdirSync(path.join(root,'test-results'))[0],`standalone-${testClass}${['options','home-card-revoked'].includes(kind)?'-'+selectedMethod:''}`);
   // Every result folder a Calendar run wrote, by name: a class selected with two methods writes two.
   const calendarOutput=kind!=='workflow'&&!permissionCampaign&&!restartCampaign&&!reminderCampaign?path.dirname(directory):null;

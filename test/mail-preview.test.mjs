@@ -23,5 +23,7 @@ test('markup in preview text cannot create elements, scripts or image requests',
 test('marketing preheader padding does not consume the inbox preview',()=>{
  assert.equal(decodeMailPreview('New collection &#847;&zwnj;&nbsp;&#847;&zwnj; Shop now'),'New collection Shop now');
  assert.equal(decodeMailPreview('Offer\u200c\u00a0\u034f\u200c\u00a0Details'),'Offer Details');
+ assert.equal(decodeMailPreview('New release '+('\u034f\u2800 '.repeat(30))+'Listen now'),'New release Listen now');
+ assert.equal(decodeMailPreview('Braille \u2801\u2800\u2803'),'Braille \u2801\u2800\u2803');
  assert.equal(decodeMailPreview('Persian \u0628\u200c\u0628 and A\u00a0B'),'Persian \u0628\u200c\u0628 and A\u00a0B');
 });

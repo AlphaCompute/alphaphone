@@ -37,3 +37,19 @@ test('batch controls remain reachable above the assistant pill in compact light 
   await page.screenshot({path:info.outputPath('batch-'+theme+'.png')});await page.getByRole('button',{name:'Favorite selected',exact:true}).click();await expect(page.getByText('1 favorited',{exact:true})).toBeVisible();
  }
 });
+
+test('cancelling selection returns to the Photos tab it started from',async({page})=>{
+ await page.getByRole('button',{name:'Photos',exact:true}).click();
+ for(const tab of ['Albums','Library']){
+  await page.getByRole('button',{name:tab,exact:true}).click();
+  await expect(page.getByRole('button',{name:tab,exact:true})).toHaveAttribute('aria-pressed','true');
+  await page.getByRole('button',{name:'Select photos',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Cancel selection',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Cancel selection',exact:true}).click();
+  await expect(page.getByRole('button',{name:tab,exact:true})).toHaveAttribute('aria-pressed','true');
+ }
+ expect(await page.evaluate(async()=>{
+  const {browserPhotoLibrary}=await import('/src/prototype/browser-camera.ts');
+  return {count:(await browserPhotoLibrary.list()).items.length,trash:(await browserPhotoLibrary.summary()).trash};
+ })).toEqual({count:3,trash:0});
+});

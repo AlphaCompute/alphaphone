@@ -109,7 +109,7 @@ for (const mode of ['share', 'all-day', 'free', 'cancel-choice', 'cancel-result'
     for (const title of TITLES) expect(JSON.stringify(asked.sent)).not.toContain(title);
     expect(asked.capabilityHeader.split(',').includes('calendar.availability-read.v1')).toBe(mode !== 'not-offered');
     expect(asked.sent.metadata.clientDevice.context.timeZone).toBe('America/New_York');
-    const approve = page.getByText('Approve: Check availability', { exact: true });
+    const approve = page.getByText('Check availability', { exact: true });
 
     if (mode === 'other-zone' || mode === 'not-offered') {
       // The pending action is named with the reason it cannot be reviewed; it is never approvable.

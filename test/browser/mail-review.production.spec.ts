@@ -212,7 +212,7 @@ test('Android: after an account change elsewhere, the Home Inbox card says when 
   await expect(button(page, 'Synthetic sender, Harbour schedule')).toBeVisible({ timeout: 30_000 });
   await button(page, 'Back to apps').click();
   const card = page.locator('[data-alpha-layer="home"] [data-alpha-home-inbox]');
-  await expect(card).toContainText(/Read \d{1,2}:\d{2}/);
+  await expect(card).toContainText(/Updated \d{1,2}:\d{2}/);
   await expect(card).not.toContainText('Not updated since');
   // Settings announces a Gmail account change this way after a disconnect; Home reads no mail.
   const searches = (await fixture(page)).searches;

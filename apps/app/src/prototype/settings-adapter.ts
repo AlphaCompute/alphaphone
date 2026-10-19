@@ -206,8 +206,13 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }catch{/* Support diagnostics never replace the original inference failure. */}
     finally{clearTimeout(timer);if(inferenceAbort===abort)inferenceAbort=null;}
   }
-  async function refreshCapabilities() {
-    capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
+  async function refreshCapabilities(enteringSettings=false) {
+    capabilityAbort?.abort();
+    // Hidden Settings must not turn a Home cache restore or account switch into remote discovery.
+    if(!enteringSettings&&owner?.S?.().view!=='settings'){
+      capabilityAbort=null;gmailAccounts=[];gmail='Not checked';digests='Not checked';inferenceProvider='Not reported by agent';return;
+    }
+    const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
     gmail = cloud ? 'Checking authorization…' : 'Cloud sign-in required'; gmailAccounts = [];
     digests = workflow ? 'Checking agent support…' : agentAvailabilityNotice();
@@ -410,7 +415,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   p.openView = function (key: string, ...args: any[]) {
     const result = openView.call(this, key, ...args);
-    if (key === 'settings') { void refresh(); void refreshCapabilities(); }
+    if (key === 'settings') { void refresh(); void refreshCapabilities(true); }
     return result;
   };
   definition.render = (state: Bag, api: Bag) => {
@@ -512,6 +517,14 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           if(testMocksEnabled&&!Capacitor.isNativePlatform())groups.push({...group([{kNav:true,label:'Calendar backups',lbl:'Calendar backups',sub:'Events saved in this app',hasSub:true,chev:true,noAB:true,go:()=>openCalendarRecovery()}]),cap:'Saved data',hasCap:true});
           out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Calendar',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
         }
+        page.groups.push(group([{
+          kTog:true,label:'Ask before agent actions',aria:'Ask before agent actions',hasSub:true,
+          sub:'Off: carry out simple local requests. On: review them first. Sends, deletions and calendar or reminder changes still require review.',
+          on:cachedDevicePreferences()?.askBeforeAgentActions===true,
+          track:cachedDevicePreferences()?.askBeforeAgentActions?'background:var(--acc)':'background:var(--line)',
+          kx:cachedDevicePreferences()?.askBeforeAgentActions?20:0,
+          toggle:async()=>{const saved=cachedDevicePreferences();if(!saved)return;try{await editDevicePreferences(value=>{value.askBeforeAgentActions=!saved.askBeforeAgentActions;});changed();}catch{api.toast('Could not save action preference. Try again.');}}
+        }]));
         page.groups.push(group([{kNav:true,label:'Password manager',lbl:'Password manager',chev:true,noAB:true,go:()=>api.set({page:'password-provider'})}]));
         if(PASSWORD_PAGES.includes(state.page)){
           const helpers={info,group,toast:(message:string)=>api.toast(message),set:(patch:Bag)=>api.set(patch),ic:api.ic||{}};
@@ -578,7 +591,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       } else if (page.title === 'Connections') {
         const connected = gmailAccounts.filter(a => a.connected && a.connectionId);
         page.groups = [group([{ kNav:true,label:'Manage Google accounts',lbl:'Manage Google accounts',chev:true,noAB:true,go:()=>googleConnectionController.open() },info('Gmail', gmail),
-          ...connected.map(a => info(a.label, googleAccountAccessLabel(a))),
+          ...connected.map(a => ({...info(a.label, ''), hasSub:true, sub:googleAccountAccessLabel(a)})),
           ...(gmailNotice ? [info('Last change', gmailNotice)] : []),
           { kNav:true, label:'Open Inbox', lbl:'Open Inbox', chev:true, noAB:true, go:()=>api.open('inbox') },
           ...connected.map(a => { const label = `Disconnect Google account ${a.label}`; return { kNav:true, label, lbl:gmailBusy === a.connectionId ? 'Disconnecting…' : label, chev:true, noAB:true, go:()=>void disconnectGmail(a) }; }),
