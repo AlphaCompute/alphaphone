@@ -142,6 +142,14 @@ export function cloudPrivacyRow(label: string): [string, string] | null {
   if (label === 'On-device model') return ['Voice', 'Recordings for transcription and text for playback, when used'];
   return null;
 }
+/** A stale or direct Developer selection cannot open the page in a product build. */
+export function settingsPage(page: string | null | undefined, developerSurfaces: boolean): string | null | undefined {
+  return page === 'developer' && !developerSurfaces ? null : page;
+}
+/** Support diagnostics remain in About; Developer navigation is an explicit development surface. */
+export function settingsNavigationRows<T extends { label?: string; lbl?: string }>(rows: T[], developerSurfaces: boolean): T[] {
+  return developerSurfaces ? rows : rows.filter(row => row.label !== 'Developer' && row.lbl !== 'Developer');
+}
 // settings-facts:end
 /** Saved appearance choice. 'system' follows prefers-color-scheme, which Android WebView also reports. */
 export type AppearanceChoice = 'system' | 'light' | 'dark';
@@ -393,7 +401,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   };
   definition.render = (state: Bag, api: Bag) => {
     settingsApi = api;
-    const out = render({ ...state, acct: null, adding: false, sheet: ['conn', 'voice', 'wipe', 'wifiPw', 'forget'].includes(state.sheet?.kind) ? null : state.sheet }, api);
+    const out = render({ ...state, page: settingsPage(state.page, devSurfacesEnabled), acct: null, adding: false, sheet: ['conn', 'voice', 'wipe', 'wifiPw', 'forget'].includes(state.sheet?.kind) ? null : state.sheet }, api);
     // Prototype personality values are mock-only until the agent reports them.
     out.persona = 'Voice and agent settings';
     const connection = connectionController.getSnapshot();
@@ -440,6 +448,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     };
     for (const page of out.stack) {
       if (page.isTop) {
+        page.groups = page.groups.map((group: Bag) => ({ ...group, rows: settingsNavigationRows(group.rows, devSurfacesEnabled) }));
         const native=Capacitor.isNativePlatform(), provider=facts.passwordProvider||{};
         const installation:Bag={installed:'Installed · publisher verified',disabled:'Installed but disabled',absent:'Not installed','unrecognized-publisher':'Installed · publisher not recognized',unknown:'Not checked'};
         const selection:Bag={proton:provider.installation==='installed'?'Proton Pass selected':provider.installation==='disabled'?'Proton Pass selected · app disabled':'Provider package selected · publisher not verified',other:'Another provider selected',none:'No provider selected',unknown:'Selection unavailable'};
