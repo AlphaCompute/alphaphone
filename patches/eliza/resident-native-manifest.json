@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "baseCommit": "3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
+  "upstreamCandidateCommit": "371763e735c3f1ce7a61bef09a5f44cab46dead2",
+  "patches": [
+    {
+      "file": "resident-ipc-recovery.patch",
+      "sha256": "f9afec225df32221ab23bb3ec3765fbaed43c4d5a86d22beca9481e14774003a",
+      "module": "packages/app/platforms/android/app",
+      "targets": [
+        {
+          "path": "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+          "beforeSha256": "ac4287aee1f86a6dce3bcbe1b0351ac221b26d14f4487d489fea9f87f5edd0bf",
+          "afterSha256": "477648baa2d84d7e9b344ff8310ef356527f9127c0ac0810e2676f7ce07e7c7b"
+        },
+        {
+          "path": "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/IpcStartupRecovery.java",
+          "beforeSha256": "16909fb9966e87c684cf65467d5b708c4465c7cf119fd70bef500a428ce2336f",
+          "afterSha256": "caf7633ee51dc4e7ea652f15cb1f62d9115ca3956192df643753c8bd7c73e951"
+        }
+      ]
+    }
+  ]
+}
