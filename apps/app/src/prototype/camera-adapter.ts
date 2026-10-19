@@ -571,7 +571,7 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
     if(!browserMode&&kind!=='unavailable')action('Open Android settings',()=>{void device.openSettings({page:'privacy'}).catch(()=>message('Android settings could not open. Open Settings › Apps › Alpha › Permissions.'));});
     action('Try again',()=>{if(kind==='camera'||kind==='unavailable'){hideAccess();void start(true);}else{hideAccess();denied=undefined;message('');}});
     if(kind==='unavailable'){
-      panel.style.top='72px';panel.style.padding='12px';panel.style.flexDirection='row';panel.style.alignItems='center';panel.style.textAlign='left';
+      panel.style.top='calc(var(--alpha-camera-top,52px) + 20px)';panel.style.padding='12px';panel.style.flexDirection='row';panel.style.alignItems='center';panel.style.textAlign='left';
       title.style.cssText='display:block;font-size:16px;line-height:1.25';detail.style.cssText='display:block;font-size:12px;line-height:1.3;color:rgba(255,255,255,.8)';detail.textContent='Try again when the camera is free.';
       const copy=document.createElement('div');copy.style.cssText='flex:1;min-width:0';copy.append(title,detail);panel.append(copy,actions);
     }else panel.append(title,detail,actions);
