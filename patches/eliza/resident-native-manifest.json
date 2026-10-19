@@ -5,7 +5,7 @@
   "patches": [
     {
       "file": "resident-ipc-recovery.patch",
-      "sha256": "f9afec225df32221ab23bb3ec3765fbaed43c4d5a86d22beca9481e14774003a",
+      "sha256": "f396e4c5bc6dca34d25ac7a20fa674896b4ccc6511ac5986e71cf980a044e063",
       "module": "packages/app/platforms/android/app",
       "targets": [
         {
