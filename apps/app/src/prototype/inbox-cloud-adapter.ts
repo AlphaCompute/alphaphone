@@ -141,13 +141,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
   // A moved email (From switcher) names its target account and how to return it to the source.
   type PendingCompose = ComposePrefill & { account?: string; returnTo?: GmailAccount; restore?: () => void };
-  let pendingCompose: PendingCompose | null = null, lastCompose: unknown = null, resumeDraftFor = '';
+  let pendingCompose: PendingCompose | null = null, lastCompose: unknown = null, resumeDraftFor = '', composeAttempt = 0;
   // Read-state requests are keyed by account and message. One may be in flight per message, and an
   // automatic mark-read whose outcome was not confirmed is never sent again for that message.
   const readStateInFlight = new Set<string>(), readStateUnconfirmed = new Set<string>();
   let seenCursors = new Set<string>();
-  /** Drops a pending moved email back to its source account (in memory, rewritten on rebind). */
-  const returnPending = () => { pendingCompose?.restore?.(); pendingCompose = null; };
+  /** Retires queued shares and returns a pending moved email to its source account. */
+  const returnPending = () => { composeAttempt++; pendingCompose?.restore?.(); pendingCompose = null; };
   let thread: {id:string;previousOffsets:number[];offset:number;historyId:string;nextOffset:number|null;total:number;messages:{message:GmailMessage;bodyText:string;links?:GmailLink[];historyId:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[]}[]}|null=null;
   let contextReview:ReviewedMailContext|null=null,contextBusy=false;
   // Link rows per opened body: the body text is scanned once, not on every render.
@@ -278,7 +278,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   });
   provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear(preserveOffline=false) {
-    noticeAttempt++;
+    composeAttempt++; noticeAttempt++;
     invalidateList(!preserveOffline);spamTrashSearch=false;
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null });
@@ -698,8 +698,16 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     }
     if (pendingCompose && selected && drafts.ready && (!pendingCompose.account || pendingCompose.account === selected)) {
       const prefill = pendingCompose; pendingCompose = null;
+      const attempt = composeAttempt, account = selected, source = binding;
+      const current = () => {
+        const active = connectionController.getCloudClient();
+        return attempt === composeAttempt && !!api?.isActive() && selected === account &&
+          source?.client === active?.client && source?.sessionId === active?.sessionId && source?.credentialId === active?.credentialId;
+      };
       queueMicrotask(() => {
-        if (drafts.begin(undefined, undefined, '', prefill) || !prefill.returnTo) return;
+        if (!current()) { prefill.restore?.(); return; }
+        if (!prefill.returnTo) { void drafts.newSharedEmail(prefill, current); return; }
+        if (drafts.begin(undefined, undefined, '', prefill)) return;
         // The other account already holds a draft or retained edits; the moved email goes back.
         const target = accounts.find(a => a.connectionId === prefill.account)?.label || 'The other account';
         prefill.restore?.();

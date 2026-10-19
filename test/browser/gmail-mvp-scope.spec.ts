@@ -1,3 +1,4 @@
+import {returnToApps} from './app-navigation';
 import {guardCalendarFixture as guardNoMedia} from './calendar-draft-readiness';
 import {test,expect,type Page} from '@playwright/test';
 test.beforeEach(async({context,page})=>{await guardNoMedia(context);await page.route(/^https?:\/\/(?!127\.0\.0\.1:|localhost:)/,route=>route.abort());});
@@ -273,4 +274,67 @@ test('From switcher returns the email to its account when the other account alre
  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Stays body');
  const f=await gm(page);expect(f.prepares).toEqual([]);
  expect((await page.evaluate(()=>(window as any).gmSlots['inbox-drafts:v1:'+JSON.stringify(['production','fixture-owner','','grant-1'])])).subject).toBe('Second saved');
+});
+
+for(const saved of [false,true])test(`Share to email opens a new populated draft and preserves ${saved?'saved':'unsaved'} earlier email`,async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Compose',exact:true}).click();
+ await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Earlier email');
+ await page.getByRole('textbox',{name:'Message',exact:true}).fill('Earlier exact body');
+ if(saved){await page.getByRole('button',{name:'Save draft locally',exact:true}).click();await expect(page.getByText('Saved locally on this device',{exact:true}).first()).toBeVisible();}
+ await page.getByRole('button',{name:'Back from draft',exact:true}).click();await returnToApps(page);
+ await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Shared selected note');
+ await page.getByRole('textbox',{name:'Note',exact:true}).fill('First line\nSecond line');
+ await page.getByRole('button',{name:'Share note',exact:true}).click();await page.getByRole('button',{name:'Share to email',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Shared selected note');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Shared selected note\n\nFirst line\nSecond line');
+ expect((await gm(page)).prepares).toEqual([]);expect((await gm(page)).dispatches).toEqual([]);
+ await page.getByRole('button',{name:'Back from draft',exact:true}).click();await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();
+ await page.getByRole('button',{name:'Local draft, Earlier email',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Earlier email');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Earlier exact body');
+ expect((await gm(page)).dispatches).toEqual([]);
+});
+
+for(const destination of ['another account','Home'] as const)test(`Shared email is retired when leaving for ${destination} during local preservation`,async({page})=>{
+ await setup(page,{accounts:['owner@example.test','second@example.test']});await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Compose',exact:true}).click();
+ await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Keep earlier email');await page.getByRole('textbox',{name:'Message',exact:true}).fill('Keep earlier body');
+ await page.getByRole('button',{name:'Back from draft',exact:true}).click();await returnToApps(page);
+ await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Retired share');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Must not insert later');
+ await page.evaluate(async()=>{
+  const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');const cas=s.compareExchange.bind(s),w=window as any;
+  s.compareExchange=async(key,prior,next)=>{if(key.startsWith('inbox-drafts:v1:shelf:')){w.shareShelfHeld=true;await new Promise<void>(resolve=>w.releaseShareShelf=resolve);}return cas(key,prior,next);};
+ });
+ await page.getByRole('button',{name:'Share note',exact:true}).click();await page.getByRole('button',{name:'Share to email',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).shareShelfHeld===true)).toBe(true);
+ if(destination==='another account'){
+  await page.getByRole('button',{name:'second@example.test',exact:true}).click();
+  await expect.poll(async()=>(await gm(page)).searches.at(-1)?.grant).toBe('grant-1');
+ }else await returnToApps(page);
+ await page.evaluate(()=>(window as any).releaseShareShelf());
+ // Observe completion of the held storage write, rather than adding a sleep.
+ await expect.poll(()=>page.evaluate(()=>Object.entries((window as any).gmSlots).some(([key,value]:[string,any])=>key.startsWith('inbox-drafts:v1:shelf:')&&value?.items?.some((row:any)=>row.draft.subject==='Keep earlier email')))).toBe(true);
+ if(destination==='Home')await page.getByRole('button',{name:'Inbox',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveCount(0);
+ if(destination==='another account')await page.getByRole('button',{name:'owner@example.test',exact:true}).click();
+ await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();
+ await page.getByRole('button',{name:'Local draft, Keep earlier email',exact:true}).click();
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Keep earlier email');await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Keep earlier body');
+ expect((await gm(page)).prepares).toEqual([]);expect((await gm(page)).dispatches).toEqual([]);
+});
+
+test('Share to email preserves earlier edits when local preservation conflicts',async({page})=>{
+ await setup(page);await page.getByRole('button',{name:'Inbox',exact:true}).click();await expect(page.getByRole('button',{name:'Compose',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Compose',exact:true}).click();await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Conflict protected email');await page.getByRole('textbox',{name:'Message',exact:true}).fill('Protected exact body');
+ await page.getByRole('button',{name:'Back from draft',exact:true}).click();await returnToApps(page);await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Refused share');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Never replaces earlier email');
+ await page.evaluate(async()=>{const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');const cas=s.compareExchange.bind(s);s.compareExchange=async(key,prior,next)=>key.startsWith('inbox-drafts:v1:shelf:')?{status:'conflict'}:cas(key,prior,next);});
+ await page.getByRole('button',{name:'Share note',exact:true}).click();await page.getByRole('button',{name:'Share to email',exact:true}).click();
+ await expect(page.getByText('Drafts changed in another window. Reload before continuing.',{exact:true})).toBeVisible();await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveCount(0);
+ await page.getByRole('button',{name:'Other mail folders',exact:true}).click();await page.getByRole('menuitemradio',{name:'Drafts',exact:true}).click();await page.getByRole('button',{name:'Local draft, Conflict protected email',exact:true}).click();await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Conflict protected email');await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Protected exact body');
+ expect((await gm(page)).prepares).toEqual([]);expect((await gm(page)).dispatches).toEqual([]);
 });
