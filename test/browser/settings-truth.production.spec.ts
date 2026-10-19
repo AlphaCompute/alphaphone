@@ -33,7 +33,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
   w.Capacitor={
    PluginHeaders:[
         { name: 'AlphaDeletions', methods: methods(['pending']) },
-    {name:'AlphaNotifications',methods:methods(['status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
+    {name:'AlphaNotifications',methods:methods(['pendingWorkflowTap','status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
     {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','request','cancel','addListener','removeListener'])},
@@ -47,6 +47,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
         if (plugin === 'AlphaDeletions' && method === 'pending') return { deletions: [] };
     w.truth.calls.push({plugin,method,input});
     if(plugin==='AlphaNotifications'){
+     if(method==='pendingWorkflowTap')return {};
      if(method==='status')return JSON.parse(JSON.stringify(state.status));
      if(method==='crossAppStatus')return state.cross;
      if(method==='notificationHistory')return {items:state.history};
@@ -389,4 +390,22 @@ test('Settings › Eliza Cloud account & plan reports the offline plan state and
  await plan.getByRole('button',{name:'Check plan again',exact:true}).click();
  await expect(page.locator('.alpha-connection-scrim')).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request').length)).toBeGreaterThan(1);
+});
+
+test('the flag-off Problem log renders and exports finite inference facts without provider content',async({page})=>{
+ await nativeStub(page);
+ await page.addInitScript(()=>{
+  const at=Date.now();localStorage.setItem('alpha.crash-log.v1',JSON.stringify({version:1,entries:[{at,source:'inference',inference:{version:1,at,stage:'response-handler',status:400,reason:'unsupported-schema-keyword',parameter:'tools',keyword:'pattern',strictTools:['HANDLE_RESPONSE','private-tool-sentinel'],schemaKeywords:['pattern'],schemaScanTruncated:false,schemaDepth:4,schemaProperties:20,schemaEnumValues:30,schemaTextChars:120,message:'private-provider-message-sentinel',prompt:'private-note-sentinel',token:'private-token-sentinel'}}]}));
+ });
+ await openSettings(page);await current(page).getByRole('button',{name:'About',exact:true}).click();
+ await current(page).getByRole('button',{name:'Problem log',exact:true}).click();
+ await expect(current(page)).toContainText('Cloud AI request failed');await expect(current(page)).toContainText('HTTP 400');await expect(current(page)).toContainText('pattern');await expect(current(page)).toContainText('Properties 20');
+ await expect(current(page).getByRole('button',{name:'Export diagnostics',exact:true})).toBeVisible();
+ for(const value of ['private-provider-message-sentinel','private-note-sentinel','private-token-sentinel','private-tool-sentinel'])await expect(current(page)).not.toContainText(value);
+ await page.screenshot({path:'test-results/inference-problem-log-render.png'});
+ await current(page).getByRole('button',{name:'Export diagnostics',exact:true}).click();await expect.poll(()=>page.evaluate(()=>(window as any).truth.shared.length)).toBe(1);
+ const shared=await page.evaluate(()=>(window as any).truth.shared[0] as string);expect(JSON.parse(shared).crashes.recent[0].source).toBe('inference');
+ for(const value of ['private-provider-message-sentinel','private-note-sentinel','private-token-sentinel','private-tool-sentinel'])expect(shared).not.toContain(value);
+ page.once('dialog',dialog=>void dialog.accept());await current(page).getByRole('button',{name:'Clear problem log',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page)).toContainText('No problems recorded');
+ await current(page).getByRole('button',{name:'Back to Settings',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page).getByRole('button',{name:'About',exact:true})).toBeVisible();
 });

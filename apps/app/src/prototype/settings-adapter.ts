@@ -20,7 +20,7 @@ import type { GmailAccount } from '../runtime/cloud-protocol';
 import { disconnectGmailAccount, disconnectMessage, GMAIL_ACCOUNTS_CHANGED } from '../runtime/gmail-mailbox';
 import { retireGmailBackground } from '../runtime/gmail-background';
 import { gmailGrantLabel, googleAccountAccessLabel } from '../runtime/gmail-grants';
-import { clearCrashLog, describeCrashEntry, readCrashLog, type CrashLog } from '../runtime/crash-log';
+import { clearCrashLog, describeCrashEntry, readCrashLog, recordCloudInferenceFailure, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
 import { exportVoiceTiming } from '../runtime/voice-timing';
 import { readNativeVoiceTiming } from '../runtime/native-voice-turn';
@@ -173,6 +173,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   let photoAccess:PhotoAccess|null=null;
   let recovery: RecoveryDomain[] = [];
   let capabilityAbort: AbortController | null = null;
+  let inferenceAbort:AbortController|null=null;
   let gmailAccounts: GmailAccount[] = [], gmailBusy = '', gmailNotice = '', settingsApi: Bag | undefined;
   let roles: Record<string, RoleRow> | null = null, launcher: boolean | null = null, roleBusy = false, roleNotice = '';
   let crashLog: CrashLog | null = null, crashBusy = false, diagnosticsBusy = false;
@@ -194,6 +195,17 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     } finally { listenerBusy = false; if (owner === instance) changed(); }
   }
   const changed = () => owner?.vset('settings', { capabilityReadAt: Date.now() });
+  /** Only the existing authenticated local status; no provider/capability refresh. */
+  async function refreshInferenceFailure(){
+    inferenceAbort?.abort();const abort=inferenceAbort=new AbortController(),instance=owner;
+    const timer=setTimeout(()=>abort.abort(),10000);
+    try{
+      const failure=await connectionController.readCloudInferenceFailure(abort.signal);
+      if(abort.signal.aborted||owner!==instance||inferenceAbort!==abort)return;
+      if(recordCloudInferenceFailure(failure)){const problems=await readCrashLog();if(!abort.signal.aborted&&owner===instance&&inferenceAbort===abort){crashLog=problems;changed();}}
+    }catch{/* Support diagnostics never replace the original inference failure. */}
+    finally{clearTimeout(timer);if(inferenceAbort===abort)inferenceAbort=null;}
+  }
   async function refreshCapabilities() {
     capabilityAbort?.abort(); const abort = capabilityAbort = new AbortController();
     const cloud = connectionController.getCloudClient(), workflow = connectionController.getWorkflowClient(), instance = owner;
@@ -279,6 +291,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     if (diagnosticsBusy) return;
     const instance = owner, native = Capacitor.isNativePlatform(); diagnosticsBusy = true; changed();
     try {
+      await refreshInferenceFailure();
       const [buildFacts, problems, roleState, nativeTiming] = await Promise.allSettled([native ? device.diagnosticsFacts() : Promise.resolve({}), readCrashLog(), native ? system.getStatus() : Promise.resolve({ roles: [] }), readNativeVoiceTiming()]);
       const value: Bag = buildFacts.status === 'fulfilled' ? buildFacts.value : {};
       const connection = connectionController.getSnapshot();
@@ -312,6 +325,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
   }
   async function clearProblems(api: Bag) {
     if (crashBusy || !window.confirm('Clear the local problem log?')) return;
+    inferenceAbort?.abort();inferenceAbort=null;
     const instance = owner; crashBusy = true; changed();
     try { await clearCrashLog(); crashLog = await readCrashLog(); if (owner === instance) api.toast('Problem log cleared'); }
     catch { if (owner === instance) api.toast('The problem log could not be cleared.'); }
@@ -384,7 +398,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
     }
   };
   p.componentWillUnmount = function () {
-    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
+    if (owner === this) { capabilityAbort?.abort(); capabilityAbort = null; inferenceAbort?.abort();inferenceAbort=null; owner = null; ++generation; facts = {}; controls = {}; delivery = {}; cross={}; choices=null; history=null; roles=null; crashLog=null; roleNotice=''; }
     window.removeEventListener('alpha:device-settings',this.mailImagePreferenceChanged);
     window.removeEventListener('storage',this.appearanceStorageListener);
     window.removeEventListener('pageshow',this.appearanceResumeListener);
@@ -427,7 +441,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       ];
     };
     const problemCount = crashLog ? crashLog.entries.length : null;
-    const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); } });
+    const problemsRow = (): Bag => ({ kNav:true, label:'Problem log', lbl:'Problem log', val: problemCount === null ? 'Unavailable' : problemCount ? `${problemCount} recorded` : 'None recorded', hasVal:true, chev:true, noAB:true, go:()=>{ api.set({ page:'problems' }); void refresh(); void refreshInferenceFailure(); } });
     const diagnosticsRow = (): Bag => ({ kNav:true, label:'Export diagnostics', lbl: diagnosticsBusy ? 'Preparing diagnostics…' : 'Export diagnostics', chev:true, noAB:true, go:()=>void exportDiagnostics(api) });
     const licensesRow = (): Bag => ({ kNav:true, label:'Open source licenses', lbl:'Open source licenses', chev:true, noAB:true, go:()=>{ api.set({ page:'licenses' }); void loadLicenses(changed); } });
     const percent = typeof facts.batteryPercent === 'number' ? `${facts.batteryPercent}%` : 'Unavailable';

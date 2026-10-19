@@ -147,3 +147,54 @@ test('native voice timing (#395): linked monotonic trials, hashes and labels onl
  assert.match(settings,/nativeVoiceTiming: nativeTiming\.status === 'fulfilled' \? nativeTiming\.value : null/);
  assert.match(readFileSync(new URL('../apps/app/src/runtime/native-voice-turn.ts',import.meta.url),'utf8'),/plugin\(\)\.nativeVoiceTiming\(\)/);
 });
+
+test('Cloud inference failures share one finite problem-log and Android export projection',async()=>{
+ const {sanitizeCloudInferenceFailure,recordCloudInferenceFailure,readCrashLog,clearCrashLog,browserCrashLogKey}=await import('../apps/app/src/runtime/crash-log.ts');
+ const store=new Map();globalThis.localStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v)};
+ const at=Date.now(),failure={version:1,at,stage:'response-handler',status:400,reason:'unsupported-schema-keyword',parameter:'tools',keyword:'pattern',strictTools:['HANDLE_RESPONSE',secrets[0]],schemaKeywords:['pattern',secrets[1]],schemaScanTruncated:false,prompt:secrets[0],body:secrets[1],headers:{Authorization:secrets[2]},accountId:secrets[3]};
+ try{
+  const safe=sanitizeCloudInferenceFailure(failure);
+  assert.deepEqual(safe,{version:1,at,stage:'response-handler',status:400,reason:'unsupported-schema-keyword',parameter:'tools',keyword:'pattern',strictTools:['HANDLE_RESPONSE'],schemaKeywords:['pattern'],schemaScanTruncated:false});
+  assert.equal(recordCloudInferenceFailure(failure),true);assert.equal(recordCloudInferenceFailure(failure),false);
+  const log=await readCrashLog();assert.deepEqual(log.entries,[{at,source:'inference',inference:safe}]);
+  const report=buildDiagnostics({platform:'android',crashes:[...log.entries,{at,source:'inference',inference:{...failure,reason:secrets[0]}}]});
+  assert.equal(report.crashes.count,1);assert.deepEqual(report.crashes.recent,log.entries);assert.equal(describeCrashEntry(log.entries[0]).title,'Cloud AI request failed');
+  for(const secret of secrets){assert.equal(diagnosticsText(report).includes(secret),false);assert.equal(store.get(browserCrashLogKey).includes(secret),false);}
+  await clearCrashLog();assert.deepEqual((await readCrashLog()).entries,[]);assert.equal(recordCloudInferenceFailure(failure),false,'Clearing must not repopulate unchanged failure');
+  assert.equal(recordCloudInferenceFailure({...failure,at:at+1}),true);
+  const write=globalThis.localStorage.setItem;globalThis.localStorage.setItem=()=>{throw Error('Synthetic storage refusal');};await assert.rejects(clearCrashLog(),/clear not confirmed/);assert.equal((await readCrashLog()).entries.length,1,'Failed clear must remain visible');globalThis.localStorage.setItem=write;
+  for(const bad of [{stage:secrets[0]},{version:2},{strictTools:Array(10000).fill('HANDLE_RESPONSE')},{schemaScanTruncated:secrets[0]},{at:at+86400000}])assert.equal(sanitizeCloudInferenceFailure({...failure,...bad}),null);
+  assert.equal(sanitizeCloudInferenceFailure(undefined),null);
+  const counts=sanitizeCloudInferenceFailure({...failure,reason:'schema-limit',schemaDepth:4,schemaProperties:20,schemaEnumValues:30,schemaTextChars:120});assert.equal(counts.reason,'schema-limit');assert.equal(counts.schemaDepth,4);assert.equal(counts.schemaProperties,20);assert.equal(counts.schemaEnumValues,30);assert.equal(counts.schemaTextChars,120);assert.equal(buildDiagnostics({crashes:[{at,source:'inference',inference:counts}]}).crashes.recent[0].inference.schemaTextChars,120);
+  assert.equal(sanitizeCloudInferenceFailure({...failure,schemaDepth:25}).schemaDepth,undefined);
+  for(const key of ['schemaDepth','schemaProperties','schemaEnumValues','schemaTextChars'])assert.equal(sanitizeCloudInferenceFailure({...failure,[key]:100001})[key],undefined);
+  const unknown=sanitizeCloudInferenceFailure({...failure,status:200,parameter:secrets[0],keyword:secrets[0],strictTools:[],schemaKeywords:[]});assert.equal(unknown.status,undefined);assert.equal(unknown.parameter,undefined);assert.equal(unknown.keyword,undefined);
+ }finally{delete globalThis.localStorage;}
+});
+
+test('status inference read rejects retired resident sessions before recording',async()=>{
+ const {readFileSync}=await import('node:fs');const {stripTypeScriptTypes}=await import('node:module');const vm=await import('node:vm');const {sanitizeCloudInferenceFailure}=await import('../apps/app/src/runtime/crash-log.ts');
+ const source=readFileSync(new URL('../apps/app/src/runtime/connection-ui.tsx',import.meta.url),'utf8');const method=source.slice(source.indexOf('  async readCloudInferenceFailure('),source.indexOf('  getBrowserSpeechAgent(){')).trim().replace(/,$/,'');const code=stripTypeScriptTypes('async function '+method.slice('async '.length),{mode:'strip'});
+ let release,calls=0;const pending=new Promise(resolve=>{release=resolve;});const context={active:{kind:'resident',remote:{request:async(path,body,signal)=>{calls++;assert.equal(path,'/api/status');assert.equal(body,undefined);assert.ok(signal instanceof AbortSignal);return pending;}}},state:{session:{}},epoch:1,sanitizeCloudInferenceFailure,DOMException};
+ const read=vm.runInNewContext('('+code+')',context),signal=new AbortController().signal;const result=read(signal);context.epoch=2;release({cloudInferenceFailure:{version:1,at:Date.now(),stage:'text',reason:'unknown',strictTools:[],schemaKeywords:[],schemaScanTruncated:false,prompt:secrets[0]}});await assert.rejects(result,{name:'AbortError'});assert.equal(calls,1);
+ const failure={version:1,at:Date.now(),stage:'text',reason:'unknown',strictTools:[],schemaKeywords:[],schemaScanTruncated:false,prompt:secrets[0]};context.active={kind:'resident',remote:{request:async()=>({cloudInferenceFailure:failure})}};assert.deepEqual(await read(signal),sanitizeCloudInferenceFailure(failure));
+ context.active=null;assert.equal(await read(signal),null);const abort=new AbortController();abort.abort();await assert.rejects(read(abort.signal),{name:'AbortError'});assert.equal(calls,1);
+});
+
+test('explicit inference refresh is isolated and abortable without unrelated capability reads',async()=>{
+ const {readFileSync}=await import('node:fs');const {stripTypeScriptTypes}=await import('node:module');const vm=await import('node:vm');
+ const source=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');const body=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities()')).trim();const code=stripTypeScriptTypes(body,{mode:'strip'});
+ let reads=0,records=0;const context={inferenceAbort:null,owner:{},AbortController,setTimeout:callback=>{queueMicrotask(callback);return 1;},clearTimeout:()=>{},connectionController:{readCloudInferenceFailure:signal=>{reads++;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));}},recordCloudInferenceFailure:()=>{records++;return true;},readCrashLog:()=>{throw Error('Unexpected log read after cancellation');},changed:()=>{throw Error('Unexpected update after cancellation');}};
+ await vm.runInNewContext('('+code+')',context)();assert.equal(reads,1);assert.equal(records,0);assert.equal(context.inferenceAbort,null);
+ assert.doesNotMatch(body,/refreshCapabilities|gmailAccounts|listenerStatus|workflow/);
+});
+
+test('confirmed clear cancels an outstanding inference refresh before it can append',async()=>{
+ const {readFileSync}=await import('node:fs');const {stripTypeScriptTypes}=await import('node:module');const vm=await import('node:vm');
+ const source=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');
+ const refresh=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities()')).trim();
+ const clear=source.slice(source.indexOf('  async function clearProblems(api: Bag) {'),source.indexOf('  async function refresh()')).trim();
+ let records=0,clears=0;const context={inferenceAbort:null,owner:{toast:()=>{}},crashBusy:false,crashLog:null,AbortController,window:{confirm:()=>true},setTimeout:()=>1,clearTimeout:()=>{},connectionController:{readCloudInferenceFailure:signal=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))},recordCloudInferenceFailure:()=>{records++;return true;},readCrashLog:async()=>({entries:[],exitHistory:false}),clearCrashLog:async()=>{clears++;},changed:()=>{}};
+ vm.runInNewContext(stripTypeScriptTypes(refresh+'\n'+clear,{mode:'strip'})+'\nglobalThis.refresh=refreshInferenceFailure;globalThis.clear=clearProblems;',context);
+ const pending=context.refresh();await context.clear({toast:()=>{}});await pending;assert.equal(clears,1);assert.equal(records,0);assert.equal(context.inferenceAbort,null);
+});

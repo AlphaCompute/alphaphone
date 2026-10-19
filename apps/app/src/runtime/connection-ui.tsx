@@ -1,3 +1,4 @@
+import {sanitizeCloudInferenceFailure,type CloudInferenceFailure} from './crash-log';
 import {residentRecoveryReason,residentRecoveryMessage,RESIDENT_RECOVERY_PENDING,type ResidentRecoveryReason,type ResidentRecoveryView} from './resident-recovery';
 import {anyAbortSignal} from './abort-signal';
 import {CALENDAR_APPROVAL_READ_PATH,calendarApprovalFromList,calendarApprovalId} from './calendar-approval';
@@ -1622,6 +1623,13 @@ export const connectionController = {
     }) };
   },
   getResidentReadingBinding(){return active?.kind==='resident'&&state.session?{execution:'device' as const,ownerId:state.session.ownerId,sessionId:state.session.sessionId}:null;},
+  async readCloudInferenceFailure(signal:AbortSignal):Promise<CloudInferenceFailure|null>{
+    const selected=active,session=state.session,generation=epoch;
+    signal.throwIfAborted();if(selected?.kind!=='resident'||!session)return null;
+    const status=await selected.remote.request('/api/status',undefined,signal);
+    signal.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw new DOMException('The connection changed','AbortError');
+    return sanitizeCloudInferenceFailure(status?.cloudInferenceFailure);
+  },
   getBrowserSpeechAgent(){return active?.kind==='resident'&&state.session&&active.remote.browserSpeechAvailable?active.remote:null;},
   /** The resident agent's owner-authenticated request path, for its on-device live ASR route (live-voice.ts). */
   getResidentLiveVoice():{sessionId:string;subscribe:(listener:(envelope:unknown)=>void)=>()=>void;request:(path:string,body:unknown,signal:AbortSignal)=>Promise<unknown>}|null{
