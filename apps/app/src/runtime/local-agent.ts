@@ -1,3 +1,4 @@
+import {browserCloudResidentEnabled,browserResidentCall} from './browser-cloud-resident';
 import {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 import {parseRecoveryReview,parseRecoveryArchive} from './resident-recovery';
 import {anyAbortSignal} from './abort-signal';
@@ -34,9 +35,9 @@ const native = registerPlugin<Omit<LocalAgentBridge, 'subscribeVoiceEvents'> & N
 // proxy to feature-detect streaming before the native IPC adapter implements it.
 const nativeBridge:LocalAgentBridge={subscribeVoiceEvents:(ownerId,listener)=>subscribeNativeVoiceEvents(native,ownerId,listener),start:()=>native.start(),request:input=>native.request(input),stream:(input,signal,onText,onReplyReady)=>streamNativeAgent(native,input,signal,onText,onReplyReady)};
 // The host bridge at /__alpha-local-agent exists only on the development server
-// with ELIZA_DEV_ALLOW_TEST_MOCKS=1 (devSurfacesEnabled in build-flags.ts). This
+// with test mocks or the explicit real Cloud resident mode. This
 // module is also imported by Node contract tests, where import.meta.env is absent.
-const developmentBridgeAllowed: boolean = import.meta.env !== undefined && import.meta.env.DEV === true && import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1';
+const developmentBridgeAllowed: boolean = browserCloudResidentEnabled || (import.meta.env !== undefined && import.meta.env.DEV === true && import.meta.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS === '1');
 export const browserLocalAgentEnabled: boolean = developmentBridgeAllowed && import.meta.env.VITE_LOCAL_AGENT === '1';
 export const localAgentAvailable = () => Capacitor.isNativePlatform()
   ? Capacitor.isPluginAvailable('Agent') : browserLocalAgentEnabled;
@@ -51,7 +52,7 @@ const unavailableBridge: LocalAgentBridge = {
   async request() { throw new Error('On-device agent is unavailable here. Connect to an agent or use Eliza Cloud.'); },
 };
 const browserBridge: LocalAgentBridge | null = developmentBridgeAllowed ? {
-  async start() { return { state: 'host-managed' }; },
+  async start() { if(browserCloudResidentEnabled)await browserResidentCall('residentStart');return { state: 'host-managed' }; },
   async stream(input,signal,onText,onReplyReady){
     const bounded=anyAbortSignal([signal,AbortSignal.timeout(120000)]);
     const response=await fetch('/__alpha-local-agent',{method:'POST',headers:{'Content-Type':'application/json','X-Alpha-Local-Agent':'1'},
@@ -333,11 +334,13 @@ export async function configureLocalProvider(apiKey:string,model:string=LOCAL_PR
   return native.configureProvider({apiKey,model});
 }
 export async function localProviderStatus():Promise<LocalProviderStatus> {
+  if(browserCloudResidentEnabled)return parseProviderStatus(await browserResidentCall('residentStatus'));
   if(!Capacitor.isNativePlatform()||!native.providerStatus)throw Error('Provider status is unavailable here.');
   return parseProviderStatus(await native.providerStatus());
 }
 /** Removes the stored key and reads native status back; success requires configured:false. */
 export async function clearLocalProvider():Promise<LocalProviderStatus> {
+  if(browserCloudResidentEnabled){const cleared=parseProviderStatus(await browserResidentCall('residentClear'));if(cleared.configured)throw Error('Cloud provider removal unconfirmed');return cleared;}
   if(!Capacitor.isNativePlatform()||!native.clearProvider)throw Error('Provider removal is unavailable in this version.');
   const cleared=await native.clearProvider();
   if(record(cleared).configured!==false)throw Error('The provider key could not be confirmed removed.');
@@ -358,6 +361,7 @@ export async function launchedAsAssistant():Promise<boolean> {
  * ordinary stop → bind → start path; so does an earlier attach by this surface that failed its
  * owner-session verification. */
 export async function residentAttachable(credentialId:string,bridge:Pick<LocalAgentBridge,'residentAttachment'>=native,nativePlatform:boolean=Capacitor.isNativePlatform()):Promise<boolean> {
+  if(browserCloudResidentEnabled){if(attachDistrusted)return false;try{return (await browserResidentCall('residentStatus',credentialId)).attachable===true;}catch{return false;}}
   if(attachDistrusted||!nativePlatform||typeof credentialId!=='string'||!credentialId||!bridge.residentAttachment)return false;
   try{return (await bridge.residentAttachment({credentialId}))?.attachable===true;}catch{return false;}
 }
@@ -373,6 +377,7 @@ export async function bindResidentCloudProvider(credentialId:string,ports:{attac
 }
 
 export async function configureLocalCloudProvider(credentialId:string) {
+  if(browserCloudResidentEnabled){await browserResidentCall('residentBind',credentialId);return;}
   if(!Capacitor.isNativePlatform() || !await localAgentPackaged()) throw Error('The on-device runtime is unavailable in this build.');
   await stopLocalAgent();
   if(!native.configureCloudProvider)throw Error('Cloud billing is unavailable in this version.');

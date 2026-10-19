@@ -1,3 +1,4 @@
+import {createCloudResidentHost} from './cloud-resident-host.mjs';
 import {managedGoogleRequest,boundedServiceJson} from '../backend/managed-google-route-policy.ts';
 import {CLOUD_EMAIL_CODE,emailCodeExpiresAt,emailCodeSendBody,emailCodeVerifyBody} from './cloud-email-code.ts';
 import {randomUUID,createHash,randomBytes} from 'node:crypto';
@@ -18,7 +19,7 @@ function refusal(status:number,code:string){return Object.assign(Error(code),{st
 function requestId(value:unknown):string{if(typeof value!=='string'||!UUID.test(value))throw Error('Invalid request identity');return value;}
 function object(value:unknown):Record<string,any>{if(!value||typeof value!=='object'||Array.isArray(value))throw Error('Invalid Cloud request');return value as Record<string,any>;}
 /** DEV transport only. Canonical Cloud owns login, identity, plan entitlement and speech authorization. */
-export function createBrowserCloudDevHandler(options:{profile:string;request?:typeof fetch}){
+export function createBrowserCloudDevHandler(options:{profile:string;request?:typeof fetch;environment?:Environment;resident?:{bind:(credential:{token:string;credentialId:string;reference:string;expiresAt?:number})=>Promise<unknown>;clear:()=>Promise<unknown>;status:(id?:string)=>unknown;ready:(signal:AbortSignal)=>Promise<unknown>}}){
  const profile=path.resolve(options.profile),stateFile=path.join(profile,'credentials.json'),initialFile=path.join(profile,'initial-credential.json'),fetchCloud=options.request??fetch;
  let queue:Promise<unknown>=Promise.resolve();
  const pending=new Map<string,{environment:Environment;expiresAt:number;previousReference:string|null}>();
@@ -30,7 +31,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   await directory();try{return object(JSON.parse(await privateFile(stateFile)));}catch(error:any){if(error.code!=='ENOENT')throw error;}
   try{const seed=object(JSON.parse(await privateFile(initialFile))),env=environment(seed.environment);if(!REFERENCE.test(seed.credentialReference)||!UUID.test(seed.credentialId)||typeof seed.credentialFile!=='string'||!path.isAbsolute(seed.credentialFile)||typeof seed.credentialSha256!=='string'||!UUID.test(seed.userId)||!UUID.test(seed.organizationId))throw Error('Invalid initial Cloud binding');return {[env]:seed as Credential};}catch(error:any){if(error.code==='ENOENT')return {};throw error;}
  }
- async function save(value:Partial<Record<Environment,Credential>>){await directory();const tmp=stateFile+'.'+randomUUID();await writeFile(tmp,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});await rename(tmp,stateFile);}
+ async function save(value:Partial<Record<Environment,Credential>>){if(options.resident)await options.resident.clear();await directory();const tmp=stateFile+'.'+randomUUID();await writeFile(tmp,JSON.stringify(value)+'\n',{mode:0o600,flag:'wx'});await rename(tmp,stateFile);}
  function serial<T>(run:()=>Promise<T>):Promise<T>{const result=queue.then(run,run);queue=result.catch(()=>{});return result;}
  async function keyFor(c:Credential){if(c.token)return c.token;if(!c.credentialFile||!c.credentialSha256)throw Error('Cloud credential unavailable');const token=(await privateFile(c.credentialFile)).trim();if(createHash('sha256').update(token).digest('hex')!==c.credentialSha256)throw Error('Cloud credential changed');return token;}
  async function admitted(env:Environment,reference:unknown,id?:unknown){const c=(await load())[env];if(!c)throw refusal(401,'credentials-missing');if(c.credentialReference!==reference||id!==undefined&&c.credentialId!==id)throw refusal(409,'account-changed');if(c.expiresAt!==undefined&&c.expiresAt<=Date.now())throw refusal(401,'expired');return c;}
@@ -87,7 +88,7 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   if(data.operation==='signInCancel'){signIn?.controller.abort();signIn=null;await serial(async()=>{});return {};}
   if(data.operation==='signInStatus')return {active:!!signIn,inApp:true,google:false,email:true};
   if(data.operation==='signInStartEmail'){
-   const env=environment(data.environment),email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
+   const env=environment(data.environment);if(options.environment&&env!==options.environment)throw Error('Cloud environment mismatch');const email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
    if(email.length>320||!/^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(email))throw signInFailure('invalid-email');
    if(signIn?.busy)throw signInFailure('login-active');
    if(Date.now()<lastEmailSendAt+60000)throw signInFailure('cooldown');
@@ -136,6 +137,21 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
    if(typeof data.operation==='string'&&data.operation.startsWith('signIn')){send(res,200,await signInOperation(data,controller.signal));return;}
    if(data.operation==='cancel'){active.get(requestId(data.requestId))?.controller.abort();send(res,200,{});return;}
    const slot=data.slot,env=environment(data.environment??(typeof slot==='string'?slot.replace(/^cloud:/,''):undefined));
+   if(options.environment&&env!==options.environment)throw Error('Cloud environment mismatch');
+   if(typeof data.operation==='string'&&data.operation.startsWith('resident')){
+    if(!options.resident||env!==(options.environment??'production')||audio)throw Error('Cloud resident host unavailable');
+    if(data.operation==='residentStart'){send(res,200,await options.resident.ready(controller.signal));return;}
+    const value=await serial(async()=>{
+     if(data.operation==='residentClear')return options.resident!.clear();
+     if(data.operation==='residentStatus')return options.resident!.status(typeof data.credentialId==='string'?data.credentialId:undefined);
+     if(data.operation!=='residentBind'||!UUID.test(data.credentialId))throw Error('Invalid resident operation');
+     const c=(await load())[env];if(!c||c.credentialId!==data.credentialId)throw refusal(409,'account-changed');
+     await admitted(env,c.credentialReference,data.credentialId);controller.signal.throwIfAborted();
+     const result=await options.resident!.bind({token:await keyFor(c),credentialId:c.credentialId,reference:c.credentialReference,expiresAt:c.expiresAt});
+     try{await current(env,c,controller.signal);}catch(error){await options.resident!.clear();throw error;}
+     return result;
+    });send(res,200,value);return;
+   }
    if(data.operation==='secureRead'){if(slot!==`cloud:${env}`)throw Error('Unsupported credential slot');const c=(await load())[env];send(res,200,{value:c?JSON.stringify(publicCredential(c)):null});return;}
    if(data.operation==='secureWrite'||data.operation==='secureRemove'||data.operation==='secureCompareExchange'){
     if(slot!==`cloud:${env}`)throw Error('Unsupported credential slot');await serial(async()=>{
@@ -223,6 +239,15 @@ export function createBrowserCloudDevHandler(options:{profile:string;request?:ty
   }
  });
 }
-export function browserCloudDevBridge():Plugin{
- return {name:'alpha-browser-cloud-dev-bridge',apply:'serve',configureServer(server){if(process.env.ELIZA_DEV_ALLOW_TEST_MOCKS!=='1')return;const profile=path.resolve(process.env.ALPHA_BROWSER_CLOUD_PROFILE??path.join(homedir(),'.local/share/alphaphone/browser-cloud'));const handler=createBrowserCloudDevHandler({profile});server.middlewares.use(BROWSER_CLOUD_BRIDGE_PATH,(req,res)=>{void handler(req,res);});}};
+export function browserCloudDevBridge():Plugin {
+ return {name:'alpha-browser-cloud-dev-bridge',apply:'serve',async configureServer(server){
+  const cloudResident=process.env.VITE_ALPHA_CLOUD_RESIDENT==='1';
+  if(process.env.ELIZA_DEV_ALLOW_TEST_MOCKS!=='1'&&!cloudResident)return;
+  if(cloudResident&&(process.env.ELIZA_DEV_ALLOW_TEST_MOCKS==='1'||process.env.VITE_ELIZA_DEV_ALLOW_TEST_MOCKS==='1'||process.env.VITE_LOCAL_AGENT!=='1'||!process.env.ALPHA_ELIZA_SOURCE||!process.env.ALPHA_REMOTE_PROFILE))throw Error('Cloud resident requires real local source and mocks off');
+  const profile=path.resolve(process.env.ALPHA_BROWSER_CLOUD_PROFILE??path.join(homedir(),'.local/share/alphaphone/browser-cloud'));
+  const selected=environment(process.env.VITE_ALPHA_CLOUD_ENVIRONMENT??'production');
+  const resident=cloudResident?await createCloudResidentHost({source:path.resolve(process.env.ALPHA_ELIZA_SOURCE!),profile:path.resolve(process.env.ALPHA_REMOTE_PROFILE!),port:Number(process.env.ALPHA_REMOTE_PORT),environment:selected}):undefined;
+  if(resident)server.httpServer?.once('close',()=>{void resident.close();});
+  const handler=createBrowserCloudDevHandler({profile,resident,...(cloudResident?{environment:selected}:{})});server.middlewares.use(BROWSER_CLOUD_BRIDGE_PATH,(req,res)=>{void handler(req,res);});
+ }};
 }
