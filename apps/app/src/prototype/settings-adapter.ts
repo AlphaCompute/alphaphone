@@ -490,7 +490,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         }
         page.groups.push(group([{
           kTog:true,label:'Ask before agent actions',aria:'Ask before agent actions',hasSub:true,
-          sub:'Off: carry out your requests. On: review actions first. System permissions still apply.',
+          sub:'Off: carry out simple local requests. On: review them first. Sends, deletions and calendar or reminder changes still require review.',
           on:cachedDevicePreferences()?.askBeforeAgentActions===true,
           track:cachedDevicePreferences()?.askBeforeAgentActions?'background:var(--acc)':'background:var(--line)',
           kx:cachedDevicePreferences()?.askBeforeAgentActions?20:0,

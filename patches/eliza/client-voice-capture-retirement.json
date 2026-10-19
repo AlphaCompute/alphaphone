@@ -3,8 +3,8 @@
   "paths": [
     {
       "path": "packages/ui/src/voice/voice-session-client.ts",
-      "beforeSha256": "1c8322e7f92a4d72f4b3bcc3870703fb2884e0325e56c3cc3cb122b8dbe184f0",
-      "afterSha256": "e6281bae4d2ec9df8c8ea8839bc97ae9673f87cb61fa0c3c6cbbdb83036645c5"
+      "beforeSha256": "58d46d53079830f7f3ffb0bd5479dec1481b6392a84edeb7439d3eabaa8f80af",
+      "afterSha256": "94a3ea0a96d550765dbeedf8e875d71867d21a8a3a4f4923c6c034b1582bb64b"
     }
   ],
   "patchSha256": "b9a3219eb8ca651b46e78a74ea80305326acd0143da03fa059652fb15fdbe2b0",

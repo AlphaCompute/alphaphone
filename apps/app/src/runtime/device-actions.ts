@@ -283,11 +283,14 @@ export class DeviceActions {
     return proposals;
   }
   /** Only proposals bound by the host to this exact freshly sent user message may run.
+   * Only reversible local actions bypass the optional review. Sends, deletes, private
+   * reads and Calendar/reminder writes retain their recorded separate review policy.
    * Recovery, workflows and old hosts remain review-only; ordinary OS permissions still apply. */
   async performRequested(messageId:string,context:ContextEnvelope,signal:AbortSignal,allowed:()=>Promise<boolean>,operationType?:ReviewableDeviceOperation['type']):Promise<OperationReceipt[]> {
+    const directTypes:readonly ReviewableDeviceOperation['type'][]=['create_note','open_view','camera_capture_photo','photo_library_select'];
     const results:OperationReceipt[]=[];
     for(const [id,entry] of [...this.proposals]) {
-      if(results.length>=4||entry.proposal.workflow||entry.proposal.requestMessageId!==messageId||(operationType!==undefined&&entry.proposal.operation.type!==operationType))continue;
+      if(results.length>=4||!directTypes.includes(entry.proposal.operation.type)||entry.proposal.workflow||entry.proposal.requestMessageId!==messageId||(operationType!==undefined&&entry.proposal.operation.type!==operationType))continue;
       if(!await allowed())break;
       signal.throwIfAborted();
       const result=await this.approve(id,context,signal);results.push(result);

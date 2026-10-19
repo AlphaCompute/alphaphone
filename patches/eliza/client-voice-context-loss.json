@@ -4,10 +4,10 @@
     {
       "path": "packages/ui/src/voice/voice-session-client.ts",
       "beforeSha256": "2d928e07ab1adfe9e0334d81599e82766cc654ea66908557a07ebcd0852de19e",
-      "afterSha256": "5a0af57a81a7700e449588be59896ad27499a07480b18c9d20cd8584189b993d"
+      "afterSha256": "f69265219725d1d065ef3a3da66b7ebc1948df2880a2ac7723c0ef457a4d1a29"
     }
   ],
-  "patchSha256": "b1d0936caa118c5583af3083330f8842edec52fb49ca3efb942c2f14db43c153",
+  "patchSha256": "8180836d7e91b5c1f830027eeb3ecaf8319aa87ae9a8615790d1091a15478682",
   "sourceCommit": "da8c103521af01a3504deb3e6adb3a375d2417bc",
-  "sourceScope": "Stop capture on a retired renderer context; layered after the credit terminal policy."
+  "sourceScope": "Stop capture on a retired renderer context; layered after the credit terminal policy. Alpha follow-up guarantees capture retirement even when UI error reporting throws."
 }
