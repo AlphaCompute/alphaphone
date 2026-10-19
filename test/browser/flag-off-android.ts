@@ -378,12 +378,19 @@ export async function expectNoDevelopmentSurface(page: Page) {
   await expect(button(page, 'Device controls')).toHaveCount(0);
   await expect(page.getByText(/Development (connections|device actions|reply|provider|inbox)/)).toHaveCount(0);
 }
+/** Complete the real optional post-sign-in checklist without granting device access. */
+export async function completeOptionalAccessSetup(page: Page) {
+  const setup = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
+  await setup.getByRole('button', { name: 'Not now', exact: true }).click();
+  await expect(setup).toHaveCount(0);
+}
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
 export async function residentHome(page: Page) {
   await page.goto('/');
   await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await expect(button(page, 'Notes')).toBeVisible();
+  await completeOptionalAccessSetup(page);
 }
 /** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
 export async function openYourAgent(page: Page) {

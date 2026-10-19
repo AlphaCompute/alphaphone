@@ -1,3 +1,4 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {browserDevProfile} from './dev-profile';
 import {assertDevelopmentIdentity,readDevelopmentIdentity,verifyDevelopmentIdentity} from './development-identity';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
@@ -49,7 +50,7 @@ export async function browserDigestStore(session:VerifiedSession,current:()=>boo
   if(input.value!==null&&(typeof input.value!=='string'||new TextEncoder().encode(input.value).length>250000))throw Error('Digest storage exceeds the recovery limit.');
   return domain.edit(initial,async data=>{await verifyDevelopmentIdentity(identity,signal);check(slot);if(value(data,slot)!==input.expectedValue)return {status:'conflict'};data.slots[slot]=JSON.stringify({value:input.value});return {status:'saved'};},signal);
  });
- const recoverySignal=(request?:AbortSignal)=>signal&&request?AbortSignal.any([signal,request]):signal??request;
+ const recoverySignal=(request?:AbortSignal)=>signal&&request?anyAbortSignal([signal,request]):signal??request;
  return {...storage,recovery:{
   async capture(request?:AbortSignal){await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);const result=await domain.capture(recoverySignal(request));await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);return result;},
   async reset(expected:DomainRecovery,request?:AbortSignal){await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);await domain.reset(expected,recoverySignal(request));await verifyDevelopmentIdentity(identity,recoverySignal(request));check(prefix);},

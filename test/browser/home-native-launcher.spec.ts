@@ -120,6 +120,10 @@ test('startup permission "Not now" survives a cold start, and a denied prompt is
   await nativeStub(page, { notifications: { permissionGranted: false, appEnabled: false }, microphone: 'granted' });
   await page.goto('/');
   const panel = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
+  // Signed-out first run defers optional setup until sign-in; Settings can explicitly reopen it.
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
   await expect(panel).toBeVisible();
   await panel.getByRole('button', { name: 'Enable notifications', exact: true }).click();
   await expect.poll(() => calls(page, 'DailyApps', 'requestPermissions')).toEqual([{ permissions: ['notifications'] }]);

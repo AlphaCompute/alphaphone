@@ -92,7 +92,7 @@ function productionSurface(): Plugin[] {
       name: 'alpha-build-flags',
       apply: 'build',
       generateBundle() {
-        this.emitFile({ type: 'asset', fileName: 'build-flags.json', source: JSON.stringify({ testMocks: flagOn }) + '\n' });
+        this.emitFile({ type: 'asset', fileName: 'build-flags.json', source: JSON.stringify({ testMocks: flagOn, ...(process.env.VITE_ELIZA_RUNTIME_PROFILE === 'cloud' ? {runtimeProfile:'cloud'} : {}) }) + '\n' });
       },
     },
   ];

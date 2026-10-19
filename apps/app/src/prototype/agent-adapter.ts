@@ -1,6 +1,7 @@
 import {CAMERA_CONTEXT_NOTICE} from '../runtime/device-actions';
 import {captureAgentPhoto} from './camera-adapter';
 import {isCameraCapture} from '../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts';
+import {dismissMailFolderMenu} from './mail-folder-picker';
 import {aospImage} from '../runtime/aosp-image';
 import {smsSubscriptionRevision} from '../runtime/sms-subscription-revision';
 import {createAospTelephony,type AlphaTelephonyPlugin} from '../runtime/aosp-telephony';
@@ -468,7 +469,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if(!this.live)return;
       document.documentElement.dataset.notesStorageState='ready';
       this.notesStorageFailed=false;this.notesRaw=this.notesStore.raw;
-      originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);
+      originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:''});context(this);
       // A draft problem never marks the opened collection as failed.
       if(isAndroid)await resumeNotesDraft(this).catch(()=>{notesDataset('notesDraftState','failed');});
     })().catch((error)=>{if(this.live){this.notesOpenFailed=true;
@@ -487,7 +488,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       document.documentElement.dataset.notesStorageState='recovery';
       document.documentElement.dataset.notesRecoveryCategory=error instanceof SyntaxError?'invalid-json':error instanceof NotesCommitUncertain?'migration-unconfirmed':(error instanceof Error&&Object.hasOwn(categories,error.message)?categories[error.message]:'unclassified');
       originalSet.call(this,'notes',{list:[],storageStatus:'Saved notes need recovery. Original data retained.'});this.toast('Saved notes could not be opened. No new edits are allowed.');}});
-    this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}};
+    this.notesCommittedHandler=()=>{if(this.live&&this.notesStore&&!this.notesStorageFailed&&!this.notesPending){this.notesRaw=this.notesStore.raw;originalSet.call(this,'notes',{list:this.notesStore.list,storageStatus:''});context(this);}};
     window.addEventListener('alpha:notes-committed',this.notesCommittedHandler);
     this.visibilityHandler = () => { if(document.hidden)connectionController.cancelViewNavigation();if (this.live) context(this); };
     this.pageHideHandler = () => { notesRecovery?.abort();this.pageSuspended = true; if (this.live) context(this); };
@@ -505,6 +506,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       if (dialog) { event.preventDefault(); event.stopImmediatePropagation(); if(dialog.dispatchEvent(new Event('cancel',{cancelable:true})))dialog.close(); return; }
       const inlineModal=Array.from(document.querySelectorAll<HTMLElement>('.os [role="dialog"][aria-modal="true"]:not([data-alpha-layer="drawer"])')).some(dialog=>!dialog.closest('[inert],[hidden]')&&dialog.getAttribute('aria-hidden')!=='true'&&dialog.getClientRects().length>0&&getComputedStyle(dialog).visibility!=='hidden');
       if (inlineModal||document.querySelector<HTMLElement>('.os')?.inert) return;
+      if(dismissMailFolderMenu()){event.preventDefault();event.stopImmediatePropagation();return;}
       // Back that only collapses the chat or a sheet keeps a reply streaming; it arrives in the
       // transcript. Back that changes the view retires the request through the view context, which
       // the connection reports with the Stop reconciliation (one cancel, one later history check).
@@ -857,7 +859,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
       context(this);
       return Promise.resolve(pending).then(()=>{
         this.notesPending--;this.notesRaw=this.notesStore.raw;
-        if(this.live&&!this.notesPending&&!this.notesStorageFailed){originalSet.call(this,'notes',{storageStatus:isAndroid?'Note text encrypted on this device':''});context(this);}
+        if(this.live&&!this.notesPending&&!this.notesStorageFailed){originalSet.call(this,'notes',{storageStatus:''});context(this);}
         // A change was saved, so space may have been freed: retry a draft kept from a full collection.
         const deferred=this.notesDraftDeferred;if(deferred&&!this.notesPending){this.notesDraftDeferred=null;setTimeout(()=>{if(this.live)void resumeNotesDraft(this,deferred);},0);}
         return true;

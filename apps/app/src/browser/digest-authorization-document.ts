@@ -1,3 +1,4 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {browserDocuments} from './documents';
 import {BrowserDomainDocument,type DomainRecovery} from './domain-document';
 import {browserDevProfile} from './dev-profile';
@@ -23,7 +24,7 @@ export function digestAuthorizationDocument(scope:string,current:()=>boolean,sig
   async read(){check();const data=await domain.read(initial,signal);check();return validate(data);},
   async save(expected:DigestAuthorization|null,next:DigestAuthorization|null){check();validate({pending:next});await domain.edit(initial,data=>{check();const pending=validate(data);if(JSON.stringify(pending)!==JSON.stringify(expected))throw Error('Authorization changed in another tab.');data.pending=next;},signal);check();channel?.postMessage({key});},
   subscribe(listener:()=>void){const changed=(event:MessageEvent)=>{if(event.data?.key===key)listener();},legacy=(event:StorageEvent)=>{if(event.key===key||event.key===null)listener();};channel?.addEventListener('message',changed);window.addEventListener('storage',legacy);return()=>{channel?.removeEventListener('message',changed);window.removeEventListener('storage',legacy);};},
-  async capture(request?:AbortSignal){check();const result=await domain.capture(request?AbortSignal.any([signal,request]):signal);check();return result;},
-  async reset(expected:DomainRecovery,request?:AbortSignal){check();await domain.reset(expected,request?AbortSignal.any([signal,request]):signal);check();channel?.postMessage({key});},
+  async capture(request?:AbortSignal){check();const result=await domain.capture(request?anyAbortSignal([signal,request]):signal);check();return result;},
+  async reset(expected:DomainRecovery,request?:AbortSignal){check();await domain.reset(expected,request?anyAbortSignal([signal,request]):signal);check();channel?.postMessage({key});},
  };
 }

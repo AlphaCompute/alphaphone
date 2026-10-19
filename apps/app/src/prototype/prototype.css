@@ -187,3 +187,6 @@ html,body{margin:0;height:100%;background:#050505;overflow:clip;overscroll-behav
   font-display: swap;
   src: url(/fonts/c3c6d103fb2c49381256.ttf) format('truetype');
 }
+
+/* Speech consent and read/stop controls keep at least a physical 44px target in the fitted launcher canvas; 45px allows subpixel rounding. */
+.alpha-note-speech-control{width:max(44px,calc(45px / var(--phone-scale,1)));height:max(44px,calc(45px / var(--phone-scale,1)))}

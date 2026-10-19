@@ -149,9 +149,9 @@ test('the committed embedding host record states whether its bytes are reproduci
 
 test('path remapping is opt-in, recorded in the receipt and leaves the default build unchanged', () => {
   const source = fs.readFileSync(path.join(ROOT, 'scripts/prepare-embedding-host.mjs'), 'utf8');
-  assert.match(source, /const remapEnv=remap\?\{CCC_OVERRIDE_OPTIONS:/);
+  assert.match(source, /const remapEnv=remap\?embeddingBuildRemap\(root,/);
   assert.match(source, /:\{\};\nconst receipt=\{[^\n]*\.\.\.remapEnv\},buildPathRemapped:remap,/);
-  assert.match(source, /-ffile-prefix-map=\$\{from\}=\$\{to\}/);
+  assert.match(source, /import \{embeddingBuildRemap\} from '\.\/embedding-build-remap\.mjs'/);
   // An unknown option is still refused before anything is written.
   const output = path.join(os.tmpdir(), `alpha-embed-unknown-${process.pid}`);
   const result = spawnSync(process.execPath, ['scripts/prepare-embedding-host.mjs', '--fork', ROOT, '--output', output, '--remap'], {cwd: ROOT, encoding: 'utf8'});

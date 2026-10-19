@@ -50,8 +50,8 @@ async function entitlements(overrides:Record<string,unknown>={}){
 }
 
 
-type SignInMode='ok'|'created'|'mfa'|'hold'|'offline';
-async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,string>;keys?:unknown[]}={}){
+type SignInMode='ok'|'created'|'mfa'|'hold'|'offline'|'readiness-hold'|'not-ready';
+async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,string>;keys?:unknown[];keyLifetimeMs?:number}={}){
  page.on('pageerror',(error:Error)=>console.error('Composition page error:',error.message));
  await page.route('https://**',route=>route.abort());
  await page.addInitScript(initial=>{
@@ -61,13 +61,14 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
   const names={AlphaConnection:['secureRead','secureWrite','secureRemove','request','cancel','openExternal'],AlphaCloudSignIn:['startGoogle','startEmail','verifyEmail','verifyMfa','cancel','status','addListener','removeListener'],Agent:['start','stop','getStatus','configureCloudProvider','clearProvider','providerStatus','residentAttachment','request','addListener','requestStream','cancelStream'],DailyApps:['addListener','removeListener'],AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions'],AlphaHostedResults:['disableBackground']};
   const fail=(code:string)=>Object.assign(new Error(code),{code});
   // The native host stores the key before reporting success and returns only non-secret fields.
-  const store=()=>{f.saved=true;f.credential={credentialId:crypto.randomUUID(),token:'synthetic-mobile-key',expiresAt:Date.now()+30*24*3600*1000,serverCredentialId:'55555555-5555-4555-8555-555555555555'};return {status:'authenticated',environment:'production',expiresAt:f.credential.expiresAt,accountCreated:f.signIn==='created'};};
+  const store=()=>{f.saved=true;f.credential={credentialId:crypto.randomUUID(),token:'synthetic-mobile-key',expiresAt:Date.now()+((f as any).keyLifetimeMs??30*24*3600*1000),serverCredentialId:'55555555-5555-4555-8555-555555555555'};return {status:'authenticated',environment:'production',expiresAt:f.credential.expiresAt,accountCreated:f.signIn==='created'};};
   const reply=(status:number,body:unknown)=>({status,body:JSON.stringify(body)});
   w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{
    f.calls.push({plugin,method,path:input?.url?new URL(input.url).pathname:input?.path,email:input?.email,environment:input?.environment});
    if(plugin==='AlphaCloudSignIn'){
     if(method==='addListener'||method==='removeListener')return {};
     if(method==='cancel'){f.release?.(fail('cancelled'));f.release=null;return {};}
+    if(method==='status'&&f.signIn==='readiness-hold')return new Promise(resolve=>{(f as any).releaseReadiness=()=>resolve({active:false,inApp:true,google:true,email:true});});
     if(method==='status')return f.signIn==='not-ready'?{active:false,inApp:false,google:false,email:false}:{active:false,inApp:true,google:true,email:true};
     if(method==='startGoogle'){if(f.signIn==='hold')return new Promise((_,reject)=>{f.release=reject;});return store();}
     if(method==='startEmail'){if(f.signIn==='offline')throw fail('offline');return {attemptId:'33333333-3333-4333-8333-333333333333',expiresAt:Date.now()+600000,resendAt:Date.now()+60000};}
@@ -99,12 +100,14 @@ async function boot(page:Page,initial:{signIn?:SignInMode;tokens?:Record<string,
    if(plugin!=='AlphaConnection')throw Error('Unexpected native sign-in fixture port');
    if(method==='secureRead')return {value:f.saved&&input.slot==='cloud:production'?JSON.stringify(f.credential):null};
    if(method==='secureRemove'){if(input.slot==='cloud:production'){f.saved=false;f.credential=null;}return {};}
-   if(method==='openExternal')throw Error('In-app sign-in opens no page');
+   if(method==='openExternal'){if(f.signIn==='not-ready'||f.signIn==='readiness-hold')return {};throw Error('In-app sign-in opens no page');}
    if(method!=='request')return {};
    const path=new URL(input.url).pathname;
+   if(path==='/api/auth/cli-session')return {status:200,data:{sessionId:'b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d',status:'pending',expiresAt:new Date(Date.now()+600000).toISOString()}};
+   if(path==='/api/auth/cli-session/b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d')return {status:200,data:{status:'pending'}};
    if(path==='/api/v1/user')return {status:200,data:{success:true,data:{id:'22222222-2222-4222-8222-222222222222',email:'synthetic-signin@example.invalid'}}};
    if(path==='/api/v1/subscription/entitlement-keys')return {status:200,data:{keys:f.keys??[]}};
-   if(path==='/api/v1/subscription/entitlement')return {status:200,data:{entitlement:f.tokens.active}};
+   if(path==='/api/v1/subscription/entitlement')return {status:200,data:{entitlement:f.tokens[(f as any).entitlementStatus??'active']}};
    if(path==='/api/v1/billing/limits')return {status:404,data:{}};
    throw Error('Unexpected Cloud route '+path);
   }};
@@ -148,6 +151,7 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
   await dialog.getByLabel('Six-digit code').fill('000000');await dialog.getByRole('button',{name:'Verify',exact:true}).click();
   await expect(dialog.getByRole('alert')).toContainText('That code did not work');
   await expect(dialog.getByLabel('Six-digit code')).toHaveValue('');
+  await expect(dialog.getByLabel('Six-digit code')).toBeFocused();
   expect((await fixture(page)).saved).toBe(false);
   await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('sign-in-code.png'),animations:'disabled'});
   await dialog.getByLabel('Six-digit code').fill('123 456');await dialog.getByRole('button',{name:'Verify',exact:true}).click();
@@ -157,6 +161,86 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
   await noHandOff(page);
   const snap=await snapshot(page);expect(snap.cloudAccount?.userId).toBe(USER);expect(JSON.stringify(snap)).not.toContain('synthetic-mobile-key');
  });
+
+ test('email cooldown starts when the host sends the code, even after time spent entering an address',async({page})=>{
+  await page.clock.install();
+  await boot(page,await entitlements());
+  await agent(page,'unavailable');
+  await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
+  const dialog=signInDialog(page);
+  // Change wall time without a timer tick: the host's new cooldown must not use panel-mount time.
+  const later=await page.evaluate(()=>Date.now()+120000);
+  await page.clock.setSystemTime(later);
+  await dialog.getByRole('textbox',{name:'Email',exact:true}).fill('synthetic-signin@example.invalid');
+  await dialog.getByRole('button',{name:'Email me a code',exact:true}).click();
+  await expect(dialog.getByRole('button',{name:'Resend code in 60s',exact:true})).toBeDisabled();
+  await page.clock.runFor(60000);
+  await expect(dialog.getByRole('button',{name:'Resend code',exact:true})).toBeEnabled();
+  await noHandOff(page);
+ });
+
+ test('a slow sign-in readiness check shows progress, prevents repeated taps and respects Cancel',async({page})=>{
+  await boot(page,{...await entitlements(),signIn:'readiness-hold'});
+  await agent(page,'unavailable');
+  const welcome=page.getByRole('dialog',{name:'Your agent',exact:true});
+  const start=welcome.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true});
+  await start.click();
+  await expect(start).toBeDisabled({timeout:2000});
+  await expect(welcome.getByText('Checking Eliza Cloud sign-in…',{exact:true})).toBeVisible();
+  await welcome.getByRole('button',{name:'Cancel',exact:true}).click();
+  await expect(start).toBeEnabled({timeout:2000});
+  // A readiness result arriving after Cancel must not open a form or the Cloud browser hand-off.
+  await page.evaluate(()=>(window as any).signInFixture.releaseReadiness());
+  await expect(start).toBeEnabled();
+  await expect(signInDialog(page)).toHaveCount(0);
+  await expect(welcome.getByText('Connection cancelled.',{exact:true})).toBeVisible();
+  expect((await calls(page)).filter(c=>c.method==='status'&&c.plugin==='AlphaCloudSignIn')).toHaveLength(1);
+  await noHandOff(page);
+  await agent(page,'unavailable');
+ });
+
+ test('a plan ending during readiness still rebinds inference and keeps the requested sign-in screen',async({page})=>{
+  await boot(page,{...await entitlements(),keyLifetimeMs:3600000});
+  await agent(page,'unavailable');
+  await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
+  await signInDialog(page).getByRole('button',{name:'Continue with Google',exact:true}).click();
+  await agent(page,'cloud');
+  await page.evaluate(()=>{(window as any).signInFixture.signIn='readiness-hold';(window as any).planController.openPlan();});
+  await page.getByRole('button',{name:'Approve this phone again',exact:true}).click();
+  await expect(page.getByText('Checking Eliza Cloud sign-in…',{exact:true})).toBeVisible();
+  await page.evaluate(()=>{(window as any).signInFixture.entitlementStatus='none';(window as any).planController.recheckPlanAfterRefusal();});
+  await expect.poll(async()=>(await snapshot(page)).residentPlanNotice).toBe('needs-plan');
+  expect((await snapshot(page)).busy).toBe(true);
+  await page.evaluate(()=>(window as any).signInFixture.releaseReadiness());
+  await agent(page,'unavailable');
+  await expect(signInDialog(page)).toBeVisible();
+  await expect(signInDialog(page).getByRole('button',{name:'Continue with Google',exact:true})).toBeEnabled();
+  expect(await fixture(page)).toMatchObject({saved:true,bound:false,running:true});
+  expect((await calls(page)).filter(c=>c.method==='startGoogle')).toHaveLength(1);
+  await noHandOff(page);
+ });
+
+ for(const mode of ['not-ready','readiness-hold'] as const){
+  test(`${mode==='not-ready'?'Unavailable':'Timed-out'} readiness opens the normal Cloud browser hand-off`,async({page})=>{
+   if(mode==='readiness-hold')await page.clock.install();
+   await boot(page,{...await entitlements(),signIn:mode});
+   await agent(page,'unavailable');
+   await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
+   if(mode==='readiness-hold'){
+    await expect(page.getByText('Checking Eliza Cloud sign-in…',{exact:true})).toBeVisible();
+    await page.clock.runFor(6000);
+   }
+   await expect.poll(async()=>(await calls(page)).filter(c=>c.method==='openExternal').length).toBe(1);
+   await expect(page.getByText('Finish signing in to Eliza Cloud in your browser, then return here.',{exact:true})).toBeVisible();
+   await expect(signInDialog(page)).toHaveCount(0);
+   await page.getByRole('button',{name:'Cancel',exact:true}).click();
+   await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();
+   if(mode==='readiness-hold')await page.evaluate(()=>(window as any).signInFixture.releaseReadiness());
+   await expect(signInDialog(page)).toHaveCount(0);
+   expect(await fixture(page)).toMatchObject({saved:false,bound:false,running:true});
+   expect((await calls(page)).filter(c=>c.method==='openExternal')).toHaveLength(1);
+  });
+ }
 
  test('Continue with Google returns through the native host and an unexpected new account is said out loud',async({page},info)=>{
   await boot(page,{...await entitlements(),signIn:'created'});

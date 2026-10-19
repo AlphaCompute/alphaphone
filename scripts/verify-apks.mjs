@@ -48,8 +48,10 @@ import { preparePatchedNative, nativePatchReceipt, verifyNativePatchReceipt } fr
 const USAGE = "Usage: node scripts/verify-apks.mjs [--test-mocks] [--allow-unpackaged-runtime]";
 const args = process.argv.slice(2);
 for (const arg of args)
-  if (!["--test-mocks", "--allow-unpackaged-runtime"].includes(arg)) throw new Error(`Unknown option ${arg}. ${USAGE}`);
+  if (!["--test-mocks", "--allow-unpackaged-runtime", "--runtime-profile=cloud"].includes(arg)) throw new Error(`Unknown option ${arg}. ${USAGE}`);
 const testMocks = args.includes("--test-mocks");
+const runtimeProfile=args.includes("--runtime-profile=cloud")?"cloud":"native";
+if(runtimeProfile==="cloud"&&(testMocks||args.includes("--allow-unpackaged-runtime")))throw Error("Cloud requires a genuine resident without mocks");
 const admittedNativePatches = preparePatchedNative();
 const allowUnpackaged = args.includes("--allow-unpackaged-runtime");
 const directory = testMocks ? "artifacts/test-mocks" : "artifacts";
@@ -60,6 +62,7 @@ fs.rmSync(manifestFile, { force: true });
 const identity = JSON.parse(fs.readFileSync("app.config.json"));
 const buildRecordFile = path.join(directory, "build-config.json");
 const buildRecord = fs.existsSync(buildRecordFile) ? JSON.parse(fs.readFileSync(buildRecordFile, "utf8")) : null;
+if((buildRecord?.runtimeProfile||"native")!==runtimeProfile)throw Error("Build runtime profile differs from verification");
 if (buildRecord && buildRecord.testMocks !== testMocks)
   throw new Error(`${buildRecordFile} records testMocks=${buildRecord.testMocks}; refusing to verify it as testMocks=${testMocks}`);
 
@@ -139,6 +142,7 @@ for (const variant of ["standalone", "launcher"])
     } catch { runtimeNotices = false; }
     try {
       flags = readBuildFlags(payload.public);
+      if((flags.runtimeProfile||"native")!==runtimeProfile)problems.push("Packaged web runtime profile differs from native build profile");
       if (flags.testMocks !== testMocks)
         problems.push(`Packaged web bundle has testMocks=${flags.testMocks}; expected ${testMocks}`);
       auditBundle(payload.public, { testMocks });
@@ -209,6 +213,7 @@ for (const row of release) {
 
 // Debug keeps the original report-only semantics; releases need the runtime.
 const runtimeArgs = [
+  ...(runtimeProfile==="cloud"?["--runtime-profile=cloud"]:[]),
   ...(allowUnpackaged || testMocks ? ["--allow-unpackaged-runtime"] : []),
   ...release.flatMap(row => ["--release", row.file]),
   ...results.filter(row => row.mode === "debug").map(row => row.file),
@@ -299,6 +304,7 @@ fs.writeFileSync(
       demoEntryPoints: testMocks,
       mapsConfigured: buildRecord ? buildRecord.mapsConfigured : Boolean(process.env.VITE_MAPS_BASE_URL),
       allowUnpackagedRuntime: allowUnpackaged,
+      runtimeProfile,
       version: { code: versionCode, name: versionName },
       signing: {
         release: release.every(row => row.signed) ? { signed: true, signerSha256: release[0].signerSha256 } : { signed: false },

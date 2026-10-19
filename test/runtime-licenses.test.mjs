@@ -167,12 +167,11 @@ test('without a staged runtime only the umbrella payload entry is shipped', t =>
   assert.deepEqual(runtimeEntries(root, templates, []), []);
 });
 
-test('runtime enumeration is explicit: a staged runtime never changes the committed notices', () => {
+test('runtime enumeration follows explicit modes independently of current checkout notices', () => {
   const isBun = entry => entry.name === BUN_ENTRY;
-  // The committed notices are generated without --packaged-runtime, so a development
-  // checkout with a staged runtime still matches them (test/licenses.test.mjs).
-  assert.equal(shippedPackagedRuntime(ROOT), false);
-  const committed = collectNotices(ROOT);
+  // Baseline and packaged enumeration are both valid; this checkout may currently
+  // carry either form after a real APK build. The isolated mode fixture below tests detection.
+  const committed = collectNotices(ROOT, {packagedRuntime: false});
   assert.equal(committed.entries.some(isBun), false);
   assert.ok(committed.entries.some(entry => entry.name === 'On-device elizaOS agent runtime payload'));
   const packaged = collectNotices(ROOT, { packagedRuntime: true });

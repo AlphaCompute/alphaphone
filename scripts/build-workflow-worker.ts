@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {resolve,join} from 'node:path';
 import {preparedSourceEnv,sourceDirectory,workerArtifactDirectory} from './local-agent-source.mjs';
 import {ensurePreparedWorkflowWorker} from './prepared-workflow-worker.mjs';
-import {addNativeGoogleHostArtifact,verifyNativeGoogleHostArtifact} from './native-google-host-artifact.mjs';
+import {addNativeGoogleHostArtifact} from './native-google-host-artifact.mjs';
 import {verifyWorkerArtifact} from './workflow-worker-artifact.mjs';
 // The producer runs in this process; drop agent-detection variables before it can
 // start turbo in the prepared source (see preparedSourceEnv).
@@ -13,7 +13,9 @@ for(const name of Object.keys(process.env))if(!(name in env))delete process.env[
 const root=resolve(import.meta.dir,'..'),source=sourceDirectory(root),output=workerArtifactDirectory(root);
 execFileSync(process.env.ALPHA_NODE||'node',[join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});
 const result=await ensurePreparedWorkflowWorker(root,source,output);
-if(result.reused)verifyNativeGoogleHostArtifact(root,output);else addNativeGoogleHostArtifact(root,output);
+// Reuse authenticates upstream worker bytes, not independently changing product host inputs.
+// Always build the product host normally so its receipt binds the current source.
+addNativeGoogleHostArtifact(root,output);
 verifyWorkerArtifact(output);
 // The build must leave the prepared source at the exact pinned commit.
 execFileSync(process.env.ALPHA_NODE||'node',[join(root,'scripts/prepare-local-agent.mjs'),'--source-only'],{cwd:root,stdio:'inherit'});

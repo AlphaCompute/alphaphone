@@ -1,3 +1,4 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {useEffect,useRef,useState} from 'react';
 import {digestAuthorizationDocument,type DigestAuthorization as Pending} from './digest-authorization-document';
 import {openDomainRecovery} from './domain-recovery';
@@ -27,7 +28,7 @@ export function BrowserDigestDelegation({client,scope,signal,current,onConnected
   await save(b,record,{...record,phase:'review',state:String(result.state),expiresAt:String(result.expiresAt)});
  };
  useEffect(()=>{
-  const owner=new AbortController(),ownedSignal=AbortSignal.any([signal,owner.signal]);
+  const owner=new AbortController(),ownedSignal=anyAbortSignal([signal,owner.signal]);
   const b:Binding={client,signal:ownedSignal,valid:()=>binding.current===b&&!ownedSignal.aborted&&current(),store:null as any,readEpoch:0,refresh:async()=>{}};
   b.store=digestAuthorizationDocument(scope,b.valid,ownedSignal);binding.current=b;setReady(false);setActive(true);setBusy(false);setPending(null);setGrantId('');setMessage('Reading saved authorization…');
   b.refresh=async(autoResume)=>{

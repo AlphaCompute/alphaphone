@@ -405,7 +405,7 @@ export class CloudProtocol {
       const expiresAt = timestamp(created.expiresAt);
       if (expiresAt <= Date.now()) throw new CloudProtocolError("expired");
       expiryTimer = setTimeout(() => controller.abort(new CloudProtocolError("expired")), Math.min(expiresAt - Date.now(), 2_147_483_647));
-      const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}`;
+      const browserUrl = `${this.authority.web}/auth/cli-login?session=${encodeURIComponent(sessionId)}&app=alpha`;
       onWaiting?.({ sessionId, expiresAt, browserUrl });
       await this.openExternal(browserUrl, controller.signal);
       if (Date.now() >= expiresAt) throw new CloudProtocolError("expired");

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
-import { openYourAgent } from './flag-off-android';
+import { openYourAgent, completeOptionalAccessSetup } from './flag-off-android';
 // Flag-off production bundle only. Android cases stub the Capacitor bridge in a desktop browser and
 // saved remote selections must never reconnect. Nothing here contacts
 // Eliza Cloud, a deployed agent, an Android device or the native AlphaConnection plugin; those
@@ -158,6 +158,7 @@ test('production Android with a Cloud sign-in starts the resident agent instead 
   const foreign = await fenceNetwork(page);
   await android(page, { selection: { kind: 'remote', origin }, remoteCredential: true, cloudCredential: true, balance: 5 });
   await page.goto('/');
+  await completeOptionalAccessSetup(page);
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   const calls = await nativeCalls(page);
@@ -178,6 +179,7 @@ test('production Android without a packaged agent says so and does not advertise
   await fenceNetwork(page);
   await android(page, { cloudCredential: true, balance: 5, packaged: false });
   await page.goto('/');
+  await completeOptionalAccessSetup(page);
   // A developer build without the runtime opens no gate; Your agent says so, with Retry, never an offline mode.
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   const dialog = await openYourAgent(page);
@@ -195,6 +197,7 @@ for (const [start, text] of [['reject', 'Local agent failed to start.'], ['start
     const foreign = await fenceNetwork(page);
     await android(page, { cloudCredential: true, balance: 5, start });
     await page.goto('/');
+    await completeOptionalAccessSetup(page);
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     // P-43: a failed start opens no gate; Your agent shows Not running with Retry and the failure.
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
@@ -224,6 +227,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     // Plan state never stops the resident (P-43). Open account settings explicitly to sign out.
     await android(page, { cloudCredential: true, balance: 5, revoke: mode });
     await page.goto('/');
+    await completeOptionalAccessSetup(page);
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
@@ -409,6 +413,7 @@ test('automatic agent startup stays quiet while local apps remain usable',async(
     };
   });
   await page.goto('/');
+  await completeOptionalAccessSetup(page);
   await expect.poll(()=>page.evaluate(()=>(window as any).agentStartHeld)).toBe(true);
   await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
@@ -433,6 +438,7 @@ test('transient startup storage failures recover without flashing global notices
     }).observe(document,{subtree:true,childList:true,characterData:true});
   });
   await page.goto('/');
+  await completeOptionalAccessSetup(page);
   await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   await expect.poll(()=>page.evaluate(()=>(window as any).startupStorage.pending)).toBeGreaterThanOrEqual(3);
   await expect.poll(()=>page.evaluate(()=>(window as any).startupStorage.drafts)).toBeGreaterThanOrEqual(2);
@@ -442,6 +448,7 @@ test('transient startup storage failures recover without flashing global notices
 test('an unavailable deletion receipt status does not block account settings controls', async ({ page }) => {
   await android(page, { cloudCredential: true, balance: 5, revoke: 'revoked' });
   await page.goto('/');
+  await completeOptionalAccessSetup(page);
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
   await page.evaluate(() => {

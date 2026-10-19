@@ -4,8 +4,28 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {embeddingBuildRemap,SDK_PROVENANCE_RECEIPT} from '../scripts/embedding-build-remap.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const run=(...args)=>spawnSync(process.execPath,['scripts/prepare-embedding-host.mjs',...args],{cwd:root,encoding:'utf8'});
+test('remapping authenticates the reviewed SDK root and covers NDK header debug paths',()=>{
+ const env=embeddingBuildRemap(root,{sdk:'/different/android-sdk',staging:'/isolated/source',fork:'/isolated/engine',build:'/isolated/jni'});
+ const receipt=JSON.parse(fs.readFileSync(path.join(root,SDK_PROVENANCE_RECEIPT),'utf8'));
+ assert.ok(env.CCC_OVERRIDE_OPTIONS.includes(`+-ffile-prefix-map=/different/android-sdk=${receipt.env.ANDROID_HOME}`));
+ assert.ok(env.CCC_OVERRIDE_OPTIONS.includes('+-ffile-prefix-map=/isolated/jni=/alphaphone-embedding-host/jni-build'));
+ assert.throws(()=>embeddingBuildRemap(root,{sdk:'/sdk with spaces',staging:'/source',fork:'/engine',build:'/build'}),/absolute paths without whitespace/);
+});
+test('an edited provenance receipt cannot choose another canonical SDK path',()=>{
+ const temp=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'alpha-sdk-provenance-')));
+ try{
+  const receipt=path.join(temp,SDK_PROVENANCE_RECEIPT),manifest=path.join(temp,'android/embedding-host/qualified-host.json');
+  fs.mkdirSync(path.dirname(receipt),{recursive:true});fs.mkdirSync(path.dirname(manifest),{recursive:true});
+  const reviewed=fs.readFileSync(path.join(root,SDK_PROVENANCE_RECEIPT));
+  fs.writeFileSync(manifest,JSON.stringify({qualificationReceiptSha256:createHash('sha256').update(reviewed).digest('hex')}));
+  fs.writeFileSync(receipt,reviewed.toString().replace('/work/android-sdk','/unreviewed/sdk'));
+  assert.throws(()=>embeddingBuildRemap(temp,{sdk:'/sdk',staging:'/source',fork:'/engine',build:'/build'}),/provenance receipt is missing or changed/);
+ }finally{fs.rmSync(temp,{recursive:true,force:true});}
+});
 test('native preparation refuses writes into vendor or prepared runtime source',()=>{
  for(const output of ['vendor/eliza/.forbidden-embedding-host','artifacts/forbidden-embedding-host']){
   const result=run('--fork',root,'--output',path.join(root,output));

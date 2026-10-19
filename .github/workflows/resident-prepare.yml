@@ -30,6 +30,8 @@ jobs:
           bun-version: 1.4.2
       - run: python3 scripts/ci/test-resident-phase.py
       - run: python3 scripts/ci/resident-phase.py --name prepare --seconds 3600 npm run agent:prepare
+      - name: Verify actual Cloud recording signature classifier
+        run: python3 scripts/ci/resident-phase.py --name cloud-recording-signature --seconds 60 node scripts/check-cloud-recording-signature.mjs
       - name: Verify digest recovery across independent runtime processes
         env:
           TMPDIR: ${{ github.workspace }}/test-results/digest-restart

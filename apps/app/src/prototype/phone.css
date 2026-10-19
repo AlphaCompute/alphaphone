@@ -521,3 +521,7 @@ button[aria-label$=" on or off"][aria-pressed]::before { content:""; position:ab
 /* Action details must remain fully readable before approval. */
 .alpha-action-review button > span { display:none!important; }
 .alpha-action-review button > div > div:last-child { white-space:pre-wrap!important; overflow:visible!important; text-overflow:clip!important; overflow-wrap:anywhere; line-height:1.45; }
+
+/* Older Android WebViews ignore popover; React visibility must still hide the menu. */
+.mail-folder-menu[hidden]{display:none!important}
+.mail-folder-menu{z-index:1000}

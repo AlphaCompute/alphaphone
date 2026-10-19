@@ -1,3 +1,4 @@
+import {completeOptionalAccessSetup} from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 
 // A Cloud sign-in kept on the phone after a restart, under decision P-43 (resident agent always
@@ -67,6 +68,7 @@ async function boot(page: Page, mode: Mode) {
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   // P-43: the resident starts by itself. Only a sign-in Cloud rejects opens the sign-in dialog.
   await expect.poll(() => agentCalls(page)).toContain('start');
+  if (mode === 'funded') await completeOptionalAccessSetup(page);
   if (mode !== 'rejected') await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await selection(page)).toEqual({ kind: 'resident' });
 }

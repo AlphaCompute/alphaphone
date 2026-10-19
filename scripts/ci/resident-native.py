@@ -4,6 +4,7 @@ import hashlib,json,os,re,signal,subprocess,sys,uuid,zipfile
 from pathlib import Path
 from resident_absence import assert_no_resident
 from resident_crash_diagnostics import collect_crashes
+from resident_native_source import verify_generated_native
 assert os.environ.get('GITHUB_ACTIONS')=='true' and os.environ.get('ALPHA_RESIDENT_DISPOSABLE_CI')=='1'
 serial=os.environ['ANDROID_SERIAL'];assert re.fullmatch(r'emulator-[0-9]+',serial)
 archive=Path('test-results/resident-ci-archive');out=Path('test-results/resident-ci-native');out.mkdir(exist_ok=False)
@@ -40,19 +41,10 @@ assert frozen['upstream.lock.json']==h(Path('upstream.lock.json').read_bytes())
 assert subprocess.check_output(['git','-C','vendor/eliza','rev-parse','HEAD'],text=True).strip()==lock['commit']
 generated=json.loads((archive/'native-generated-source-manifest.json').read_text())
 assert h((archive/'native-generated-source-manifest.json').read_bytes())==frozen['android/app/build/generated/local-agent/source-manifest.json']
-assert generated['runtimeSource']=={'commit':lock['commit']} and generated['patches']==[]
+verify_generated_native(generated,frozen)
 for relative,digest in frozen.items():
  if relative.startswith(('android/app/src/androidTest/','android/app/src/testMocks/','android/app/src/main/java/')):
   assert Path(relative).is_file() and h(Path(relative).read_bytes())==digest
-for row in generated['files']:
- origin=row['path']
- assert not origin.startswith('/') and '..' not in Path(origin).parts
- committed=subprocess.check_output(['git','-C','vendor/eliza','show',lock['commit']+':'+origin])
- assert row['sourceSha256']==row['sha256']==h(committed)
- if origin.endswith('.java'):
-  target=row['generatedPath']
-  assert target.startswith('android/app/build/generated/local-agent/java/') and '..' not in Path(target).parts
-  assert frozen[target]==row['generatedSha256']
 
 def guard():
  assert run('shell','am','get-current-user').strip()=='0';assert_no_resident(run)
