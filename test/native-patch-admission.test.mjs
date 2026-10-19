@@ -35,3 +35,8 @@ for(const extension of ['kt','xml'])test(`admission ${extension==='kt'?'accepts 
  if(extension==='kt'){const output=materializeNativePatches(args);assert.equal(output.files[renamed],sha('new\n'));}
  else assert.throws(()=>materializeNativePatches(args),/target\/source mismatch/);
 }));
+
+test('plugin patch admission refuses resident service modules now owned by upstream',()=>fixture(args=>{
+ args.manifest.patches[0].module='packages/app/platforms/android/app';
+ assert.throws(()=>materializeNativePatches(args),/Invalid native patch module/);
+}));

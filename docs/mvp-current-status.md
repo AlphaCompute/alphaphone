@@ -1,4 +1,4 @@
-Current source admission candidate: SDK `cc52bef586997875047d9a9c74276084fad8610c` is a reviewed two-scope descendant of `65dab3188fde739f30d6fcffeb7d4701977100ed` for Calendar compatibility and finite inference diagnostics. Source integration is not canonical, native, provider or Notes acceptance. Historical source-bound evidence follows.
+Current source admission candidate: SDK `080adfc5c5822602321d1125f12f25e6f20340c2` is the merged develop tip. The resident recovery implementation is now upstream; its Alpha overlay is retired. Existing native/voice patches stay reviewed. Source/client admission is not runtime, native, provider or Notes acceptance. Historical source-bound evidence follows.
 
 <!-- Checked source integration a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd; full native product qualification remains pending. -->
 # Current MVP status
