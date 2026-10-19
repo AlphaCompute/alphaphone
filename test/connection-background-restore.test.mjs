@@ -34,3 +34,25 @@ test('cancelled background restore does not reopen a dismissed panel',async()=>{
 test('explicit connection operations retain their visible dialog',async()=>{
  const f=fixture();await f.run('Signing in…',async()=>{});assert.equal(f.state.open,true);assert.equal(f.state.purpose,'agent');assert.equal(f.state.busy,false);
 });
+
+// Execute the actual startup branch with an environment-fenced host store. The
+// resident gate owns account/plan/history restoration for explicit dev:cloud.
+const startupStart=source.indexOf('  async initialize() {');
+const startupEnd=source.indexOf('  /** Test mocks and the flag-off web preview',startupStart);
+assert.ok(startupStart>=0&&startupEnd>startupStart);
+const startupCode=stripTypeScriptTypes(source.slice(startupStart,startupEnd).trim().replace(/^async initialize\(\)/,'async function initialize()').replace(/,$/,''),{mode:'transform'});
+function startupFixture({resident=false,android=false,environment='production'}={}){
+ const state={open:false,error:''},reads=[];let gates=0;
+ const context=vm.createContext({startup:null,state,epoch:0,operation:null,browserDevProfile:false,browserCloudResidentEnabled:resident,isAndroid:android,URLSearchParams,location:{search:''},selection:()=>({kind:'resident'}),update:next=>Object.assign(state,next),cloudCredentialStore:{acceptsReferences:!android,read:async env=>{reads.push(env);if(env!==environment)throw Error('Cloud development connection unavailable.');return null;}},work:async(_label,run)=>{try{await run(new AbortController().signal);}catch(error){state.error=error.message;state.open=true;}},webCloudUnavailable:()=>false,residentQa:()=>true,startResidentGate:async()=>{gates++;await context.cloudCredentialStore.read(environment);},settleResidentAfterStartup:()=>{}});
+ vm.runInContext(startupCode,context);return {state,reads,run:()=>context.initialize(),gates:()=>gates};
+}
+test('explicit staging Cloud reload reaches resident restoration without reading production credentials',async()=>{
+ const f=startupFixture({resident:true,environment:'staging'});await f.run();
+ assert.deepEqual(f.reads,['staging']);assert.equal(f.gates(),1);assert.equal(f.state.error,'');assert.equal(f.state.open,false);assert.equal(f.state.startupResolved,true);
+});
+test('ordinary browser startup retains optional production credential discovery',async()=>{
+ const f=startupFixture();await f.run();assert.deepEqual(f.reads,['production','production']);assert.equal(f.gates(),1);assert.equal(f.state.error,'');
+});
+test('native startup continues directly through its resident restoration',async()=>{
+ const f=startupFixture({android:true});await f.run();assert.deepEqual(f.reads,['production']);assert.equal(f.gates(),1);assert.equal(f.state.error,'');
+});
