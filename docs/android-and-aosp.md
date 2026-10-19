@@ -61,6 +61,45 @@ to symbolicate crashes. An R8 build passing APK verification is not installed-re
 behavior evidence: exercise the signed release on an emulator and a device as separate
 gates.
 
+## Preparing a development APK for AOSP
+
+Normal APK builds retain `useLegacyPackaging=true`: Android extracts the Bun
+executable into the native library directory. Presigned AOSP imports additionally
+require stored, page-aligned JNI entries. Do not turn off extraction or disable the
+AOSP checks to accommodate a compressed APK.
+
+After the normal packaged-runtime build and APK verification have passed, build an
+unsigned **debug** launcher with the same runtime profile, version overrides and
+web assets. The init script changes only debug signing. For an explicit Cloud QA
+build, run from the repository root:
+
+```sh
+./android/gradlew -p android --no-daemon \
+  -I "$PWD/scripts/aosp-unsigned-debug.init.gradle" \
+  -PELIZA_RUNTIME_PROFILE=cloud -PELIZA_DEV_ALLOW_TEST_MOCKS=0 \
+  :app:assembleLauncherDebug
+python3 scripts/prepare-aosp-apk.py \
+  --input android/app/build/outputs/apk/launcher/debug/app-launcher-debug-unsigned.apk \
+  --output artifacts/aosp-debug-prepared \
+  --zipalign "$ANDROID_HOME/build-tools/36.0.0/zipalign"
+```
+
+Use a fresh output directory. The preparer rejects signed inputs, stores JNI and DEX
+entries, runs the SDK's 16 KiB alignment and verification, and compares every entry's
+payload hash, including the manifest, against the unsigned input. Its receipt records
+unsigned bytes and does not establish deployment readiness. Sign the resulting
+`launcher-aosp-unsigned.apk` with the existing development application key outside
+this script; preserve that key and versionCode for device updates. Verify the signed
+APK with `apksigner verify --print-certs` and `zipalign -c -P 16 4`, then use the normal
+`aosp:stage --development` path with the resulting debuggable APK. Preserve the
+original build manifest and preparation receipt; preparation does not relabel a
+release, edit its blockers, or claim release/runtime/device acceptance.
+
+For the native profile, retain its normal qualified runtime inputs and omit the Cloud
+property. Release preparation still requires the separate production signing and
+release-admission workflow below; signing a release with a debug key does not make
+it eligible for development staging.
+
 ## Signing
 
 Development uses the Android debug keystore outside the repository. Release signing uses
