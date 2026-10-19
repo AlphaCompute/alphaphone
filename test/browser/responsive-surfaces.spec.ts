@@ -76,6 +76,13 @@ test('the listening panel stays compact beside the page in landscape and keeps t
   });
   await page.getByRole('button',{name:'Files',exact:true}).click();
   await page.getByRole('button',{name:'Open conversation',exact:true}).click();
+  const settled=()=>page.locator('[data-alpha-layer="conversation"]').evaluate(el=>Promise.all(el.getAnimations({subtree:true}).filter(animation=>Number.isFinite(animation.effect?.getComputedTiming().endTime)).map(animation=>animation.finished.catch(()=>{}))));
+  const textGeometry=new Map<string,{x:number;y:number;width:number;height:number;radius:string}>();
+  for(const viewport of MATRIX){
+    await resize(page,viewport);await settled();
+    const geometry=await page.locator('[data-alpha-layer="conversation"] textarea[data-alpha-composer]').evaluate(el=>{const node=el.parentElement!,r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,radius:getComputedStyle(node).borderRadius};});
+    textGeometry.set(`${viewport.width}x${viewport.height}`,geometry);
+  }
   await page.getByRole('button', { name: 'Talk', exact: true }).click();
   const panel = page.getByRole('region',{name:'Voice conversation',exact:true});
   await expect(panel).toHaveAttribute('data-voice-state','listening');
@@ -86,7 +93,10 @@ test('the listening panel stays compact beside the page in landscape and keeps t
     await resize(page, viewport);
     await expect(stop).toBeInViewport({ ratio: 1 });
     expect(await stop.evaluate((element, previous) => element === previous, original)).toBe(true);
-    const bounds = await box(panel);
+    await settled();const bounds = await box(panel);
+    const previous=textGeometry.get(`${viewport.width}x${viewport.height}`)!;console.log(JSON.stringify({viewport,text:previous,voice:bounds}));
+    for(const key of ['x','y','width','height'] as const)expect(Math.abs(bounds[key]-previous[key]),`responsive text/voice ${key}`).toBeLessThan(1);
+    expect(await panel.evaluate(el=>getComputedStyle(el).borderRadius)).toBe(previous.radius);
     if (viewport.width > viewport.height) expect(bounds.x).toBeGreaterThan(viewport.width / 2 - 1);
     else if (viewport.width >= 760) expect(bounds.width).toBeLessThanOrEqual(561);
     for (const control of await panel.getByRole('button').all()) {
