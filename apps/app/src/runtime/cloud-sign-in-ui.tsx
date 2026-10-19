@@ -36,7 +36,7 @@ export function CloudSignInPanel({ view, busy, google, message, error, actions, 
   return <>
     <header><h1 id="cloud-sign-in-title" className="serif">Sign in to Eliza Cloud</h1></header>
     {view.step === 'choose' && <>
-      <p>Alpha Phone needs an Eliza Cloud account with a plan. Sign in here; your agent keeps running on this phone.</p>
+      <p>Sign in to Eliza Cloud to use AI. Your agent keeps running on this phone.</p>
       {google && <div className="alpha-connection-actions"><button disabled={busy} onClick={actions.google}>Continue with Google</button></div>}
       <form className="alpha-cloud-sign-in-email" aria-label="Sign in with email" onSubmit={event => { event.preventDefault(); actions.email(email.current?.value || ''); }}>
         <label>Email<input ref={email} type="email" name="email" autoComplete="email" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" maxLength={320} required disabled={busy} /></label>
