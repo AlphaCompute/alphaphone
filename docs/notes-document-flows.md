@@ -1,7 +1,28 @@
-# Notes text import/export
+# Notes sharing and text documents
 
-Production Notes adds an Import text note action beside the existing header
-controls. It launches Android's explicit document picker with text MIME filtering.
+Notes uses the common Share panel: Share to email opens an in-app draft,
+Share externally opens the platform chooser, Copy text copies the selected
+snapshot, and Save text locally opens the document destination picker.
+Opening the panel does not send content. Cancellation and a changed selection
+retire the panel without invoking another destination.
+
+The shared text snapshot includes the note title, a blank line and its body.
+Text bodies retain their stored CR/LF and UTF-8 BOM characters; this is a saved
+note representation, not a byte-for-byte copy of an imported source file.
+Checklists include their checked states, links include their URL and excerpts,
+and voice-note text explicitly excludes the audio recording. Native saving
+writes the bounded UTF-8 snapshot and verifies the written bytes by readback.
+Only a matching readback confirms success; unsupported readback is reported as
+unverified. Cancellation does not report a saved file.
+
+Production note import is disabled by the current data-migration policy.
+The import path below remains available only in explicit development/test
+builds. Its historical qualification is not current production acceptance.
+
+## Development import and historical export qualification
+
+The development Import text note action launches Android's explicit document
+picker with text MIME filtering.
 The selected content is read locally with the existing strict UTF-8/64 KiB
 reader. A native-only transient-reader entrypoint avoids creating, persisting or
 evicting any Files selection capability. UTF-8 BOM and CR/LF content are retained
@@ -14,7 +35,7 @@ persistence/conflict guard. It never overwrites a same-title note. The source
 filename provides the editable title; original content is not uploaded or sent
 to an agent. Leaving Notes while selection is pending invalidates its completion.
 
-The existing Share sheet exposes Export text file for text notes. Export captures
+The earlier Share sheet exposed Export text file for text notes. Export captured
 the current title/body before opening ACTION_CREATE_DOCUMENT. The user chooses
 the destination; native code writes that bounded UTF-8 snapshot, closes it and
 reads back exact bytes. Only matching bytes produce an exported receipt. A
@@ -31,8 +52,8 @@ read implementation remains SelectedDocumentAccess. Renderer ownership:
 notes-document-adapter.ts, installed after voice so existing audio UI/storage
 continues to work. Mock mode (present only in `ELIZA_DEV_ALLOW_TEST_MOCKS=1` builds)
 does not install this adapter or its native actions.
-The prototype Notes layout and Share sheet styling are reused; the two new
-production-only affordances are conditional and do not change reference fixtures.
+The current Share panel replaces that earlier sheet. Import stays conditional
+on the development flag; saving selected note text remains a production action.
 
 ## Note to calendar and reminder hand-offs
 
@@ -44,11 +65,14 @@ identity-only link back to the note. The contract, including the Android limits,
 
 Run `npm run typecheck` and `node scripts/test-notes-documents-browser.mjs`.
 The latter renders the actual Notes adapter/template with a synthetic native
-boundary and checks create-new import, CR/LF-preserving export snapshot, cancel,
+boundary and checks development import, complete selected-note saving with its
+title and unchanged CR/LF body, cancellation,
 and browser reload. It is not Android/provider evidence.
 
-`NotesDocumentInstrumentedTest` contains two ordinary native flows and one gated
-process method:
+The historical `NotesDocumentInstrumentedTest` import campaign contains two
+native flows and one gated process method. Its old import and Share selectors
+must be reconciled with the selected development build before rerunning it;
+these descriptions are not a claim that the current production UI passed them:
 
 - Actual SAF import, cancellation, export Save, independent exact-byte readback,
   re-import as a distinct note, and Activity recreation.
