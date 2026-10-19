@@ -129,3 +129,29 @@ assert.match(cloudMapsFailure(cloudError(503,'maps_allowance_unconfigured')).mes
 assert.match(cloudMapsFailure(cloudError(503,'maps_admission_unknown')).message,/not retry automatically/);
 assert.match(cloudMapsFailure(cloudError(409,'maps_request_already_admitted')).message,/not retry automatically/);
 assert.match(cloudMapsFailure(cloudError(429,'allowance_exhausted')).message,/used your Maps allowance/);
+
+// Preserve server retry hints without borrowing AI allowance copy or retrying a request.
+{
+ const error=(code,fields)=>Object.assign(cloudError(429,code),{data:{code,...fields}});
+ assert.match(cloudMapsFailure(error('rate_limited',{retryAfterSeconds:42})).message,/Try again in about 42 seconds/);
+ assert.match(cloudMapsFailure(error('allowance_exhausted',{retryAfterSeconds:120})).message,/Maps allowance.*resets in about 2 minutes/);
+ const reset=Date.now()+3*86400000;
+ const text=cloudMapsFailure(error('allowance_exhausted',{resetAt:new Date(reset).toISOString(),retryAfterSeconds:60})).message;
+ assert.ok(text.includes(new Date(reset).toLocaleString()),'An explicit period reset wins over a short retry hint');
+ assert.doesNotMatch(text,/AI|credits|purchase|resets in/);
+ assert.match(cloudMapsFailure(error('allowance_exhausted',{retryAfterSeconds:3*86400})).message,/It resets /);
+ assert.doesNotMatch(cloudMapsFailure(error('allowance_exhausted',{retryAfterSeconds:3*86400})).message,/resets in/);
+ for(const retryAfterSeconds of [-1,'bad',Infinity,900000000]) {
+  assert.equal(cloudMapsFailure(error('rate_limited',{retryAfterSeconds})).message,'Maps request limit reached. Try again later.');
+  assert.equal(cloudMapsFailure(error('allowance_exhausted',{retryAfterSeconds})).message,'You have used your Maps allowance for this period.');
+ }
+ assert.equal(cloudMapsFailure(error('rate_limited',{retryAfterSeconds:42}),AbortSignal.abort()).code,'cancelled');
+ let calls=0,provider;
+ const maps=createCloudMaps(()=>async route=>{if(route==='capabilities')return coverage;calls++;throw error('rate_limited',{retryAfterSeconds:42});},(_config,next)=>provider=next);
+ await maps.initializeCloudMaps();
+ await assert.rejects(provider.search('Port',new AbortController().signal),failure=>failure.code==='rate-limited'&&/42 seconds/.test(failure.message));
+ assert.equal(calls,1,'A retry hint never schedules another provider request');
+}
+
+assert.equal(cloudMapsFailure(Object.assign(cloudError(429,'allowance_exhausted'),{data:{code:'allowance_exhausted',resetAt:'9999-01-01T00:00:00Z',error:'private provider detail'}})).message,'You have used your Maps allowance for this period.');
+assert.equal(cloudMapsFailure(Object.assign(cloudError(429,'rate_limited'),{data:{code:'rate_limited',error:'private provider detail',retryAfterSeconds:'private provider detail'}})).message,'Maps request limit reached. Try again later.');
