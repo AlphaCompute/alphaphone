@@ -633,7 +633,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    if(disposed||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){recoveryReview.clear();call.reject("Recovery is unavailable right now. Your records were kept.");return;}
    epoch=lifecycleEpoch;intent=credentialIntentEpoch;pending.add(call);
   }
-  try{workers.execute(()->{
+  PluginWorkers.submit(workers,()->{
    try{
     // SDK processLock is acquired before this authority takes lifecycleLock, matching startup.
     ElizaAgentService.RecoveryAuthority authority=operation->{synchronized(lifecycleLock){
@@ -648,7 +648,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     JSONObject result=archive?ElizaAgentService.archiveIpcRecovery(token,authority):ElizaAgentService.reviewIpcRecovery(authority);
     synchronized(lifecycleLock){if(archive)recoveryReview.clear();if(pending.remove(call))call.resolve(new JSObject(result.toString()));}
    }catch(Exception error){synchronized(lifecycleLock){recoveryReview.clear();}rejectPending(call,"Recovery could not be confirmed. Your records were kept. Review again before restarting.");}
-  });}catch(java.util.concurrent.RejectedExecutionException closed){rejectPending(call,"Recovery is unavailable right now. Your records were kept.");}
+  },()->rejectPending(call,"Recovery is unavailable right now. Your records were kept."));
  }
  @PluginMethod public void getStatus(PluginCall call) {
   try{
