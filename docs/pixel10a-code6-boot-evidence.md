@@ -4,7 +4,9 @@ The Cloud-profile development image built from Alpha commit
 `e240ddab76ba1341fabb394e11e6212f64a09838` and reviewed Eliza pin
 `0296e2c929d45bf66873a1e360a1d260e8b1125d` passed archive admission,
 wipe/flash and initial boot on Pixel 10a (stallion). This is an unlocked,
-development-signed image, not a qualified production release.
+development-signed image, not a qualified production release. Later main commits,
+including PRs #579 and #580, are not installed in this image; these results apply
+only to the exact e240 artifact recorded here.
 
 The [sanitized evidence record](pixel10a-code6-boot-evidence.json) contains exact
 artifact hashes and digests of the retained private build/device receipts. Device
@@ -41,14 +43,25 @@ installed, and only admitted `--production` staging emits the preferred-HOME
 provisioning overlay. Provisioned/setup-complete settings do not select a HOME
 application when multiple equal-priority handlers remain.
 
-The operator subsequently selected Alpha using the documented development
-`cmd package set-home-activity` operation and rebooted. After a delayed USB
-reconnection, the operator observed boot completion, enforcing SELinux and Alpha
-still holding the HOME role. However, implicit MAIN/HOME resolution still returned
-`ResolverActivity`. Read-only diagnostics found a stale preferred MAIN/HOME/DEFAULT
-entry selecting the now-disabled AOSP Provision activity, while enabled handlers
-were Alpha, Launcher3 and Settings fallback Home. Role persistence therefore does
-not yet establish correct HOME intent resolution; that acceptance check remains open.
+The first immediate reboot after selecting Alpha retained its HOME role but lost
+its preferred-activity update: MAIN/HOME resolved to Android's chooser, and the
+preferred entry still named the disabled Provision activity. The pinned AOSP
+`PreferredActivityHelper.addPreferredActivity` updates the in-memory preference
+then schedules persistence; `PackageManagerService.WRITE_SETTINGS_DELAY` is ten
+seconds. A successful role command is not a disk-persistence barrier.
+
+The operator re-granted HOME, verified Alpha resolution, waited 25.8 seconds and
+then rebooted. This check passed: boot completed, SELinux remained enforcing,
+Alpha retained the HOME role, and MAIN/HOME resolved to
+`ai.elizaresearch.alphaphone/.MainActivity` with `isDefault=true`.
+
+For this development provisioning workflow, use the Android default-app chooser
+or the documented `cmd package set-home-activity` operation, verify both the role
+and intent resolution, and allow more than 20 seconds for the delayed settings
+write before a test reboot. If a stale preference already exists, explicitly
+remove the Alpha HOME role and select it again before waiting. Recheck boot,
+role and resolution afterward. This is a development test procedure, not a
+production provisioning policy or an AOSP source patch.
 
 The device had no default network. Native Cloud sign-in, subscription and inference
 acceptance remain unverified. Browser integration results and a separately installed

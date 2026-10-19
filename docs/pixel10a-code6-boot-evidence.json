@@ -29,10 +29,12 @@
     "job-result.json": "bb52b560b7c6f9ac14333724ead8873e07102baab94b44a242282482f17b2d2e",
     "image-verification.json": "8f1356f7d27e9770f9e031d305d3f2ea96127be972fa222656bcffeefc5c3e04",
     "flash-result.json": "1c18ecea12bf81f8f0b312caa14559dd4fdccd4c2339b4f68e591f97482d916b",
-    "pixel-boot-receipt.json": "a72d1dfb488a35782e94338d4a23abffe93244f0a8e3b69160c83819b0342c29",
+    "pixel-boot-receipt.json": "c04d100e5f14b8bf3807355c3ac7df93aa9812da5a0fbbfa08cc8b878a86f8d8",
     "source-validation.json": "51b41e2bc2f17237116df5883ded225daf0cc19873539978aeb469ff4dcce924"
   },
   "homeRolePersistedAfterReboot": true,
-  "homeIntentResolutionVerified": false,
-  "homeResolutionDiagnostic": "ResolverActivity; stale preferred entry for disabled com.android.provision/.DefaultActivity"
+  "homeIntentResolutionVerified": true,
+  "homeResolutionDiagnostic": "After role re-grant and 25.8-second persistence wait, reboot retained Alpha role and MAIN/HOME resolved to Alpha MainActivity with isDefault=true.",
+  "provisioningPersistenceWaitSeconds": 25.8,
+  "laterMainChangesIncluded": false
 }
