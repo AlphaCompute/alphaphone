@@ -461,3 +461,30 @@ test('real CloudProtocol verifies a signed plan through public host keys without
   assert.equal(publicRead,true);assert.equal(checked.view.kind,'inactive');assert.equal(checked.view.status,'none');assert.ok(checked.entitlement);
  }finally{await f.close();}
 });
+
+for(const environment of ['production','staging'])test(`real Cloud client self-revokes its ${environment} host credential before local removal`,async()=>{
+ const events=[],f=await fixture({clear:async()=>events.push('resident-cleared')},environment);
+ const initial=JSON.parse(await readFile(join(f.profile,'initial-credential.json'),'utf8'));
+ await writeFile(join(f.profile,'credentials.json'),JSON.stringify({[environment]:initial}),{mode:0o600});
+ try{
+  f.setResponse(async(url,input)=>{assert.equal(url,`https://${environment==='staging'?'api-staging':'api'}.eliza.app/api/v1/api-keys/current`);assert.equal(input.method,'DELETE');assert.equal(input.body,undefined);events.push('server-revoked');return Response.json({success:true,status:'revoked'});});
+  const store={acceptsReferences:true,read:async()=>{const r=await f.rpc({operation:'secureRead',slot:'cloud:'+environment});return r.data.value?JSON.parse(r.data.value):null;},write:async()=>{throw Error('Unexpected write');},clear:async()=>{const r=await f.rpc({operation:'secureRemove',slot:'cloud:'+environment,previousReference:reference});assert.equal(r.status,200);}};
+  const client=new CloudProtocol(environment,async input=>{const r=await f.rpc({operation:'request',environment,requestId:randomUUID(),input});return r.status===200?r.data:{status:r.status,data:r.data};},store,async()=>{},{deleteRequests:true});
+  assert.deepEqual(await client.revokeSession(new AbortController().signal),{supported:true,revoked:true,credentialId:null,revokedAt:null});
+  assert.deepEqual(events,['server-revoked','resident-cleared']);assert.equal(await store.read(),null);assert.deepEqual(f.diagnostics,[{environment,operation:'/api/v1/api-keys/current',status:200}]);
+  assert.equal(JSON.stringify(f.diagnostics).includes(secret),false);
+ }finally{await f.close();}
+});
+test('self-revocation stays exact, account-fenced, and never reports failed Cloud response as success',async()=>{
+ const f=await fixture(undefined,'production');try{
+  const base={url:'https://api.eliza.app/api/v1/api-keys/current',method:'DELETE',headers:{Accept:'application/json'},credentialReference:reference};
+  for(const input of [{...base,url:base.url+'?all=true'},{...base,body:'{}'},{...base,url:'https://api.eliza.app/api/v1/api-keys/'+credentialId},{...base,method:'POST'},{...base,credentialReference:'browser-cloud-reference:'+randomUUID()},{...base,url:'https://api-staging.eliza.app/api/v1/api-keys/current'}]){
+   const r=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input});assert.ok([400,409].includes(r.status));
+  }
+  assert.equal(f.calls.length,0);
+  f.setResponse(async()=>Response.json({error:'unavailable'},{status:503}));
+  const store={acceptsReferences:true,read:async()=>{const r=await f.rpc({operation:'secureRead',slot:'cloud:production'});return r.data.value?JSON.parse(r.data.value):null;},write:async()=>{},clear:async()=>{await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});}};
+  const client=new CloudProtocol('production',async input=>{const r=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input});return r.status===200?r.data:{status:r.status,data:r.data};},store,async()=>{},{deleteRequests:true});
+  await assert.rejects(client.revokeSession(new AbortController().signal));assert.equal(await store.read(),null);assert.equal(f.diagnostics[0].status,503);
+ }finally{await f.close();}
+});
