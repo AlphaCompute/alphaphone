@@ -44,7 +44,7 @@ export async function createCloudResidentHost({source,profile,port,environment='
  function status(id){return {provider:'elizacloud',configured:!!running&&!!bound,model:CLOUD_MODEL,attachable:!retiring&&!!running&&!!bound&&bound.credentialId===id};}
  async function ready(signal){
   if(retiring)throw Error('Resident retirement unconfirmed');
-  if(!running)await serial(()=>replace(null));
+  if(!running)await serial(()=>{if(!running)return replace(null);});
   const current=running,deadline=Date.now()+110000;
   while(Date.now()<deadline){signal.throwIfAborted();if(running!==current)throw Error('Resident changed during startup');
    try{const response=await request(`http://127.0.0.1:${port}/api/auth/status`,{headers:{Authorization:'Bearer '+privateProfile.token},redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(2000)])});await response.body?.cancel();if(response.ok)return {state:'host-managed'};}catch(error){signal.throwIfAborted();}

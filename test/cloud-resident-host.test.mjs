@@ -20,3 +20,17 @@ test('Cloud host retires old processes, strips direct-provider keys and never pe
   assert.ok(!(await fs.readFile(join(profile,'eliza.json'),'utf8')).includes(binding.token));assert.equal((await fs.stat(join(profile,'vault-passphrase'))).mode&0o777,0o600);
  }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
 });
+
+test('first readiness preserves a concurrently queued Cloud binding',async()=>{
+ const profile=await fs.mkdtemp(join(tmpdir(),'alpha-cloud-resident-')),launches=[],events=[];
+ const launch=async options=>{let done;const completion=new Promise(resolve=>done=resolve);launches.push(options.env.ELIZAOS_CLOUD_USE_INFERENCE);events.push('start');return {completion,async stop(){events.push('stop');done({code:0});}};};
+ const host=await createCloudResidentHost({source:resolve('vendor/eliza'),profile,port:47869,launch,request:async()=>new Response(null),inherited:{PATH:process.env.PATH}});
+ try{
+  const binding=host.bind({token:'synthetic-cloud-secret',credentialId:'first',reference:'ref-first'});
+  const readiness=host.ready(new AbortController().signal);
+  await Promise.all([binding,readiness]);
+  assert.deepEqual(launches,['true'],'readiness must reuse the bound resident');
+  assert.equal(host.status('first').attachable,true);
+  assert.deepEqual(events,['start'],'readiness must not retire the bound resident');
+ }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
+});
