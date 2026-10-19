@@ -350,6 +350,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
  const labels=await current(page).getByRole('button').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')||e.textContent?.trim()||'').filter(Boolean));
  const report:string[]=[`Settings: ${(await current(page).innerText()).replace(/\s+/g,' ')}`];
  noFixtures(report[0],'Settings');
+ await expect(current(page).getByRole('button',{name:'Notifications',exact:true})).toContainText('In-app alerts enabled');
  await expect(current(page).getByRole('button',{name:'Developer',exact:true})).toHaveCount(0);
  for(const label of labels.filter(name=>['Accounts','Connections','Privacy & data','Display','Notifications','Models','Developer','About','Calendar'].includes(name))){
   await openSettings(page);
@@ -360,6 +361,24 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   noFixtures(text,label);
   expect(text).not.toMatch(/Wi-Fi\s*(On|Off)\b|Bluetooth\s*(On|Off)\b|Airplane mode\s*(On|Off)\b/);
   if(label==='Connections'){expect(text).toMatch(/Other connectors\s*Not available in this version/);expect(text).not.toMatch(/Other connectors\s*Not connected/);}
+  if(label==='Notifications'){
+   expect(text).toContain('In-app alerts enabled');
+   expect(text).toContain('Shown while Alpha is open');
+   expect(text).not.toMatch(/App notifications allowed|Channel allowed|Android battery policies/);
+   expect(text).not.toMatch(/Manage development notification access|selected-app collection|other-app collection|Choose notification apps|Hide app choices|Local metadata history|local metadata history|Notification privacy/);
+   await expect(current(page).getByRole('button',{name:'Manage Reminders',exact:true})).toBeVisible();
+   await expect(current(page).getByRole('button',{name:'Manage Calendar',exact:true})).toBeVisible();
+   await current(page).getByRole('button',{name:'Manage in-app alerts',exact:true}).click();
+   const dialog=page.getByRole('dialog',{name:'Alpha notifications',exact:true});
+   await expect(dialog.getByRole('checkbox',{name:'Show Alpha notifications',exact:true})).toBeChecked();
+   await dialog.getByRole('checkbox',{name:'Show Alpha notifications',exact:true}).uncheck();
+   await dialog.getByRole('button',{name:'Done',exact:true}).click();
+   await expect(dialog).toHaveCount(0);
+   await expect(current(page)).toContainText('In-app alerts off');
+   await expect(current(page)).not.toContainText('In-app alert enabled');
+   await page.getByRole('button',{name:'Back to Settings',exact:true}).click();
+   await expect(current(page).getByRole('button',{name:'Notifications',exact:true})).toContainText('In-app alerts off');
+  }
  }
  await test.info().attach('browser-settings-rows',{body:report.join('\n\n'),contentType:'text/plain'});
  const about=report.find(row=>row.startsWith('About: '))||'';
