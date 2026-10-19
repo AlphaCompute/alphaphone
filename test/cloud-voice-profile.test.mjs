@@ -4,9 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {execFileSync} from 'node:child_process';
-import {createRequire} from 'node:module';
-import {pathToFileURL} from 'node:url';
-import {sourceDirectory} from '../scripts/local-agent-source.mjs';
+import {resolveCloudSignatureClassifier,verifyCloudRecordingSignatures} from '../scripts/check-cloud-recording-signature.mjs';
 import {voiceFakeClock} from './fixtures/shared-batch-voice.mjs';
 import {cloudVoiceViewFixture} from './fixtures/cloud-voice-view.mjs';
 
@@ -47,16 +45,10 @@ test('native production Cloud voice pins host and Cartesia; staging and other ou
 });
 
 let fileTypeModule;
-try{fileTypeModule=createRequire(path.join(sourceDirectory(process.cwd()),'packages/cloud/api/package.json')).resolve('file-type');}
+try{fileTypeModule=resolveCloudSignatureClassifier();}
 catch(error){if(error.code!=='MODULE_NOT_FOUND')throw error;}
 test('Cloud signature classifier rejects actual Android mp42 header and accepts PCM WAV',{skip:!fileTypeModule?'Prepared Cloud file-type dependency unavailable':false},async()=>{
- const {fileTypeFromBuffer}=await import(pathToFileURL(fileTypeModule));
- // Exactly the first twelve format bytes of the silent, owner-controlled Android QA capture.
- const recordedHeader=Buffer.from('00000018667479706d703432','hex');
- assert.deepEqual(await fileTypeFromBuffer(recordedHeader),{ext:'mp4',mime:'video/mp4'});
- // Audio-only PCM container matching AlphaVoicePcm's mono16k/16bit output; no recording frames.
- const wav=Buffer.alloc(76);wav.write('RIFF');wav.writeUInt32LE(68,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(16000,24);wav.writeUInt32LE(32000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(32,40);
- assert.deepEqual(await fileTypeFromBuffer(wav),{ext:'wav',mime:'audio/wav'});
+ await verifyCloudRecordingSignatures();
 });
 
 test('real native multipart method uploads decoded WAV and clears it on credential, setup, cancellation and write failures',()=>{
