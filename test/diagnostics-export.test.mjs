@@ -183,7 +183,7 @@ test('status inference read rejects retired resident sessions before recording',
 
 test('explicit inference refresh is isolated and abortable without unrelated capability reads',async()=>{
  const {readFileSync}=await import('node:fs');const {stripTypeScriptTypes}=await import('node:module');const vm=await import('node:vm');
- const source=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');const body=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities()')).trim();const code=stripTypeScriptTypes(body,{mode:'strip'});
+ const source=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');const body=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities(')).trim();const code=stripTypeScriptTypes(body,{mode:'strip'});
  let reads=0,records=0;const context={inferenceAbort:null,owner:{},AbortController,setTimeout:callback=>{queueMicrotask(callback);return 1;},clearTimeout:()=>{},connectionController:{readCloudInferenceFailure:signal=>{reads++;return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));}},recordCloudInferenceFailure:()=>{records++;return true;},readCrashLog:()=>{throw Error('Unexpected log read after cancellation');},changed:()=>{throw Error('Unexpected update after cancellation');}};
  await vm.runInNewContext('('+code+')',context)();assert.equal(reads,1);assert.equal(records,0);assert.equal(context.inferenceAbort,null);
  assert.doesNotMatch(body,/refreshCapabilities|gmailAccounts|listenerStatus|workflow/);
@@ -192,7 +192,7 @@ test('explicit inference refresh is isolated and abortable without unrelated cap
 test('confirmed clear cancels an outstanding inference refresh before it can append',async()=>{
  const {readFileSync}=await import('node:fs');const {stripTypeScriptTypes}=await import('node:module');const vm=await import('node:vm');
  const source=readFileSync(new URL('../apps/app/src/prototype/settings-adapter.ts',import.meta.url),'utf8');
- const refresh=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities()')).trim();
+ const refresh=source.slice(source.indexOf('  async function refreshInferenceFailure(){'),source.indexOf('  async function refreshCapabilities(')).trim();
  const clear=source.slice(source.indexOf('  async function clearProblems(api: Bag) {'),source.indexOf('  async function refresh()')).trim();
  let records=0,clears=0;const context={inferenceAbort:null,owner:{toast:()=>{}},crashBusy:false,crashLog:null,AbortController,window:{confirm:()=>true},setTimeout:()=>1,clearTimeout:()=>{},connectionController:{readCloudInferenceFailure:signal=>new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))},recordCloudInferenceFailure:()=>{records++;return true;},readCrashLog:async()=>({entries:[],exitHistory:false}),clearCrashLog:async()=>{clears++;},changed:()=>{}};
  vm.runInNewContext(stripTypeScriptTypes(refresh+'\n'+clear,{mode:'strip'})+'\nglobalThis.refresh=refreshInferenceFailure;globalThis.clear=clearProblems;',context);
