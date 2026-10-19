@@ -2,14 +2,26 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
-  "head": "3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
-  "recordedAt": "2026-10-18",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
-  "status": "identical",
-  "aheadBy": 0,
-  "behindBy": 0,
+  "baseCommit": "72df346fafc6c258b5965c217d20eaef91d288ec",
+  "head": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+  "recordedAt": "2026-10-19",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+  "status": "diverged",
+  "aheadBy": 1,
+  "behindBy": 118,
   "mergeBase": "3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
-  "pinOnlyCommits": [],
-  "pullRequests": []
+  "pinOnlyCommits": [
+    {
+      "sha": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+      "subject": "Omit unavailable context requests from strict response tools"
+    }
+  ],
+  "pullRequests": [],
+  "pendingPullRequest": {
+    "url": "https://github.com/elizaOS/eliza/pull/37014",
+    "reviewHead": "646fc9a7266053196230b73172a5075aabe7037d",
+    "compatibilityHead": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+    "compatibilityBranch": "qa/empty-context-pinned-sdk-20261019",
+    "note": "Two reviewed files cherry-picked onto existing Alpha SDK pin; not merged or reachable from develop."
+  }
 }

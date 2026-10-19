@@ -4,7 +4,7 @@ This patch fixes the startup dead end after eight retained transport directories
 It adds an explicit, service-owned review and intact archive operation. It does
 not delete records, increase the limit, change the runtime pin, or start work.
 
-The base is `3d76ff5acacb369e2c58fc8512e69e59f53ce69b`. The upstream candidate is
+The base is `3ede6a583ea42f5d59e3595b32c62cd812d986b0`. The upstream candidate is
 `371763e735c3f1ce7a61bef09a5f44cab46dead2`; its production changes are identical
 to `ade8fdeaf5daf76ae7b1246fe91b645192a6e544`. The separate resident manifest
 binds the exact two source paths, patch digest, and before/after hashes. Native
