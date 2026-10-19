@@ -29,7 +29,8 @@ export class BrowserCloudConnection extends WebPlugin {
   const result=await rpc({operation:'secureCompareExchange',...input,previousReference:references.get(input.slot)??null});if(result.status==='saved')references.set(input.slot,input.value===null?null:JSON.parse(input.value).credentialReference);return result;
  }
  async openExternal(input:{url:string;requestId:string}){
-  const url=new URL(input.url),login=['eliza.app','staging.eliza.app'].includes(url.hostname)&&url.pathname==='/auth/cli-login'&&/^[0-9a-f-]{36}$/i.test(url.searchParams.get('session')??'')&&[...url.searchParams.keys()].every(k=>k==='session');
+  const url=new URL(input.url),sessions=url.searchParams.getAll('session'),apps=url.searchParams.getAll('app');
+  const login=['eliza.app','staging.eliza.app'].includes(url.hostname)&&url.pathname==='/auth/cli-login'&&sessions.length===1&&/^[0-9a-f-]{36}$/i.test(sessions[0])&&(apps.length===0||apps.length===1&&apps[0]==='alpha')&&[...url.searchParams.keys()].every(k=>k==='session'||k==='app');
   const billing=['cloud.eliza.app','cloud-staging.eliza.app'].includes(url.hostname)&&url.pathname==='/cloud/billing'&&!url.search;
   if(url.protocol!=='https:'||url.username||url.password||url.hash||url.port||!login&&!billing&&!googleAuthorizationUrlAllowed(url.href))throw Error('Unsupported Cloud browser destination');
   const opened=window.open(url.href,'_blank');if(!opened)throw Error('Allow the Cloud sign-in window, then try again.');opened.opener=null;
