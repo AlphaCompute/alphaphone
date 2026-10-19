@@ -36,3 +36,17 @@ test('Cloud readiness waits for the single running agent after the auth listener
   assert.equal(host.status('retained').attachable,true,'cancelled readiness preserves the admitted Cloud binding');
  }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
 });
+
+test('first readiness preserves a concurrently queued Cloud binding',async()=>{
+ const profile=await fs.mkdtemp(join(tmpdir(),'alpha-cloud-resident-')),launches=[],events=[];
+ const launch=async options=>{let done;const completion=new Promise(resolve=>done=resolve);launches.push(options.env.ELIZAOS_CLOUD_USE_INFERENCE);events.push('start');return {completion,async stop(){events.push('stop');done({code:0});}};};
+ const host=await createCloudResidentHost({source:resolve('vendor/eliza'),profile,port:47869,launch,request:async()=>Response.json({agents:[{status:'running'}]}),inherited:{PATH:process.env.PATH}});
+ try{
+  const binding=host.bind({token:'synthetic-cloud-secret',credentialId:'first',reference:'ref-first'});
+  const readiness=host.ready(new AbortController().signal);
+  await Promise.all([binding,readiness]);
+  assert.deepEqual(launches,['true'],'readiness must reuse the bound resident');
+  assert.equal(host.status('first').attachable,true);
+  assert.deepEqual(events,['start'],'readiness must not retire the bound resident');
+ }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
+});
