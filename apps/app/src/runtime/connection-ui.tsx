@@ -237,17 +237,17 @@ function cloudUnreachable(error: unknown): boolean {
   return error instanceof Error && /^(Connection request failed|Connection timed out|Request cancelled)$/.test(error.message);
 }
 const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Your agent is running on this phone; AI replies return when Cloud is reachable again, checked when the network returns or you come back to Alpha Phone.';
-/** Notice shown with the running agent when the account holds no admissible plan. */
-const NEEDS_PLAN_NOTICE = 'Your agent is running on this phone. AI replies need an Eliza Cloud plan: redeem a subscription code or choose a plan.';
+/** Notice shown when Cloud inference is unavailable or account access is unconfirmed. */
+const NEEDS_PLAN_NOTICE = 'Your agent is running on this phone. AI replies aren’t available right now. Check your Eliza Cloud account in Settings.';
 /**
  * The on-device agent's honest answer to a chat or assistant request while Eliza Cloud inference
  * is not bound (the local runtime reports it as a provider-less turn). Local tools keep working.
  */
 export function inferenceUnavailableReply(notice: ConnectionSnapshot['residentPlanNotice'], signedIn: boolean): string {
-  const local = 'Notes, reminders, scheduling, approvals and on-device speech keep working.';
-  if (notice === 'offline') return `I'm running on this phone, but I can't reach Eliza Cloud for AI replies right now. ${local} I'll use your plan again when Cloud is reachable. Nothing was sent to Cloud.`;
-  if (!signedIn) return `I'm running on this phone, but AI replies need an Eliza Cloud account with a plan. Sign in with Eliza Cloud to continue. ${local}`;
-  return `I'm running on this phone, but AI replies need an Eliza Cloud plan. Redeem a subscription code or choose a plan in Eliza Cloud account & plan. ${local} Nothing was purchased.`;
+  const local = 'Local apps keep working.';
+  if (notice === 'offline') return `I'm running on this phone, but I can't reach Eliza Cloud for AI replies right now. ${local} Check your connection and try again.`;
+  if (!signedIn) return `I'm running on this phone, but AI replies need Eliza Cloud. Sign in with Eliza Cloud to continue. ${local}`;
+  return `I'm running on this phone, but AI replies aren’t available right now. Check your Eliza Cloud account in Settings. ${local} Nothing was purchased.`;
 }
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -1670,7 +1670,7 @@ export const connectionController = {
     const view=state.residentSubscription,account=state.cloudAccount,plan=view&&view.kind!=='checking'?describeSubscription(view):null;
     const expiresAt=account?.expiresAt??null;
     // The agent always runs; this says only whether Eliza Cloud AI is connected to it.
-    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?(view?.kind==='inactive'?'Unavailable · needs a plan':'Unavailable · Cloud status unconfirmed'):'Unavailable · sign in'):'Starting…';
+    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?(view?.kind==='inactive'?'Unavailable · check Cloud account':'Unavailable · Cloud status unconfirmed'):'Unavailable · sign in'):'Starting…';
     if(state.residentPlanNotice==='offline'&&!account){const recent=readPlanAdmission();return {signedIn:false,offline:true,account:null,plan:recent?`${recent.planName} · offline`:'Offline',status:recent?.status??null,endsAt:state.planEndsAt??null,keyExpiresAt:null,keyExpiring:false,inference};}
     return {signedIn:!!account,offline:false,inference,account:account?(account.email||`Account ${account.userId.slice(0,8)}`):null,
       plan:plan?.headline??(account?'Checking plan…':'Not signed in'),
@@ -1763,7 +1763,7 @@ export const connectionController = {
     if (operation) return;
     if (residentAlwaysPresent) { await connectionController.startLocal(); return; }
     // Subscription gate QA (test-mocks builds): the gate has no local-only bypass.
-    if(residentCloudFlow()){update({open:true,error:'Alpha Phone needs an Eliza Cloud account with a plan.',message:''});return;}
+    if(residentCloudFlow()){update({open:true,error:'Sign in with Eliza Cloud to use AI replies.',message:''});return;}
     // The flag-off web preview runs no agent at all (A-27): it may close its notice and keep that choice.
     if (!testMocksEnabled && !webCloudUnavailable()) return;
     retire(); detachService();

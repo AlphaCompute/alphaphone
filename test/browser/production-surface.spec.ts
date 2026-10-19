@@ -1,3 +1,4 @@
+import {completeOptionalAccessSetup} from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -369,6 +370,8 @@ for (const mode of ['signed-out','empty','credits','unavailable','funded','repla
   // P-43: the resident starts at every app start; sign-in and plan state never withhold it.
   const agentCalls=async()=>((await page.evaluate(()=>(window as any).residentCalls)) as any[]).filter(c=>c.plugin==='Agent').map(c=>c.method);
   if(mode!=='unpackaged')await expect.poll(agentCalls).toContain('start');
+  // Signed-in first use offers optional access; complete its real skip before the account checks.
+  if(mode==='empty'||mode==='unavailable'||mode==='credits'||mode==='funded')await completeOptionalAccessSetup(page);
   for(const retired of ['without AI','Continue offline','Connect an agent'])expect(await page.locator('body').innerText()).not.toContain(retired);
   // Every Alpha Phone needs an Eliza Cloud account for AI: signed out, the sign-in dialog opens
   // by itself and cannot be dismissed. Without an admissible plan a non-blocking notice beside the
@@ -378,7 +381,7 @@ for (const mode of ['signed-out','empty','credits','unavailable','funded','repla
   const dialog=page.getByRole('dialog',{name:needsPlan?'Eliza Cloud account & plan':'Your agent'});
   if(needsPlan){
    const notice=page.getByRole('region',{name:'Eliza Cloud plan notice'});
-   await expect(notice).toContainText('Your agent is running on this phone. AI replies need an Eliza Cloud plan');
+   await expect(notice).toContainText('Your agent is running on this phone. AI replies aren’t available right now');
    await expect(page.getByRole('dialog')).toHaveCount(0);
    await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
    await notice.getByRole('button',{name:'Redeem code',exact:true}).click();

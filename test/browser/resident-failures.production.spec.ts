@@ -30,7 +30,7 @@ async function send(page: Page, text: string) { await composer(page).fill(text);
 
 const KINDS = {
   // Cloud's billing refusal is a service limit (subscription-entitlement.ts): nothing is bought or upgraded.
-  insufficient_credits: "Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. Local apps and on-device speech keep working.",
+  insufficient_credits: "Eliza Cloud declined this AI request for your account's billing. Check your account in Settings. Alpha Phone did not retry your message, and nothing is purchased automatically. Local apps keep working.",
   provider_issue: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
   generation_timeout: 'Hosted inference (Eliza Cloud / Cerebras) could not be reached; nothing was retried.',
   // Bound to an admitted plan, yet the agent ran without a provider: a recheck is offered.
@@ -85,13 +85,13 @@ for (const frame of ['done', 'error'] as const) test(`a provider-less turn witho
   await residentStub(page, { accounts: [{ ...owner, plan: 'none' }] });
   await residentHome(page);
   // No plan is a notice beside the running agent, not a gate.
-  await expect(page.getByRole('region', { name: 'Eliza Cloud plan notice' })).toContainText('AI replies need an Eliza Cloud plan');
+  await expect(page.getByRole('region', { name: 'Eliza Cloud plan notice' })).toContainText('AI replies aren’t available right now');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(await harness(page, f => f.calls.filter((call: string) => call === 'Agent.start').length)).toBeGreaterThan(0);
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('configureCloudProvider')))).toEqual([]);
   await setStub(page, { stream: { failure: 'no_provider', frame } });
   await send(page, 'Asked without a plan');
-  await expect(conversation(page).getByText(/^I'm running on this phone, but AI replies need an Eliza Cloud plan\./)).toHaveCount(1);
+  await expect(conversation(page).getByText(/^I'm running on this phone, but AI replies aren’t available right now\./)).toHaveCount(1);
   await expect(page.getByText(/Set up AI/)).toHaveCount(0);
   await expect(page.getByText(/PRIVATE_PROVIDER_ERROR_CANARY/)).toHaveCount(0);
   const plan = page.getByRole('button', { name: /^Redeem code or choose a plan/ });

@@ -124,9 +124,9 @@ test('a chat turn without Cloud inference gets an honest answer with the plan ac
   const failure = between(ui, 'function replyFailure(', '\n}\n');
   assert.match(failure, /if\(kind==='no_provider'&&selected\.kind==='resident'&&residentCloudFlow\(\)\)\{[\s\S]*inferenceUnavailableReply\(notice,signedIn\)[\s\S]*planAction:/);
   const reply = between(ui, 'export function inferenceUnavailableReply(', '\n}\n');
-  for (const text of ['Redeem a subscription code or choose a plan', "can't reach Eliza Cloud", 'Sign in with Eliza Cloud', 'keep working'])
+  for (const text of ['Check your Eliza Cloud account in Settings', "can't reach Eliza Cloud", 'Sign in with Eliza Cloud', 'Local apps keep working'])
     assert.ok(reply.includes(text), text);
-  assert.doesNotMatch(reply, /no agent|without AI|credit|top.?up|upgrade/i);
+  assert.doesNotMatch(reply, /no agent|without AI|credit|top.?up|upgrade|needs? (?:an? )?Eliza Cloud (?:account with a )?plan|on-device speech|Nothing was sent to Cloud/i);
   // Workflow text generation fails honestly instead of using the plan answer as generated text.
   const client = read('apps/app/src/runtime/alpha-client.ts');
   assert.match(between(client, 'async generateWorkflowText(', 'async send('), /if\(reply&&\(reply as AgentReply\)\.planAction\)throw new AlphaClientError\('unconfigured'/);

@@ -656,7 +656,7 @@ test('Settings retains unknown, expired, inactive and credit-funded admission st
     const result = read({residentSubscription:{kind:'inactive', status, planName, source:'billing-limits'}});
     assert.equal(result.plan, headline);
     assert.equal(result.status, status);
-    assert.equal(result.inference, 'Unavailable · needs a plan');
+    assert.equal(result.inference, 'Unavailable · check Cloud account');
   }
   const credits = read({residentSubscription:{kind:'credits', source:'billing-limits'}, residentPlanNotice:null, residentInference:'cloud'});
   assert.equal(credits.plan, 'Eliza Cloud credits');
