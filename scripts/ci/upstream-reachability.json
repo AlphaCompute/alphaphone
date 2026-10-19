@@ -3,25 +3,28 @@
   "repository": "elizaOS/eliza",
   "base": "develop",
   "baseCommit": "72df346fafc6c258b5965c217d20eaef91d288ec",
-  "head": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+  "head": "65dab3188fde739f30d6fcffeb7d4701977100ed",
   "recordedAt": "2026-10-19",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...3ede6a583ea42f5d59e3595b32c62cd812d986b0",
+  "command": "gh api --method GET repos/elizaOS/eliza/compare/develop...65dab3188fde739f30d6fcffeb7d4701977100ed",
   "status": "diverged",
-  "aheadBy": 1,
+  "aheadBy": 2,
   "behindBy": 118,
   "mergeBase": "3d76ff5acacb369e2c58fc8512e69e59f53ce69b",
   "pinOnlyCommits": [
     {
       "sha": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
       "subject": "Omit unavailable context requests from strict response tools"
+    },
+    {
+      "sha": "65dab3188fde739f30d6fcffeb7d4701977100ed",
+      "subject": "Use exact source choices in strict context tools"
     }
   ],
   "pullRequests": [],
   "pendingPullRequest": {
     "url": "https://github.com/elizaOS/eliza/pull/37014",
-    "reviewHead": "646fc9a7266053196230b73172a5075aabe7037d",
-    "compatibilityHead": "3ede6a583ea42f5d59e3595b32c62cd812d986b0",
-    "compatibilityBranch": "qa/empty-context-pinned-sdk-20261019",
-    "note": "Two reviewed files cherry-picked onto existing Alpha SDK pin; not merged or reachable from develop."
+    "reviewHead": "444bbcce24130a6616ddba3372fce3dd24d1f141",
+    "compatibilityHead": "65dab3188fde739f30d6fcffeb7d4701977100ed",
+    "note": "Reviewed unmerged compatibility child; status above is the actual public comparison, not merge evidence."
   }
 }
