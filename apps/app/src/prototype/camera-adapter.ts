@@ -558,18 +558,18 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
   const cameraViewVisible = () => !disposed && !document.hidden && !!api?.isActive() && !!document.querySelector(finder);
   const active = () => cameraViewVisible() && (requestedCaptureActive || !['sheet', 'full'].includes(api?.S.chat));
   function hideAccess(){accessPanel?.remove();accessPanel=undefined;}
-  function showAccess(kind:AccessKind){
-    denied=kind;hideAccess();
+  function showAccess(kind:AccessKind|'unavailable'){
+    denied=kind==='unavailable'?undefined:kind;hideAccess();
     const vf=document.querySelector<HTMLElement>(finder),screen=vf?.closest<HTMLElement>('[data-alpha-layer]')||vf?.closest<HTMLElement>('[data-screen]');if(!screen)return;
-    const panel=document.createElement('div');panel.setAttribute('role','alert');panel.setAttribute('aria-label',kind==='camera'?'Camera access is off':'Microphone access is off');panel.dataset.alphaCameraAccess=kind;
+    const panel=document.createElement('div');panel.setAttribute('role','alert');panel.setAttribute('aria-label',kind==='unavailable'?'Camera unavailable':kind==='camera'?'Camera access is off':'Microphone access is off');panel.dataset.alphaCameraAccess=kind;
     panel.style.cssText='position:absolute;left:16px;right:16px;top:38%;z-index:50;padding:16px;border-radius:20px;background:#1c1c1e;color:#fff;font:inherit;display:flex;flex-direction:column;gap:10px;text-align:center';
-    const title=document.createElement('strong');title.textContent=kind==='camera'?'Camera access is off':'Microphone access is off';
+    const title=document.createElement('strong');title.textContent=kind==='unavailable'?'Camera unavailable':kind==='camera'?'Camera access is off':'Microphone access is off';
     const detail=document.createElement('span');detail.style.cssText='font-size:14px;line-height:1.4;color:rgba(255,255,255,.8)';
-    detail.textContent=kind==='camera'?(browserMode?'Allow camera access for this site in your browser settings, then try again.':'Allow camera access for Alpha in Android settings, then return here. The preview restarts when access is granted.'):(browserMode?'Allow microphone access for this site in your browser settings to record video with sound.':'Allow microphone access for Alpha in Android settings to record video with sound. Photos still work without it.');
+    detail.textContent=kind==='unavailable'?'The camera could not start. Close other apps using it, then try again.':kind==='camera'?(browserMode?'Allow camera access for this site in your browser settings, then try again.':'Allow camera access for Alpha in Android settings, then return here. The preview restarts when access is granted.'):(browserMode?'Allow microphone access for this site in your browser settings to record video with sound.':'Allow microphone access for Alpha in Android settings to record video with sound. Photos still work without it.');
     const actions=document.createElement('div');actions.style.cssText='display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
     const action=(label:string,go:()=>void)=>{const b=document.createElement('button');b.type='button';b.textContent=label;b.style.cssText='min-height:44px;padding:0 16px;border-radius:22px;background:rgba(255,255,255,.16);color:#fff;font:inherit';b.onclick=go;actions.append(b);return b;};
-    if(!browserMode)action('Open Android settings',()=>{void device.openSettings({page:'privacy'}).catch(()=>message('Android settings could not open. Open Settings › Apps › Alpha › Permissions.'));});
-    action('Try again',()=>{if(kind==='camera'){hideAccess();void start(true);}else{hideAccess();denied=undefined;message('');}});
+    if(!browserMode&&kind!=='unavailable')action('Open Android settings',()=>{void device.openSettings({page:'privacy'}).catch(()=>message('Android settings could not open. Open Settings › Apps › Alpha › Permissions.'));});
+    action('Try again',()=>{if(kind==='camera'||kind==='unavailable'){hideAccess();void start(true);}else{hideAccess();denied=undefined;message('');}});
     panel.append(title,detail,actions);screen.append(panel);accessPanel=panel;
   }
   let noticeTimer:number|undefined,noticeGeneration=0;
@@ -594,12 +594,12 @@ export function installPrototypeCameraAdapter(_Component: unknown, views: Record
       if (token !== epoch || !active()) return;
       await camera.startPreview({ direction, resolution: { width: 1280, height: 720 }, mirror: direction === 'front' });
       if (token !== epoch || !active()) return;
-      phase = 'ready';if(denied==='camera'){denied=undefined;hideAccess();}if(browserMode){flash=false;api?.set({zoom:1,flash:false});}mask(true); message('');
+      phase = 'ready';hideAccess();if(denied==='camera')denied=undefined;if(browserMode){flash=false;api?.set({zoom:1,flash:false});}mask(true); message('');
     } catch (error) {
       if (token !== epoch) return;
       phase = 'error'; mask(false);
       if(mediaAccessDenied(error)==='camera'){message('');showAccess('camera');}
-      else message('Camera unavailable. Tap the shutter to retry.');
+      else {message('');showAccess('unavailable');}
     }
   }
   async function control(task: () => Promise<unknown>, completed: () => void) {
