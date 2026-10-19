@@ -20,3 +20,19 @@ test('Cloud host retires old processes, strips direct-provider keys and never pe
   assert.ok(!(await fs.readFile(join(profile,'eliza.json'),'utf8')).includes(binding.token));assert.equal((await fs.stat(join(profile,'vault-passphrase'))).mode&0o777,0o600);
  }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
 });
+
+test('Cloud readiness waits for the single running agent after the auth listener is available',async()=>{
+ const profile=await fs.mkdtemp(join(tmpdir(),'alpha-cloud-ready-'));let calls=0,done;
+ const host=await createCloudResidentHost({source:resolve('vendor/eliza'),profile,port:47869,
+  launch:async()=>({completion:new Promise(resolve=>done=resolve),async stop(){done({code:0});}}),
+  request:async url=>{
+   assert.equal(new URL(url).pathname,'/api/agents');calls++;
+   if(calls===1)return new Response('{}',{status:503});
+   return Response.json({agents:[{status:calls===2?'starting':'running'}]});
+  }});
+ try{await host.clear();assert.deepEqual(await host.ready(new AbortController().signal),{state:'host-managed'});assert.equal(calls,3);
+  await host.bind({token:'synthetic-cloud-secret',credentialId:'retained',reference:'retained-ref'});
+  const controller=new AbortController();controller.abort();await assert.rejects(host.ready(controller.signal),{name:'AbortError'});
+  assert.equal(host.status('retained').attachable,true,'cancelled readiness preserves the admitted Cloud binding');
+ }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
+});
