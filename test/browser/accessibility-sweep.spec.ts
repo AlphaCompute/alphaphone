@@ -88,3 +88,39 @@ for (const state of [...FIXTURE_STATES, ...LAUNCHER_STATES]) {
     });
   }
 }
+
+// The launcher bridge has no draft-storage plugin. Its normal read retries fail
+// after the drawer opens, adding a real status row above the floating composer.
+// Check that mutation checkpoint, rather than waiting another frame for layout.
+test('launcher All apps keeps scroll clearance when a late draft status arrives', async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.addInitScript(() => {
+    const waiting = new MutationObserver(() => {
+      const dock = document.querySelector<HTMLElement>('[data-alpha-layer="composer"]');
+      if (!dock) return;
+      waiting.disconnect();
+      const status = new MutationObserver(() => {
+        const list = document.querySelector<HTMLElement>('[data-alpha-app-scroll="drawer"]');
+        const clock = list?.querySelector<HTMLElement>('[aria-label="Open Synthetic clock"]');
+        if (!list || !clock || !dock.textContent?.includes('Local draft could not be read')) return;
+        const box = clock.getBoundingClientRect(), dockBox = dock.getBoundingClientRect();
+        const screen = document.querySelector<HTMLElement>('[data-screen]')!;
+        const scale = screen.getBoundingClientRect().width / screen.offsetWidth;
+        (window as any).__alphaLateDockLayout = {
+          room: (list.scrollHeight - list.clientHeight - list.scrollTop) * scale,
+          need: box.bottom - dockBox.top,
+        };
+        status.disconnect();
+      });
+      status.observe(document.body, { childList: true, subtree: true, characterData: true });
+    });
+    waiting.observe(document, { childList: true, subtree: true });
+  });
+  await LAUNCHER_STATES.find(state => state.name === 'launcher All apps')!.open(page, 'light');
+  await expect.poll(() => page.evaluate(() => (window as any).__alphaLateDockLayout)).toBeTruthy();
+  const layout = await page.evaluate(() => (window as any).__alphaLateDockLayout as { room: number; need: number });
+  await info.attach('late-draft-status-layout', { body: JSON.stringify(layout), contentType: 'application/json' });
+  expect(layout.room).toBeGreaterThanOrEqual(layout.need);
+  expect(errors).toEqual([]);
+});
