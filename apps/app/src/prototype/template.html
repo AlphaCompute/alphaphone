@@ -768,7 +768,7 @@
             <sc-for list="{{inbox.c.chips}}" as="r">
               <button class="inbox-recipient-chip" aria-label="Remove {{r.name}}" onClick="{{r.rm}}" style="min-height:34px;padding:6px 8px 6px 12px;border-radius:17px;background:var(--s2);display:flex;align-items:center;gap:6px;font-size:14px;font-weight:600;max-width:100%"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{r.name}}</span><span aria-hidden="true" class="mail-toolbar-icon" style="width:14px;height:14px;color:var(--mut);mask-image:url('/icons/lucide/x.svg');-webkit-mask-image:url('/icons/lucide/x.svg')"></span></button>
             </sc-for>
-            <input aria-label="To" placeholder="{{inbox.c.toPh}}" value="{{inbox.c.toQ}}" onChange="{{inbox.c.onTo}}" onKeyDown="{{inbox.c.toKey}}" style="flex:1;min-width:110px;width:100%;height:38px;border:0;outline:0;background:transparent;color:var(--fg);font-size:16px;padding:0">
+            <input aria-label="To" placeholder="{{inbox.c.toPh}}" value="{{inbox.c.toQ}}" disabled="{{inbox.c.busy}}" onChange="{{inbox.c.onTo}}" onKeyDown="{{inbox.c.toKey}}" style="flex:1;min-width:110px;width:100%;height:38px;border:0;outline:0;background:transparent;color:var(--fg);font-size:16px;padding:0">
           </div>
           <sc-if value="{{inbox.c.local}}"><button class="ib" aria-label="Cc and Bcc" aria-expanded="{{inbox.c.showRecipientDetails}}" onClick="{{inbox.c.toggleRecipientDetails}}"><span aria-hidden="true" class="mail-toolbar-icon" style="mask-image:url('/icons/lucide/chevron-down.svg');-webkit-mask-image:url('/icons/lucide/chevron-down.svg')"></span></button></sc-if>
         </div>
@@ -800,8 +800,8 @@
             <button disabled="{{inbox.c.busy}}" onClick="{{inbox.c.confirmDiscard}}">Discard permanently</button>
           </div>
         </sc-if>
-        <sc-if value="{{inbox.c.showRecipientDetails}}"><input aria-label="Cc" placeholder="Cc" value="{{inbox.c.cc}}" onChange="{{inbox.c.onCc}}" style="height:44px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg)"><input aria-label="Bcc" placeholder="Bcc" value="{{inbox.c.bcc}}" onChange="{{inbox.c.onBcc}}" style="height:44px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg)"></sc-if>
-        <input aria-label="Subject" placeholder="Subject" value="{{inbox.c.subject}}" onChange="{{inbox.c.onSubj}}" style="height: 52px; border: 0; border-bottom: 1px solid var(--line); outline: 0; background: transparent; color: var(--fg); font-size: 17px; font-weight: 600; flex-shrink: 0; padding: 0">
+        <sc-if value="{{inbox.c.showRecipientDetails}}"><input aria-label="Cc" placeholder="Cc" value="{{inbox.c.cc}}" disabled="{{inbox.c.busy}}" onChange="{{inbox.c.onCc}}" style="height:44px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg)"><input aria-label="Bcc" placeholder="Bcc" value="{{inbox.c.bcc}}" disabled="{{inbox.c.busy}}" onChange="{{inbox.c.onBcc}}" style="height:44px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--fg)"></sc-if>
+        <input aria-label="Subject" placeholder="Subject" value="{{inbox.c.subject}}" disabled="{{inbox.c.busy}}" onChange="{{inbox.c.onSubj}}" style="height: 52px; border: 0; border-bottom: 1px solid var(--line); outline: 0; background: transparent; color: var(--fg); font-size: 17px; font-weight: 600; flex-shrink: 0; padding: 0">
         <sc-if value="{{inbox.c.hasAtts}}">
           <ul aria-label="Attachments" style="list-style: none; margin: 0; padding: 10px 0 0; display: flex; flex-direction: column; gap: 6px; flex-shrink: 0">
             <sc-for list="{{inbox.c.atts}}" as="a">
@@ -814,7 +814,7 @@
             </sc-for>
           </ul>
         </sc-if>
-        <textarea aria-label="Message" placeholder="Message" value="{{inbox.c.body}}" onChange="{{inbox.c.onBody}}" style="flex-grow: 1; min-height: 120px; border: 0; outline: 0; resize: none; background: transparent; color: var(--fg); font: inherit; font-size: 16px; line-height: 1.55; padding: 14px 0 40px"></textarea>
+        <textarea aria-label="Message" placeholder="Message" value="{{inbox.c.body}}" disabled="{{inbox.c.busy}}" onChange="{{inbox.c.onBody}}" style="flex-grow: 1; min-height: 120px; border: 0; outline: 0; resize: none; background: transparent; color: var(--fg); font: inherit; font-size: 16px; line-height: 1.55; padding: 14px 0 40px"></textarea>
       </div>
     </div>
   </sc-if>

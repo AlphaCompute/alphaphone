@@ -10,7 +10,7 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
   const {inboxLocalStore:s}=await import('/src/runtime/inbox-local-store.ts');
   const f=(window as any).cancelMail={slots:{},writes:0,hold:false,release:null,aborts:0,mutations:0};
   s.read=async key=>structuredClone(f.slots[key]??null);
-  s.compareExchange=async(key,prior,next)=>{if(JSON.stringify(f.slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};f.writes++;f.slots[key]=structuredClone(next);return {status:'saved'};};
+  s.compareExchange=async(key,prior,next)=>{if(f.holdSavedWrite&&next?.body==='Original text')await new Promise<void>(resolve=>{f.releaseSavedWrite=()=>{f.holdSavedWrite=false;resolve();};});if(JSON.stringify(f.slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};f.writes++;f.slots[key]=structuredClone(next);return {status:'saved'};};
   const accounts=[{connectionId:'fixture-grant',label:'Fixture mailbox',connected:true,grantedCapabilities:['google.gmail.triage']}];
   const deferred=(result:any,signal:AbortSignal)=>{if(!f.hold)return Promise.resolve(result);signal.addEventListener('abort',()=>f.aborts++,{once:true});return new Promise(resolve=>{f.release=()=>resolve(result);});};
   const client={gmailAccounts:(signal:AbortSignal)=>deferred(accounts,signal),gmailSearch:(_account:string,_query:string,signal:AbortSignal)=>deferred({messages:[{id:'late',threadId:'late',from:'Late response',to:[],subject:'Must not appear',snippet:'stale',receivedAt:'2026-10-03T12:00:00Z',unread:false}],syncedAt:'late'},signal),gmailInboxCapabilities:async()=>({send:false,providerDrafts:false,mailboxMutations:false}),gmailPrepareOperation:async()=>{f.mutations++;throw Error('No provider mutation expected');}};
@@ -25,7 +25,14 @@ for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(con
  await page.getByRole('textbox',{name:'To',exact:true}).press('Enter');
  await page.getByRole('textbox',{name:'Subject',exact:true}).fill('Retained subject');
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Original text');
- if(saved)await page.getByRole('button',{name:'Save draft locally',exact:true}).click();
+ if(saved){
+  await page.evaluate(()=>(window as any).cancelMail.holdSavedWrite=true);
+  await page.getByRole('button',{name:'Save draft locally',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>typeof (window as any).cancelMail.releaseSavedWrite)).toBe('function');
+  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toBeDisabled();
+  await page.evaluate(()=>(window as any).cancelMail.releaseSavedWrite());
+  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toBeEditable();
+ }
  await page.getByRole('textbox',{name:'Message',exact:true}).fill('Unsaved important text');
  await page.getByRole('button', {name: 'Cc and Bcc', exact: true}).click();
   await page.getByRole('textbox', {name: 'Cc', exact: true}).fill('copy@example.invalid');
