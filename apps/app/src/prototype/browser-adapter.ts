@@ -9,6 +9,7 @@ import {createReadingSupport, READING_UNSUPPORTED_MESSAGE} from '../browser/read
 import {webSourceOf} from './summary-source';
 import { connectionController, agentPendingText } from '../runtime/connection-ui';
 import { BrowserReviews } from '../browser/review';
+import { browserErrorMessage } from '../browser/browser-errors';
 import { browsingSnapshot, restoreBrowsing, MAX_SAVED_TABS as MAX_TABS, MAX_SAVED_HISTORY as MAX_HISTORY } from '../browser/browsing-session';
 type Bag = Record<string, any>;
 const Browser = registerPlugin<any>('AlphaBrowser');
@@ -79,7 +80,7 @@ export function installPrototypeBrowserAdapter(Component: any, views: Record<str
   }
   const state = () => shell?.vget('browser');
   const refresh = () => shell?.vset('browser', { nativeRevision: Date.now() });
-  const report = (error: unknown) => !disposed && shell?.toast(error instanceof Error ? error.message : 'Browser unavailable');
+  const report = (error: unknown) => !disposed && shell?.toast(browserErrorMessage(error));
   let reading: AbortController | undefined, questionReview=false;
   // Android only: whether this WebView provider can read a page in isolation. The web build
   // reviews a fetched copy instead and has no such limit.
