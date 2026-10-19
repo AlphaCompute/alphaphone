@@ -16,7 +16,7 @@ test('Cloud host retires old processes, strips direct-provider keys and never pe
   assert.equal(host.status('first').attachable,true);assert.equal(host.status('other').attachable,false);assert.ok(!JSON.stringify(host.status()).includes(binding.token));
   await host.bind(binding);assert.equal(launches.length,2,'same binding reuses resident');
   await host.clear();assert.deepEqual(events,['start0','stop0','start1','stop1','start2']);assert.equal(host.status().configured,false);assert.equal(launches[2].env.ELIZAOS_CLOUD_API_KEY,undefined);
-  rejectStop=true;await assert.rejects(host.bind(binding),/stop failed/);assert.equal(launches.length,3);await assert.rejects(host.bind(binding),/stop failed/);assert.equal(launches.length,3,'failed retirement never launches a replacement');rejectStop=false;
+  rejectStop=true;await assert.rejects(host.bind(binding),/stop failed/);assert.equal(launches.length,3);await assert.rejects(host.bind(binding),/stop failed/);assert.equal(launches.length,3,'failed retirement never launches a replacement');await assert.rejects(host.clear(),/stop failed/);await assert.rejects(host.ready(new AbortController().signal),/retirement unconfirmed/);assert.equal(launches.length,3);rejectStop=false;await host.clear();assert.equal(launches.length,4,'successful retirement can restart an unbound resident');
   assert.ok(!(await fs.readFile(join(profile,'eliza.json'),'utf8')).includes(binding.token));assert.equal((await fs.stat(join(profile,'vault-passphrase'))).mode&0o777,0o600);
  }finally{await host.close();await fs.rm(profile,{recursive:true,force:true});}
 });
