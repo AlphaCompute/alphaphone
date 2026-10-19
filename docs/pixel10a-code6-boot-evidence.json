@@ -22,7 +22,7 @@
   "systemPackagePath": "/product/app/AlphaPhone",
   "deviceApkSha256": "7a4d900c9550a5f5e06fb08b577c685a27c3039f1762b3fedad595dd463ee2a5",
   "homeAtFirstBoot": "Unselected; development staging intentionally preserves launcher choice.",
-  "postProvisioningRebootVerified": false,
+  "postProvisioningRebootVerified": true,
   "cloudDeviceAcceptanceVerified": false,
   "productionReleaseQualified": false,
   "receiptDigests": {
@@ -31,5 +31,8 @@
     "flash-result.json": "1c18ecea12bf81f8f0b312caa14559dd4fdccd4c2339b4f68e591f97482d916b",
     "pixel-boot-receipt.json": "a72d1dfb488a35782e94338d4a23abffe93244f0a8e3b69160c83819b0342c29",
     "source-validation.json": "51b41e2bc2f17237116df5883ded225daf0cc19873539978aeb469ff4dcce924"
-  }
+  },
+  "homeRolePersistedAfterReboot": true,
+  "homeIntentResolutionVerified": false,
+  "homeResolutionDiagnostic": "ResolverActivity; stale preferred entry for disabled com.android.provision/.DefaultActivity"
 }

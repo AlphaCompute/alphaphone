@@ -42,10 +42,13 @@ provisioning overlay. Provisioned/setup-complete settings do not select a HOME
 application when multiple equal-priority handlers remain.
 
 The operator subsequently selected Alpha using the documented development
-`cmd package set-home-activity` operation and requested a reboot. Post-provisioning
-reboot and persistent HOME resolution are **not yet verified** in this record.
-The device temporarily disappeared from USB during that reboot; this record does
-not infer a successful second boot from the successful initial boot.
+`cmd package set-home-activity` operation and rebooted. After a delayed USB
+reconnection, the operator observed boot completion, enforcing SELinux and Alpha
+still holding the HOME role. However, implicit MAIN/HOME resolution still returned
+`ResolverActivity`. Read-only diagnostics found a stale preferred MAIN/HOME/DEFAULT
+entry selecting the now-disabled AOSP Provision activity, while enabled handlers
+were Alpha, Launcher3 and Settings fallback Home. Role persistence therefore does
+not yet establish correct HOME intent resolution; that acceptance check remains open.
 
 The device had no default network. Native Cloud sign-in, subscription and inference
 acceptance remain unverified. Browser integration results and a separately installed
