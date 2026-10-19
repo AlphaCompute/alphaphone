@@ -1,3 +1,4 @@
+import {anyAbortSignal} from '../runtime/abort-signal';
 import {Capacitor} from '@capacitor/core';
 import {runFilePicker,inputFiles} from '../browser/file-picker';
 import {DailyApps} from '../daily';
@@ -83,7 +84,7 @@ export function installNoteSourceAdapter(views:Bag){
       file=await attachments.readSelected({selectionId});
      }else{
       const selected=await runFilePicker(async signal=>{
-       const owned=AbortSignal.any([signal,pickerAbort.signal]),files=await inputFiles(owned);owned.throwIfAborted();
+       const owned=anyAbortSignal([signal,pickerAbort.signal]),files=await inputFiles(owned);owned.throwIfAborted();
        if(!files.length)return null;const chosen=files[0];if(chosen.size>5*1024*1024)throw Error('Choose a source up to 5 MiB.');
        const bytes=new Uint8Array(await chosen.arrayBuffer());owned.throwIfAborted();let binary='';for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
        const value={name:chosen.name,mimeType:chosen.type,dataBase64:btoa(binary)};return {...value,...await reviewMailAttachment(value)};

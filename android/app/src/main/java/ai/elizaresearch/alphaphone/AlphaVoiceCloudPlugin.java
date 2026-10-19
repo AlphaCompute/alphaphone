@@ -14,7 +14,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.json.JSONObject;
 
-/** Foreground on-device speech. Legacy network methods are restricted to explicit test builds. */
+/** Foreground speech: on-device by default, credential-bound Cloud in the explicit Cloud profile. */
 @CapacitorPlugin(name="AlphaVoiceCloud", permissions={@Permission(alias="microphone",strings={android.Manifest.permission.RECORD_AUDIO})})
 public final class AlphaVoiceCloudPlugin extends Plugin {
  private AlphaCloudVoiceCapture capture;
@@ -101,10 +101,8 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  }
  private static String required(String value,int max){if(value==null||value.isBlank()||value.length()>max)throw new IllegalArgumentException();return value;}
  private HttpURLConnection connect(PluginCall call,String route,Pending request) throws Exception {
-  if(!BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS)throw new IOException("Network speech is not enabled");
   String environment=call.getString("environment");
-  String host;
-  if("production".equals(environment))host="api.eliza.app";else if("staging".equals(environment))host="api-staging.eliza.app";else throw new IllegalArgumentException();
+  String host=CloudSpeechPolicy.host(BuildConfig.ELIZA_RUNTIME_PROFILE,BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS,environment);
   AlphaConnectionPlugin store=(AlphaConnectionPlugin)getBridge().getPlugin("AlphaConnection").getInstance();
   String slot="cloud:"+environment;
   if(BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS && instrumentationCredentialSlot!=null){if(!instrumentationCredentialSlot.matches("instrumentation\\.[A-Za-z0-9_-]{1,100}"))throw new IllegalArgumentException();slot=instrumentationCredentialSlot;}
@@ -175,13 +173,16 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private static void successful(HttpURLConnection c)throws Exception{int status=c.getResponseCode();if(status<200||status>=300)throw new VoiceHttpException(status);}
  @PluginMethod public void transcribeRecording(PluginCall call){submit(call,request->{
   String recordingId=required(call.getString("recordingId"),256);File file=capture.selected(recordingId);if(file==null)throw new IOException();
-  // Copy the chosen bounded draft before upload; cancellation cannot substitute another recording.
-  byte[] audio;try(InputStream in=new FileInputStream(file)){audio=read(in,4*1024*1024,request);}if(audio.length==0)throw new IOException();
+  // Android's MPEG_4 recorder emits mp42, which the Cloud signature gate classifies as video.
+  // Decode the selected bounded mono draft to real PCM WAV; changing its MIME label is insufficient.
+  HttpURLConnection c;byte[] audio=AlphaVoicePcm.decode(file,()->request.cancelled||destroyed);
+  try{
   String boundary="AlphaVoice"+UUID.randomUUID().toString().replace("-","");
-  byte[] prefix=("--"+boundary+"\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"recording.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
+  byte[] prefix=("--"+boundary+"\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"recording.wav\"\r\nContent-Type: audio/wav\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
   byte[] suffix=("\r\n--"+boundary+"--\r\n").getBytes(StandardCharsets.US_ASCII);
-  HttpURLConnection c=connect(call,"stt",request);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
-  try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(prefix);out.write(audio);out.write(suffix);}finally{Arrays.fill(audio,(byte)0);}
+  c=connect(call,"stt",request);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
+  try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(prefix);out.write(audio);out.write(suffix);}
+  }finally{Arrays.fill(audio,(byte)0);}
   successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,256*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object transcript=data.get("transcript");if(!(transcript instanceof String))throw new IOException();
   if(request.cancelled||destroyed)throw new IOException();JSObject result=new JSObject();result.put("text",transcript);result.put("local",false);request.result=result;
  });}
@@ -303,6 +304,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  private void synthesizeAudio(PluginCall call,boolean paired){synthesizeAudio(call,paired,null);}
  private void synthesizeAudio(PluginCall call,boolean paired,String reviewed){submit(call,request->{
   String text=required(reviewed==null?call.getString("text"):reviewed,5000);HttpURLConnection c=paired?connectPaired(call,false,request):connect(call,"tts",request);byte[] body=(paired?PairedSpeechContract.ttsBody(text):new JSONObject().put("text",text).put("format","mp3")).toString().getBytes(StandardCharsets.UTF_8);if(paired)c.setRequestProperty("X-Request-Id",PairedSpeechContract.requestId(call.getString("requestId")));c.setRequestProperty("Content-Type","application/json");c.setFixedLengthStreamingMode(body.length);try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(body);}successful(c);
+  if(!paired)CloudSpeechPolicy.requireTtsProvider(BuildConfig.ELIZA_RUNTIME_PROFILE,c.getHeaderField("X-Eliza-TTS-Provider"));
   String mime=c.getContentType();if(paired)PairedSpeechContract.ttsHeaders(call.getString("requestId"),c.getHeaderField("X-Request-Id"),c.getHeaderField("X-Eliza-Speech-Provider"),mime);if(mime==null||!Set.of("audio/mpeg","audio/mp3","audio/wav").contains(mime.split(";")[0].trim().toLowerCase(Locale.ROOT)))throw new IOException();byte[] audio;try(InputStream in=c.getInputStream()){audio=read(in,AUDIO_LIMIT,request);}if(audio.length==0)throw new IOException();
   CountDownLatch completed=new CountDownLatch(1);
   File file=File.createTempFile("alpha-cloud-tts-",".audio",getContext().getCacheDir());try{try(FileOutputStream out=new FileOutputStream(file)){out.write(audio);}if(request.cancelled||destroyed)throw new IOException();main.post(()->{try{if(request.cancelled||destroyed){file.delete();request.failure="Voice request cancelled";return;}if(Boolean.FALSE.equals(call.getBoolean("replace",true))&&playbackFile!=null){file.delete();request.failure="Speaker is in use";request.failureCode="playback-busy";return;}clearPlayback();playbackFile=file;playbackRequestId=call.getString("requestId");playbackId=UUID.randomUUID().toString();JSObject value=new JSObject();value.put("playbackId",playbackId);request.result=value;}catch(RuntimeException error){request.failure="Playback preparation failed";file.delete();}finally{completed.countDown();}});completed.await();}catch(Exception error){file.delete();throw error;}finally{Arrays.fill(audio,(byte)0);}

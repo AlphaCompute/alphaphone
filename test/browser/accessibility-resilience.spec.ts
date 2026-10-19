@@ -156,7 +156,7 @@ test.describe('menus and sheets over a scrim own focus', () => {
     ['browser', ['Menu', 'Share'], 'Share page', 'Close share', null],
     ['photos:viewer', ['Photo info'], 'Photo info', 'Close info', 'Photo info'],
     ['photos:viewer', ['Share photo'], 'Share photo', 'Close share', 'Share photo'],
-    ['notes:editor', ['Share note'], 'Share note', 'Close share', 'Share note'],
+    ['notes:editor', ['Share note'], 'Share', 'Cancel', 'Share note'],
     ['files:folder', ['View and sort'], 'View and sort', 'Close menu', 'View and sort'],
     ['files:preview', ['Move file'], 'Move to', 'Close move', 'Move file'],
     ['files:preview', ['Share file'], 'Share file', 'Close share', 'Share file'],
@@ -166,7 +166,14 @@ test.describe('menus and sheets over a scrim own focus', () => {
   for (const [start, steps, name, scrim, opener] of POPUPS) {
     test(`${start} > ${steps.join(' > ')}: focus enters, stays, and returns on Escape`, async ({ page }) => {
       const ownedInfo=start==='photos:viewer'&&name==='Photo info';
-      if(ownedInfo)await openOwnedPhotoViewer(page);
+      const nativeShare=start==='notes:editor'&&name==='Share';
+      if(nativeShare){
+        await page.addInitScript(offline);await page.goto('/');
+        await page.getByRole('button',{name:'Notes',exact:true}).click();
+        await page.getByRole('button',{name:'New note',exact:true}).click();
+        await page.getByRole('textbox',{name:'Title',exact:true}).fill('Owned share focus note');
+        await page.getByRole('textbox',{name:'Note',exact:true}).fill('Exact locally created content.');
+      }else if(ownedInfo)await openOwnedPhotoViewer(page);
       else if (start === 'live') { await page.addInitScript(offline); await page.goto('/'); }
       else await page.goto(`/?mode=mock&start=${start}`);
       for (const step of steps.slice(0, -1)) await page.getByRole('button', { name: step, exact: true }).first().click();
@@ -177,13 +184,20 @@ test.describe('menus and sheets over a scrim own focus', () => {
       await last.click();
       const dialog = page.getByRole('dialog', { name, exact: true });
       await expect(dialog).toBeVisible();
-      const inside = () => page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'));
+      const inside = () => page.evaluate(() => !!document.activeElement?.closest('dialog,[role="dialog"]'));
       await expect.poll(inside).toBe(true);
       // The page under the popup is out of the tab order and the accessibility tree; the
       // popup's own scrim still closes it for a pointer or an assistive-technology tap.
-      const exposed = await page.evaluate(() => Array.from(document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]'))
-        .filter(el => el.getClientRects().length && !el.closest('[inert],[aria-hidden="true"]') && !el.closest('[data-alpha-popup],[role="dialog"]')).map(el => el.getAttribute('aria-label') || el.textContent));
-      expect(exposed).toEqual([]);
+      if(nativeShare){
+        // Native modal inertness is supplied by showModal, not copied inert attributes.
+        expect(await dialog.evaluate(el=>el.matches('dialog:modal'))).toBe(true);
+        await expect(dialog.getByRole('button',{name:'Share to email',exact:true})).toBeVisible();
+        await expect(dialog.getByRole('button',{name:'Share externally',exact:true})).toBeVisible();
+      }else{
+        const exposed = await page.evaluate(() => Array.from(document.querySelectorAll('.os button, .os input, .os textarea, .os a[href]'))
+          .filter(el => el.getClientRects().length && !el.closest('[inert],[aria-hidden="true"]') && !el.closest('[data-alpha-popup],[role="dialog"]')).map(el => el.getAttribute('aria-label') || el.textContent));
+        expect(exposed).toEqual([]);
+      }
       if(ownedInfo){const scrim=page.locator('button[aria-label="Close album management"]');await expect(scrim).toHaveAttribute('aria-hidden','true');await expect(scrim).toHaveAttribute('tabindex','-1');}
       await expect(page.getByRole('button', { name: ownedInfo?'Close dialog':scrim, exact: true })).toHaveCount(1);
       const stops = await dialog.locator('button:not(:disabled), input, textarea, select').count();

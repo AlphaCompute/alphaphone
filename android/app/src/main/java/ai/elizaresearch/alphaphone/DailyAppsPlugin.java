@@ -23,7 +23,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.util.ArrayList;
 
 /** Product handoffs only. Opening another app never proves that a write completed. */
-@CapacitorPlugin(name = "DailyApps", permissions = {@Permission(alias = "notifications", strings = {Manifest.permission.POST_NOTIFICATIONS})})
+@CapacitorPlugin(name = "DailyApps", permissions = {@Permission(alias = "notifications", strings = {Manifest.permission.POST_NOTIFICATIONS}), @Permission(alias = "camera", strings = {Manifest.permission.CAMERA})})
 public class DailyAppsPlugin extends ai.eliza.plugins.reminders.ReminderPlugin {
  private static final String[] ACTIONS = {"camera", "photos", "files", "maps", "calendar", "calendar-create", "reminder", "email", "inbox", "browser", "notifications", "settings", "autofill", "voice"}; // MVP-DEFERRED: "phone", "messages", "contacts".
  private boolean selectionPending;

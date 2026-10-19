@@ -30,6 +30,13 @@ import java.util.concurrent.Executors;
  @Permission(alias="librarySelected",strings={"android.permission.READ_MEDIA_VISUAL_USER_SELECTED"})
 })
 public class AlphaPhotosPlugin extends Plugin {
+ /** Debug QA markers are a closed enum: never include media data or exception text. */
+ enum Diagnostic {READ_INVOKED,READ_SUCCEEDED,READ_FAILED_SECURITY,READ_FAILED_ARGUMENT,READ_FAILED_IO,READ_FAILED_OTHER,LIBRARY_CHANGED_RESUME,LIBRARY_CHANGED_CATALOG}
+ static void diagnostic(Diagnostic marker){if(BuildConfig.DEBUG)android.util.Log.i("AlphaPhotosQA",marker.name());}
+ static void diagnosticReadFailure(Exception failure){
+  diagnostic(failure instanceof SecurityException?Diagnostic.READ_FAILED_SECURITY:failure instanceof IllegalArgumentException?Diagnostic.READ_FAILED_ARGUMENT:failure instanceof java.io.IOException?Diagnostic.READ_FAILED_IO:Diagnostic.READ_FAILED_OTHER);
+ }
+
  private PermittedMediaCatalog permitted;
  private PermittedMediaReview mediaReview;
  private OwnedVideoPlayback playback;
@@ -47,7 +54,7 @@ public class AlphaPhotosPlugin extends Plugin {
  @Override public void load(){
   // Observation starts only while the Photos grid is open (watchLibrary). Playback grants recheck
   // their item's revision on every byte request, so unrelated media writes do not revoke them.
-  permitted=new PermittedMediaCatalog(getContext(),false,()->{if(!destroyed)notifyListeners("libraryChanged",new JSObject());});mediaReview=new PermittedMediaReview(getBridge(),permitted,worker);edits=new OwnedPhotoEdits(getContext(), MEDIA_CONFIG,new OwnedPhotoEdits.SourceAccess(){
+  permitted=new PermittedMediaCatalog(getContext(),false,()->{if(!destroyed){diagnostic(Diagnostic.LIBRARY_CHANGED_CATALOG);notifyListeners("libraryChanged",new JSObject());}});mediaReview=new PermittedMediaReview(getBridge(),permitted,worker);edits=new OwnedPhotoEdits(getContext(), MEDIA_CONFIG,new OwnedPhotoEdits.SourceAccess(){
   public boolean accepts(String id){return id!=null&&id.startsWith("m:");}
   public Uri source(String id)throws Exception{revision(id);return permitted.uri(MediaLibraryKey.parse(id));}
   public String revision(String id)throws Exception{MediaLibraryKey key=MediaLibraryKey.parse(id);if(key.video)throw new IllegalArgumentException("Only still photos support edit copies");JSObject item=permitted.read(id,null,false);if(item.getLong("size")>32L*1024*1024)throw new IllegalArgumentException("Edit copies support source files up to 32 MB");return item.getString("mutationRevision");}
@@ -62,10 +69,11 @@ public class AlphaPhotosPlugin extends Plugin {
   if(destroyed||!getActivity().hasWindowFocus()){call.reject("Return to Photos to review access");return;}
   try{getActivity().startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.fromParts("package",getContext().getPackageName(),null)));call.resolve();}catch(RuntimeException unavailable){call.reject("Android app settings could not open");}
  }
+ static String[] libraryPermissionAliases(){return Build.VERSION.SDK_INT>=34?new String[]{"libraryImages","libraryVideos","librarySelected"}:Build.VERSION.SDK_INT>=33?new String[]{"libraryImages","libraryVideos"}:new String[]{"libraryLegacy"};}
  /** Only the explicit Photos permission control invokes this, never list/read/resume. */
  @PluginMethod public void requestLibraryAccess(PluginCall call){
   if(destroyed||!getActivity().hasWindowFocus()){call.reject("Return to Photos to choose access");return;}
-  String[] aliases=Build.VERSION.SDK_INT>=34?new String[]{"libraryImages","libraryVideos","librarySelected"}:Build.VERSION.SDK_INT>=33?new String[]{"libraryImages","libraryVideos"}:new String[]{"libraryLegacy"};
+  String[] aliases=libraryPermissionAliases();
   LateLaunch.ask(call,()->requestPermissionForAliases(aliases,call,"libraryPermissionResult"));
  }
  @PermissionCallback private void libraryPermissionResult(PluginCall call){permitted.invalidate();libraryAccess(call);}
@@ -78,7 +86,7 @@ public class AlphaPhotosPlugin extends Plugin {
  @PluginMethod public void listPermitted(PluginCall call){submitRead(call,()->permitted.list(call.getString("before",""),call.getString("query",""),call.getString("kind","all"),call.getBoolean("thumbnails",true),call.getString("filter","all")));}
  @PluginMethod public void readPermitted(PluginCall call){submitRead(call,()->permitted.read(call.getString("id"),call.getString("revision"),call.getBoolean("pixels",true)));}
  @Override protected void handleOnPause(){if(videoCopies!=null)videoCopies.cancel(null);if(permitted!=null){permitted.watch("photos",false);permitted.foreground(false);}if(playback!=null)playback.clear();}
- @Override protected void handleOnResume(){if(permitted!=null)permitted.foreground(true);notifyListeners("libraryChanged",new JSObject());}
+ @Override protected void handleOnResume(){if(permitted!=null)permitted.foreground(true);diagnostic(Diagnostic.LIBRARY_CHANGED_RESUME);notifyListeners("libraryChanged",new JSObject());}
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private String owned(){return owned(false);}
  private String owned(boolean trashed){return MediaStore.MediaColumns.OWNER_PACKAGE_NAME+"=? AND "+MediaStore.MediaColumns.IS_PENDING+"=0"+(Build.VERSION.SDK_INT>=30?" AND "+MediaStore.MediaColumns.IS_TRASHED+"="+(trashed?1:0):"");}
@@ -168,12 +176,12 @@ public class AlphaPhotosPlugin extends Plugin {
    JSObject result=new JSObject();result.put("items",items);result.put("next",next);call.resolve(result);
   }catch(Exception failure){call.reject("Saved media could not be loaded");}
  });}
- @PluginMethod public void read(PluginCall call){submit(call,()->{
+ @PluginMethod public void read(PluginCall call){diagnostic(Diagnostic.READ_INVOKED);submit(call,()->{
   try{
    boolean trashed=Boolean.TRUE.equals(call.getBoolean("includeTrashed",false));
    if(call.getString("id","").startsWith("m:")){
     String key=call.getString("id");JSObject result=permitted.read(key,call.getString("revision"),true,trashed);MediaLibraryKey media=MediaLibraryKey.parse(key);String revision=result.getString("revision");
-    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false,trashed);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);return;
+    if(media.video)result.put("path",playback.authorize(permitted.uri(media),()->{try{permitted.read(key,revision,false,trashed);}catch(Exception unavailable){throw new SecurityException("Selected video changed or is unavailable");}}));call.resolve(result);diagnostic(Diagnostic.READ_SUCCEEDED);return;
    }
    String key=call.getString("id","");long id=id(key);boolean video=key.startsWith("v:");
    Uri uri=uri(id,video);JSObject result;
@@ -181,8 +189,8 @@ public class AlphaPhotosPlugin extends Plugin {
    try(Cursor row=getContext().getContentResolver().query(CATALOG,fields(),query,null)){
     if(row==null||!row.moveToFirst())throw new IllegalArgumentException();result=metadata(row);
    }
-   result.put("image",image(id,video,1024));if(video)result.put("path",playback.authorize(uri));call.resolve(result);
-  }catch(Exception failure){call.reject("This saved media is no longer available");}
+   result.put("image",image(id,video,1024));if(video)result.put("path",playback.authorize(uri));call.resolve(result);diagnostic(Diagnostic.READ_SUCCEEDED);
+  }catch(Exception failure){diagnosticReadFailure(failure);call.reject("This saved media is no longer available");}
  });}
  /** Scan mode captures stay in memory. Keep photo is the only path that publishes
   * one to Photos: exact JPEG bytes, pending until fully written, one result per operation. */

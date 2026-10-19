@@ -1,5 +1,27 @@
 export type StartupPermissionState = 'checking' | 'request' | 'settings' | 'ready' | 'unavailable';
 
+/** A selected-photo grant is useful access, never described as the whole library. */
+export function startupPhotoAccess(value: unknown) {
+  const row = value as {scope?: unknown; locked?: unknown} | null;
+  if (!row || typeof row.scope !== 'string' || !['full', 'partial', 'selected', 'denied'].includes(row.scope) || typeof row.locked !== 'boolean' || row.locked) throw Error('Photo access unavailable');
+  return {granted: row.scope !== 'denied', enabled: row.scope !== 'denied', description: row.scope === 'full' ? 'All photos and videos allowed' : row.scope === 'selected' ? 'Selected photos and videos only' : row.scope === 'partial' ? 'Limited photo or video access allowed' : 'Not allowed'};
+}
+
+/** Permission metadata only: approximate access is usable without claiming a precise fix. */
+export function startupLocationAccess(value: unknown) {
+  const row = value as {location?: unknown; accuracy?: unknown} | null;
+  if (!row || typeof row.location !== 'string' || !['granted', 'denied', 'prompt', 'prompt-with-rationale'].includes(row.location)) throw Error('Location access unavailable');
+  const granted = row.location === 'granted';
+  if (granted ? typeof row.accuracy !== 'string' || !['precise', 'approximate'].includes(row.accuracy) : row.accuracy !== 'none') throw Error('Location accuracy unavailable');
+  return {granted, enabled: granted, description: granted ? row.accuracy === 'precise' ? 'Precise location allowed' : 'Approximate location allowed' : 'Not allowed'};
+}
+
+/** Connected identity alone does not establish Gmail or Calendar permission. */
+export function startupGoogleAccess(accounts: readonly {connected: boolean; connectionId?: string | null; grantedCapabilities: readonly string[]}[]) {
+  const connected = accounts.filter(account => account.connected === true && !!account.connectionId);
+  return {gmail: connected.some(account => account.grantedCapabilities.includes('google.gmail.triage')), calendar: connected.some(account => account.grantedCapabilities.includes('google.calendar.read'))};
+}
+
 /** Nonsecret startup-access memory: the "Not now" dismissal and which OS prompts were already
  * shown, so a chooser close or a cold start neither reopens the panel nor re-prompts. */
 export const STARTUP_PERMISSIONS_KEY = 'alpha.startup-permissions.v1';

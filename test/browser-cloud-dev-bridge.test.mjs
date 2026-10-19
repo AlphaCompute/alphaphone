@@ -12,6 +12,28 @@ const {CloudProtocol}=await import('../apps/app/src/runtime/cloud-protocol.ts');
 const {BrowserCloudConnection}=await import('../apps/app/src/browser/cloud-connection.ts');
 const owner='11111111-1111-4111-8111-111111111111',org='22222222-2222-4222-8222-222222222222',credentialId='33333333-3333-4333-8333-333333333333',reference='browser-cloud-reference:44444444-4444-4444-8444-444444444444';
 const secret='synthetic-cloud-credential-not-a-real-key';
+test('Cloud browser login admits only one session and the optional fixed Alpha hint',async()=>{
+ const descriptor=Object.getOwnPropertyDescriptor(globalThis,'window'),opened=[];
+ Object.defineProperty(globalThis,'window',{configurable:true,value:{open:(url,target)=>{const popup={opener:'fixture'};opened.push({url,target,popup});return popup;}}});
+ try{
+  const connection=new BrowserCloudConnection(),session='11111111-1111-4111-8111-111111111111';
+  for(const host of ['eliza.app','staging.eliza.app'])for(const hint of ['', '&app=alpha']){
+   const url=`https://${host}/auth/cli-login?session=${session}${hint}`;
+   await connection.openExternal({url,requestId:randomUUID()});
+   assert.equal(opened.at(-1).url,url);assert.equal(opened.at(-1).target,'_blank');assert.equal(opened.at(-1).popup.opener,null);
+  }
+  const count=opened.length,base=`https://eliza.app/auth/cli-login?session=${session}`;
+  for(const url of [
+   base+'&app=other',base+'&app=Alpha',base+'&app=',base+'&app=alpha&app=alpha',base+'&app=alpha&app=other',
+   base+'&session='+session,base+'&app=alpha&session='+session,base+'&app=alpha&returnTo=https://attacker.invalid',
+   'https://eliza.app/auth/cli-login?app=alpha',base.replace(session,'invalid')+'&app=alpha',
+   base.replace('https:','http:')+'&app=alpha',base.replace('eliza.app','attacker.invalid')+'&app=alpha',
+   base.replace('eliza.app','user@eliza.app')+'&app=alpha',base.replace('eliza.app','eliza.app:444')+'&app=alpha',
+   base.replace('/auth/cli-login','/other')+'&app=alpha',base+'&app=alpha#fragment',
+  ])await assert.rejects(connection.openExternal({url,requestId:randomUUID()}),/Unsupported Cloud browser destination/);
+  assert.equal(opened.length,count,'refused destinations never open a window');
+ }finally{if(descriptor)Object.defineProperty(globalThis,'window',descriptor);else delete globalThis.window;}
+});
 async function fixture(){
  const profile=await mkdtemp(join(tmpdir(),'alpha-browser-cloud-')),file=join(profile,'existing-secret');await writeFile(file,secret,{mode:0o600});
  const seed={environment:'production',credentialFile:file,credentialSha256:createHash('sha256').update(secret).digest('hex'),userId:owner,organizationId:org,credentialReference:reference,credentialId};await writeFile(join(profile,'initial-credential.json'),JSON.stringify(seed),{mode:0o600});

@@ -7,13 +7,13 @@ const source=readFileSync('apps/app/src/prototype/agent-adapter.ts','utf8');
 const begin=source.indexOf('this.backHandler = (event: Event) => {'),end=source.indexOf("window.addEventListener('alpha-back', this.backHandler)",begin);
 assert.ok(begin>=0&&end>begin);
 const code=stripTypeScriptTypes(source.slice(begin,end),{mode:'transform'});
-function fixture({popover=true,dialog=false,supported=true,toast=false}={}){
+function fixture({popover=true,dialog=false,supported=true,toast=false,fallback=false}={}){
  const calls={popover:0,focus:0,dialog:0,navigate:0,cancelReply:0};
  const menu={id:'alpha-mail-folders',hidePopover(){calls.popover++;popover=false;}};
  const mirror={id:'',dialogToast:true,hidePopover(){calls.popover++;}};
  const trigger={getAttribute:key=>key==='popovertarget'?menu.id:null,focus:()=>calls.focus++};
  const modal={dispatchEvent:()=>{calls.dialog++;return true;},close(){}};
- const context=vm.createContext({Event,HTMLElement:{prototype:supported?{hidePopover(){}}:{}},getComputedStyle:()=>({visibility:'visible'}),document:{
+ const context=vm.createContext({Event,dismissMailFolderMenu:()=>{if(!fallback)return false;fallback=false;calls.focus++;return true;},HTMLElement:{prototype:supported?{hidePopover(){}}:{}},getComputedStyle:()=>({visibility:'visible'}),document:{
   querySelectorAll:selector=>selector.startsWith('[popover]:popover-open')?(assert.ok(supported),[...(popover?[menu]:[]),...(toast?[mirror]:[])].filter(element=>!selector.includes(':not([data-alpha-dialog-toast])')||!element.dialogToast)):selector==='[popovertarget]'?[trigger]:selector==='dialog[open]'&&dialog?[modal]:[],
   querySelector:()=>({inert:false}),
  },connectionController:{cancelViewNavigation:()=>calls.cancelReply++},shell:{back:()=>calls.navigate++}});
@@ -34,4 +34,10 @@ test('a manual toast mirror never consumes Back from a dialog or after it closes
  assert.deepEqual(dialog.calls,{popover:0,focus:0,dialog:1,navigate:0,cancelReply:0});
  const page=fixture({popover:false,toast:true});page.back();
  assert.deepEqual(page.calls,{popover:0,focus:0,dialog:0,navigate:1,cancelReply:1});
+});
+
+test('legacy folder Back closes only its visible menu before shell navigation',()=>{
+ const f=fixture({supported:false,popover:false,fallback:true});assert.equal(f.back().defaultPrevented,true);
+ assert.deepEqual(f.calls,{popover:0,focus:1,dialog:0,navigate:0,cancelReply:0});
+ f.back();assert.deepEqual(f.calls,{popover:0,focus:1,dialog:0,navigate:1,cancelReply:1});
 });

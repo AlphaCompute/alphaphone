@@ -5,6 +5,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
 import {nativeInputPaths,nativeJavaPath,nativeBinding,nativeInputs,nativeGenerated,nativeCmakeOptions,verifyNativeJava,nativeRequiredSymbols,verifyNativeSymbols} from './embedding-native-contract.mjs';
+import {embeddingBuildRemap} from './embedding-build-remap.mjs';
 const root=path.resolve(import.meta.dirname,'..'),upstream=path.join(root,'vendor/eliza');
 const args=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?undefined:args[i+1];};
 for(let i=0;i<args.length;i++){if(args[i]==='--build'||args[i]==='--remap-build-path')continue;if(['--fork','--output','--abi'].includes(args[i])){if(!args[++i]||args[i].startsWith('--'))throw Error('Missing option value');}else throw Error('Unknown option');}
@@ -55,9 +56,8 @@ const commands=[
 // engine's assertions), so the bytes can only be reproduced at the same absolute path.
 // --remap-build-path rewrites it to a fixed name through clang's CCC_OVERRIDE_OPTIONS (the NDK
 // toolchain file ignores CFLAGS). Bytes built with and without it differ; a receipt records which.
-const remap=args.includes('--remap-build-path'),REMAPPED_ROOT='/alphaphone-embedding-host';
-if(remap&&[staging,fork].some(directory=>/\s/.test(directory)))throw Error('Build path remapping needs paths without whitespace');
-const remapEnv=remap?{CCC_OVERRIDE_OPTIONS:['#',...[[staging,REMAPPED_ROOT],[fork,REMAPPED_ROOT+'/'+forkPath],[path.join(output,'jni-build'),REMAPPED_ROOT+'/jni-build']].map(([from,to])=>`+-ffile-prefix-map=${from}=${to}`)].join(' ')}:{};
+const remap=args.includes('--remap-build-path');
+const remapEnv=remap?embeddingBuildRemap(root,{sdk,staging,fork,build:path.join(output,'jni-build')}):{};
 const receipt={pin,forkPin,identity,abi,inputs,...(jniBinding.mode==='registered'?{jniBinding}:{}),commands,env:{ANDROID_HOME:sdk,ELIZA_NDK_VERSION:ndkVersion,CMAKE_BUILD_PARALLEL_LEVEL:'2',...remapEnv},buildPathRemapped:remap,built:false,packaged:false,runtimePolicyChanged:false};
 fs.writeFileSync(path.join(output,'PREPARATION.json'),JSON.stringify(receipt,null,2)+'\n');
 if(args.includes('--build')){

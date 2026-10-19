@@ -137,7 +137,8 @@ test('the Cloud sign-in hand-off stays the fallback until the readiness probe pa
  assert.match(protocol,/async login\(signal: AbortSignal, onWaiting\?: \(attempt: CloudLoginAttempt\) => void\): Promise<CloudLoginResult>/);
  const ui=read('apps/app/src/runtime/connection-ui.tsx');
  const begin=between(ui,'async beginSignIn(','cancelSignIn() {');
- assert.ok(begin.indexOf('await inAppSignInMethods(environment)')>=0&&begin.indexOf('if (!methods) { await connectionController.signInBrowser(environment); return; }')>begin.indexOf('await inAppSignInMethods(environment)'),'not ready: the hand-off');
+ assert.ok(begin.indexOf('await inAppSignInMethods(environment, signal)')>=0&&begin.indexOf('if (!methods) {')>begin.indexOf('await inAppSignInMethods(environment, signal)'),'not ready: the hand-off');
+ assert.match(begin, /if \(residentCloudFlow\(\)\) await residentBrowserLoginAction\(signal\);/,'fallback runs within the readiness operation');
  const readiness=between(ui,'async function inAppSignInMethods(','/** A failed or cancelled step');
  assert.match(readiness,/if \(!port\?\.status\) return null;/);assert.match(readiness,/catch \{ return null; \}/);assert.match(readiness,/SIGN_IN_READINESS_WAIT_MS/);
  assert.match(read('apps/app/src/runtime/cloud-sign-in.ts'),/if \(row\.inApp !== true \|\| row\.email !== true\) return null;/,'only an explicit ready answer switches to in-app');

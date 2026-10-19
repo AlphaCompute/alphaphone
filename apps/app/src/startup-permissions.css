@@ -9,3 +9,5 @@
 .alpha-startup-permission-actions button:disabled{opacity:.5;cursor:default}
 .alpha-startup-permissions section{margin:20px 0;padding-top:16px;border-top:1px solid var(--connection-line,#e3e3e3)}
 .alpha-startup-permissions h3{margin:0 0 8px;font-size:18px;line-height:1.3;font-weight:500}
+.alpha-startup-permission-footer{position:sticky;bottom:-24px;margin:16px -24px -24px;padding:16px 24px;background:var(--connection-bg,#fff);border-top:1px solid var(--connection-line,#e3e3e3)}
+.alpha-startup-permissions [role="status"]{font-size:14px;color:var(--connection-mut,#555)}

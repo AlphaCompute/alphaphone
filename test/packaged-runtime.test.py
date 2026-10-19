@@ -122,6 +122,35 @@ class PackagedRuntimeTest(unittest.TestCase):
         self.assertEqual(result['runtime'], 'NOT_PACKAGED')
         self.assertFalse(result['runtimeExecution'])
 
+    def cloud_entries(self):
+        omitted = {'path': 'assets/agent/models/bge-small-en-v1.5-f16.gguf', 'sha256': 'f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999'}
+        self.entries['assets/agent/pglite.data'] = b'database payload'
+        rows = [{'path': name, 'sha256': sha(data), 'size_bytes': len(data)} for name, data in self.entries.items() if name.endswith(('libeliza_bun.so', 'pglite.data', 'agent-bundle.js'))]
+        self.entries['assets/agent/alpha-runtime-profile.json'] = json.dumps({'version': 1, 'runtimeProfile': 'cloud', 'omittedLocalModels': [omitted]}).encode()
+        self.entries['assets/agent/android-agent-runtime-provenance.json'] = json.dumps({'schema': 'eliza.android_agent_runtime_provenance.v1', 'files': rows}).encode()
+        for name, data in self.entries.items():
+            if name.startswith('assets/'):
+                self.write('android/app/src/main/' + name, data)
+        return self.entries
+
+    def test_cloud_apk_binds_database_and_producer_provenance_to_staged_bytes(self):
+        entries = dict(self.cloud_entries())
+        self.assertEqual(verifier.verify(self.package(entries), runtime_profile='cloud')['runtimeProfile'], 'cloud')
+        entries['assets/agent/pglite.data'] = b'replaced database'
+        provenance = json.loads(entries['assets/agent/android-agent-runtime-provenance.json'])
+        for row in provenance['files']:
+            if row['path'] == 'assets/agent/pglite.data':
+                row['sha256'] = sha(entries[row['path']])
+        entries['assets/agent/android-agent-runtime-provenance.json'] = json.dumps(provenance).encode()
+        with self.assertRaisesRegex(ValueError, 'differs from admitted staged provenance'):
+            verifier.verify(self.package(entries), runtime_profile='cloud')
+
+    def test_cloud_apk_rejects_local_inference_and_models(self):
+        original = dict(self.cloud_entries())
+        for name in ['lib/x86_64/libggml-cpu.so', 'lib/arm64-v8a/libparadeevoicejni.so', 'assets/agent/models/extra.gguf']:
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, 'local inference'):
+                verifier.verify(self.package({**original, name: b'unadmitted local payload'}), runtime_profile='cloud')
+
     def test_duplicate_zip_entries_rejected(self):
         self.package()
         with warnings.catch_warnings():

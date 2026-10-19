@@ -12,7 +12,7 @@
 // Evidence boundary: source/test evidence for the flag-off renderer only. The bridge stub is not
 // the native plugins, the browser hand-off, Eliza Cloud, the resident runtime or a device.
 import { test, expect, type Page } from '@playwright/test';
-import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, openYourAgent } from './flag-off-android';
+import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, openYourAgent, completeOptionalAccessSetup } from './flag-off-android';
 import { residentStub, stub, setStub, type StubAccount } from './resident-stub';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
@@ -59,6 +59,17 @@ test('first run: Cloud sign-in in the browser, credits, provider binding, then t
   const { foreign, welcome } = await firstRun(page);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(welcome.getByText(WAITING, { exact: true })).toBeVisible();
+  await expect(welcome).toHaveCount(0, { timeout: 30_000 });
+  // Successful sign-in leads to the real optional access review, not directly past onboarding.
+  const access = page.getByRole('dialog', {name: 'Set up Alpha access', exact: true});
+  await expect(access).toBeVisible();
+  await expect(access.getByText('Set up the features you want now, or choose Not now. You can change access later in Settings; skipped features ask when you use them.', {exact: true})).toBeVisible();
+  for (const name of ['Notifications', 'Microphone', 'Camera', 'Location for Maps', 'On-phone Calendar', 'Photos and videos'])
+    await expect(access.getByRole('heading', {name, exact: true})).toBeVisible();
+  const accessRequests = () => harness(page, f => f.calls.filter((call: string) => /\.(requestPermissions|requestAccess)$/.test(call)));
+  expect(await accessRequests()).toEqual([]);
+  await completeOptionalAccessSetup(page);
+  expect(await accessRequests()).toEqual([]);
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 });
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await expect(button(page, 'Notes')).toBeVisible();
@@ -79,7 +90,7 @@ test('first run: Cloud sign-in in the browser, credits, provider binding, then t
   expect(at('configureCloudProvider ' + stored.credentialId)).toBeLessThan(order.lastIndexOf('Agent.start'));
   expect(order.indexOf('Agent.start')).toBeLessThan(at('openExternal https://eliza.app'));
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual([]);
-  expect(await stub(page, s => s.opened)).toEqual(['https://eliza.app/auth/cli-login?session=b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d']);
+  expect(await stub(page, s => s.opened)).toEqual(['https://eliza.app/auth/cli-login?session=b7a2c1d0-5e4f-4a3b-8c2d-1e0f9a8b7c6d&app=alpha']);
   // Every Cloud request went to the Cloud API through the native transport.
   expect((await stub(page, s => s.cloud) as Array<{ path: string }>).map(row => row.path)).toEqual(expect.arrayContaining(['/api/auth/cli-session', '/api/v1/user', '/api/v1/billing/limits']));
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.selection.v1')!))).toEqual({ kind: 'resident' });

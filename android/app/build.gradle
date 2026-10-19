@@ -1,9 +1,13 @@
 apply plugin: 'com.android.application'
+def runtimeProfile = (project.findProperty('ELIZA_RUNTIME_PROFILE') ?: 'native').toString()
+if (!(runtimeProfile in ['native','cloud'])) throw new GradleException('Unknown ELIZA_RUNTIME_PROFILE')
+if (runtimeProfile == 'cloud' && project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') throw new GradleException('Cloud requires a packaged resident')
 def identity = new groovy.json.JsonSlurper().parse(file('../../app.config.json'))
 // Upstream switch (vendor/eliza/packages/app/scripts/dev-ui.ts): exactly "1" opts
 // test-only mocks and developer hooks into DEBUG variants. Release never gets them.
 def testMocksRaw = project.findProperty('ELIZA_DEV_ALLOW_TEST_MOCKS') ?: System.getenv('ELIZA_DEV_ALLOW_TEST_MOCKS')
 def testMocksEnabled = testMocksRaw != null && testMocksRaw.toString() == '1'
+if (runtimeProfile == 'cloud' && testMocksEnabled) throw new GradleException('Cloud profile forbids test mocks')
 // Upstream release names. Version values must be positive integers / plain labels.
 def envValue = { String name -> def value = System.getenv(name); value == null || value.trim().isEmpty() ? null : value.trim() }
 def versionCodeSource = envValue('ELIZAOS_VERSION_CODE') != null ? 'ELIZAOS_VERSION_CODE' : 'app.config.json versionCode'
@@ -64,6 +68,7 @@ android {
  // VoiceAssets.install copies them on first use without inflating 330 MB of Phonon-2.
  androidResources { noCompress += ['gguf', 'lex'] }
  defaultConfig {
+  buildConfigField 'String', 'ELIZA_RUNTIME_PROFILE', "\"${runtimeProfile}\""
   buildConfigField 'boolean', 'AOSP_BUILD', 'false'
   buildConfigField 'String', 'ELIZA_CHROMIUM_PACKAGE_NAME', '""'
   buildConfigField 'String', 'ELIZA_CHROMIUM_CERT_SHA256', '""'
@@ -170,8 +175,8 @@ tasks.named('preBuild').configure { dependsOn stageLocalAgentSources }
 // The shared bionic host is packaged only from the reviewed consumer artifact and BGE pin.
 def verifyEmbeddingHost = tasks.register('verifyEmbeddingHost', Exec) {
  workingDir rootProject.projectDir.parentFile
- def args = ['node', 'scripts/stage-embedding-host.mjs', '--verify']
- if (project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
+ def args = runtimeProfile == 'cloud' ? ['node', 'scripts/runtime-profile.mjs', '--verify-cloud'] : ['node', 'scripts/stage-embedding-host.mjs', '--verify']
+ if (runtimeProfile == 'native' && project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME') == '1') args += '--allow-unpackaged-runtime'
  commandLine args
 }
 tasks.named('preBuild').configure { dependsOn verifyEmbeddingHost }
@@ -193,10 +198,21 @@ tasks.named('preBuild').configure { dependsOn stageNativePatchReceipt }
 def unpackagedRuntime = project.findProperty('ELIZA_ALLOW_UNPACKAGED_RUNTIME')?.toString() == '1'
 def verifyParadeeAppLinkage = tasks.register('verifyParadeeAppLinkage', Exec) {
  workingDir rootProject.projectDir.parentFile
- commandLine(['node', 'scripts/paradee-runtime.mjs', '--app-linkage'] + (unpackagedRuntime ? ['--allow-absent'] : []))
+ commandLine(['node', 'scripts/paradee-runtime.mjs', '--app-linkage'] + ((unpackagedRuntime || runtimeProfile == 'cloud') ? ['--allow-absent'] : []))
 }
 def verifyVoiceHost = tasks.register('verifyVoiceHost', Exec) {
  workingDir rootProject.projectDir.parentFile
- commandLine(['node', 'scripts/voice-host.mjs', '--verify'] + (unpackagedRuntime ? ['--allow-absent'] : []))
+ commandLine(['node', 'scripts/voice-host.mjs', '--verify'] + ((unpackagedRuntime || runtimeProfile == 'cloud') ? ['--allow-absent'] : []))
 }
 tasks.named('preBuild').configure { dependsOn verifyParadeeAppLinkage, verifyVoiceHost }
+
+// Reject stale synced renderer assets before compiling a differently profiled native APK.
+def verifyRuntimeWebProfile = tasks.register('verifyRuntimeWebProfile') {
+ doLast {
+  def flagsFile = file('src/main/assets/public/build-flags.json')
+  if (!flagsFile.isFile()) throw new GradleException('Synced web build flags missing')
+  def flags = new groovy.json.JsonSlurper().parse(flagsFile)
+  if ((flags.runtimeProfile ?: 'native') != runtimeProfile) throw new GradleException('Web/native runtime profiles differ; sync the requested profile')
+ }
+}
+tasks.named('preBuild').configure { dependsOn verifyRuntimeWebProfile }

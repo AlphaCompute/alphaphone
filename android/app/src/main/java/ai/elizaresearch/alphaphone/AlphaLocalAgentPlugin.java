@@ -24,6 +24,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  private static long lifecycleEpoch;
  private static volatile long credentialMutationEpoch=-1;
  private static long credentialShutdownRequest=-1;
+ private static long credentialShutdownRetryEpoch=-1;
  private static String startRequestId;
  private static long startRequestEpoch;
  private static boolean startOwnsLaunch;
@@ -40,6 +41,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  // Each Activity bridge (MainActivity, AlphaAssistActivity) has its own plugin instance. Calls,
  // streams and their invalidators belong to the instance that admitted them, so one surface's
  // destruction cancels only its own work. The runtime, epoch and enrollment stay process-wide.
+ private final ResidentRecoveryReview recoveryReview=new ResidentRecoveryReview();
  private final java.util.Set<PluginCall> pending=new java.util.HashSet<>();
  private final java.util.Map<String,ElizaAgentService.LocalStreamHandle> streams=new java.util.HashMap<>();
  private final java.util.Map<String,Runnable> streamInvalidators=new java.util.HashMap<>();
@@ -47,6 +49,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  @Override public void load(){super.load();synchronized(lifecycleLock){if(!disposed)instances.add(this);}}
  /** This instance only: used when its own bridge is destroyed. Caller holds lifecycleLock. */
  private void invalidateOwnCalls(){
+  recoveryReview.clear();
   for(var notify:streamInvalidators.values())notify.run();streamInvalidators.clear();
   for(var handle:streams.values())handle.cancel();streams.clear();
   for(PluginCall call:pending)call.reject("Local agent connection changed. A dispatched operation may still have completed; inspect its receipt before retrying.","LOCAL_AGENT_EPOCH_CHANGED");
@@ -319,7 +322,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  // The provider rules live in LocalAgentProviderAdmission (host-JVM tested); these names stay for callers.
  static boolean validProviderToken(String token,int maximumLength){return LocalAgentProviderAdmission.validProviderToken(token,maximumLength);}
  static String cloudProviderToken(String saved,String credentialId,long now) throws Exception {return LocalAgentProviderAdmission.cloudProviderToken(saved,credentialId,now);}
- static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {LocalAgentProviderAdmission.applyProviderEnvironment(provider,cloudSaved,env,now);}
+ static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {if("cloud".equals(BuildConfig.ELIZA_RUNTIME_PROFILE)&&!"elizacloud".equals(provider.optString("provider")))throw new SecurityException("Cloud runtime requires Cloud provider admission");LocalAgentProviderAdmission.applyProviderEnvironment(provider,cloudSaved,env,now);}
  static final String PROVIDER_MODEL_PATTERN=LocalAgentProviderAdmission.PROVIDER_MODEL_PATTERN;
  /**
   * No admitted plan, Cloud unreachable without a recent plan, or signed out: the agent runs with no
@@ -381,6 +384,7 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  static void configureEnvironment(Context context,java.util.Map<String,String> env) throws java.io.IOException {
+  env.put("ELIZA_RUNTIME_PROFILE",BuildConfig.ELIZA_RUNTIME_PROFILE);
   final long epoch;
   synchronized(lifecycleLock){launchedGeneration=null;if(!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider is retiring");epoch=lifecycleEpoch;}
   configureNativeViews(context.getAssets().open("agent/native-view-declarations.json"),env);
@@ -450,7 +454,62 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   synchronized(lifecycleLock){if(epoch!=lifecycleEpoch||!accepting||stopping||credentialMutationEpoch>=0)throw new java.io.IOException("Local provider changed");launchedGeneration=LocalAgentProviderAdmission.launchGeneration(saved,cloudSaved);}
   } catch(Exception error) {throw new java.io.IOException("Local model provider unavailable");}
  }
+ /** Explicit Retry reissues strict teardown; an old failed acknowledgment never grants start. */
+ private boolean retryCredentialShutdown(PluginCall call,String requestId) {
+  final long retryEpoch,retryIntent;
+  synchronized(lifecycleLock){
+   if(credentialShutdownRetryEpoch>=0){call.reject("Provider shutdown is already being checked; wait before retrying.");return true;}
+   if(credentialShutdownRequest==-1||credentialShutdownRequest>=0&&ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))return false;
+   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()){call.reject("Return to the app before retrying provider shutdown.");return true;}
+   if(credentialMutationEpoch>=0){call.reject("Provider shutdown is already being checked; wait before retrying.");return true;}
+   if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return true;}
+   retryIntent=credentialIntentEpoch;invalidateCalls();retryEpoch=++lifecycleEpoch;credentialShutdownRetryEpoch=retryEpoch;
+   accepting=false;stopping=true;clearEnrollment();pending.add(call);
+   startRequestId=requestId;startRequestEpoch=retryEpoch;startOwnsLaunch=false;
+  }
+  PluginWorkers.submit(workers,()->{
+   try{
+    final long stopRequest;
+    synchronized(lifecycleLock){
+     requireShutdownRetry(call,retryEpoch,retryIntent);
+     credentialShutdownRequest=-2;
+     stopRequest=ElizaAgentService.stopForCredentialChange(getContext());
+     credentialShutdownRequest=stopRequest;
+    }
+    ResidentCredentialShutdownRetry.await(
+     ()->{synchronized(lifecycleLock){requireShutdownRetry(call,retryEpoch,retryIntent);}},
+     ()->ElizaAgentService.isCredentialShutdownConfirmed(stopRequest),
+     ()->shutdownConfirmed(ElizaAgentService.getLocalAgentBootState(getContext())),
+     android.os.SystemClock::elapsedRealtime,Thread::sleep,15000);
+    synchronized(lifecycleLock){
+     requireShutdownRetry(call,retryEpoch,retryIntent);
+     if(credentialShutdownRequest!=stopRequest||!ElizaAgentService.isCredentialShutdownConfirmed(stopRequest))throw new Superseded();
+     credentialShutdownRequest=-1;credentialShutdownRetryEpoch=-1;stopping=false;accepting=true;pending.remove(call);
+    }
+    // Exact continuation epoch rejects cancellation/account changes between acknowledgment and start.
+    startAfterShutdown(call,retryEpoch,retryIntent);
+   }catch(Exception unconfirmed){
+    if(unconfirmed instanceof InterruptedException)Thread.currentThread().interrupt();
+    synchronized(lifecycleLock){
+     if(credentialShutdownRetryEpoch==retryEpoch)credentialShutdownRetryEpoch=-1;
+     if(pending.remove(call))call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");
+    }
+   }
+  },()->{synchronized(lifecycleLock){if(credentialShutdownRetryEpoch==retryEpoch)credentialShutdownRetryEpoch=-1;if(pending.remove(call))call.reject("Local agent bridge is closed.");}});
+  return true;
+ }
+ /** Caller holds lifecycleLock. Never lets focus loss or another intent authorize this retry. */
+ private void requireShutdownRetry(PluginCall call,long epoch,long intent)throws Superseded {
+  if(disposed||intent!=credentialIntentEpoch||epoch!=lifecycleEpoch||credentialShutdownRetryEpoch!=epoch||credentialMutationEpoch>=0||!pending.contains(call)
+    ||getActivity()==null||!getActivity().hasWindowFocus())throw new Superseded();
+ }
  @PluginMethod public void start(PluginCall call) {
+  String requestId=call.getString("requestId");
+  if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
+  if(retryCredentialShutdown(call,requestId))return;
+  startAfterShutdown(call,-1,-1);
+ }
+ private void startAfterShutdown(PluginCall call,long continuationEpoch,long continuationIntent) {
   String requestId=call.getString("requestId");
   if(requestId!=null&&!requestId.matches("[a-f0-9-]{36}")){call.reject("Invalid startup request");return;}
   try {
@@ -465,6 +524,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
    for(int attempt=0;attempt<3;attempt++){
     final long observedEpoch;
     synchronized(lifecycleLock){
+     if(continuationEpoch>=0&&(continuationEpoch!=lifecycleEpoch||continuationIntent!=credentialIntentEpoch)){call.reject("Local agent connection changed; retry from the app.");return;}
+     if(continuationEpoch>=0&&(disposed||getActivity()==null||!getActivity().hasWindowFocus())){call.reject("Return to the app before starting.");return;}
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
      if(cancelledStarts.size()>=128){call.reject("Startup cancellation capacity reached; reopen the app.");return;}
      observedEpoch=lifecycleEpoch;
@@ -474,7 +535,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
     String currentGeneration=storedProviderGeneration(providerStore),currentRoot=ElizaAgentService.localAgentToken();
     synchronized(lifecycleLock){
      if(requestId!=null&&cancelledStarts.remove(requestId)){call.reject("Local startup cancelled");return;}
-     if(observedEpoch!=lifecycleEpoch)continue;
+     if(observedEpoch!=lifecycleEpoch||continuationEpoch>=0&&continuationIntent!=credentialIntentEpoch){if(continuationEpoch>=0){call.reject("Local agent connection changed; retry from the app.");return;}continue;}
+     if(continuationEpoch>=0&&(getActivity()==null||!getActivity().hasWindowFocus())){call.reject("Return to the app before starting.");return;}
      if(disposed){call.reject("Local agent bridge is closed.");return;}
      if(credentialMutationEpoch>=0){call.reject("Local provider is changing; wait before starting.");return;}
      if(credentialShutdownRequest!=-1&&(credentialShutdownRequest<0||!ElizaAgentService.isCredentialShutdownConfirmed(credentialShutdownRequest))){call.reject("Provider shutdown is unconfirmed; check the local agent before starting.");return;}
@@ -545,8 +607,8 @@ public final class AlphaLocalAgentPlugin extends Plugin {
   }
  }
  static String startupRefusalMessage(String reason){
-  if("ipc-recovery-retention-limit".equals(reason))return "Local startup is blocked because retained recovery records reached their limit. Your records were preserved. Waiting or repeated starts will not clear this limit. Use another connection while recovery records are reviewed; do not clear app data.";
-  if("ipc-recovery-required".equals(reason))return "Local startup could not safely identify an interrupted agent or workflow. Your records were preserved. Use another connection while the runtime is inspected; do not clear app data or rerun unfinished work.";
+  if("ipc-recovery-retention-limit".equals(reason))return "Your agent needs recovery review. Your records were kept. Restarting will not fix this; do not clear app data.";
+  if("ipc-recovery-required".equals(reason))return "Your agent needs recovery review. Your records were kept. Do not clear app data or rerun unfinished work.";
   if("runtime-identity-unavailable".equals(reason))return "Local startup could not verify its runtime files. Your records were preserved. Check the installed runtime before reconnecting.";
   return null;
  }
@@ -558,6 +620,35 @@ public final class AlphaLocalAgentPlugin extends Plugin {
  }
  private static boolean shutdownConfirmed(JSONObject status){
   return status!=null&&"dead".equals(status.optString("state"))&&!status.optBoolean("serviceActive",true)&&!status.optBoolean("socketListening",true);
+ }
+ /** Finite, foreground recovery review; all file ownership and archival remain service-owned. */
+ @PluginMethod public void reviewRecovery(PluginCall call){ipcRecovery(call,false);}
+ @PluginMethod public void archiveRecovery(PluginCall call){ipcRecovery(call,true);}
+ private void ipcRecovery(PluginCall call,boolean archive){
+  final String token=archive?call.getString("reviewToken",""):null;
+  if(archive&&(token==null||!token.matches("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))){call.reject("Review recovery again before continuing.");return;}
+  final long epoch,intent;
+  synchronized(lifecycleLock){
+   if(!archive)recoveryReview.clear();
+   if(disposed||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){recoveryReview.clear();call.reject("Recovery is unavailable right now. Your records were kept.");return;}
+   epoch=lifecycleEpoch;intent=credentialIntentEpoch;pending.add(call);
+  }
+  PluginWorkers.submit(workers,()->{
+   try{
+    // SDK processLock is acquired before this authority takes lifecycleLock, matching startup.
+    ElizaAgentService.RecoveryAuthority authority=operation->{synchronized(lifecycleLock){
+     if(disposed||epoch!=lifecycleEpoch||intent!=credentialIntentEpoch||!pending.contains(call)||getActivity()==null||!getActivity().hasWindowFocus()||stopping||credentialMutationEpoch>=0||credentialShutdownRequest!=-1){
+      recoveryReview.clear();return new JSONObject().put("status","unavailable").put("reason","active-owner").put("retainedCount",0).put("archivedCount",0);
+     }
+     if(archive&&!recoveryReview.consume(token,lifecycleEpoch,credentialIntentEpoch))return new JSONObject().put("status","unavailable").put("reason","records-changed").put("retainedCount",0).put("archivedCount",0);
+     JSONObject result=operation.run();
+     if(!archive&&"reviewable".equals(result.optString("status")))recoveryReview.bind(result.getString("reviewToken"),lifecycleEpoch,credentialIntentEpoch);
+     return result;
+    }};
+    JSONObject result=archive?ElizaAgentService.archiveIpcRecovery(token,authority):ElizaAgentService.reviewIpcRecovery(authority);
+    synchronized(lifecycleLock){if(archive)recoveryReview.clear();if(pending.remove(call))call.resolve(new JSObject(result.toString()));}
+   }catch(Exception error){synchronized(lifecycleLock){recoveryReview.clear();}rejectPending(call,"Recovery could not be confirmed. Your records were kept. Review again before restarting.");}
+  },()->rejectPending(call,"Recovery is unavailable right now. Your records were kept."));
  }
  @PluginMethod public void getStatus(PluginCall call) {
   try{

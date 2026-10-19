@@ -1,3 +1,6 @@
+import {sanitizeCloudInferenceFailure,type CloudInferenceFailure} from './crash-log';
+import {residentRecoveryReason,residentRecoveryMessage,RESIDENT_RECOVERY_PENDING,type ResidentRecoveryReason,type ResidentRecoveryView} from './resident-recovery';
+import {anyAbortSignal} from './abort-signal';
 import {CALENDAR_APPROVAL_READ_PATH,calendarApprovalFromList,calendarApprovalId} from './calendar-approval';
 import {resolveCloudEnvironment} from './cloud-environment-selection';
 import { withResidentMapsNavigation } from '../maps/resident-relay.ts';
@@ -30,7 +33,7 @@ import { PersonalProtocolError, type CloudPersonalProtocol, type PersonalView, t
 import { holdPhoneInert } from './modal-inert';
 import { pauseHostedBackground } from './hosted-background';
 import {developmentDeviceStore,developmentActionJournal} from './local-agent-storage';
-import { stopLocalAgent, configureLocalProvider, bindResidentCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
+import { reviewLocalRecovery,archiveLocalRecovery,stopLocalAgent, configureLocalProvider, bindResidentCloudProvider, LocalAgentProtocol, localAgentPackaged, browserLocalAgentEnabled, localProviderStatus, clearLocalProvider, providerStatusLabel, LOCAL_PROVIDER_MODEL, type LocalProviderStatus } from './local-agent';
 import { presentDeviceRecordOperation } from './device-record-presentation';
 import type { MessagePage } from './remote-protocol';
 import type {DeviceRecovery} from "./device-actions";
@@ -114,6 +117,8 @@ export interface ConnectionSnapshot {
   kind: 'starting' | 'recovering' | 'offline' | 'remote' | 'local' | 'resident' | 'cloud'; name: string;
   /** A resident start is in progress; the dialog may close and the start continues (P-43). */
   residentStarting?: boolean;
+  residentRecoveryReason?: ResidentRecoveryReason;
+  residentRecovery?: ResidentRecoveryView;
   session: VerifiedSession | null; agents: CloudAgent[];
 }
 /**
@@ -156,21 +161,23 @@ const NO_SESSION_FALLBACK = testMocksEnabled ? 'Connect your remote agent first.
 export const NO_AGENT_SEND = testMocksEnabled ? 'Connect your remote agent in Settings to send a message.' : 'Your agent runs on your phone, not here. Nothing was sent.';
 export const NO_AGENT_VOICE = testMocksEnabled ? 'Connect your remote agent in Settings to start a voice conversation.' : 'Your agent runs on your phone, not here. Open Alpha on your Android phone to talk with it.';
 /** One wording for every surface that needs the agent and has no session yet. */
-export function residentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state): string {
+export function residentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'|'residentRecoveryReason'> = state): string {
+  if(snapshot.residentRecoveryReason)return RESIDENT_RECOVERY_PENDING;
   return snapshot.kind === 'recovering' ? 'Your agent stopped. Retry in Settings › Agent connection.' : 'Your agent is starting…';
 }
 /** Every surface that needs an agent and has no session: the resident state where the resident is
  * always present, otherwise the production web preview's on-phone wording (test mocks: the remote
  * development agent). */
-export function agentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = PENDING_FALLBACK): string {
+export function agentPendingText(snapshot: Pick<ConnectionSnapshot, 'kind'|'residentRecoveryReason'> = state, remote = PENDING_FALLBACK): string {
   return residentAlwaysPresent || snapshot.kind === 'starting' || snapshot.kind === 'recovering' ? residentPendingText(snapshot) : remote;
 }
 /** Passive surfaces stay quiet during normal startup; attempted actions still explain refusals. */
-export function agentAvailabilityNotice(snapshot: Pick<ConnectionSnapshot, 'kind'> = state, remote = PENDING_FALLBACK): string {
+export function agentAvailabilityNotice(snapshot: Pick<ConnectionSnapshot, 'kind'|'residentRecoveryReason'> = state, remote = PENDING_FALLBACK): string {
   return snapshot.kind === 'starting' ? '' : agentPendingText(snapshot, remote);
 }
 /** The send/voice refusal for a missing session: the resident state where it is always present. */
 function noSessionError(fallback: string): Error {
+  if(state.residentRecoveryReason)return new Error(RESIDENT_RECOVERY_PENDING+' Nothing was sent.');
   return new Error(residentAlwaysPresent || state.kind === 'starting' || state.kind === 'recovering' ? (state.kind === 'recovering' ? RESIDENT_RECOVERING_NOTICE : RESIDENT_STARTING_NOTICE) : fallback);
 }
 const CLOUD_SERVICE = 'alpha.connection.cloud-service.v1';
@@ -236,17 +243,17 @@ function cloudUnreachable(error: unknown): boolean {
   return error instanceof Error && /^(Connection request failed|Connection timed out|Request cancelled)$/.test(error.message);
 }
 const OFFLINE_NOTICE = 'Eliza Cloud cannot be reached right now. Your agent is running on this phone; AI replies return when Cloud is reachable again, checked when the network returns or you come back to Alpha Phone.';
-/** Notice shown with the running agent when the account holds no admissible plan. */
-const NEEDS_PLAN_NOTICE = 'Your agent is running on this phone. AI replies need an Eliza Cloud plan: redeem a subscription code or choose a plan.';
+/** Notice shown when Cloud inference is unavailable or account access is unconfirmed. */
+const NEEDS_PLAN_NOTICE = 'Your agent is running on this phone. AI replies aren’t available right now. Check your Eliza Cloud account in Settings.';
 /**
  * The on-device agent's honest answer to a chat or assistant request while Eliza Cloud inference
  * is not bound (the local runtime reports it as a provider-less turn). Local tools keep working.
  */
 export function inferenceUnavailableReply(notice: ConnectionSnapshot['residentPlanNotice'], signedIn: boolean): string {
-  const local = 'Notes, reminders, scheduling, approvals and on-device speech keep working.';
-  if (notice === 'offline') return `I'm running on this phone, but I can't reach Eliza Cloud for AI replies right now. ${local} I'll use your plan again when Cloud is reachable. Nothing was sent to Cloud.`;
-  if (!signedIn) return `I'm running on this phone, but AI replies need an Eliza Cloud account with a plan. Sign in with Eliza Cloud to continue. ${local}`;
-  return `I'm running on this phone, but AI replies need an Eliza Cloud plan. Redeem a subscription code or choose a plan in Eliza Cloud account & plan. ${local} Nothing was purchased.`;
+  const local = 'Local apps keep working.';
+  if (notice === 'offline') return `I'm running on this phone, but I can't reach Eliza Cloud for AI replies right now. ${local} Check your connection and try again.`;
+  if (!signedIn) return `I'm running on this phone, but AI replies need Eliza Cloud. Sign in with Eliza Cloud to continue. ${local}`;
+  return `I'm running on this phone, but AI replies aren’t available right now. Check your Eliza Cloud account in Settings. ${local} Nothing was purchased.`;
 }
 const listeners = new Set<() => void>();
 let developmentPageSuspended = false;
@@ -409,15 +416,18 @@ let inAppGoogle = false;
  * package and signing certificate, and Android's verification of the return host. Fail-safe: no
  * host, an error, a slow or malformed answer, or `inApp` not exactly true keeps the hand-off.
  */
-async function inAppSignInMethods(environment: CloudEnvironment): Promise<{ google: boolean } | null> {
+async function inAppSignInMethods(environment: CloudEnvironment, signal: AbortSignal): Promise<{ google: boolean } | null> {
   const port = cloudSignIn;
   if (!port?.status) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let abort: (() => void) | undefined;
   try {
-    const value = await Promise.race([port.status({ environment }), new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), SIGN_IN_READINESS_WAIT_MS); })]);
+    signal.throwIfAborted();
+    const cancelled = new Promise<null>(resolve => { abort = () => resolve(null); signal.addEventListener('abort', abort, { once: true }); });
+    const value = await Promise.race([port.status({ environment }), cancelled, new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), SIGN_IN_READINESS_WAIT_MS); })]);
     return signInReadiness(value);
   } catch { return null; }
-  finally { clearTimeout(timer); }
+  finally { clearTimeout(timer); if (abort) signal.removeEventListener('abort', abort); }
 }
 /** A failed or cancelled step leaves the stored sign-in and the running service as they were. */
 function signInFailed(environment: CloudEnvironment, keepStep = false) {
@@ -501,6 +511,7 @@ function selection(): Selection | null {
   return null;
 }
 function errorMessage(error: unknown): string {
+  const recovery=residentRecoveryReason(error);if(recovery)return residentRecoveryMessage(recovery);
   if (error instanceof CloudSignInError) return signInFailureMessage(error.code);
   if (error && typeof error === 'object' && 'code' in error) {
     if (error.code === 'expired') return testMocksEnabled ? 'This sign-in link has expired. Close the old browser tab and select Sign in with Eliza Cloud to open a fresh link.' : 'Your Eliza Cloud sign-in has expired. Sign in again.';
@@ -524,6 +535,7 @@ async function work(message: string, action: (signal: AbortSignal) => Promise<vo
   update({ busy: true, ...(background ? {} : { open: true }), message, error: '' });
   try { await action(controller.signal); }
   catch (error) {
+    const recovery=residentRecoveryReason(error);if(recovery&&!active)update({residentRecoveryReason:recovery});
     if(controller.signal.aborted&&!state.open){update({error:'',message:''});return;}
     if(background&&!openOnError&&!state.open){update({error:errorMessage(error),message:''});return;}
     if (testMocksEnabled && expired(error) && active?.kind === 'cloud' && active.cloud.environment === cloud.environment) {
@@ -578,7 +590,7 @@ function activate(next: Active, session: VerifiedSession, name: string) {
   cancelStoppedReply();
   for(const request of automationsRequests)request.abort(new DOMException('The connection changed','AbortError'));
   epoch++; sending?.abort(new DOMException('The connection changed.', 'AbortError')); sending = null; active = next;
-  update({ phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: next.kind === 'resident' && state.inferenceOffline ? '' : 'Connected', error: '' });
+  update({ residentRecoveryReason:undefined,residentRecovery:undefined, phoneActionsAvailable:!!next.actions, conversations: [], history: null, historyError: '', historyPartial:false, replyNotice:'', actionHistory: [], kind: next.kind, name, session, open: false, message: next.kind === 'resident' && state.inferenceOffline ? '' : 'Connected', error: '' });
 }
 /**
  * Applies a plan change to the running on-device agent: re-admits the account, binds or unbinds
@@ -592,10 +604,14 @@ function queueResidentRebind() {
   residentRebindQueued = false;
   // An outcome the open dialog is showing (a sign-out, a cancelled sign-in) stays visible after the rebind.
   const shown = state.open ? { message: state.message, error: state.error } : null;
+  const signIn = state.signIn;
   void work('Updating your agent…', async signal => {
     retire();
     try { await connectResident(signal); }
     catch (error) { if (residentAlwaysPresent && !active) update({ kind: 'recovering' }); throw error; }
+    // Rebinding inference must not discard the sign-in screen just selected by readiness.
+    // Only the same still-active view is restored; a cancelled or completed sign-in stays closed.
+    if (signIn && state.signIn === signIn && signIn.environment === residentEnvironment()) update({ open: true });
     if (shown && state.open) update({ ...(shown.message && !state.message ? { message: shown.message } : {}), ...(shown.error && !state.error ? { error: shown.error } : {}) });
   }, true, true);
 }
@@ -1373,6 +1389,44 @@ async function pairedRequest(selected:Extract<Active,{kind:'remote'|'local'}>,se
 }
 const hosted = testMocksEnabled ? { pairedRequest, pair, restore: restoreHosted, inspectPersonal, cloudList, cloudManage, personalDecline, personalAccept, personalPoll, personalFinalize, personalRecoveryOpen, personalConnect } : null;
 
+/** Browser sign-in body shared by explicit browser login and readiness fallback in one operation. */
+async function residentBrowserLoginAction(signal: AbortSignal) {
+  // P-43: the resident keeps running while the owner signs in in the browser. A cancelled or
+  // failed first sign-in leaves it untouched; a sign-in kept on this phone is re-admitted then.
+  // (The native credential write itself stops a process whose provider depends on the replaced key.)
+  const kept=!!service||state.residentSavedCredential===true;
+  detachService();
+  update({residentSubscription:null,residentPlanNotice:null,redeemError:'',redeemNotice:''}); cloud=makeCloud(residentEnvironment());
+  // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
+  let login:Awaited<ReturnType<typeof cloud.login>>;
+  try{login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));}
+  // A cancelled or failed sign-in leaves the stored sign-in as it was: re-admit it afterwards.
+  catch(error){if(kept)residentRebindQueued=true;throw error;}
+  const issued=(await cloudCredentialStore.read(residentEnvironment()))?.credentialId;
+  // Admission binds the new sign-in: native attaches when the process already matches, otherwise
+  // it restarts the agent once (a process bound to the replaced key is stopped by the write).
+  signal.throwIfAborted(); retire();
+  try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});throw error;}
+  // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
+  // work; the agent keeps running without Cloud inference.
+  if(!state.cloudAccount&&state.residentPlanNotice!=='offline'&&issued&&(await cloudCredentialStore.read(residentEnvironment()).catch(()=>null))?.credentialId===issued){await cloudCredentialStore.clear(residentEnvironment());update({residentSavedCredential:false,open:true,error:'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.'});return;}
+  // Signed in but AI is not connected (the plan could not be checked or bound): keep the dialog open.
+  if(state.residentInference!=='cloud')update({open:true});
+  if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
+}
+async function browserCloudLoginAction(environment: CloudEnvironment, signal: AbortSignal) {
+  const accountOnly=state.purpose==='cloud-account';
+  // A login can replace the environment's secure token with a different
+  // account. Detach the old identity before any token can be replaced.
+  const replacingCloud = active?.kind === 'cloud' || selection()?.kind === 'cloud';
+  detachCloudTarget(); detachService(); if (replacingCloud) save({ kind: 'none' }); update({ agents: [] });
+  cloud = makeCloud(environment);
+  const login = await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
+  await verifyService(cloud, signal);
+  if (!active) save({ kind: 'none' });
+  if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
+}
+
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
  * subscribe/getSnapshot expose connection changes; send uses server-bound identity
  * and one persisted conversation per origin+owner+agent. It never executes proposals.
@@ -1541,7 +1595,7 @@ export const connectionController = {
     if(!selected||!session||(testMocksEnabled&&selected.kind==='cloud'&&!selected.phoneTarget))return null;
     return {sessionId:session.sessionId,scope:selected.actions?.scope,request:async(path,method,body,signal)=>{
       if(!automationsRouteAllowed(path,method)||((method==='GET'||method==='DELETE')&&body!==undefined))throw Error('Unsupported automation request');
-      const controller=new AbortController(),bounded=AbortSignal.any([signal,controller.signal]);automationsRequests.add(controller);
+      const controller=new AbortController(),bounded=anyAbortSignal([signal,controller.signal]);automationsRequests.add(controller);
       const current=()=>{bounded.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw new DOMException('The connection changed','AbortError');};
       try{
         current();
@@ -1569,6 +1623,13 @@ export const connectionController = {
     }) };
   },
   getResidentReadingBinding(){return active?.kind==='resident'&&state.session?{execution:'device' as const,ownerId:state.session.ownerId,sessionId:state.session.sessionId}:null;},
+  async readCloudInferenceFailure(signal:AbortSignal):Promise<CloudInferenceFailure|null>{
+    const selected=active,session=state.session,generation=epoch;
+    signal.throwIfAborted();if(selected?.kind!=='resident'||!session)return null;
+    const status=await selected.remote.request('/api/status',undefined,signal);
+    signal.throwIfAborted();if(generation!==epoch||selected!==active||session!==state.session)throw new DOMException('The connection changed','AbortError');
+    return sanitizeCloudInferenceFailure(status?.cloudInferenceFailure);
+  },
   getBrowserSpeechAgent(){return active?.kind==='resident'&&state.session&&active.remote.browserSpeechAvailable?active.remote:null;},
   /** The resident agent's owner-authenticated request path, for its on-device live ASR route (live-voice.ts). */
   getResidentLiveVoice():{sessionId:string;subscribe:(listener:(envelope:unknown)=>void)=>()=>void;request:(path:string,body:unknown,signal:AbortSignal)=>Promise<unknown>}|null{
@@ -1624,10 +1685,10 @@ export const connectionController = {
     const view=state.residentSubscription,account=state.cloudAccount,plan=view&&view.kind!=='checking'?describeSubscription(view):null;
     const expiresAt=account?.expiresAt??null;
     // The agent always runs; this says only whether Eliza Cloud AI is connected to it.
-    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?'Unavailable · needs a plan':'Unavailable · sign in'):'Starting…';
+    const inference=state.residentInference==='unknown'?'Status unconfirmed':state.residentInference==='cloud'?'Eliza Cloud':state.residentPlanNotice==='offline'?'Unavailable · Cloud unreachable':state.residentInference==='unavailable'?(account?(view?.kind==='inactive'?'Unavailable · check Cloud account':'Unavailable · Cloud status unconfirmed'):'Unavailable · sign in'):'Starting…';
     if(state.residentPlanNotice==='offline'&&!account){const recent=readPlanAdmission();return {signedIn:false,offline:true,account:null,plan:recent?`${recent.planName} · offline`:'Offline',status:recent?.status??null,endsAt:state.planEndsAt??null,keyExpiresAt:null,keyExpiring:false,inference};}
     return {signedIn:!!account,offline:false,inference,account:account?(account.email||`Account ${account.userId.slice(0,8)}`):null,
-      plan:state.residentPlanNotice==='needs-plan'&&view?.kind!=='inactive'?'No active plan':plan?.headline??(account?'Checking plan…':'Not signed in'),
+      plan:plan?.headline??(account?'Checking plan…':'Not signed in'),
       status:view?.kind==='active'?view.status:view?.kind==='inactive'?view.status:null,
       endsAt:state.planEndsAt??null,keyExpiresAt:expiresAt,keyExpiring:expiresAt!==null&&expiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS};
   },
@@ -1717,7 +1778,7 @@ export const connectionController = {
     if (operation) return;
     if (residentAlwaysPresent) { await connectionController.startLocal(); return; }
     // Subscription gate QA (test-mocks builds): the gate has no local-only bypass.
-    if(residentCloudFlow()){update({open:true,error:'Alpha Phone needs an Eliza Cloud account with a plan.',message:''});return;}
+    if(residentCloudFlow()){update({open:true,error:'Sign in with Eliza Cloud to use AI replies.',message:''});return;}
     // The flag-off web preview runs no agent at all (A-27): it may close its notice and keep that choice.
     if (!testMocksEnabled && !webCloudUnavailable()) return;
     retire(); detachService();
@@ -1766,7 +1827,29 @@ export const connectionController = {
   async authorDevelopment(profile:DevelopmentProfile,json:string){if(!devSurfacesEnabled)return;await work('Preparing development action…',async signal=>{await authorDevelopmentAction(profile,json,signal);update({message:'Action queued. Send a chat message to review it on the current screen.'});});},
   async startDevelopment(profile:DevelopmentProfile){if(!devSurfacesEnabled)return;await work('Starting development agent…',signal=>connectDevelopment(profile,signal));},
   async saveDevelopment(profile:DevelopmentProfile,reply:string){if(!devSurfacesEnabled)return;await work('Saving development reply…',async signal=>{await saveDevelopmentReply(profile,reply,signal);update({message:'Development reply saved.'});});},
-  async startLocal() { if (residentAlwaysPresent) { if (!operation) { retire(); await startResident('Starting the local agent…', false); } return; } await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
+  async reviewRecovery() {
+    if(operation||state.residentRecoveryReason!=='ipc-recovery-retention-limit'||state.session)return;
+    await work('Checking recovery…',async signal=>{
+      update({residentRecovery:{step:'reviewing'}});
+      try{const review=await reviewLocalRecovery();signal.throwIfAborted();update({message:'',residentRecovery:review.status==='reviewable'?{step:'review',review}:{step:'unavailable'}});}
+      catch(error){update({residentRecovery:{step:'unavailable'}});throw error;}
+    });
+  },
+  cancelRecoveryReview(){if(!operation)update({residentRecovery:undefined});},
+  async confirmRecovery() {
+    if(operation||state.residentRecoveryReason!=='ipc-recovery-retention-limit'||state.residentRecovery?.step!=='review'||state.session)return;
+    const review=state.residentRecovery.review;let archived=false;
+    await work('Keeping startup records…',async signal=>{
+      update({residentRecovery:{step:'archiving'}});
+      try{
+        const result=await archiveLocalRecovery(review.reviewToken);signal.throwIfAborted();
+        if(result.status!=='archived'||result.retainedCount!==0||result.archivedCount!==review.retainedCount){update({message:'',residentRecovery:{step:result.status==='partial'?'partial':'unavailable'}});return;}
+        archived=true;update({residentRecoveryReason:undefined,residentRecovery:undefined,error:'',message:'Startup records were kept. Restarting your agent…'});
+      }catch(error){update({residentRecovery:{step:'unavailable'}});throw error;}
+    });
+    if(archived)await connectionController.startLocal();
+  },
+  async startLocal() { if(state.residentRecoveryReason){update({open:true,purpose:'agent',error:residentRecoveryMessage(state.residentRecoveryReason)});return;} if (residentAlwaysPresent) { if (!operation) { retire(); await startResident('Starting the local agent…', false); } return; } await work('Starting the local agent…', signal => { retire(); return connectResident(signal); }); },
   async pair(kind: 'remote' | 'local', origin: string, code: string) {
     if (!hosted) { update({ error: PAIRING_RETIRED }); return; }
     await hosted.pair(kind, origin, code);
@@ -1782,13 +1865,23 @@ export const connectionController = {
    * enters an email; no Eliza Cloud web page is opened. */
   async beginSignIn(environment: CloudEnvironment = residentCloudFlow() ? residentEnvironment() : cloud.environment) {
     if (operation || !cloudEnvironmentAllowed(environment)) return;
-    const methods = await inAppSignInMethods(environment);
-    if (operation) return;
-    if (!methods) { await connectionController.signInBrowser(environment); return; }
-    inAppGoogle = methods.google;
-    if (cloud.environment !== environment) cloud = makeCloud(environment);
-    cloud.cancelLogin();
-    update({ open: true, ...(residentCloudFlow() && state.purpose !== 'cloud-account' ? { purpose: 'agent' as const } : {}), signIn: { step: 'choose', environment }, message: '', error: '' });
+    // Readiness may take six seconds on a fresh install. Keep that wait cancellable and prevent
+    // repeated taps from starting competing probes or opening a browser after the owner cancelled.
+    await work('Checking Eliza Cloud sign-in…', async signal => {
+      const methods = await inAppSignInMethods(environment, signal);
+      signal.throwIfAborted();
+      if (!methods) {
+        update({ signIn: null, message: 'Opening Eliza Cloud sign-in…' });
+        if (residentCloudFlow()) await residentBrowserLoginAction(signal);
+        else await browserCloudLoginAction(environment, signal);
+        return;
+      }
+      inAppGoogle = methods.google;
+      if (cloud.environment !== environment) cloud = makeCloud(environment);
+      cloud.cancelLogin();
+      update({ open: true, ...(residentCloudFlow() && state.purpose !== 'cloud-account' ? { purpose: 'agent' as const } : {}), signIn: { step: 'choose', environment }, message: '', error: '' });
+    });
+    await ensureResident();
   },
   /** Leaves the sign-in screen and burns any pending attempt. The stored sign-in is unchanged. */
   cancelSignIn() {
@@ -1882,30 +1975,7 @@ export const connectionController = {
     else await connectionController.browserCloudLogin(environment);
   },
   async residentBrowserLogin() {
-    await work('Opening Eliza Cloud sign-in…',async signal=>{
-      // P-43: the resident keeps running while the owner signs in in the browser. A cancelled or
-      // failed first sign-in leaves it untouched; a sign-in kept on this phone is re-admitted then.
-      // (The native credential write itself stops a process whose provider depends on the replaced key.)
-      const kept=!!service||state.residentSavedCredential===true;
-      detachService();
-      update({residentSubscription:null,residentPlanNotice:null,redeemError:'',redeemNotice:''}); cloud=makeCloud(residentEnvironment());
-      // A login over a saved key revokes that key first (best effort); see CloudProtocol.login.
-      let login:Awaited<ReturnType<typeof cloud.login>>;
-      try{login=await cloud.login(signal,()=>update({message:'Finish signing in to Eliza Cloud in your browser, then return here.'}));}
-      // A cancelled or failed sign-in leaves the stored sign-in as it was: re-admit it afterwards.
-      catch(error){if(kept)residentRebindQueued=true;throw error;}
-      const issued=(await cloudCredentialStore.read(residentEnvironment()))?.credentialId;
-      // Admission binds the new sign-in: native attaches when the process already matches, otherwise
-      // it restarts the agent once (a process bound to the replaced key is stopped by the write).
-      signal.throwIfAborted(); retire();
-      try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});throw error;}
-      // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
-      // work; the agent keeps running without Cloud inference.
-      if(!state.cloudAccount&&state.residentPlanNotice!=='offline'&&issued&&(await cloudCredentialStore.read(residentEnvironment()).catch(()=>null))?.credentialId===issued){await cloudCredentialStore.clear(residentEnvironment());update({residentSavedCredential:false,open:true,error:'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.'});return;}
-      // Signed in but AI is not connected (the plan could not be checked or bound): keep the dialog open.
-      if(state.residentInference!=='cloud')update({open:true});
-      if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
-    });
+    await work('Opening Eliza Cloud sign-in…', residentBrowserLoginAction);
     // A cancelled or failed sign-in never leaves the phone without its agent (P-43).
     await ensureResident();
   },
@@ -1968,18 +2038,7 @@ export const connectionController = {
     await connectionController.beginSignIn(environment);
   },
   async browserCloudLogin(environment: CloudEnvironment) {
-    const accountOnly=state.purpose==='cloud-account';
-    await work('Opening Eliza Cloud sign-in…', async signal => {
-      // A login can replace the environment's secure token with a different
-      // account. Detach the old identity before any token can be replaced.
-      const replacingCloud = active?.kind === 'cloud' || selection()?.kind === 'cloud';
-      detachCloudTarget(); detachService(); if (replacingCloud) save({ kind: 'none' }); update({ agents: [] });
-      cloud = makeCloud(environment);
-      const login = await cloud.login(signal, () => update({ message: accountOnly?'Finish signing in to Eliza Cloud in your browser, then return here. If the link expires, cancel and sign in again.':'Use the newly opened browser tab to sign in and approve this phone. If the link expires, cancel here and start a fresh sign-in.' }));
-      await verifyService(cloud, signal);
-      if (!active) save({ kind: 'none' });
-      if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
-    });
+    await work('Opening Eliza Cloud sign-in…', signal => browserCloudLoginAction(environment, signal));
   },
   async cloudList(environment: CloudEnvironment) {
     if (!hosted) { update({ error: PAIRING_RETIRED }); return; }
@@ -2311,7 +2370,9 @@ export function ConnectionChooser() {
       // (--acct): the fill accent (--acc) is 2.4:1 against the dark background.
       for (const key of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.current.style.setProperty(`--connection-${key}`, theme.getPropertyValue(key === 'acc' ? '--acct' : `--${key}`));
     }
-    panel.current?.focus();
+    // A child form restores its input after verification. Updating the trap for busy state must
+    // preserve that focus, rather than moving it back to the dialog and dismissing the keyboard.
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
     const back = (event: Event) => { if(document.querySelector("dialog[open]"))return; event.preventDefault(); event.stopImmediatePropagation(); if (snapshot.busy) connectionController.cancel(); else connectionController.close(); };
     window.addEventListener('alpha-back', back, true);
     const key = (event: KeyboardEvent) => {
@@ -2381,7 +2442,7 @@ export function ConnectionChooser() {
   // (Starting / Running on this device / Not running, with Retry) and its Eliza Cloud AI: sign-in
   // (which every Alpha Phone needs), plan, redeem code and sign-out. Plan state never stops the agent.
   const residentSignInRejected=snapshot.error===errorMessage({status:401});
-  const residentStatus=snapshot.session?'Running on this device':snapshot.kind==='recovering'?'Not running':'Starting…';
+  const residentStatus=snapshot.session?'Running on this device':snapshot.residentRecoveryReason?'Recovery review needed':snapshot.kind==='recovering'?'Not running':'Starting…';
   const residentNeedsPlan=snapshot.residentPlanNotice==='needs-plan'&&!!snapshot.cloudAccount&&!residentSignInRejected;
   const residentOffline=snapshot.residentPlanNotice==='offline'&&!snapshot.cloudAccount;
   // Only a required sign-in (first run, or a sign-in Cloud rejected) cannot be dismissed. The agent runs either way.
@@ -2405,10 +2466,21 @@ export function ConnectionChooser() {
   if(residentCloudFlow())return <div className="alpha-connection-scrim"><div className="alpha-connection alpha-connection-native alpha-connection-resume" role="dialog" aria-modal="true" aria-labelledby="connection-title" aria-busy={snapshot.residentStarting||undefined} tabIndex={-1} ref={panel}>
     <header><h1 id="connection-title" className="serif">{planPanel&&snapshot.cloudAccount?(residentPlanView?.kind==='credits'?'Eliza Cloud account':'Eliza Cloud account & plan'):'Your agent'}</h1>{!residentMustSignIn&&<button aria-label="Close connection settings" disabled={snapshot.busy&&!snapshot.residentStarting} onClick={()=>connectionController.close()}>×</button>}</header>
     <section aria-label="Agent status"><p role="status"><strong>{residentStatus}</strong>{!snapshot.session&&snapshot.kind!=='recovering'?' · Your agent runs on this phone.':''}</p>
-      {snapshot.kind==='recovering'&&!snapshot.session&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry</button></div>}
+      {snapshot.kind==='recovering'&&!snapshot.session&&!snapshot.residentRecoveryReason&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry</button></div>}
+      {snapshot.residentRecoveryReason==='ipc-recovery-retention-limit'&&!snapshot.session&&<section aria-label="Agent recovery">
+        <p>Your notes, chats and sign-in stay unchanged.</p>
+        {snapshot.residentRecovery?.step==='review'?<>
+          <p>Alpha will keep {snapshot.residentRecovery.review.retainedCount} old startup records, then restart your agent.</p>
+          <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.confirmRecovery()}>Keep records and restart</button><button disabled={snapshot.busy} onClick={()=>connectionController.cancelRecoveryReview()}>Cancel</button></div>
+        </>:<>
+          {snapshot.residentRecovery?.step==='unavailable'&&<p role="status">Recovery could not be checked. Your records were kept. Review again later.</p>}
+          {snapshot.residentRecovery?.step==='partial'&&<p role="status">Recovery did not finish. Your records were kept. Review again before restarting.</p>}
+          <button disabled={snapshot.busy} onClick={()=>void connectionController.reviewRecovery()}>Review recovery</button>
+        </>}
+      </section>}
       {snapshot.session&&!planPanel&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
     </section>
-    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this phone.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
+    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.residentRecoveryReason?'AI is unavailable while your agent needs recovery.':snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this phone.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
       {snapshot.cloudAccount&&!residentSignInRejected?<>
         {accountCreatedNotice}
         {(planPanel||residentNeedsPlan)&&<p>{snapshot.cloudAccount.email||`Account ${snapshot.cloudAccount.userId}`}</p>}
@@ -2423,11 +2495,11 @@ export function ConnectionChooser() {
       <div className="alpha-connection-actions">
       {snapshot.cloudAccount&&!residentSignInRejected ? <>
         {residentNeedsPlan?<button disabled={snapshot.busy} onClick={()=>void connectionController.residentManagePlan()}>{CHOOSE_PLAN_LABEL}</button>:(residentPlan.manage||planPanel)&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentManagePlan()}>{residentPlan.manage?residentPlan.manageLabel:MANAGE_PLAN_LABEL}</button>}
-        {(residentPlanRecheck||residentNeedsPlan)?<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Check plan again</button>:planPanel&&<button disabled={snapshot.busy} onClick={()=>connectionController.close()}>Done</button>}
+        {!snapshot.residentRecoveryReason&&(residentPlanRecheck||residentNeedsPlan)?<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Check plan again</button>:planPanel&&<button disabled={snapshot.busy} onClick={()=>connectionController.close()}>Done</button>}
         <button disabled={snapshot.busy} onClick={()=>void connectionController.cloudSignOut()}>Sign out</button>
       </>:<>
-        {residentOffline&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Try again</button>}
-        {snapshot.residentSavedCredential&&!residentSignInRejected&&!residentOffline&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button>}
+        {residentOffline&&!snapshot.residentRecoveryReason&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Try again</button>}
+        {snapshot.residentSavedCredential&&!residentSignInRejected&&!residentOffline&&!snapshot.residentRecoveryReason&&<button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Retry saved connection</button>}
         {!residentOffline&&<button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button>}
       </>}
       </div>
@@ -2438,7 +2510,7 @@ export function ConnectionChooser() {
     {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
     {conversations}
     {actionReview}
-    {snapshot.busy&&!snapshot.residentStarting&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
+    {snapshot.busy&&!snapshot.residentStarting&&snapshot.residentRecovery?.step!=='archiving'&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
     {testMocksEnabled&&residentQa()&&<p><button disabled={snapshot.busy} onClick={()=>connectionController.setResidentQa(null)}>Leave subscription gate QA ({residentEnvironment()})</button></p>}
   </div></div>;
   if(browserOnly)return <div className="alpha-connection-scrim"><div className="alpha-connection" role="dialog" aria-modal="true" aria-labelledby="local-only-title" tabIndex={-1} ref={panel}>

@@ -50,7 +50,7 @@ test('Notes create, edit, reload, search and delete to Trash', async ({ page }) 
   await page.getByRole('button', { name: 'Open Trash', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Restore Browser audit note', exact: true })).toBeVisible();
 });
-for (const [label, text] of [['unicode CRLF', 'Local 🧪 file\r\nExact bytes\n'], ['UTF-8 BOM', '\ufeffLocal 🧪 file\r\nExact bytes\n'], ['empty', '']]) test(`Local text import and exact-byte download: ${label}`, async ({ page }) => {
+for (const [label, text] of [['unicode CRLF', 'Local 🧪 file\r\nExact bytes\n'], ['UTF-8 BOM', '\ufeffLocal 🧪 file\r\nExact bytes\n'], ['empty', '']]) test(`Local text import and complete selected-note download: ${label}`, async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', {name:'Notes',exact:true}).click();
   const chooser = page.waitForEvent('filechooser');
@@ -59,10 +59,10 @@ for (const [label, text] of [['unicode CRLF', 'Local 🧪 file\r\nExact bytes\n'
   await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue(text.replaceAll('\r\n','\n'));
   await page.getByRole('button',{name:'Share note',exact:true}).click();
   const download = page.waitForEvent('download');
-  await page.getByRole('button',{name:'Export text file',exact:true}).click();
+  await page.getByRole('button',{name:'Save text locally',exact:true}).click();
   const result=await download;
   expect(result.suggestedFilename()).toBe('Owned browser note.txt');
-  expect(await readFile((await result.path())!)).toEqual(Buffer.from(text, 'utf8'));
+  expect(await readFile((await result.path())!)).toEqual(Buffer.from(['Owned browser note',text].filter(Boolean).join('\n\n'), 'utf8'));
 });
 test('Mock is explicit, its banner does not cover the phone, and exit restores live mode', async ({ page }) => {
   await page.goto('/?mode=mock');
@@ -176,9 +176,10 @@ test('MVP Notes sharing keeps email and export without a deferred SMS dead end',
   await page.getByRole('textbox',{name:'Title',exact:true}).fill('MVP share scope');
   await page.getByRole('textbox',{name:'Note',exact:true}).fill('Local test note');
   await page.getByRole('button',{name:'Share note',exact:true}).click();
-  await expect(page.getByRole('button',{name:'Share by email',exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Export text file',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Share to email',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Save text locally',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Share externally',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Share in Messages',exact:true})).toHaveCount(0);
-  await page.getByRole('button',{name:'Close',exact:true}).click();
+  await page.getByRole('button',{name:'Cancel',exact:true}).click();
   await expect(page.getByRole('textbox',{name:'Note',exact:true})).toHaveValue('Local test note');
 });

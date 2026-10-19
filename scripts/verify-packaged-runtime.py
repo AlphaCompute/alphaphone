@@ -12,6 +12,7 @@ not rejected. Byte mismatches always raise (exit 1).
 import argparse
 import hashlib
 import json
+import re
 from pathlib import Path, PurePosixPath
 import sys
 import zipfile
@@ -31,7 +32,7 @@ def file_hash(path):
         return digest(stream)
 
 
-def verify(apk, release=False):
+def verify(apk, release=False, runtime_profile="native"):
     staged = ROOT / 'android/app/src/main/assets/agent'
     stamp_file = staged / 'alpha-source.json'
     with zipfile.ZipFile(apk) as archive:
@@ -51,6 +52,35 @@ def verify(apk, release=False):
             if stamp.get(field) != file_hash(ROOT / source):
                 raise ValueError('Staged source manifest mismatch')
         checks = {}
+        if runtime_profile == 'cloud':
+            profile_entry = 'assets/agent/alpha-runtime-profile.json'
+            if hashlib.sha256(archive.read(profile_entry)).hexdigest() != file_hash(staged / 'alpha-runtime-profile.json'):
+                raise ValueError('Cloud profile differs from staged profile')
+            provenance_entry = 'assets/agent/android-agent-runtime-provenance.json'
+            if hashlib.sha256(archive.read(provenance_entry)).hexdigest() != file_hash(staged / 'android-agent-runtime-provenance.json'):
+                raise ValueError('Cloud provenance differs from admitted staged provenance')
+            profile = json.loads(archive.read(profile_entry))
+            omitted = {'path': 'assets/agent/models/bge-small-en-v1.5-f16.gguf', 'sha256': 'f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999'}
+            if profile != {'version': 1, 'runtimeProfile': 'cloud', 'omittedLocalModels': [omitted]}:
+                raise ValueError('Packaged Cloud profile mismatch')
+            provenance = json.loads(archive.read('assets/agent/android-agent-runtime-provenance.json'))
+            if provenance.get('schema') != 'eliza.android_agent_runtime_provenance.v1':
+                raise ValueError('Runtime provenance missing')
+            for row in provenance['files']:
+                entry = row['path']
+                if entry == omitted['path']:
+                    if row['sha256'] != omitted['sha256'] or entry in names:
+                        raise ValueError('Cloud local-model omission differs')
+                    continue
+                if release and entry.startswith(('lib/x86_64/', 'assets/agent/x86_64/')) and entry not in names:
+                    continue
+                if not entry.startswith(('assets/agent/', 'lib/')) or '..' in PurePosixPath(entry).parts:
+                    raise ValueError('Invalid runtime provenance path')
+                with archive.open(entry) as stream:
+                    if digest(stream) != row['sha256']:
+                        raise ValueError('Packaged Cloud runtime provenance mismatch: ' + entry)
+            if any((re.match(r'^(lib(?:elizainference|elizavoicejni|paradeevoicejni|llama|ggml|omnivoice)|llama-server)', PurePosixPath(name).name) or name.startswith('assets/paradee-voice/') or re.search(r'\.(gguf|onnx|safetensors|pt|pth)$', name)) for name in names):
+                raise ValueError('Cloud APK includes local inference')
 
         def check(entry, local, expected=None):
             with archive.open(entry) as stream:
@@ -94,7 +124,7 @@ def verify(apk, release=False):
                 raise ValueError(f'Unexpected packaged ABI: {abi}')
             name = f'lib/{abi}/libeliza_bun.so'
             check(name, ROOT / 'android/app/src/main/jniLibs' / abi / 'libeliza_bun.so')
-        return {'apk': str(apk), 'runtime': 'PACKAGED', 'upstreamCommit': pin, 'verifiedEntries': len(checks), 'runtimeExecution': False}
+        return {'apk': str(apk), 'runtime': 'PACKAGED', 'runtimeProfile': runtime_profile, 'upstreamCommit': pin, 'verifiedEntries': len(checks), 'runtimeExecution': False}
 
 
 NOT_DISTRIBUTABLE = 3
@@ -102,6 +132,7 @@ NOT_DISTRIBUTABLE = 3
 
 def main(argv):
     parser = argparse.ArgumentParser(description='Verify packaged runtime bytes in APKs.')
+    parser.add_argument('--runtime-profile', choices=['native', 'cloud'], default='native')
     parser.add_argument('--release', action='append', default=[], metavar='APK', help='distribution release APK; requires a packaged runtime')
     parser.add_argument('--allow-unpackaged-runtime', action='store_true', help='developer option: report unpackaged releases as distributable=false instead of failing')
     parser.add_argument('apks', nargs='*', metavar='APK')
@@ -111,13 +142,13 @@ def main(argv):
     results = []
     refused = []
     for apk in args.release:
-        result = verify(Path(apk), release=True)
+        result = verify(Path(apk), release=True, runtime_profile=args.runtime_profile)
         result['release'] = True
         result['distributable'] = result['runtime'] == 'PACKAGED'
         if not result['distributable']:
             refused.append(apk)
         results.append(result)
-    results.extend(verify(Path(apk)) for apk in args.apks)
+    results.extend(verify(Path(apk), runtime_profile=args.runtime_profile) for apk in args.apks)
     print(json.dumps(results, indent=2))
     if refused and not args.allow_unpackaged_runtime:
         print('Release APKs without a packaged resident runtime are not distributable: ' + ', '.join(refused)

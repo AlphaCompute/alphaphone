@@ -36,18 +36,21 @@ export function parseBuildArgs(argv) {
   const options = { testMocks: false, allowUnpackagedRuntime: false, skipInstrumentation: false };
   for (const arg of argv) {
     if (arg === "--test-mocks") options.testMocks = true;
+    else if (arg === "--runtime-profile=cloud") options.runtimeProfile = "cloud";
     else if (arg === "--skip-instrumentation") options.skipInstrumentation = true;
     else if (arg === "--allow-unpackaged-runtime") options.allowUnpackagedRuntime = true;
     else throw new Error(`Unknown option ${arg}. ${USAGE}`);
   }
+  if (options.runtimeProfile === "cloud" && (options.testMocks || options.allowUnpackagedRuntime)) throw Error("Cloud profile requires a genuine packaged resident and test mocks off");
   if (options.testMocks && options.skipInstrumentation) throw new Error("Test-mocks builds require instrumentation APKs");
   return options;
 }
 
 /** Child environment for a build: the flag is set only for --test-mocks. */
-export function buildEnv(base, { testMocks }) {
+export function buildEnv(base, { testMocks, runtimeProfile = "native" }) {
   const env = { ...base };
   for (const name of FLAG_ENV_NAMES) delete env[name];
+  env.VITE_ELIZA_RUNTIME_PROFILE = runtimeProfile;
   if (testMocks) {
     env[FLAG] = "1";
     env[`VITE_${FLAG}`] = "1";
@@ -55,8 +58,8 @@ export function buildEnv(base, { testMocks }) {
   return env;
 }
 
-export function gradleFlagArgs({ testMocks, allowUnpackagedRuntime = false }) {
-  return [`-P${FLAG}=${testMocks ? "1" : "0"}`, `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=${allowUnpackagedRuntime ? "1" : "0"}`];
+export function gradleFlagArgs({ testMocks, allowUnpackagedRuntime = false, runtimeProfile = "native" }) {
+  return [...(runtimeProfile === "cloud" ? ["-PELIZA_RUNTIME_PROFILE=cloud"] : []),`-P${FLAG}=${testMocks ? "1" : "0"}`, `-PELIZA_ALLOW_UNPACKAGED_RUNTIME=${allowUnpackagedRuntime ? "1" : "0"}`];
 }
 
 export const outputDirectory = ({ testMocks }) => (testMocks ? "artifacts/test-mocks" : "artifacts");
@@ -183,6 +186,7 @@ function build(options, baseEnv, run) {
   const flagsFile = "web-dist/build-flags.json";
   if (fs.existsSync(flagsFile)) {
     const flags = JSON.parse(fs.readFileSync(flagsFile, "utf8"));
+    if ((flags.runtimeProfile || "native") !== (options.runtimeProfile || "native")) throw Error("Web runtime profile differs from Android profile");
     if (flags.testMocks !== options.testMocks)
       throw new Error(`${flagsFile} records testMocks=${flags.testMocks}; expected ${options.testMocks}`);
   }
@@ -300,13 +304,15 @@ function build(options, baseEnv, run) {
   fs.writeFileSync(path.join(outDir, "build-config.json"), JSON.stringify({
     createdAt: new Date().toISOString(),
     testMocks: options.testMocks,
+    runtimeProfile: options.runtimeProfile || "native",
     mapsConfigured: Boolean(env.VITE_MAPS_BASE_URL),
     signingRequested: requested,
     versionOverride: { code: env.ELIZAOS_VERSION_CODE ?? null, name: env.ELIZAOS_VERSION_NAME ?? null },
   }, null, 2) + "\n");
   run("node", ["scripts/verify-apks.mjs",
     ...(options.testMocks ? ["--test-mocks"] : []),
-    ...(options.allowUnpackagedRuntime ? ["--allow-unpackaged-runtime"] : [])]);
+    ...(options.allowUnpackagedRuntime ? ["--allow-unpackaged-runtime"] : []),
+    ...(options.runtimeProfile === "cloud" ? ["--runtime-profile=cloud"] : [])]);
   if (options.testMocks)
     console.log("Test-mocks APKs are for mock-isolation instrumentation only and are never distributable.");
   else run("node", ["scripts/generate-sbom.mjs", ...sbomArgs(outDir, root)]);

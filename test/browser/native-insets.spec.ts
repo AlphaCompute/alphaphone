@@ -19,7 +19,7 @@ async function nativeContent(page:any,url:string,insets:{top:number;bottom:numbe
  // An iframe is the WebView's usable native rectangle. It does not emulate Android framework dispatch.
  await page.setContent(`<iframe title="Standalone WebView" src="${url}" style="position:absolute;border:0;left:${insets.left}px;top:${insets.top}px;width:${width-insets.left-insets.right}px;height:${height-insets.top-insets.bottom}px"></iframe>`);
  const frame=page.frameLocator('iframe');
- await frame.getByRole('button',{name:'Not now',exact:true}).click();
+ await expect(frame.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
  return frame;
 }
 

@@ -1,4 +1,5 @@
 import { withMapsNavigationRelay } from '../../../../.eliza/client-features/plugins/plugin-maps/src/client/navigation-relay.ts';
+import {anyAbortSignal} from '../runtime/abort-signal';
 import { residentMapsNavigationPort } from './agent-navigation.ts';
 import { deviceNavigationFailure, type AgentPlaceRef, type MapsDeviceNavigation } from './device-navigation.ts';
 import type { TravelMode } from './contracts.ts';
@@ -8,6 +9,7 @@ let activeOffer: string | undefined;
 /** Only the launcher, Cloud Maps account, resident enrollment and current turn can offer this host. */
 export function withResidentMapsNavigation<T>(request: Request | undefined, conversationId: string, signal: AbortSignal, send: () => Promise<T>): Promise<T> {
  return withMapsNavigationRelay<T, MapsDeviceNavigation>({
+  anySignal:anyAbortSignal,
   current:()=>residentMapsNavigationPort.current,
   async execute(navigation,value,signal){
    const operation=value&&typeof value==='object'&&!Array.isArray(value)?value as Record<string,unknown>:undefined;

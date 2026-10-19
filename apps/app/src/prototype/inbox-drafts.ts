@@ -60,6 +60,15 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   if(!await setAside()||token!==epoch)return false;
   return begin(target,mode,forwardedBody,undefined,options);
  }
+ /** A share starts a separate email after preserving the previous local work. */
+ async function newSharedEmail(prefill:ComposePrefill,current:()=>boolean){
+  if(!current())return false;
+  if(!owner){toast('Connect a Gmail account first.');return false;}
+  if(!ready||busy){toast(status||'Wait for drafts to load.');return false;}
+  const token=epoch,target=structuredClone(prefill);
+  if(!await setAside()||token!==epoch||!current())return false;
+  return begin(undefined,undefined,'',target);
+ }
  async function openShelved(id:string){const row=shelf?.items.find(item=>item.draft.id===id);if(!row||!ready||busy)return;if(row.draft.earlierThanSent&&!window.confirm('This is an earlier version of a sent email. Open it for editing? Sending it creates another message.'))return;const token=epoch;if(!await setAside()||token!==epoch)return;draft=structuredClone(row.draft);toQ=row.toQ;baseRevision=null;staleBase=false;open=true;confirm=false;status='Draft on this device';persist();publish();}
 
  const pendingEdits=new Map<string,{draft:Draft;toQ:string;baseRevision:string|null;persist?:boolean}>();
@@ -217,7 +226,7 @@ export function inboxDrafts(publish:()=>void,toast:(text:string)=>void, provider
   return {ready:true,kind:'new',append:false,reply:false,subject:'',to:[],room:64000,token:JSON.stringify([owner,'new'])};
  }
  return {
-  bind,reset,begin,newEmail,transfer,
+  bind,reset,begin,newEmail,newSharedEmail,transfer,
   /** An explicit Files review adds exact bytes to this account's draft, never a provider operation. */
   attachReviewed(file:MailAttachment,expected:string):boolean{
    const target=suggestionTarget();if(!target.ready||target.token!==expected)return false;

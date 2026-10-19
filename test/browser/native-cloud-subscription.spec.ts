@@ -133,7 +133,7 @@ const agentDialog=(page:Page)=>page.getByRole('dialog',{name:'Your agent',exact:
  * code, which opens the plan panel (the notice's other action is Choose a plan). */
 async function needsPlan(page:Page){
  const notice=page.getByRole('region',{name:'Eliza Cloud plan notice'});
- await expect(notice).toContainText('AI replies need an Eliza Cloud plan');await expect(agentDialog(page)).toHaveCount(0);
+ await expect(notice).toContainText('AI replies aren’t available right now');await expect(agentDialog(page)).toHaveCount(0);
  await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
  // A fresh phone's startup access panel (a modal) is declined first; the notice stays beside the agent.
  const startup=page.locator('dialog.alpha-startup-permissions');

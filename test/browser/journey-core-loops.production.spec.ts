@@ -12,6 +12,7 @@
 // says the shipped renderer takes the real path or shows an honest unavailable state; it never
 // says the native side of that path works. See docs/core-loop-audit.md.
 import { test, expect, type Page } from '@playwright/test';
+import {completeOptionalAccessSetup} from './flag-off-android';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
 
@@ -223,6 +224,7 @@ async function residentHome(page: Page) {
   await expect.poll(() => native(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await expect(button(page, 'Notes')).toBeVisible();
+  await completeOptionalAccessSetup(page);
 }
 
 test('loop A on Android: the resident agent answers, the conversation follows across apps, Stop is honest and a restart restores it without any development control', async ({ page }) => {

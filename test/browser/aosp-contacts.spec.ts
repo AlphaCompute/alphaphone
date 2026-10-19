@@ -17,7 +17,7 @@ async function setup(page:any,admitted:boolean){
    if(['secureRead','readSecret'].includes(method))return {value:null};
    return {apps:[],events:[],calendars:[],reminders:[],bookmarks:[],results:[],items:[],entries:[],pending:[],capabilities:[],available:false};
   }};
- },admitted);await page.goto('/');await page.getByRole('button',{name:'Not now',exact:true}).click();
+ },admitted);await page.goto('/');await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
 }
 test('ordinary APK presentation never admits Contacts or prompts permission',async({page})=>{
  await setup(page,false);await expect(page.getByRole('button',{name:'Contacts',exact:true})).toHaveCount(0);expect(await page.evaluate(()=>(window as any).contactRequests)).toBe(0);

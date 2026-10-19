@@ -27,6 +27,8 @@ import {HostedDigestPanel} from './runtime/hosted-digest-ui';
 import { installClockAdapter } from './prototype/clock-adapter';
 import {installNoteWebSourceAdapter} from './prototype/note-web-source-adapter';
 import {installNoteSourceAdapter} from './prototype/note-source-adapter';
+import {installSharePanelAdapter} from './prototype/share-panel-adapter';
+import {installNotesShareAdapter} from './prototype/notes-share-adapter';
 import { installNotesDocumentAdapter } from './prototype/notes-document-adapter';
 import { installPrototypeMapsAdapter } from './prototype/maps-adapter';
 import { installNotificationsAdapter } from './prototype/notifications-adapter';
@@ -118,6 +120,7 @@ if (!fixture) {
   installPrototypeVoiceAdapter(Component, VIEWS);
   installCalendarApprovalAdapter(Component);
   installNotesDocumentAdapter(Component, VIEWS);
+  installNotesShareAdapter(VIEWS);
   installNotesTrashAdapter(Component, VIEWS);
   installNoteSourceAdapter(VIEWS);
   installNoteWebSourceAdapter(VIEWS);
@@ -139,6 +142,7 @@ if (!fixture) {
   // The development profile has no provider mail summary, but its scheduled digests retain results
   // the same way, so its Home reads the latest retained brief from the same source.
   if(browserDevProfile){subscribeRetainedDigest(()=>window.dispatchEvent(new Event(HOME_SOURCES_CHANGED)));setHomeSources({brief:latestRetainedDigest});}
+  installSharePanelAdapter(Component,VIEWS);
 }
 if(devSurfacesEnabled&&simulatedApps)installSimulatedApps(Component,VIEWS,simulatedApps);
 if(developmentAgentWorkflows){installWorkflowAdapter(Component,VIEWS);installAutomationsAdapter(Component,VIEWS);}

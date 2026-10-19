@@ -7,13 +7,20 @@ import android.app.KeyguardManager;
 import android.os.UserManager;
 import com.getcapacitor.*;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import java.util.*;
 import java.util.concurrent.*;
 
 /** Agent album facade over the same permission and exact-revision catalog as Photos.
  * It uses AlphaPhotos' PermittedMediaCatalog and PermittedMediaReview instances (one epoch, one
  * observer, one review at a time), owns no index and never uses URI-only destructive requests. */
-@CapacitorPlugin(name="AlphaPhotoLibrary")
+@CapacitorPlugin(name="AlphaPhotoLibrary",permissions={
+ @Permission(alias="libraryLegacy",strings={"android.permission.READ_EXTERNAL_STORAGE"}),
+ @Permission(alias="libraryImages",strings={"android.permission.READ_MEDIA_IMAGES"}),
+ @Permission(alias="libraryVideos",strings={"android.permission.READ_MEDIA_VIDEO"}),
+ @Permission(alias="librarySelected",strings={"android.permission.READ_MEDIA_VISUAL_USER_SELECTED"})
+})
 public class AlphaPhotoLibraryPlugin extends Plugin {
  private final ExecutorService worker=Executors.newSingleThreadExecutor();
  private PermittedMediaCatalog catalog;
@@ -44,7 +51,14 @@ public class AlphaPhotoLibraryPlugin extends Plugin {
   if("denied".equals(catalog.access().getString("scope"))){call.reject("Photo library access is not allowed","LIBRARY_DENIED");return false;}return true;
  }
  @PluginMethod public void scope(PluginCall call){call.resolve(scopeResult());}
- @PluginMethod public void requestAccess(PluginCall call){((AlphaPhotosPlugin)getBridge().getPlugin("AlphaPhotos").getInstance()).requestLibraryAccess(call);}
+ /** Capacitor queues permission calls by originating plugin ID: this facade must own its callback. */
+ @PluginMethod public void requestAccess(PluginCall call){
+  if(destroyed||getActivity()==null||!getActivity().hasWindowFocus()){call.reject("Return to Photos to choose access");return;}
+  String[] aliases=AlphaPhotosPlugin.libraryPermissionAliases();
+  LateLaunch.ask(call,()->requestPermissionForAliases(aliases,call,"libraryPermissionResult"));
+ }
+ @PermissionCallback private void libraryPermissionResult(PluginCall call){if(destroyed){call.reject("Device library closed");return;}catalog.invalidate();call.resolve(scopeResult());}
+ @Override @PluginMethod public void requestPermissions(PluginCall call){requestAccess(call);}
  @PluginMethod public void watch(PluginCall call){watching=call.getBoolean("active",false)&&!destroyed;catalog.watch("library",watching);JSObject out=new JSObject();out.put("active",watching);call.resolve(out);}
  private JSObject item(JSObject row){row.put("takenAt",row.optLong("date",0L));return row;}
  @PluginMethod public void page(PluginCall call){submit(call,ticket->{

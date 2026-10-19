@@ -13,7 +13,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function fixture({native = true} = {}) {
   const f = {spoken: [], signals: [], hold: false, releases: [], store: new Map(), session: 'agent-session', conversation: 'conversation-1', open: false, events: []};
   const box = {
-    developmentCloudVoiceEnabled:false, testMocksEnabled: false, browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
+    developmentCloudVoiceEnabled:false, cloudRuntimeEnabled: false, testMocksEnabled: false, browserDevProfile: false, Date, JSON, Number, Set, console, AbortController, DOMException, setTimeout, clearTimeout,
     crypto, performance,
     Event: class { constructor(type) { this.type = type; } },
     Capacitor: {isNativePlatform: () => native, getPlatform: () => native ? 'android' : 'web'},

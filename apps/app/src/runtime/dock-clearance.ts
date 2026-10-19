@@ -34,7 +34,7 @@ let installed: (() => void) | null = null;
 export function installDockClearance(): () => void {
   if (installed) return installed;
   let published = '', frame = 0, watched: HTMLElement[] = [];
-  const sizes = new ResizeObserver(() => schedule());
+  const sizes = new ResizeObserver(() => readNow());
   const read = () => {
     frame = 0;
     const screen = document.querySelector<HTMLElement>('[data-screen]');
@@ -58,9 +58,16 @@ export function installDockClearance(): () => void {
     document.documentElement.style.setProperty(DOCK_CLEARANCE_PROPERTY, `${clearance}px`);
     document.documentElement.style.setProperty(DOCK_REST_PROPERTY, `${Math.min(rest, clearance)}px`);
   };
+  // A new status row changes the dock before the next animation frame. Publish
+  // its measured footprint in the same observer delivery, before it can cover
+  // controls whose scroll range still uses the previous height.
+  const readNow = () => { if (frame) cancelAnimationFrame(frame); read(); };
   const schedule = () => { if (!frame) frame = requestAnimationFrame(read); };
   // The dock is rendered by the phone shell: it appears, changes kind and leaves with the view.
-  const changes = new MutationObserver(schedule);
+  const changes = new MutationObserver(records => {
+    if (records.some(record => record.target instanceof Element && record.target.closest(DOCK))) readNow();
+    else schedule();
+  });
   changes.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['inert'] });
   // Android's bar insets and the phone's scale arrive as custom properties and classes on the root
   // element (main.tsx); they move the dock without resizing it.

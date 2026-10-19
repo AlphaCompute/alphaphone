@@ -11,8 +11,9 @@ revision in `upstream.lock.json` and `vendor/eliza`.
 [implementation plan](implementation-plan.md) govern pending changes. Only a local
 resident agent is allowed; no hosted-agent connection, creation, pairing or fallback.
 Eliza Cloud supplies text inference, subscriptions, Gmail, optional owner-scoped Google Calendar OAuth/API access and shared Maps services. See the [October 15 decision](decisions.md#october-15-google-calendar-service-decision); native Calendar permissions and local agent execution remain separate.
-All STT/TTS is on-device through native Eliza inference/llama.cpp integration;
-Cloud speech is retired policy and its current code must be migrated, not claimed local.
+The default `native` profile requires on-device STT/TTS through native Eliza
+inference/llama.cpp integration. The October 18 explicit Cloud QA profile below is
+a scoped exception, not native-speech qualification.
 
 AOSP targets Pixel 10a / Android 17. Phone, Contacts and SMS are AOSP-only and need
 an image capability distinct from the launcher flavor. Wallet is outside MVP.
@@ -74,8 +75,10 @@ Browser policy helpers are staged from the same authenticated pin. Gradle writes
 library outputs under the host build directory, outside the immutable vendor checkout.
 Product wrappers inject presentation, device configuration and installed storage identities. Resident
 runtime preparation also uses the locked upstream source without patch replay.
-Native staging verifies source and generated hashes and applies only explicit
-host identity/resource/environment configuration.
+Resident Java staging also admits the two reviewed files in
+`patches/eliza/resident-native-manifest.json` into a generated copy. It verifies
+base, patch, patched and generated hashes before host identity/resource/environment
+configuration. The vendor checkout and prepared resident runtime stay unchanged.
 
 Generic behavior belongs upstream with configurable host inputs. Product names,
 package IDs, storage namespaces, view allowlists and approval policy stay here.
@@ -89,6 +92,19 @@ in `apps/app`. The remaining `backend` files compose a development host from sha
 runtime packages; the product character, allowed views and proposal-only behavior
 stay here. Product build admission and acceptance campaigns also stay in `scripts`.
 Moving those directories intact would move product policy into the shared platform.
+
+## October 18 explicit Cloud QA profile
+
+The owner-approved `cloud` profile retains the genuine Android-resident Bun agent,
+PGlite history, orchestration and approvals while routing text inference to Cerebras
+and embeddings/STT/TTS through authenticated Eliza Cloud; speech output is Cartesia.
+It excludes local models and native inference/speech payloads. The profile is
+explicit in staging, renderer and Gradle configuration, with matching package
+provenance checks; test mocks and unpackaged residents are forbidden. Cloud voice
+requires visible upload/plan disclosure and an explicit start, and remains bound to
+the current account. The `native` default and its native/AOSP qualification gates
+remain unchanged. This configuration does not prove native speech or release acceptance.
+See the [profile selection notes](../README.md#explicit-cloud-qa-profile--october-18).
 
 ## Build surfaces
 

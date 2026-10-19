@@ -1,3 +1,5 @@
+import React from 'react';
+import {MailFolderPicker} from './mail-folder-picker';
 import {serviceReadCache} from '../runtime/service-read-cache-store';
 import type {ServiceReadCache} from '../runtime/service-read-cache';
 import {mailSenderImage} from '../runtime/mail-sender-image';
@@ -139,13 +141,13 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   let failure: { kind: GmailFailureKind; retry: () => void } | null = null;
   // A moved email (From switcher) names its target account and how to return it to the source.
   type PendingCompose = ComposePrefill & { account?: string; returnTo?: GmailAccount; restore?: () => void };
-  let pendingCompose: PendingCompose | null = null, lastCompose: unknown = null, resumeDraftFor = '';
+  let pendingCompose: PendingCompose | null = null, lastCompose: unknown = null, resumeDraftFor = '', composeAttempt = 0;
   // Read-state requests are keyed by account and message. One may be in flight per message, and an
   // automatic mark-read whose outcome was not confirmed is never sent again for that message.
   const readStateInFlight = new Set<string>(), readStateUnconfirmed = new Set<string>();
   let seenCursors = new Set<string>();
-  /** Drops a pending moved email back to its source account (in memory, rewritten on rebind). */
-  const returnPending = () => { pendingCompose?.restore?.(); pendingCompose = null; };
+  /** Retires queued shares and returns a pending moved email to its source account. */
+  const returnPending = () => { composeAttempt++; pendingCompose?.restore?.(); pendingCompose = null; };
   let thread: {id:string;previousOffsets:number[];offset:number;historyId:string;nextOffset:number|null;total:number;messages:{message:GmailMessage;bodyText:string;links?:GmailLink[];historyId:string|null;attachments?:{partId:string;name:string;mimeType:string;size:number;supported:boolean}[]}[]}|null=null;
   let contextReview:ReviewedMailContext|null=null,contextBusy=false;
   // Link rows per opened body: the body text is scanned once, not on every render.
@@ -276,7 +278,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
   });
   provider.onRestored(() => { if (selected && !draftsView()) void load(); });
   function clear(preserveOffline=false) {
-    noticeAttempt++;
+    composeAttempt++; noticeAttempt++;
     invalidateList(!preserveOffline);spamTrashSearch=false;
     providerDrafts = [];
     setAttention({ state: connectionController.getCloudClient() ? 'loading' : 'not-connected', unread: undefined, unreadMore: false, source: null, updatedAt: null });
@@ -696,8 +698,16 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
     }
     if (pendingCompose && selected && drafts.ready && (!pendingCompose.account || pendingCompose.account === selected)) {
       const prefill = pendingCompose; pendingCompose = null;
+      const attempt = composeAttempt, account = selected, source = binding;
+      const current = () => {
+        const active = connectionController.getCloudClient();
+        return attempt === composeAttempt && !!api?.isActive() && selected === account &&
+          source?.client === active?.client && source?.sessionId === active?.sessionId && source?.credentialId === active?.credentialId;
+      };
       queueMicrotask(() => {
-        if (drafts.begin(undefined, undefined, '', prefill) || !prefill.returnTo) return;
+        if (!current()) { prefill.restore?.(); return; }
+        if (!prefill.returnTo) { void drafts.newSharedEmail(prefill, current); return; }
+        if (drafts.begin(undefined, undefined, '', prefill)) return;
         // The other account already holds a draft or retained edits; the moved email goes back.
         const target = accounts.find(a => a.connectionId === prefill.account)?.label || 'The other account';
         prefill.restore?.();
@@ -765,17 +775,7 @@ export function installInboxCloudAdapter(Component: any, views: Record<string, B
       doc.addEventListener('click',follow);doc.addEventListener('keydown',event=>{if(event.key==='Enter')follow(event);});
     };
 
-    return {folderTitle:folder==='inbox'?'Inbox':folder==='sent'?'Sent':folder==='archive'?'Archive':extraFolders.find(row=>row.value===folder)?.label||'Inbox',folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderCss:extraFolders.some(row=>row.on)?'width:112px;background:var(--fg);color:var(--bg)':'',extraFolderLabel:extraFolders.find(row=>row.on)?.label||'More',positionFolders:(event:Bag)=>{
-      const trigger=event.currentTarget as HTMLElement,menu=document.getElementById('alpha-mail-folders');if(!menu)return;
-      const rect=trigger.getBoundingClientRect(),width=Math.min(224,window.innerWidth-32),top=Math.min(rect.bottom+8,window.innerHeight-280);
-      menu.style.setProperty('--mail-menu-left',Math.max(16,Math.min(rect.right-width,window.innerWidth-width-16))+'px');menu.style.setProperty('--mail-menu-top',Math.max(16,top)+'px');menu.style.setProperty('--mail-menu-width',width+'px');
-    },folderTriggerKey:(event:KeyboardEvent)=>{
-      if(event.key!=='ArrowDown'&&event.key!=='ArrowUp')return;event.preventDefault();const menu=document.getElementById('alpha-mail-folders');if(!menu)return;if(!menu.matches(':popover-open'))(event.currentTarget as HTMLButtonElement).click();const items=menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');items[event.key==='ArrowUp'?items.length-1:0]?.focus();
-    },folderMenuKey:(event:KeyboardEvent)=>{
-      if(!['ArrowDown','ArrowUp','Home','End'].includes(event.key))return;event.preventDefault();
-      const items=Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));if(!items.length)return;
-      const index=items.indexOf(document.activeElement as HTMLButtonElement);items[event.key==='Home'?0:event.key==='End'?items.length-1:index<0?(event.key==='ArrowUp'?items.length-1:0):(index+(event.key==='ArrowDown'?1:-1)+items.length)%items.length].focus();
-    }, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
+    return {folderTitle:folder==='inbox'?'Inbox':folder==='sent'?'Sent':folder==='archive'?'Archive':extraFolders.find(row=>row.value===folder)?.label||'Inbox',folderChips:chips.filter(row=>['Inbox','Sent','Archive'].includes(row.label)),actionChips:chips.filter(row=>!['Inbox','Sent','Archive'].includes(row.label)),hasActionChips:chips.some(row=>!['Inbox','Sent','Archive'].includes(row.label)),extraFolders,hasExtraFolders:!!extraFolders.length,extraFolderCss:extraFolders.some(row=>row.on)?'width:112px;background:var(--fg);color:var(--bg)':'',extraFolderLabel:extraFolders.find(row=>row.on)?.label||'More',folderPicker:extraFolders.length?React.createElement(MailFolderPicker,{folders:extraFolders}):null, contextReviewOpen:!!contextReview,contextReview:contextReview?{source:`From: ${contextReview.source.from}\nTo: ${contextReview.source.to.join(', ')}\nSubject: ${contextReview.source.subject}\n\n${contextReview.source.bodyText}`,destination:`${contextReview.destination.origin} · agent ${contextReview.destination.agentId} · owner ${contextReview.destination.ownerId}`,send:()=>void sendContext(),busy:contextBusy,close:()=>{contextReview=null;publish();}}:null,attachmentOpen:!!attachmentView,attachment:attachmentView?{...attachmentView,close:()=>{void attachmentNative.cancel().catch(()=>{});attachmentView=null;publish();}}:null,chips, rows, searching: st.q != null, notSearching: st.q == null, q: st.q || '', hasQ: false,
       openSearch: () => changeQuery(''), closeSearch: () => changeQuery(null), clearSearch:()=>{changeQuery('');queueMicrotask(()=>document.querySelector<HTMLInputElement>('.mail-search-input')?.focus());}, onQ: (e: Bag) => changeQuery(e.target.value), submitSearch:(event:Event)=>{event.preventDefault();const input=(event.currentTarget as HTMLFormElement).querySelector<HTMLInputElement>('input');if(!input?.value.trim())return;input.blur();void load();},
       compose: () => void drafts.newEmail(), empty: rows.length === 0, emptyIcon: 'M4 6h16v12H4zM4 6l8 6 8-6', emptyText: pendingCompose && !selected ? 'Shared content is ready for a new email. Connect Gmail to continue; nothing has been sent.' : status,
       hasMore: rows.length > 0 && (!!nextPageToken || (!!operation && loadingMore)), loadingMore: !!operation && loadingMore, loadMoreDisabled: !!operation, loadMoreLabel: operation && loadingMore ? 'Loading more…' : 'Load more', loadMore: () => void load(true),

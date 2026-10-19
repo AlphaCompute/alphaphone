@@ -213,53 +213,53 @@ test('font licence records are data only, bound to the exact font bytes, in both
 
   // Owner statement: generation is clean, the entry is the committed one.
   write([stated]);
-  let result = collectNotices(dir);
+  let result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual([result.errors, result.warnings], [[], []]);
   assert.deepEqual(entryOf(result), denton);
   // A reference to the licence document, when the owner supplies one, is printed; the entry stays proprietary and flagged.
   write([{...stated, reference: 'licence register entry EXAMPLE-REF'}]);
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.match(entryOf(result).text, /Reference to the licence document: licence register entry EXAMPLE-REF\./);
   assert.doesNotMatch(entryOf(result).text, /no reference to it is recorded/);
   assert.deepEqual(entryOf(result).flags, [FONT_HELD_FLAG]);
   // An owner-statement record with a missing fact is refused, never filled in.
   for (const field of ['holder', 'basis', 'recordedOn']) {
     write([{...stated, [field]: ''}]);
-    assert.ok(collectNotices(dir).errors.some(error => error.includes(`is missing ${field}`)), field);
+    assert.ok(collectNotices(dir, {packagedRuntime: false}).errors.some(error => error.includes(`is missing ${field}`)), field);
   }
 
   // No record, or a record for other bytes: the face is an unrecorded proprietary font again, flagged, not an error of licence category.
   write([]);
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual([result.errors, entryOf(result).license, entryOf(result).flags], [[], NO_FONT_LICENCE, [FONT_FLAG]]);
   assert.match(entryOf(result).obligations[0].note, /no licence to embed or redistribute it is recorded/);
   write([{...stated, sha256: ['0'.repeat(64)]}]);
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.ok(result.errors.some(error => error.includes(`${FONT_LICENSES}: stale entry Denton typeface`)));
   assert.deepEqual(entryOf(result).flags, [FONT_FLAG], 'a record for other bytes does not cover the face');
   // A reason recorded for an unrecorded font is printed with it; one left behind for a recorded font is reported as stale.
   const reason = {name: 'Denton typeface', sha256: dentonSha, reason: 'Example reason text for an unrecorded font file.'};
   write([], [reason]);
-  assert.match(entryOf(collectNotices(dir)).obligations[0].note, /^Example reason text for an unrecorded font file\./);
+  assert.match(entryOf(collectNotices(dir, {packagedRuntime: false})).obligations[0].note, /^Example reason text for an unrecorded font file\./);
   write([stated], [reason]);
-  assert.ok(collectNotices(dir).warnings.some(warning => warning.includes('stale entry Denton typeface')));
+  assert.ok(collectNotices(dir, {packagedRuntime: false}).warnings.some(warning => warning.includes('stale entry Denton typeface')));
 
   // Full record (licensor, licensee, scope, evidence): the entry is unflagged.
   const full = {name: 'Denton typeface', sha256: [dentonSha], license: COMMERCIAL_FONT, licensor: 'Example Foundry', licensee: 'Example Licensee',
     scope: 'app embedding and web embedding', evidence: 'licence reference EXAMPLE-1', recordedOn: '2026-10-10'};
   write([full]);
-  result = collectNotices(dir);
+  result = collectNotices(dir, {packagedRuntime: false});
   assert.deepEqual(result.errors, []);
   assert.equal(entryOf(result).license, COMMERCIAL_FONT);
   assert.match(entryOf(result).text, /Used under a commercial licence from Example Foundry to Example Licensee\. Scope: app embedding and web embedding\. Evidence: licence reference EXAMPLE-1/);
   assert.deepEqual([entryOf(result).flags, entryOf(result).obligations], [[], undefined]);
   write([{...full, evidence: ''}]);
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('is missing evidence')));
+  assert.ok(collectNotices(dir, {packagedRuntime: false}).errors.some(error => error.includes('is missing evidence')));
   write([{...full, scope: 'app embedding'}]);
-  assert.ok(collectNotices(dir).errors.some(error => error.includes('scope must cover app and web embedding')));
+  assert.ok(collectNotices(dir, {packagedRuntime: false}).errors.some(error => error.includes('scope must cover app and web embedding')));
   for (const record of [full, stated]) {
     write([{...record, license: 'MIT'}]);
-    assert.ok(collectNotices(dir).errors.some(error => error.includes(`must use license ${COMMERCIAL_FONT}`)), 'a proprietary font is never recorded under an open-source identifier');
+    assert.ok(collectNotices(dir, {packagedRuntime: false}).errors.some(error => error.includes(`must use license ${COMMERCIAL_FONT}`)), 'a proprietary font is never recorded under an open-source identifier');
   }
 });
 

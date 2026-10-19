@@ -57,6 +57,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByText('owned@example.invalid',{exact:true})).toBeVisible();
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toHaveLength(2);
+  expect(await page.evaluate(()=>(window as any).openedCloudURLs)).toContain(`https://eliza.app/auth/cli-login?session=${session}&app=alpha`);
   await info.attach('closed-cloud-requests',{body:JSON.stringify({calls,mediaCapture:false,playback:false,providerRequests:false}),contentType:'application/json'});
  }finally{await server.close();await rm(profile,{recursive:true,force:true});}
 });

@@ -1,3 +1,4 @@
+import { completeOptionalAccessSetup } from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 
 // Flag-off product surfaces: the packaged resident agent behind a funded Eliza Cloud account, over
@@ -116,6 +117,7 @@ async function connected(page: Page, options: { review?: boolean } = {}) {
     if (await close.isVisible().catch(() => false)) await close.click(); else await page.keyboard.press('Escape');
   }
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await completeOptionalAccessSetup(page);
 }
 
 test('a proposal is declined from its chat card and the agent records the rejection', async ({ page }) => {

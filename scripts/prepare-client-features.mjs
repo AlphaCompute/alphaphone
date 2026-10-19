@@ -107,15 +107,20 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== '3d76ff5acacb369e2c58fc8512e69e59f53ce69b') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== 'cc52bef586997875047d9a9c74276084fad8610c') throw Error('Review voice projections for the new upstream pin.');
   const projectionInputs={
     'packages/ui/src/voice/voice-session-client.ts':'1de275fc7c6bc1871d13d37ee42298db3cbb2ec546795417ed9df512606b4081',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',
     'packages/core/src/logger.ts':'8c2401ba44a79b94a11095bdce3568f65374d2d7b1421c5894b08753feafb7d1',
+    'plugins/plugin-maps/src/client/navigation-relay.ts':'2742e4d581c1e9177fdf334199a564df02cd8f707263d62e861489f2cb40a7bd',
   };
   for(const [name,digest] of Object.entries(projectionInputs))if(sourceFiles[name]!==digest)throw Error('Review changed voice projection input: '+name);
   const project = (name, text) => source.set(name, {bytes:Buffer.from(text),mode:'100644',sha256:hash(Buffer.from(text))});
   const text = name => source.get(name).bytes.toString();
+  // Older Android WebViews inject signal composition without changing relay authority or behavior.
+  const relayPath='plugins/plugin-maps/src/client/navigation-relay.ts',relay=text(relayPath);
+  if(relay.split('AbortSignal.any(').length!==3||relay.split('  current(): Owner | null;').length!==2)throw Error('Maps signal projection source changed.');
+  project(relayPath,relay.replace('  current(): Owner | null;','  anySignal?(signals: AbortSignal[]): AbortSignal;\n  current(): Owner | null;').replaceAll('AbortSignal.any(','(host.anySignal ?? AbortSignal.any)('));
   const clientPath='packages/ui/src/voice/voice-session-client.ts';
   const fallback='      const { fetchVoiceSession } = await import("./voice-session-fetch");\n      return fetchVoiceSession(url, init);';
   if(text(clientPath).split(fallback).length!==2)throw Error('Voice fetch projection source changed.');
@@ -133,7 +138,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
 
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?4:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?5:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');

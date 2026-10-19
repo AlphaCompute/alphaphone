@@ -96,6 +96,12 @@ for(const mode of ['compose','cancel','source-changed','owner-changed'] as const
    }};
   },'ready');
  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ // Finish optional access setup before a Gmail notice opens its separate review.
+ await page.getByRole('button',{name:'Set up Alpha access',exact:true}).click();
+ const access=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
+ await expect(access).toBeVisible();
+ await access.getByRole('button',{name:'Not now',exact:true}).click();
+ await expect(access).toBeHidden();
  await page.evaluate(async()=>{
   const c=(await import('/src/runtime/connection-ui.tsx')).connectionController,f=(window as any).deliveryFixture,snapshot=c.getSnapshot.bind(c);f.reads=0;
   const client={gmailAccounts:async()=>[{connectionId:'grant',connected:true,label:'Owned mailbox',grantedCapabilities:['google.gmail.triage']}],gmailRead:async()=>{f.reads++;return {message:{id:'mail',threadId:'thread',subject:'Public subject',snippet:f.changed?'Changed snippet':'Public snippet'},bodyText:'PRIVATE BODY NEVER SHARED',historyId:f.changed?'11':'10',attachments:[]};}};
@@ -111,7 +117,10 @@ for(const mode of ['compose','cancel','source-changed','owner-changed'] as const
   if(mode==='owner-changed')await page.evaluate(async()=>{await(await import('/src/runtime/connection-ui.tsx')).connectionController.disconnect();});
   if(mode!=='owner-changed')await review.getByRole('button',{name:'Use in conversation',exact:true}).click();
   if(mode==='compose'){await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).toHaveValue(/Public subject/);await expect(page.getByRole('textbox',{name:'Message Alpha',exact:true})).not.toHaveValue(/PRIVATE BODY/);expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed)).toBe(1);}
-  else expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||0)).toBe(0);
+  else {
+   if(mode==='source-changed')await expect(page.getByText('The notification or selected agent changed. Nothing was added to your conversation.',{exact:true})).toBeVisible();
+   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||0)).toBe(0);
+  }
  }
  expect(errors).toEqual([]);
 });
