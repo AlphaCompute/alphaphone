@@ -155,3 +155,16 @@ assert.match(cloudMapsFailure(cloudError(429,'allowance_exhausted')).message,/us
 
 assert.equal(cloudMapsFailure(Object.assign(cloudError(429,'allowance_exhausted'),{data:{code:'allowance_exhausted',resetAt:'9999-01-01T00:00:00Z',error:'private provider detail'}})).message,'You have used your Maps allowance for this period.');
 assert.equal(cloudMapsFailure(Object.assign(cloudError(429,'rate_limited'),{data:{code:'rate_limited',error:'private provider detail',retryAfterSeconds:'private provider detail'}})).message,'Maps request limit reached. Try again later.');
+
+// Rate-limit reset-only hints use a bounded future wait, never an unbounded date.
+{
+ const originalNow=Date.now,now=Date.UTC(2026,9,19,12);
+ Date.now=()=>now;
+ try {
+  const refusal=resetAt=>Object.assign(cloudError(429,'rate_limited'),{data:{code:'rate_limited',resetAt}});
+  assert.match(cloudMapsFailure(refusal(new Date(now+42000).toISOString())).message,/Try again in about 42 seconds/);
+  assert.match(cloudMapsFailure(refusal(new Date(now+86400000).toISOString())).message,/Try again in about 24 hours/);
+  for(const reset of ['invalid','private provider detail',new Date(now-1000).toISOString(),new Date(now).toISOString(),new Date(now+86400001).toISOString(),'9999-01-01T00:00:00Z'])
+   assert.equal(cloudMapsFailure(refusal(reset)).message,'Maps request limit reached. Try again later.');
+ } finally {Date.now=originalNow;}
+}

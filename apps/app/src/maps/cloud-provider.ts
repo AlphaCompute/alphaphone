@@ -43,7 +43,8 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
      const reset = limit.resetsAt != null && limit.resetsAt > now && limit.resetsAt - now <= 400 * 86400000 ? ` It resets ${new Date(limit.resetsAt).toLocaleString()}.` : limit.retryAfterMs != null ? ` It resets in ${retryDuration(limit.retryAfterMs)}.` : '';
      return new MapsFailure('rate-limited', `You have used your Maps allowance for this period.${reset}`);
     }
-    const wait = limit?.retryAfterMs != null ? `Try again in ${retryDuration(limit.retryAfterMs)}.` : 'Try again later.';
+    const retryMs = limit?.retryAfterMs ?? (limit?.resetsAt != null && limit.resetsAt > now && limit.resetsAt - now <= 86400000 ? limit.resetsAt - now : null);
+    const wait = retryMs != null ? `Try again in ${retryDuration(retryMs)}.` : 'Try again later.';
     return new MapsFailure('rate-limited', `Maps request limit reached. ${wait}`);
    }
    case 422: return new MapsFailure('unsupported', code === 'no_route' ? 'No route is available between these places.' : code === 'unsupported_mode' ? 'This travel mode is not available from Eliza Cloud Maps.' : 'This location is outside Eliza Cloud Maps coverage.');
