@@ -47,7 +47,7 @@ export async function createCloudResidentHost({source,profile,port,environment='
   if(!running)await serial(()=>replace(null));
   const current=running,deadline=Date.now()+110000;
   while(Date.now()<deadline){signal.throwIfAborted();if(running!==current)throw Error('Resident changed during startup');
-   try{const response=await request(`http://127.0.0.1:${port}/api/auth/status`,{headers:{Authorization:'Bearer '+privateProfile.token},redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(2000)])});await response.body?.cancel();if(response.ok)return {state:'host-managed'};}catch(error){signal.throwIfAborted();}
+   try{const response=await request(`http://127.0.0.1:${port}/api/agents`,{headers:{Authorization:'Bearer '+privateProfile.token},redirect:'error',signal:AbortSignal.any([signal,AbortSignal.timeout(2000)])});if(response.ok){const value=await response.json();signal.throwIfAborted();if(running!==current||retiring)throw Error('Resident changed during startup');if(Array.isArray(value.agents)&&value.agents.length===1&&value.agents[0]?.status==='running')return {state:'host-managed'};}else await response.body?.cancel();}catch(error){signal.throwIfAborted();}
    await new Promise(resolve=>setTimeout(resolve,300));
   }throw Error('Cloud resident startup timed out');
  }
