@@ -66,3 +66,22 @@ test('typing as the reply arrives is queued after the commit, never racing it in
  assert.equal(f.c.state.conflict,false);assert.equal(f.c.state.error,false);
  assert.equal(f.saved().text,'Typed during commit');assert.equal(f.get(),'Typed during commit');
 });
+
+function queuedRestoreFixture(savedText=null){
+ let text='',saved=savedText===null?null:record(savedText),commitRestore;
+ const store={async read(){return saved;},async save(expected,value){assert.deepEqual(expected,saved);return saved=record(value);}};
+ const c=new AssistantDraftController(async()=>store,()=>text,(value,expected,current)=>new Promise(resolve=>{commitRestore=()=>{if((!current||current())&&(expected===undefined||text===expected))text=value;resolve();};}),()=>{});
+ return {c,get:()=>text,saved:()=>saved,type:value=>{text=value;c.edit(value);},commit:()=>commitRestore()};
+}
+test('queued draft restore cannot clear newer unsent typing at UI commit',async()=>{
+ const f=queuedRestoreFixture(),opening=f.c.open('one');await tick();f.type('Retained unsent draft');f.commit();await opening;await tick();
+ assert.equal(f.get(),'Retained unsent draft');assert.equal(f.saved().text,'Retained unsent draft');
+});
+test('queued draft restore cannot overwrite a retired conversation binding',async()=>{
+ const f=queuedRestoreFixture('Old conversation draft'),opening=f.c.open('old');await tick();f.c.retire();f.type('New conversation words');f.commit();await opening;
+ assert.equal(f.get(),'New conversation words');
+});
+test('queued draft restore preserves both saved text and newer typing for review',async()=>{
+ const f=queuedRestoreFixture('Previously saved draft'),opening=f.c.open('one');await tick();f.type('New unsent words');f.commit();await opening;await tick();
+ assert.equal(f.get(),'New unsent words');assert.equal(f.saved().text,'Previously saved draft');assert.equal(f.c.state.conflict,true);assert.equal(f.c.state.savedText,'Previously saved draft');
+});

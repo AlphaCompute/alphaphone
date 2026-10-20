@@ -10,7 +10,7 @@ export class AssistantDraftController {
  private opening?:Promise<void>;
  private held?:Held;
  state={message:'',opening:true,conflict:false,savedText:'',consuming:false,error:false};
- constructor(private factory:(key:string)=>Promise<Store>,private text:()=>string,private restore:(text:string)=>void,private changed:()=>void){}
+ constructor(private factory:(key:string)=>Promise<Store>,private text:()=>string,private restore:(text:string,expectedText?:string,current?:()=>boolean)=>void|Promise<void>,private changed:()=>void){}
  private publish(patch:Partial<typeof this.state>){this.state={...this.state,...patch};this.changed();}
  recovery(){return this.active?.store?.recovery;}
  retire(notify=true){this.active=undefined;this.state={message:'',opening:true,conflict:false,savedText:'',consuming:false,error:false};if(notify)this.changed();}
@@ -30,15 +30,24 @@ export class AssistantDraftController {
     catch(error){if(this.active!==b)return;if(attempt===2)throw error;await new Promise(resolve=>setTimeout(resolve,attempt===0?150:600));if(this.active!==b)return;}
    }
    if(this.active!==b)return;
-   b.ready=true;
    if(this.text()!==initial||initial!==''){
+    b.ready=true;
     if(b.record&&b.record.text!==this.text()){b.failed=true;this.publish({opening:false,conflict:true,savedText:b.record.text,message:'A saved draft is available. Review both copies.'});return;}
     b.last=b.record?.text??'';this.publish({opening:false,message:''});this.edit(this.text());
    }else{
     // The in-flight message's text stays saved until dispatch settles; never offer it again meanwhile.
     const sending=this.held?.binding.key===key&&b.record?.text===this.held.text;
-    b.last=sending?'':b.record?.text??'';if(sending)this.held!.peer=b;
-    this.restore(b.last);this.publish({opening:false,message:b.last?'Draft restored locally. Review before sending.':''});
+    const restored=sending?'':b.record?.text??'';b.last=restored;if(sending)this.held!.peer=b;
+    // The UI may queue its state update. Keep writes paused until that commit;
+    // check the original visible text and binding again inside the UI updater.
+    await this.restore(restored,initial,()=>this.active===b);
+    if(this.active!==b)return;
+    b.ready=true;
+    const current=this.text();
+    if(current!==restored){
+     if(!sending&&b.record&&b.record.text!==current){b.failed=true;this.publish({opening:false,conflict:true,savedText:b.record.text,message:'A saved draft is available. Review both copies.'});return;}
+     b.last=restored;this.publish({opening:false,message:''});this.edit(current);
+    }else this.publish({opening:false,message:restored?'Draft restored locally. Review before sending.':''});
    }
   }catch{if(this.active===b){b.failed=true;this.publish({opening:false,conflict:false,error:true,message:'Local draft could not be read. Your current text is retained.'});}}
  }
