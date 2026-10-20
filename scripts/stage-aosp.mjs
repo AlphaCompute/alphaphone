@@ -1,3 +1,4 @@
+import { cuttlefishOptions, writeCuttlefishNatives } from './aosp-cuttlefish.mjs';
 import { verifyPixel10aSource, defaultLockPath } from './pixel10a-source-contract.mjs';
 import { pixel10aOptions, pixel10aProductProblems, writePixel10aProduct, PIXEL10A_PRODUCT } from './aosp-pixel10a.mjs';
 import { readReleaseSigner } from './build-android.mjs';
@@ -150,7 +151,7 @@ for (let i = 0; i < args.length; i++) {
     args[i + 1].startsWith("--")
   )
     throw new Error(
-      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--target pixel10a --factory-image FILE (--development | --production --descriptor FILE)] [--listener-apk FILE [--listener-descriptor FILE]]",
+      "Use --apk FILE --output NEW_DIR [--descriptor FILE [--production] | --development] [--apk-manifest FILE] [--aosp-source PATH] [--target cuttlefish | --target pixel10a --factory-image FILE (--development | --production --descriptor FILE)] [--listener-apk FILE [--listener-descriptor FILE]]",
     );
   i++;
 }
@@ -159,7 +160,8 @@ const development = args.includes("--development");
 // offer). It needs a reviewed descriptor and a distributable release, so it is
 // refused until a signed, PACKAGED, qualified release APK exists.
 const production = args.includes("--production");
-const physical = pixel10aOptions({target:get('--target'), development, production, source:get('--aosp-source'), factory:get('--factory-image')});
+const cuttlefish = cuttlefishOptions({target:get('--target'), source:get('--aosp-source'), factory:get('--factory-image')});
+const physical = pixel10aOptions({target:cuttlefish ? null : get('--target'), development, production, source:get('--aosp-source'), factory:get('--factory-image')});
 if (production && development) throw new Error("--production and --development are exclusive");
 // The product lock is checked before any source or APK is read: production never stages into an
 // unset product. Pixel 10a has its own production descriptor; the Cuttlefish product its own lock.
@@ -254,10 +256,10 @@ if (
 )
   throw new Error("Descriptor does not belong to this product");
 const destination = path.resolve(get("--output") || `artifacts/aosp/${identity.slug}-${hash.slice(0, 12)}`);
-if (physical && fs.existsSync(destination)) throw Error('Output already exists: ' + destination);
-if (physical) fs.mkdirSync(path.dirname(destination), {recursive:true});
-const temporary = physical ? fs.mkdtempSync(path.join(path.dirname(destination), '.pixel10a-stage-')) : null;
-const output = physical ? path.join(temporary, 'overlay') : destination;
+if ((physical || cuttlefish) && fs.existsSync(destination)) throw Error('Output already exists: ' + destination);
+if (physical || cuttlefish) fs.mkdirSync(path.dirname(destination), {recursive:true});
+const temporary = physical || cuttlefish ? fs.mkdtempSync(path.join(path.dirname(destination), physical ? '.pixel10a-stage-' : '.cuttlefish-stage-')) : null;
+const output = physical || cuttlefish ? path.join(temporary, 'overlay') : destination;
 try {
 execFileSync(
   "node",
@@ -321,8 +323,11 @@ if (listenerApk) {
   stageListener({ root: process.cwd(), output, apk: listenerApk, dump, signer: listenerSigner, launcherSigner: String(reviewed.certificateSha256 ?? "").toLowerCase(), appId: identity.appId });
   console.log(`Always-on listener staged: ${identity.appId}.sense (privileged, no network). Grants, indicator and invocation are image-boot evidence, not staging evidence.`);
 }
+if (cuttlefish) writeCuttlefishNatives({root:process.cwd(), output, apk, module:identity.moduleName});
 if (physical) {
   writePixel10aProduct({root:process.cwd(), output, apk, identity, sourceEvidence:physicalSource, production});
+}
+if (physical || cuttlefish) {
   if (fs.existsSync(destination)) throw Error('Output appeared during staging: ' + destination);
   fs.renameSync(output, destination);
 }
