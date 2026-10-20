@@ -76,8 +76,19 @@ test('a PACKAGED runtime lists Bun with its LGPL notice and every bundled agent 
   assert.equal(byName.hoisted.license, 'Apache-2.0');
   assert.match(byName.effect.text, /workflow worker/);
   assert.equal(entries.filter(entry => entry.name === 'zod').length, 1, 'deduplicated across bundles');
-  // Default source directory comes from the staged stamp.
-  assert.equal(runtimeEntries(root, templates, [], { agentDir: agent }).length, entries.length);
+  // Isolate the fixture from a real prepared SDK override in the validation environment.
+  const previousSource = process.env.ALPHA_LOCAL_AGENT_SOURCE_DIR;
+  try {
+    delete process.env.ALPHA_LOCAL_AGENT_SOURCE_DIR;
+    assert.equal(runtimeEntries(root, templates, [], { agentDir: agent }).length, entries.length, 'default source comes from the staged stamp');
+    const overridden = path.join(root, 'artifacts', 'custom-prepared-source');
+    fs.renameSync(source, overridden);
+    process.env.ALPHA_LOCAL_AGENT_SOURCE_DIR = overridden;
+    assert.equal(runtimeEntries(root, templates, [], { agentDir: agent }).length, entries.length, 'explicit source override works without the default source');
+  } finally {
+    if (previousSource === undefined) delete process.env.ALPHA_LOCAL_AGENT_SOURCE_DIR;
+    else process.env.ALPHA_LOCAL_AGENT_SOURCE_DIR = previousSource;
+  }
 });
 
 test('copyleft, unknown, undeclared and text-less runtime packages are listed and flagged, never an error', t => {
