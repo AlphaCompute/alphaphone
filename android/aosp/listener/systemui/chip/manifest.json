@@ -4,17 +4,17 @@
   "revision": "94b4c163b7dfe5ce3607f7bb8456f9573f7de57d",
   "baselineLockSha256": "2829fe087a13e946e27ecf7782948c454e991614d977b2a91a8a78d1791f40ce",
   "patch": "listening-chip.patch",
-  "patchSha256": "77f92a9b5d60a40241cd99c12283b7334cbd5565f1b6d22e7ef97875fcf8d133",
+  "patchSha256": "dd8aaf6ef95ed1a6e09d6c1926c63849dd06bb7a0cd35e5ff34d44d1fd747419",
   "files": [
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningPolicy.java",
       "beforeSha256": null,
-      "afterSha256": "36719ff97fe8cc689217fa4d3af4120307890e2397f8904004084358bb9fe989"
+      "afterSha256": "a823f902d469ba375ab1edccd301270cae1d2caa37dfe5ccb489e10ff0353de9"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningController.java",
       "beforeSha256": null,
-      "afterSha256": "f03fbf76893e30b1d071af019a0c724452d10a7d39f937e0276cea8628578e52"
+      "afterSha256": "938ad4482688c1b5877f00c1ca0ee7af19b01ac41f1aa6eb743eb507f97bab44"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningLease.java",
@@ -24,7 +24,7 @@
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipView.java",
       "beforeSha256": null,
-      "afterSha256": "751fbe988ac5b28535374942ca00daa0cfcb785315440c787e54747927b674ee"
+      "afterSha256": "6de1a1430014baff8ea916b3b6502a822cb0bf99989576c8575969b430c55a38"
     },
     {
       "path": "packages/SystemUI/src/com/android/systemui/privacy/AlphaListeningChipBinder.kt",

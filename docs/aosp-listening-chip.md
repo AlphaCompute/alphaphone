@@ -103,7 +103,7 @@ background executor:
 - `hiddenReason`: why the indicator is not shown (below), or `none`.
 
 Which views count depends on what SystemUI positively reports, not only on view
-measurement (`AlphaListeningPolicy.statusBarCounts`/`keyguardCounts`/`shadeCounts`):
+measurement (`AlphaListeningPolicy.statusBarCounts`/`keyguardCounts` and the dedicated shade surface):
 
 - **Lock screen and AOD.** The keyguard indication-area chip (created in code by
   `DefaultIndicationAreaSection`) counts while `KeyguardStateController.isShowing()`
@@ -118,10 +118,20 @@ measurement (`AlphaListeningPolicy.statusBarCounts`/`keyguardCounts`/`shadeCount
   without `WindowInsets.Type.statusBars()` on the default display), with
   `showTransient`/`abortTransient` for a swipe reveal. A hidden status bar counts
   as not visible even though its views still measure visible.
-- **Expanded shade.** `StatusBarStateController.isExpanded()` covers both chips.
-  It counts only when SystemUI's `NotificationListener` holds the verified
-  listener's ongoing indicator notification (its UID and package, id 1, channel
-  `listening-indicator`), which the expanded shade shows. Otherwise it is hidden.
+- **Expanded shade and QS.** A dedicated, non-scrolling Listening/Pause chip is
+  attached to the common `WindowRootView`, outside both notification rows and QS.
+  Active notifications are Pause capabilities only; their existence is not visibility
+  evidence. The chip uses system-bar/cutout insets and a minimum 48 dp touch target.
+  Before drawing it is ordered above later Compose children, with matching maximum
+  sibling elevation; reordering cancels that frame. Lease acknowledgement independently
+  checks current ordering, attachment, window focus, root insets and measured visibility.
+  Scene teardown removes the chip; the next attached frame restores it. Root attachment
+  renews the pre-draw observer. No full-screen touch interceptor is installed.
+  Keyguard, occlusion, bouncer, unlock transition, doze, dreaming and communal states
+  suppress this shade surface. Existing keyguard/AOD surfaces retain their own contract.
+  A missing, clipped or covered chip cannot be rescued by an active notification.
+  These are source and host-test guarantees, not evidence of a compiled or booted
+  SystemUI; actual QS, touch, rotation and security-window acceptance remains required.
 
 Shade, doze, keyguard, display and system-bar callbacks trigger an immediate
 acknowledgement.
@@ -160,14 +170,14 @@ from what it positively knows. The reasons, in order:
 | Display fully off (`display_off`) | `PAUSED_DISPLAY_OFF` | "Paused — screen off without Always-on display" |
 | Dozing, AOD not showing the chip (`aod`) | `PAUSED_DISPLAY_OFF` | same; the notification asks for Always-on display |
 | Hidden within 1 s (`TRANSITION_DEBOUNCE_MS`) of a reported keyguard, doze, status-bar-state or display change (`transition`) | `PAUSED_TRANSITION` | "Paused while the screen changes" |
-| Shade expanded without the listening notification (`shade`) | `PAUSED_SHADE` | "Paused while the notification shade is open" |
+| Shade expanded without the measured indicator (`shade`) | `PAUSED_SHADE` | "Paused while the notification shade is open" |
 | An app hid the unlocked status bar (`fullscreen`) | `PAUSED_FULLSCREEN` | "Paused while an app is fullscreen" |
 
 Any explained pause releases the microphone (`AudioRecord` stopped and released;
 no frame or utterance is analysed). It is not latched. Explained reports prove
 SystemUI is alive and extend the lease. Capture resumes by itself only on a fresh
 acknowledgement of a visible surface: the AOD or lock-screen chip, the status bar,
-or the shade showing the listening notification. With AOD showing the chip,
+or the shade showing its measured dedicated chip. With AOD showing the chip,
 listening simply continues with the screen off.
 
 **Unexplained losses** latch `STOPPED_INDICATOR_LOST`, both while capturing and
@@ -238,8 +248,7 @@ SystemUI lease client against the listener's real `IndicatorLease` rules (renewa
 hidden chip/surface, hang, binder death, identity loss, provider substitution,
 unavailable provider, display off/AOD, fullscreen and shade pause and resume) and the controller's
 acknowledgement composition (`SystemUiAcknowledgementTest`: unlocked status bar,
-immersive with transient reveal, expanded shade with and without the verified
-notification, lock-screen transition debounce, lock screen, AOD with and without
+immersive with transient reveal, expanded shade with and without its measured dedicated chip, lock-screen transition debounce, lock screen, AOD with and without
 the chip, display off, unknown state, detached chip, and the reason each report
 carries). It also checks that the exact patch creates the staged chip
 sources byte for byte. These stubs mirror reviewed signatures; they are **not**
