@@ -72,6 +72,7 @@ test('actual Maps UI refuses an aged reroute callback and preserves the exact ac
   assert.equal(f.render().dr.nav.canReroute,false);
   assert.match(f.render().nativeStatus,/current route was kept/);
   f.emit(f.fix());
+  assert.equal(f.requests.length,1,'fresh GPS does not reroute automatically');
   f.render().dr.nav.reroute();
   await new Promise(resolve=>setImmediate(resolve));
   assert.equal(f.requests.length,2);
@@ -103,6 +104,6 @@ test('approximate or inaccurate updates invalidate an older precise fix without 
 test('shared navigation predicate rejects malformed, stale, future and approximate positions',()=>{
  const now=100_000, fix={timestamp:now,accuracyMeters:8,precision:'precise'};
  assert.equal(usableNavigationFix(fix,now),true);
- for(const changes of [{timestamp:now-30_001},{timestamp:now+5_001},{timestamp:NaN},{accuracyMeters:NaN},{accuracyMeters:-1},{accuracyMeters:51},{precision:'approximate'}])
+ for(const changes of [{timestamp:now-30_001},{timestamp:now+5_001},{timestamp:NaN},{accuracyMeters:NaN},{accuracyMeters:-1},{accuracyMeters:51},{precision:'approximate'},{precision:'unknown'},{precision:undefined}])
   assert.equal(usableNavigationFix({...fix,...changes},now),false);
 });
