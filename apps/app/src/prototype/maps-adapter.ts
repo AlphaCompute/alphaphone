@@ -1,3 +1,4 @@
+import { usableNavigationFix } from '../maps/navigation-fix';
 import {distanceToRoute,routeProgress} from '../maps/route-distance';
 import {atStep,guidanceView} from '../maps/guidance';
 import {BackgroundNavigation,type NavigationBridge} from '../maps/background-navigation';
@@ -172,6 +173,7 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
   /** "Reroute from here": replans the active session from a device coordinate; the session is kept. */
   function rerouteFrom(from: Coordinate): Promise<void>|undefined {
     if(!navigating||rerouting)return undefined;
+    if(!usableNavigationFix(navFix)){message='A fresh, precise location fix is needed to reroute. The current route was kept.';navigationVoice.pause();invalidate();return undefined;}
     rerouting=true;rerouteCleared=false;offRoute=false;navigationVoice.pause();originText=coordLabel(from);message='Planning a new route from here…';
     const pending=ensure().reroute(from);invalidate();return pending;
   }
@@ -358,9 +360,9 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
       const onFix=(fix:Position)=>{
         if(!navigating)return;
         const current=state?.route.phase==='ready'?state.route.value:null;
+        if(!usableNavigationFix(fix)){navFix=undefined;navigationVoice.pause();message='A fresh, precise location fix is needed for turn guidance.';invalidate();return;}
         if(rerouting||!current){navFix=fix;invalidate();return;}
         if(current.id!==navRouteId){void stopGuidance().catch(()=>{});invalidate();return;}
-        if(fix.accuracyMeters>50){navigationVoice.pause();message='Location is too approximate for turn guidance.';invalidate();return;}
         navFix=fix;navDistance=distance(fix.coordinate,current.to);arrived=navDistance<25&&fix.accuracyMeters<=30;
         if(arrived){navigationVoice.pause();message='Destination reached.';offRoute=false;void navigationLocation.stop();void background.stop();backgroundRunning=false;}
         else{
@@ -392,7 +394,7 @@ export function installPrototypeMapsAdapter(Component: { prototype: Bag }, views
        },
        nav:{going:!arrived,arrived,dist:arrived?'Arrived':view?view.distance:rerouting?'Rerouting…':'Locating…',street:arrived?selected.label:view?view.instruction:rerouting?'Planning a new route from here':'Waiting for location',icon:view?.icon||PIN,hasThen:!!view?.hasThen,thenD:view?.thenIcon||'',thenText:view?.thenText||'',
         left:arrived?'Arrived':view?view.remainingTime:'Guidance',meta:arrived?'Destination reached':view?view.remaining:backgroundRunning?'Continues with the screen off':'Foreground guidance',remaining:view?.remaining||'',
-        offRoute,canReroute:offRoute&&!!navFix&&!rerouting,reroute,rerouteLabel:'Reroute from here',background:backgroundRunning,
+        offRoute,canReroute:offRoute&&usableNavigationFix(navFix)&&!rerouting,reroute,rerouteLabel:'Reroute from here',background:backgroundRunning,
         end,ask:()=>currentApi.send('Help me with this route.'),voiceLabel:navigationVoice.enabled?'Mute voice guidance':'Enable voice guidance',voice:()=>{navigationVoice.toggle();invalidate();},voiceD:PIN}};
     }
     const eventOrigin=mapsEventReturnOffered(st.fromEvent,currentApi.S.stack,navigating);
