@@ -12,7 +12,7 @@ const EMPTY: Record<View, RegExp> = {
   Inbox: /Connect Eliza Cloud to use Gmail/,
   Calendar: /No visible events|Nothing scheduled/,
   Browser: /No open pages|New tab/,
-  Camera: /Camera unavailable\. Tap the shutter to retry\./,
+  Camera: /^Camera unavailable$/,
   Photos: /^No photos$/,
   Maps: /Add a location/,
   Notes: /No notes yet/,
@@ -72,6 +72,11 @@ for (const theme of ['light', 'dark'] as const) for (const view of VIEWS) {
     // One fresh profile covers the same root's content, landmark and focus.
     if (view !== 'Camera') await themeIsApplied(surface, theme);
     await expect(surface.getByText(EMPTY[view]).first()).toBeVisible();
+    if (view === 'Camera') {
+      const recovery = surface.getByRole('alert', { name: 'Camera unavailable', exact: true });
+      await expect(recovery).toBeVisible();
+      await expect(recovery.getByRole('button', { name: 'Try again', exact: true })).toBeEnabled();
+    }
     const text = await surface.innerText();
     for (const fixture of FIXTURE) expect(text, `${view} renders fixture ${fixture}`).not.toMatch(fixture);
     const name = view === 'Reminders' ? /Reminders|Calendar/ : new RegExp(view);
