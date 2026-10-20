@@ -91,6 +91,14 @@ as `name@version` and queries the npm bulk advisory endpoint:
 - with `--notices <third-party-notices.json>`, from the npm entries of
   `generate-licenses.mjs --packaged-runtime` notices, exactly what one staged payload ships.
 
+Run `node scripts/dependency-audit.mjs --resident --notices <third-party-notices.json>`
+without `--write` to audit a fresh staged payload. This subset audit requires each finding
+to have an applicable, unexpired reviewed **shipped** exception; shipped high or critical
+findings require an upstream fix. Exceptions for packages absent from the subset are
+checked by the separate full-lock audit, not reported as stale by the subset audit.
+The full-lock audit retains its stale-exception checks and canonical snapshot.
+A packaged audit does not establish device or release qualification.
+
 The result is stored under `resident` in `docs/dependency-audit.snapshot.json`, bound to the
 `upstream.lock.json` commit and to a hash of the input. Its dispositions go under `resident`
 in `docs/dependency-audit.dispositions.json` with the commit they were reviewed at, using the
