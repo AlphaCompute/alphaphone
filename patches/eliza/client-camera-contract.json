@@ -1,5 +1,5 @@
 {
-  "baseCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
+  "baseCommit": "c6ef98c1a14d35b32ce26fc0c2654ec5edf2ed86",
   "path": "plugins/plugin-assistant/src/services/device-actions/camera-contract.ts",
   "sha256": "f6fc229c9d49ba0dce1a4127997ecf8e67e7bd911fad7fb844526a16da8f8f24"
 }
