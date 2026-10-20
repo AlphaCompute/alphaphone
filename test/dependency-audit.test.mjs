@@ -189,6 +189,34 @@ test('resident dispositions are bound to the commit and must cover every residen
   assert.ok(checkResident({snapshot: {...resident, findings: []}, dispositions: reviewed, commit, today}).some(problem => problem.includes('stale resident exception')));
 });
 
+test('packaged resident audit checks shipped findings without invalidating absent lock-wide exceptions', () => {
+  const commit = 'a'.repeat(40);
+  const finding = {package: 'uuid', versions: ['8.3.2'], severity: 'moderate', advisory: {id: 'GHSA-aaaa-aaaa-aaaa'}};
+  const snapshot = {upstreamCommit: commit, input: 'packaged-runtime notices', auditedOn: today, findings: [finding]};
+  const shipped = {advisory: finding.advisory.id, packages: ['uuid'], severity: 'moderate', ships: true,
+    reachability: 'Only v4 without caller-supplied buffer', justification: 'Reviewed shipped consumer call sites',
+    removeWhen: 'Upstream updates uuid', reviewedBy: 'reviewer', reviewedOn: today, reviewBy: '2026-12-01'};
+  const absent = {...shipped, advisory: 'GHSA-bbbb-bbbb-bbbb', packages: ['undici'], ships: false};
+  const check = (row = shipped, snap = snapshot, date = today) => checkResident({snapshot: snap,
+    dispositions: {resident: {upstreamCommit: commit, exceptions: [row, absent]}}, commit, today: date});
+  assert.deepEqual(check(), []);
+  assert.ok(check(shipped, {...snapshot, input: UPSTREAM_BUN_LOCK}).some(p => p.includes('stale resident exception GHSA-bbbb')));
+  assert.deepEqual(check(shipped, {...snapshot, findings: []}), []);
+  assert.ok(check({...shipped, ships: false}).some(p => p.includes('lacks a reviewed shipped exception')));
+  assert.ok(check({...shipped, packages: ['other']}).some(p => p.startsWith('Unrecorded resident advisory')));
+  assert.ok(check({...shipped, severity: 'low'}).some(p => p.includes('severity rose')));
+  assert.ok(check(shipped, snapshot, '2099-01-01').some(p => p.includes('expired on')));
+  assert.ok(check({...shipped, reviewBy: 'invalid'}).some(p => p.includes('must be YYYY-MM-DD')));
+  assert.ok(check({...shipped, reviewBy: '2028-12-01'}).some(p => p.includes('reviewBy must fall within')));
+  for (const field of ['reachability', 'justification', 'removeWhen', 'reviewedBy']) {
+    assert.ok(check({...shipped, [field]: ''}).some(p => p.includes(`missing ${field}`)));
+  }
+  for (const severity of ['high', 'critical']) {
+    assert.ok(check({...shipped, severity}, {...snapshot, findings: [{...finding, severity}]}).some(p => p.includes('require an upstream fix')));
+  }
+  assert.ok(check(shipped, {...snapshot, upstreamCommit: 'c'.repeat(40)}).some(p => p.includes('but upstream.lock.json pins')));
+});
+
 test('the committed resident snapshot is dispositioned except the shipped advisories pending an upstream fix', () => {
   // Every resident problem must be an unrecorded advisory that the review listed under
   // resident.pendingUpstreamFixes (shipped, deliberately without an exception). A new advisory, a
