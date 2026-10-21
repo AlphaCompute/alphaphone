@@ -472,7 +472,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const native=Capacitor.isNativePlatform(), provider=facts.passwordProvider||{};
         const installation:Bag={installed:'Installed · publisher verified',disabled:'Installed but disabled',absent:'Not installed','unrecognized-publisher':'Installed · publisher not recognized',unknown:'Not checked'};
         const selection:Bag={proton:provider.installation==='installed'?'Proton Pass selected':provider.installation==='disabled'?'Proton Pass selected · app disabled':'Provider package selected · publisher not verified',other:'Another provider selected',none:'No provider selected',unknown:'Selection unavailable'};
-        const action=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
+        const passwordAction=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
           if(passwordOpening)return;passwordOpening=true;const instance=owner;changed();
           try{const result=await device.openPasswordProvider({action:kind});if(result?.status!=='opened')throw Error('Unconfirmed provider handoff');if(owner===instance&&result.destination!=='development')api.toast(result.destination==='system-settings'?'Opened Android settings. Search for passwords or autofill, then choose your provider.':'Opened provider setup. Complete or cancel there; no change is confirmed yet.');}
           catch{if(owner===instance)api.toast('Password provider setup is unavailable. No provider change is confirmed.');}
@@ -482,15 +482,15 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Provider',provider.installation==='installed'?'Development provider installed':'Not installed'),
           info('Selection',provider.selection==='proton'?'Development provider selected':'No provider selected'),
           info('Autofill','Sample sign-in in the development vault'),
-          action('Choose password provider','settings'),
-          provider.installation==='installed'?action('Open development vault','open'):action('Add development provider','install'),
+          passwordAction('Choose password provider','settings'),
+          provider.installation==='installed'?passwordAction('Open development vault','open'):passwordAction('Add development provider','install'),
         ]:[
           info('Proton Pass',native?(installation[provider.installation]||'Status unavailable'):'Managed by your browser and operating system'),
           info('Selection',native?(selection[provider.selection]||'Selection unavailable'):'Native provider status is unavailable here'),
           info('Autofill',native?(provider.support==='available'?'Available on this device':provider.support==='unavailable'?'Unavailable for this device or user':'Availability not checked'):'Use your browser’s password settings'),
           info('Vault','Confirm unlock, saved passwords and filling in your provider.'),
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
-          ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
+          ...(native?[passwordAction('Choose password provider in Android','settings'),...(provider.installation==='installed'?[passwordAction('Open Proton Pass','open')]:provider.installation==='absent'?[passwordAction('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
         if(native){
           const photoAction=(label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
