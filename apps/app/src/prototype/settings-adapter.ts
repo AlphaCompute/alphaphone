@@ -554,7 +554,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
             const actions:Bag[]=plan.signedIn?[
               ...(plan.keyExpiring?[{kNav:true,label:'Approve this phone again',lbl:'Approve this phone again',chev:true,noAB:true,go:()=>void connectionController.residentCloudLogin()}]:[]),
-              {kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()},
+              ...(connection.residentSubscription?.kind!=='credits'?[{kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()}]:[]),
               {kNav:true,label:'Manage plan',lbl:'Manage plan',chev:true,noAB:true,go:()=>void connectionController.residentManagePlan()},
               {kNav:true,label:'Sign out',lbl:'Sign out of Eliza Cloud',chev:true,noAB:true,go:()=>void connectionController.cloudSignOut()},
             ]:plan.offline?[{kNav:true,label:'Check plan again',lbl:'Check plan again',chev:true,noAB:true,go:()=>connectionController.recheckPlanOnReturn()}]

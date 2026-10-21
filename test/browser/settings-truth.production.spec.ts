@@ -6,10 +6,11 @@ import {test,expect,type Page} from '@playwright/test';
 test.describe.configure({timeout:240_000});
 test.beforeEach(async({},testInfo)=>{test.skip(testInfo.project.name!=='production','Production lane only (flag-off build)');});
 
-type Fixture={snapshot?:Record<string,unknown>;drop?:string[]};
+type Fixture={snapshot?:Record<string,unknown>;drop?:string[];subscription?:'credits'|'active'|'canceled'};
 async function nativeStub(page:Page,fixture:Fixture={}){
- await page.addInitScript(({snapshot,drop})=>{
+ await page.addInitScript(({snapshot,drop,subscription})=>{
   const w=window as any;w.androidBridge={};
+  if(subscription)localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));
   const now=Date.now(),store=new Map<string,string>();
   // A signed-in phone whose plan was verified recently, started offline: the plan gate keeps local apps
   // and Settings available (Cloud is unreachable, so no agent starts). Synthetic sign-in, not a real key.
@@ -35,7 +36,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
         { name: 'AlphaDeletions', methods: methods(['pending']) },
     {name:'AlphaNotifications',methods:methods(['pendingWorkflowTap','status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
-    {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus'])},
+    {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus','configureCloudProvider','clearProvider','request'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','request','cancel','addListener','removeListener'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'ElizaSystem',methods:methods(['getStatus','requestRole','getDeviceSettings','setFlashlight'])},
@@ -57,13 +58,23 @@ async function nativeStub(page:Page,fixture:Fixture={}){
      return {};
     }
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
-    if(plugin==='Agent')return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+    if(plugin==='Agent'){
+     if(subscription&&method==='request'){const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';return {status:200,body:JSON.stringify(input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{} )};}
+     return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+    }
     if(plugin==='AlphaConnection'){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
      if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
-     // No network in this fixture: every Cloud request fails before an answer.
-     if(method==='request')throw Error('Connection request failed');
+     // Default fixture is offline; subscription cases return only the finite responses below.
+     if(method==='request'){
+      if(!subscription)throw Error('Connection request failed');
+      const path=new URL(input.url).pathname;
+      if(path==='/api/v1/user')return {status:200,data:{success:true,data:{id:'9f1dc45a-4011-4e44-947a-30d999d24fa5',email:'synthetic-settings@example.invalid'}}};
+      if(path==='/api/v1/subscription/entitlement')return {status:404,data:{}};
+      if(path==='/api/v1/billing/limits')return {status:200,data:{success:true,data:{schemaVersion:2,v2:{subscription:subscription==='credits'?{status:'not_applicable',reason:'no_organization_subscription'}:{status:'available',value:{planKey:'plus_monthly',state:subscription,currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}}}}};
+      return {status:404,data:{}};
+     }
      return {};
     }
     if(plugin==='DeviceApps')return {launcher:true,version:'0.1.0'};
@@ -86,7 +97,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
   };
- },{snapshot:fixture.snapshot??{},drop:fixture.drop??[]});
+ },{snapshot:fixture.snapshot??{},drop:fixture.drop??[],subscription:fixture.subscription});
 }
 const app=(page:Page)=>page.locator('[data-alpha-layer="app"]');
 const current=(page:Page)=>page.locator('[data-settings-page]:not([inert])').last();
@@ -411,6 +422,27 @@ test('Settings › Eliza Cloud account & plan reports the offline plan state and
  await plan.getByRole('button',{name:'Check plan again',exact:true}).click();
  await expect(page.locator('.alpha-connection-scrim')).toBeVisible();
  await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request').length)).toBeGreaterThan(1);
+});
+
+for(const subscription of ['credits','active','canceled'] as const)test(`Settings redemption matches ${subscription} account controls`,async({page})=>{
+ await nativeStub(page,{subscription});
+ await page.goto('/');
+ // The existing inactive-account gate is closed normally; admission remains unchanged.
+ if(subscription==='canceled'){await expect(page.getByRole('dialog',{name:'Your agent',exact:true})).toBeVisible();await page.getByRole('button',{name:'Close connection settings',exact:true}).click();}
+ await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await current(page).getByRole('button',{name:/Eliza Cloud account & plan/}).click();
+ const plan=current(page),redeem=plan.getByRole('button',{name:'Redeem code',exact:true});
+ if(subscription==='credits'){
+  await expect(plan.getByText('Eliza Cloud credits',{exact:true})).toBeVisible();
+  await expect(redeem).toHaveCount(0);
+  await expect(plan.getByRole('button',{name:'Manage plan',exact:true})).toBeVisible();
+ }else{
+  await expect(redeem).toBeVisible();await redeem.click();
+  await expect(page.getByLabel('Subscription code',{exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Eliza Cloud account & plan',exact:true}).getByRole('button',{name:'Redeem code',exact:true})).toBeVisible();
+ }
+ expect(await page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request'&&new URL(c.input.url).pathname==='/api/v1/subscription/redeem').length)).toBe(0);
 });
 
 test('the flag-off Problem log renders and exports finite inference facts without provider content',async({page})=>{
