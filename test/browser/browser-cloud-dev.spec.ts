@@ -20,7 +20,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   if(path==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:organizationId,email:'owned@example.invalid'}});
   if(path==='/api/v1/billing/limits')return Response.json({success:true,data:{v2:{subscription:{status:'available',value:{planKey:'plus_monthly',state:'active'}}}}});
   if(path==='/api/v1/eliza/google/accounts')return Response.json([]);
-  if(path==='/api/v1/voice/stt'){expect(input.body).toBeInstanceOf(FormData);expect((input.body as FormData).get('audio')).toBeInstanceOf(File);return Response.json({transcript:'Closed fixture transcript'});}
+  if(path==='/api/v1/voice/stt'){expect(input.body).toBeInstanceOf(FormData);expect((input.body as FormData).get('audio')).toBeInstanceOf(File);expect((input.body as FormData).get('provider')).toBe('cartesia');return Response.json({transcript:'Closed fixture transcript'},{headers:{'X-Eliza-STT-Provider':'cartesia'}});}
   if(path==='/api/v1/voice/tts'){expect(JSON.parse(String(input.body))).toEqual({text:'Closed fixture text',format:'mp3'});return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/mpeg'}});}
   throw Error('Unexpected closed fixture Cloud route');
  }});
