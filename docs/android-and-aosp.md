@@ -241,8 +241,9 @@ The approved physical target is **Pixel 10a (stallion), Android 17**. The
 [Pixel 10a source contract](pixel10a-source-contract.md) records the exact AOSP manifest,
 device-tool revisions, factory archive, kernel and generated vendor inputs of the inspected
 development baseline. Licensed binaries stay outside Git. The owner has built a development
-AOSP image for stallion from these inputs on the separate image host; that is development
-image evidence at an older app pin, not a release-signed or current-app image. The former
+AOSP image for stallion from these inputs. The [October 19 code6 evidence](pixel10a-code6-boot-evidence.md)
+records a verified Cloud-profile image and initial physical boot at the exact e240 Alpha
+commit and 0296 Eliza pin; it does not qualify a production release or device integrations. The former
 all-UNSET Pixel 10 placeholder lock is retired. Production staging uses
 `android/aosp/pixel10a-product.json` and refuses while its release inputs are unset
 ([Pixel 10a staging](pixel10a-staging.md)). Cuttlefish boot, source-input verification, a
@@ -374,10 +375,10 @@ node scripts/verify-cuttlefish-launcher.mjs --serial 127.0.0.1:6520 --user 0 \
 ```
 
 This makes no device changes. It requires a booted Cuttlefish image, the selected
-foreground unlocked user, enforcing SELinux, exact system APK bytes, Alpha HOME,
+foreground user in Android’s `RUNNING_UNLOCKED` lifecycle state, enforcing SELinux, exact system APK bytes, Alpha HOME,
 an enabled system recovery HOME, DeskClock handlers and a current WebView provider.
 A data-installed override, wrong image or APK, missing recovery launcher, or a reboot
-or replacement during observation fails. Keep the descriptor from staging rather
+or replacement during observation fails. HOME, SELinux and user running state are checked again before reporting success. These are sequential observations, not an atomic device snapshot; `RUNNING_UNLOCKED` does not prove the keyguard is dismissed. Keep the descriptor from staging rather
 than creating the expected hash from whatever happens to be installed. The reported
 certificate is inherited from that descriptor via identical APK bytes, not a fresh
 signature check. The output file must be new; failures are retained too.

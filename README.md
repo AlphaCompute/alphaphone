@@ -463,6 +463,9 @@ UI, process-death or physical-device acceptance.
 
 ## AOSP integration
 
+The explicit [Cuttlefish x86_64 staging lane](docs/aosp-cuttlefish-native-staging.md)
+installs the resident JNI files and executable modes required by a system APK.
+
 ```sh
 npm run aosp:stage -- --apk artifacts/launcher-debug.apk --development
 ```

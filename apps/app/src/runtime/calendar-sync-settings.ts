@@ -1,4 +1,5 @@
 import { calendarSyncHost } from "./calendar-sync-host";
+import { googleConnectionController } from "./google-connection-ui";
 import { holdPhoneInert } from "./modal-inert";
 import type { CalendarSyncReview } from "./calendar-sync-controller";
 /** Explicit destination review. Opening Settings does not enable sync or dispatch provider writes. */
@@ -28,11 +29,13 @@ export function openCalendarSyncSettings() {
 	summary.textContent = "Sync stays off until you review and enable it.";
 	const details = document.createElement("p");
 	const footer = document.createElement("footer");
-	const reviewButton = document.createElement("button"),
+	const chooseCalendar = document.createElement("button"),
+		reviewButton = document.createElement("button"),
 		enable = document.createElement("button"),
 		sync = document.createElement("button"),
 		pause = document.createElement("button"),
 		close = document.createElement("button");
+	chooseCalendar.textContent = "Choose Google calendar";
 	reviewButton.textContent = "Review sync";
 	enable.textContent = "Enable sync";
  enable.style.cssText="background:var(--acc,#0000ff);color:#fff";
@@ -42,7 +45,7 @@ export function openCalendarSyncSettings() {
 	close.textContent = "Close";
 	const primary = document.createElement("div");
 	primary.style.cssText = "display:flex;flex-wrap:wrap;gap:8px";
-	primary.append(reviewButton, enable, sync, pause);
+	primary.append(chooseCalendar, reviewButton, enable, sync, pause);
 	content.append(title, description, summary, details, primary);
 	footer.append(close);
 	dialog.append(content, footer);
@@ -58,6 +61,8 @@ export function openCalendarSyncSettings() {
 		const destination = calendarSyncHost.destination();
 		if (state.enabled && destination.account && destination.calendar)
 			details.textContent = `Google account: ${destination.account}. Calendar: ${destination.calendar}. Only linked Alpha events sync. Existing Google events are not imported or overwritten.`;
+		chooseCalendar.disabled = busy || state.running;
+		chooseCalendar.hidden = state.enabled;
 		reviewButton.disabled = busy || state.running;
 		enable.disabled = busy || state.running || !review;
 		sync.disabled = busy || state.running || !state.enabled;
@@ -102,6 +107,11 @@ export function openCalendarSyncSettings() {
 			busy = false;
 			update();
 		}
+	};
+	chooseCalendar.onclick = () => {
+		if (busy || calendarSyncHost.snapshot().running) return;
+		finish();
+		googleConnectionController.open();
 	};
 	reviewButton.onclick = () =>
 		void run(async () => {

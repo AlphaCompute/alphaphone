@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage ARM64 JNI files for an already admitted Pixel system APK."""
+"""Stage ABI-bound JNI files for an already admitted Alpha system APK."""
 import argparse
 import hashlib
 import json
@@ -23,6 +23,16 @@ RUNTIME_ASSETS = {
     'libeliza_gcc_s.so': 'libgcc_s.so.1',
     'libsigsys-handler.so': 'libsigsys-handler.so',
 }
+# Explicit image targets, never infer the installation ABI from a fat APK.
+TARGETS = {
+    'stallion': {'abi': 'arm64-v8a', 'arch': 'arm64', 'bunArch': 'aarch64', 'machine': b'\xb7\x00',
+                 'modes': RUNTIME_MODES, 'assets': RUNTIME_ASSETS},
+    'cuttlefish': {'abi': 'x86_64', 'arch': 'x86_64', 'bunArch': 'x64', 'machine': b'\x3e\x00',
+                  'modes': {n.replace('aarch64', 'x86_64'): m for n, m in RUNTIME_MODES.items()},
+                  'assets': {n.replace('aarch64', 'x86_64'): a.replace('aarch64', 'x86_64')
+                             for n, a in RUNTIME_ASSETS.items()}},
+}
+
 CLOUD_OMITTED_MODEL = {
     'path': 'assets/agent/models/bge-small-en-v1.5-f16.gguf',
     'sha256': 'f0b2fef971e8366438bfd2d9aefea1b0115919389448806d290237f638bae999',
@@ -86,9 +96,11 @@ def runtime_profile(archive):
     return kind
 
 
-def verify_runtime(archive, runtime_names, profile='native'):
-    if runtime_names != set(RUNTIME_MODES):
-        raise ValueError('Incomplete or unknown ARM64 resident runtime')
+def verify_runtime(archive, runtime_names, profile='native', target='stallion'):
+    config = TARGETS[target]
+    abi, modes, assets = config['abi'], config['modes'], config['assets']
+    if runtime_names != set(modes):
+        raise ValueError('Incomplete or unknown ' + abi + ' resident runtime')
     provenance = read_json(archive, 'assets/agent/android-agent-runtime-provenance.json')
     if provenance.get('schema') != 'eliza.android_agent_runtime_provenance.v1':
         raise ValueError('Unknown runtime provenance schema')
@@ -116,26 +128,26 @@ def verify_runtime(archive, runtime_names, profile='native'):
             if sha_stream(stream) != expected:
                 raise ValueError('Runtime hash mismatch: ' + name)
     required = {*('assets/agent/' + n for n in REQUIRED_AGENT_ASSETS),
-                *('lib/arm64-v8a/' + n for n in RUNTIME_MODES),
-                *('assets/agent/arm64-v8a/' + n for n in RUNTIME_ASSETS.values())}
+                *('lib/' + abi + '/' + n for n in modes),
+                *('assets/agent/' + abi + '/' + n for n in assets.values())}
     if not required <= seen:
         raise ValueError('Runtime provenance omits required files')
     indexed = {item['path']: item for item in records}
-    stdcpp = [n for n in seen if re.fullmatch(r'assets/agent/arm64-v8a/libstdc\+\+\.so\.6\.[0-9.]+', n)]
+    stdcpp = [n for n in seen if re.fullmatch(rf'assets/agent/{re.escape(abi)}/libstdc\+\+\.so\.6\.[0-9.]+', n)]
     if len(stdcpp) != 1:
-        raise ValueError('Expected exactly one ARM64 libstdc++ asset')
-    counterparts = {**{n: 'assets/agent/arm64-v8a/' + p for n, p in RUNTIME_ASSETS.items()},
+        raise ValueError('Expected exactly one ' + abi + ' libstdc++ asset')
+    counterparts = {**{n: 'assets/agent/' + abi + '/' + p for n, p in assets.items()},
                     'libeliza_stdcpp.so': stdcpp[0]}
     for name, asset in counterparts.items():
-        if indexed['lib/arm64-v8a/' + name]['sha256'] != indexed[asset]['sha256']:
+        if indexed['lib/' + abi + '/' + name]['sha256'] != indexed[asset]['sha256']:
             raise ValueError('JNI and asset runtime copies differ: ' + name)
     bun_lock = json.loads((ROOT / 'vendor/eliza/packages/app/scripts/lib/android-bun-artifacts.lock.json').read_text())['channels']['stable']
     bun = provenance.get('bun', {})
     if any(bun.get(k) != bun_lock[k] for k in ('version', 'revision')) or bun.get('channel') != 'stable':
         raise ValueError('Runtime Bun identity differs from pinned stable release')
-    bun_record = next(item for item in records if item['path'] == 'lib/arm64-v8a/libeliza_bun.so')
-    if bun_record['sha256'] != bun_lock['artifacts']['aarch64']['binarySha256']:
-        raise ValueError('Packaged ARM64 Bun differs from pinned binary')
+    bun_record = next(item for item in records if item['path'] == 'lib/' + abi + '/libeliza_bun.so')
+    if bun_record['sha256'] != bun_lock['artifacts'][config['bunArch']]['binarySha256']:
+        raise ValueError('Packaged ' + abi + ' Bun differs from pinned binary')
     stamp_path = 'assets/agent/alpha-source.json'
     stamp = read_json(archive, stamp_path)
     lock_bytes = (ROOT / 'upstream.lock.json').read_bytes()
@@ -195,8 +207,11 @@ def verify_runtime(archive, runtime_names, profile='native'):
 
 
 def stage(apk, output, module, target='stallion'):
-    if target != 'stallion':
-        raise ValueError('Unsupported Pixel target')
+    if target not in TARGETS:
+        raise ValueError('Unsupported Alpha image target')
+    config = TARGETS[target]
+    abi, arch, modes = config['abi'], config['arch'], config['modes']
+    prefix = 'lib/' + abi + '/'
     if not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', module):
         raise ValueError('Invalid module name')
     with zipfile.ZipFile(apk) as archive:
@@ -204,22 +219,22 @@ def stage(apk, output, module, target='stallion'):
         if len(names) != len(set(names)):
             raise ValueError('Duplicate APK entries')
         profile = runtime_profile(archive)
-        selected = [e for e in archive.infolist() if e.filename.startswith('lib/arm64-v8a/')]
+        selected = [e for e in archive.infolist() if e.filename.startswith(prefix)]
         payloads = []
         for entry in selected:
-            name = entry.filename.removeprefix('lib/arm64-v8a/')
+            name = entry.filename.removeprefix(prefix)
             if not re.fullmatch(r'lib[A-Za-z0-9_.+-]+\.so', name):
                 raise ValueError('Unexpected native path: ' + entry.filename)
             if entry.compress_type != zipfile.ZIP_STORED or entry.file_size > 1024 ** 3:
                 raise ValueError('Native library is compressed or oversized: ' + name)
             data = archive.read(entry)
-            if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or data[18:20] != b'\xb7\x00':
-                raise ValueError('Expected little-endian ELF64 AArch64: ' + name)
+            if len(data) < 64 or data[:6] != b'\x7fELF\x02\x01' or data[18:20] != config['machine']:
+                raise ValueError('Expected little-endian ELF64 ' + abi + ': ' + name)
             payloads.append((name, data))
         if not payloads:
-            raise ValueError('No ARM64 native libraries')
+            raise ValueError('No ' + abi + ' native libraries')
         runtime_names = {name for name, _ in payloads if name.startswith('libeliza_') or name == 'libsigsys-handler.so'}
-        runtime = verify_runtime(archive, runtime_names, profile) if runtime_names or 'assets/agent/agent-bundle.js' in names or profile == 'cloud' else None
+        runtime = verify_runtime(archive, runtime_names, profile, target) if target == 'cuttlefish' or runtime_names or 'assets/agent/agent-bundle.js' in names or profile == 'cloud' else None
     expected_bp = ('// Generated from a hash- and signer-verified downstream launcher.\n'
                    'android_app_import {\n' + f'    name: "{module}",\n' +
                    '    apk: "Launcher.apk",\n    presigned: true,\n'
@@ -228,16 +243,17 @@ def stage(apk, output, module, target='stallion'):
     if ((output / 'Android.bp').read_text() != expected_bp
             or any((output / name).exists() for name in ['Android.mk', 'config.fs', 'native-libraries.json'])):
         raise ValueError('Expected a fresh, exact upstream launcher overlay')
-    native = output / 'native-arm64'
+    native_name = 'native-' + arch
+    native = output / native_name
     native.mkdir(exist_ok=False)
     records = []
     for index, (name, data) in enumerate(payloads):
         (native / name).write_bytes(data)
-        destination = f'app/{module}/lib/arm64'
-        records.append({'apkEntry': 'lib/arm64-v8a/' + name,
-                        'path': 'native-arm64/' + name,
+        destination = f'app/{module}/lib/{arch}'
+        records.append({'apkEntry': prefix + name,
+                        'path': native_name + '/' + name,
                         'installPath': '/product/' + destination + '/' + name,
-                        'mode': RUNTIME_MODES.get(name, '0644'),
+                        'mode': modes.get(name, '0644'),
                         'sha256': hashlib.sha256(data).hexdigest()})
     (output / 'config.fs').write_text(''.join(
         f'[{record["installPath"].lstrip("/")}]\nmode: {record["mode"]}\nuser: AID_ROOT\ngroup: AID_ROOT\ncaps: 0\n\n'
@@ -252,9 +268,9 @@ def stage(apk, output, module, target='stallion'):
         'LOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\n'
         'LOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\n'
         'LOCAL_SDK_VERSION := 36\nLOCAL_PRODUCT_MODULE := true\n'
-        'LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := arm64\n'
+        f'LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := {arch}\n'
         'LOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ' +
-        ' '.join('native-arm64/' + name for name, _ in payloads) +
+        ' '.join(native_name + '/' + name for name, _ in payloads) +
         '\ninclude $(BUILD_PREBUILT)\n')
     (output / 'Android.bp').write_text('// AlphaPhone is defined in Android.mk for bundled JNI installation.\n')
     report = {'schemaVersion': 1, 'apkSha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
@@ -270,6 +286,6 @@ if __name__ == '__main__':
     parser.add_argument('--apk', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--module', required=True)
-    parser.add_argument('--target', choices=('stallion',), default='stallion')
+    parser.add_argument('--target', choices=tuple(TARGETS), default='stallion')
     args = parser.parse_args()
     print(json.dumps(stage(args.apk, args.output, args.module, args.target), indent=2))
