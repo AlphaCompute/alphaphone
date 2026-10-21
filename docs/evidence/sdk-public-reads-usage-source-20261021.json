@@ -3,7 +3,7 @@
   "reviewedConsumerPin": "3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5",
   "reviewedSdkTree": "262bfaaf109333adb1b62bf01f3ebd74fc8caba3",
   "alphaBase": "f8b7606f4921aba36fd617583028aa4c230a1e9b",
-  "sourceIntegration": "Ancestry-preserving local SDK merge of405 and develop b6df; exact eight-file upstream delta, no conflicts or source edits. Sparse porcelain issue and merge-tree method recorded in external review.",
+  "sourceIntegration": "Ancestry-preserving SDK merge of405 and develop b6df; exact eight-file upstream delta, no conflicts or source edits. Sparse porcelain issue and merge-tree method recorded in external review.",
   "delta": "Cloud per-model-call usage reporting, URL canonicalization, internal Edge failure messages and validated anonymous search session forwarding; four implementation/four test files.",
   "runtimeTypeScriptChanged": true,
   "nativeLibraryCompilationInputsChanged": false,
@@ -46,11 +46,17 @@
     "notices": "Exact prior source-only notices with only fullpin string replaced, official generator/check PASS."
   },
   "reachability": {
-    "status": "PENDING_PUBLISHED_SDK_COMMIT_AND_TRUE_GITHUB_COMPARE",
-    "localUpstreamIncluded": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
-    "localBothParentsPreserved": true,
-    "canonicalPriorReceipt": "scripts/ci/upstream-reachability.json retains exact405 historical record; not current-pin reachability evidence.",
-    "strictFullVendorVerification": "Blocked in sparse source-only checkout at missing .biomeignore; no guard weakened."
+    "method": "Actual official node scripts/verify-upstream.mjs --record-reachability after full immutable vendor source verification; independent fixed-base GitHub API comparison matches canonical record.",
+    "baseCommit": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
+    "head": "3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5",
+    "status": "ahead",
+    "aheadBy": 12,
+    "behindBy": 0,
+    "mergeBase": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
+    "publishedIntegrationBranch": "codex/alpha-resident-dependency-integration-20261021",
+    "componentPullRequestBookkeepingPreserved": true,
+    "strictFullVendorVerification": "PASS full legitimate owned Git worktree, sparse disabled; all tracked bytes authenticated. No normal runtime preparation/build or installed acceptance inferred.",
+    "warning": "Pin remains 12 commits ahead/unmerged from develop; compare availability is not upstream merge acceptance."
   },
   "qualification": {
     "normalRuntimePreparation": false,
@@ -60,5 +66,5 @@
     "deviceAcceptance": false,
     "providerCalls": 0
   },
-  "remainingGates": "Publish reviewed local SDK merge only with owner approval; record actual official GitHub compare; strict full-vendor verification, fresh normal runtime/worker preparation, packaged audit, both normal APKs+audits, retained install and native/provider acceptance. Installed f8/405 evidence remains exact historical source evidence, not this candidate acceptance."
+  "remainingGates": "Fresh normal runtime/worker preparation, packaged audit, both normal APKs and independent audits, retained install and native/provider acceptance at one combined source head. Existing f8/405 qualification remains bound to that exact source; no transfer to this candidate."
 }
