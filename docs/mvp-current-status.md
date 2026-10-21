@@ -1,18 +1,22 @@
-Current source admission candidate: SDK `3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5` preserves all405/CAD work and includes upstream b6df public-read/search and Cloud usage-reporting fixes. Source checks do not transfer f8/405 runtime, APK or device evidence. The official GitHub compare records 12 commits ahead and 0 behind develop b6df after strict full-vendor source verification; the integration remains unmerged. Fresh normal preparation, packaging and installed qualification remain pending. Historical records retain their original pins.
-
-Current source admission candidate: SDK `5c1d7e4440e69e09241cad833f5626ebb886ba1a` includes latest reviewed develop85 and preserves the native lifecycle repair. PGlite snapshot production and byte binding change the runtime payload; fresh preparation, APK and installed acceptance remain required. Historical source-bound evidence follows.
-
-Current source admission candidate: SDK `3d6f68a129702a1a2779cc087c93a80ba0f2332e` adds the reviewed Android resident start/stop lifecycle repair. Dependency lock and package manifests are byte-identical to SDK `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab`; native service inputs changed, so fresh preparation, APK checks and installed lifecycle acceptance are required. No prior device or provider acceptance transfers. Historical source-bound evidence follows.
-
-Current source admission candidate: SDK `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab` adds reviewed Cloud registration operator targeting, staging grant campaign options and redirect-safe website reputation ingestion. All resident/native/browser projection and dependency lock inputs remain unchanged. Fresh source/runtime/worker provenance and APK verification are pending; no prior device or provider acceptance transfers. Historical source-bound evidence follows.
-
-Current source admission candidate: SDK `6f9d9cf2aaf38d648bb819091f9bb55e0240d5d9` includes reviewed PGlite memory storage and browser active-document/advisory fixes. Native compilation inputs and Cloud mobile allowance/authentication are unchanged; runtime/worker outputs must be regenerated. No device or provider acceptance transfers. Historical source-bound evidence follows.
-
-Current source admission candidate: SDK `cc52bef586997875047d9a9c74276084fad8610c` is a reviewed two-scope descendant of `65dab3188fde739f30d6fcffeb7d4701977100ed` for Calendar compatibility and finite inference diagnostics. Source integration is not canonical, native, provider or Notes acceptance. Historical source-bound evidence follows.
-
-<!-- Checked source integration a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd; full native product qualification remains pending. -->
 # Current MVP status
 
+## Current source qualification
+
+Current source admission candidate: SDK `3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5` preserves all405/CAD work and includes upstream b6df public-read/search and Cloud usage-reporting fixes. Source checks do not transfer f8/405 runtime, APK or device evidence. The official GitHub compare records 12 commits ahead and 0 behind develop b6df after strict full-vendor source verification; the integration remains unmerged. Fresh normal preparation, packaging and installed qualification remain pending. Historical records retain their original pins.
+
+## Earlier source admissions
+
+Historical source admission: SDK `5c1d7e4440e69e09241cad833f5626ebb886ba1a` includes latest reviewed develop85 and preserves the native lifecycle repair. PGlite snapshot production and byte binding change the runtime payload; fresh preparation, APK and installed acceptance remain required. Historical source-bound evidence follows.
+
+Historical source admission: SDK `3d6f68a129702a1a2779cc087c93a80ba0f2332e` adds the reviewed Android resident start/stop lifecycle repair. Dependency lock and package manifests are byte-identical to SDK `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab`; native service inputs changed, so fresh preparation, APK checks and installed lifecycle acceptance are required. No prior device or provider acceptance transfers. Historical source-bound evidence follows.
+
+Historical source admission: SDK `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab` adds reviewed Cloud registration operator targeting, staging grant campaign options and redirect-safe website reputation ingestion. All resident/native/browser projection and dependency lock inputs remain unchanged. Fresh source/runtime/worker provenance and APK verification are pending; no prior device or provider acceptance transfers. Historical source-bound evidence follows.
+
+Historical source admission: SDK `6f9d9cf2aaf38d648bb819091f9bb55e0240d5d9` includes reviewed PGlite memory storage and browser active-document/advisory fixes. Native compilation inputs and Cloud mobile allowance/authentication are unchanged; runtime/worker outputs must be regenerated. No device or provider acceptance transfers. Historical source-bound evidence follows.
+
+Historical source admission: SDK `cc52bef586997875047d9a9c74276084fad8610c` is a reviewed two-scope descendant of `65dab3188fde739f30d6fcffeb7d4701977100ed` for Calendar compatibility and finite inference diagnostics. Source integration is not canonical, native, provider or Notes acceptance. Historical source-bound evidence follows.
+
+<!-- Historical source integration a89b72fce70bbb559bdeabbdb8dcb12956f7f8bd; see the current source qualification above. -->
 ## October 12 approved policy versus current implementation
 
 All 32 decision choices are resolved in the [approved backlog](owner-approved-mvp-plan-2026-10-12.md).
