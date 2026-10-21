@@ -4,7 +4,7 @@ import {build} from 'esbuild';
 // Compile the actual adapter with Vite's environment substitution, rather than
 // invoking its Node-only branch (which intentionally admits both issuers).
 async function protocol(env){
- const result=await build({stdin:{contents:"export {cloudEnvironmentAvailable,planManagementUrl} from './apps/app/src/runtime/cloud-protocol.ts';export {browserCloudManagedServiceAllowed} from './apps/app/src/runtime/browser-cloud-resident.ts';export {nativeCloudRequest} from './apps/app/src/runtime/native-connection.ts';",resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false,define:{'import.meta.env':JSON.stringify(env)},logLevel:'silent'});
+ const result=await build({stdin:{contents:"export {Capacitor} from '@capacitor/core';export {developmentCloudVoiceEnabled} from './apps/app/src/runtime/development-cloud-voice.ts';export {cloudEnvironmentAvailable,planManagementUrl} from './apps/app/src/runtime/cloud-protocol.ts';export {browserCloudManagedServiceAllowed} from './apps/app/src/runtime/browser-cloud-resident.ts';export {nativeCloudRequest} from './apps/app/src/runtime/native-connection.ts';",resolveDir:process.cwd(),loader:'ts'},bundle:true,platform:'node',format:'esm',write:false,define:{'import.meta.env':JSON.stringify(env)},logLevel:'silent'});
  return import('data:text/javascript;base64,'+Buffer.from(result.outputFiles[0].text).toString('base64'));
 }
 test('actual Cloud adapter admits explicit staging resident without mocks and refuses packaged staging',async()=>{
@@ -23,3 +23,11 @@ test('real staging transport reaches identity and entitlement but rejects other 
  try{const reply=await p.nativeCloudRequest({url:'https://api-staging.eliza.app/api/v1/user',method:'GET',headers:{},timeoutMs:1000,signal:new AbortController().signal});assert.equal(reply.status,200);assert.equal(calls[0].input.url,'https://api-staging.eliza.app/api/v1/user');assert.equal(calls[0].environment,'staging');}finally{globalThis.fetch=original;}
  const packaged=await protocol({DEV:false,VITE_ALPHA_CLOUD_RESIDENT:'1',VITE_ALPHA_CLOUD_ENVIRONMENT:'staging'});assert.equal(packaged.browserCloudManagedServiceAllowed('https://api-staging.eliza.app/api/v1/user','GET'),false);
 });
+
+ test('real browser resident admits owner-bound Cloud speech without enabling mocks or packaged speech',async()=>{
+ const flags={DEV:true,VITE_ALPHA_CLOUD_RESIDENT:'1',VITE_ELIZA_DEV_ALLOW_TEST_MOCKS:'',VITE_ALPHA_DEV_CLOUD_VOICE:''};
+ assert.equal((await protocol(flags)).developmentCloudVoiceEnabled,true);
+ for(const env of [{...flags,DEV:false},{...flags,VITE_ALPHA_CLOUD_RESIDENT:''},{...flags,VITE_ALPHA_CLOUD_RESIDENT:'',VITE_ALPHA_DEV_CLOUD_VOICE:'1'}])assert.equal((await protocol(env)).developmentCloudVoiceEnabled,false);
+ assert.equal((await protocol({DEV:true,VITE_ALPHA_CLOUD_RESIDENT:'',VITE_ELIZA_DEV_ALLOW_TEST_MOCKS:'1',VITE_ALPHA_DEV_CLOUD_VOICE:'1'})).developmentCloudVoiceEnabled,true,'existing explicit mock preview still works');
+ Object.defineProperty(globalThis,'androidBridge',{configurable:true,value:{}});try{const native=await protocol({...flags,VITE_ALPHA_CLOUD_ENVIRONMENT:'staging'});assert.equal(native.Capacitor.isNativePlatform(),true);assert.equal(native.developmentCloudVoiceEnabled,false);}finally{delete globalThis.androidBridge;}
+ });
