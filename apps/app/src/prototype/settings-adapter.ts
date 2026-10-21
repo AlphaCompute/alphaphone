@@ -562,7 +562,38 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Eliza Cloud account & plan',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group(rows),group(actions)]});
           }
         }
-        page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
+        page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>native&&!testMocksEnabled?api.set({page:'agent-connection'}):connectionController.open()}]));
+        if(native&&!testMocksEnabled&&state.page==='agent-connection'){
+          const agentRows=[info('Agent',runtimeLocation),info('AI',connection.residentInference==='cloud'?'Eliza Cloud':connection.cloudAccount?'Not available':'Sign in required')];
+          if(connection.message)agentRows.push(info('Status',connection.message));
+          if(connection.error)agentRows.push(info('Connection problem',connection.error));
+          if(!connection.busy)agentRows.push(action(connection.session?'Reconnect agent':'Retry',()=>void connectionController.startLocal()));
+          else agentRows.push(info('Connection','Please wait…'),action('Cancel',()=>connectionController.cancel()));
+          const groups:Bag[]=[group(agentRows)];
+          if(connection.session){
+            const historyRows=[info('Conversation history','Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.')];
+            if(!connection.busy){
+              historyRows.push(action('New conversation',()=>void connectionController.newConversation()),action('Load conversations',()=>void connectionController.listHistory()));
+              for(const item of connection.conversations)historyRows.push(action(`Restore conversation: ${item.title}`,()=>void connectionController.restoreHistory(item.id)));
+            }
+            if(connection.historyError)historyRows.push(info('History',connection.historyError));
+            groups.push(group(historyRows));
+          }
+          if(connection.session&&connection.phoneActionsAvailable){
+            const refreshRows=connection.busy?[info('Phone action history','Please wait…')]:[action('Refresh actions',()=>void connectionController.actionHistory()),action('Sync recorded receipts',()=>void connectionController.actionHistory(true))];
+            groups.push(group(refreshRows));
+            for(const item of connection.actionHistory){
+              const rows=[info(item.title,item.outcome+(item.timestamp?` · ${item.timestamp}`:''))];
+              if(item.detail)rows.push(info('Details',item.detail));
+              if(!connection.busy){
+                if(item.state==='pending')rows.push(action('Reject proposal',()=>void connectionController.rejectAction(item.id)));
+                if(['executing','reconciliation_required'].includes(item.state))rows.push(info('Review','After checking this phone, confirm whether this exact action happened.'),action('I verified it happened',()=>void connectionController.reconcileAction(item.id,'applied')),action('I verified it did not happen',()=>void connectionController.reconcileAction(item.id,'not_applied')));
+              }
+              groups.push(group(rows));
+            }
+          }
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Agent connection',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
+        }
         if(native)page.groups.push(group([{kNav:true,label:'Reset Alpha data',lbl:'Reset Alpha data',sub:'Erase local Alpha data · device unlock required',hasSub:true,chev:true,noAB:true,go:async()=>{
           try{const result=await registerPlugin<{review():Promise<{status:string;message:string}>}>('AlphaReset').review();api.toast(result.message);}
           catch{api.toast('Reset could not be opened. No completed reset is confirmed.');}
