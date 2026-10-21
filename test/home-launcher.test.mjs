@@ -314,6 +314,8 @@ test('a launch that fails while the drawer is still reading ends in a settled li
 });
 test('same-label entries stay distinguishable when packages, activities and profiles overlap', () => {
   const mixed = [
+    {packageName: 'alpha:settings', label: 'Settings'},
+    {packageName: 'com.android.settings', label: 'Settings'},
     {packageName: 'org.example.notes', activityName: 'org.example.notes.Main', label: 'Notes'},
     {packageName: 'com.vendor.notes', activityName: 'com.vendor.notes.One', label: 'Notes'},
     {packageName: 'com.vendor.notes', activityName: 'com.vendor.notes.Two', label: 'Notes'},
@@ -324,6 +326,7 @@ test('same-label entries stay distinguishable when packages, activities and prof
   ];
   const details = describeLauncherApps(mixed);
   assert.deepEqual(mixed.map(app => details.get(appKey(app))), [
+    ['Alpha Phone'], ['com.android.settings'],
     ['org.example.notes'], ['com.vendor.notes', 'One'], ['com.vendor.notes', 'Two'],
     ['com.vendor.suite.mail.Main'], ['com.vendor.suite.calendar.Main'],
     ['Work', 'com.vendor.chat.Main', 'profile 10'], ['Work', 'com.vendor.chat.Main', 'profile 11'],
@@ -333,6 +336,8 @@ test('same-label entries stay distinguishable when packages, activities and prof
 test('rows that would still read the same get their full identity as a last resort', () => {
   // A profile entry without an activity, and an activity whose short name reads like a profile.
   const odd = [
+    {packageName: 'alpha:first', label: 'Calendar'},
+    {packageName: 'alpha:second', label: 'Calendar'},
     {packageName: 'com.vendor.chat', label: 'Chat', user: '10', profile: 'work', locked: false},
     {packageName: 'com.vendor.chat', label: 'Chat', user: '11', profile: 'work', locked: false},
     {packageName: 'org.example.notes', activityName: 'org.example.notes.Work', label: 'Notes'},
@@ -341,6 +346,7 @@ test('rows that would still read the same get their full identity as a last reso
   ];
   const details = describeLauncherApps(odd);
   assert.deepEqual(odd.map(app => details.get(appKey(app))), [
+    ['Alpha Phone', 'alpha:first'], ['Alpha Phone', 'alpha:second'],
     ['Work', 'com.vendor.chat', 'profile 10'], ['Work', 'com.vendor.chat', 'profile 11'],
     ['Work', 'org.example.notes', 'org.example.notes.Work'], ['Home'],
     ['Work', 'com.vendor.notes', 'com.vendor.notes.Main', 'profile 10'],
@@ -415,12 +421,13 @@ test('explicit empty favorites stay empty across reload and capability-filtered 
 });
 
 test('shell Home and All apps use the same favorite order; product taps never call native launch', async () => {
-  let saved = null, opened = 0;
+  let saved = null;
+  const opened = [];
   const nativeCalls = [];
   class Shell {
     S() { return {drawer: true}; }
     setState() {}
-    renderVals() { return {isOn: true, isView: false, ic: {grid: 'grid'}, apps: [{key: 'notes', label: 'Notes', d: 'note', open: () => { opened++; }}]}; }
+    renderVals() { return {isOn: true, isView: false, ic: {grid: 'grid'}, apps: [{key: 'notes', label: 'Notes', d: 'note', open: () => { opened.push('notes'); }}, {key: 'settings', label: 'Settings', d: 'gear', open: () => { opened.push('settings'); }}]}; }
   }
   const launcher = installHomeLauncher(Shell, {list: async () => ({apps}), launch: async target => { nativeCalls.push(target); }},
     {favorites: {read: () => saved, write: keys => { saved = [...keys]; }}});
@@ -428,14 +435,24 @@ test('shell Home and All apps use the same favorite order; product taps never ca
   shell.renderVals();
   await launcher.load();
   let rendered = shell.renderVals();
-  assert.deepEqual(rendered.apps.map(a => a.label), ['Notes']);
+  assert.deepEqual(rendered.apps.map(a => a.label), ['Notes', 'Settings']);
   assert.equal(rendered.launcher.rows.length, apps.length);
   const shown=[...rendered.launcher.favorites,...rendered.launcher.rows].map(a=>a.key);
   assert.equal(new Set(shown).size,shown.length,'Favorites and inventory never duplicate an entry');
   let notes = rendered.launcher.favorites.find(a => a.key === 'alpha:notes');
   await notes.open();
-  assert.equal(opened, 1);
+  assert.deepEqual(opened, ['notes']);
   assert.deepEqual(nativeCalls, []);
+  const settings = rendered.launcher.favorites.find(a => a.key === 'alpha:settings');
+  assert.equal(settings.aria, 'Open Settings (Alpha Phone)');
+  assert.equal(settings.sub, 'Alpha Phone');
+  await settings.open();
+  assert.deepEqual(opened, ['notes', 'settings']);
+  assert.deepEqual(nativeCalls, []);
+  const installedSettings = rendered.launcher.rows.find(a => a.key === 'com.android.settings');
+  assert.equal(installedSettings.aria, 'Open Settings (com.android.settings)');
+  await installedSettings.open();
+  assert.deepEqual(nativeCalls, [{packageName: 'com.android.settings'}]);
   rendered.launcher.rows.find(a => a.key === appKey(apps[0])).toggleFavorite();
   rendered = shell.renderVals();
   notes = rendered.launcher.favorites.find(a => a.key === 'alpha:notes');
