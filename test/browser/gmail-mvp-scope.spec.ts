@@ -15,7 +15,7 @@ async function setup(page:Page,options:Options={}){
   const w=window as any,slots:Record<string,unknown>={};w.gmSlots=slots;
   s.read=async(key:string)=>structuredClone(slots[key]??null) as any;
   s.compareExchange=async(key:string,prior:unknown,next:unknown)=>{if(JSON.stringify(slots[key]??null)!==JSON.stringify(prior))return {status:'conflict'};if(next===null)delete slots[key];else slots[key]=structuredClone(next);return {status:'saved'};};
-  const f=w.gm={searches:[] as any[],prepares:[] as any[],dispatches:[] as any[],disconnects:[] as string[],fail:null as any,failCursor:false,stale:false,gate:null as Promise<void>|null,dispatchState:'succeeded',
+  const f=w.gm={searches:[] as any[],prepares:[] as any[],dispatches:[] as any[],disconnects:[] as string[],fail:null as any,failCursor:false,stale:false,gate:null as Promise<void>|null,dispatchState:'succeeded',accountReads:0,accountGate:null as Promise<void>|null,accountFailure:false,
    accounts:(options.accounts||['owner@example.test']).map((label,i)=>({connectionId:'grant-'+i,label,configured:true,connected:true,reason:'connected',grantedCapabilities:['google.gmail.triage','google.gmail.send','google.gmail.mailbox']}))};
   const mail=(id:string,extra:Record<string,unknown>={})=>({id,threadId:'thread-'+id,subject:'Subject '+id,from:'Sender '+id,fromEmail:'sender@example.test',to:['owner@example.test'],cc:[],replyTo:null,snippet:'Preview '+id,receivedAt:'2026-10-06T12:00:00Z',unread:false,...extra});
   const inbox=Array.from({length:options.pages?.inbox??1},(_,page)=>[mail('in-'+page+'-a',{unread:page===0}),mail('in-'+page+'-b')]);
@@ -25,7 +25,7 @@ async function setup(page:Page,options:Options={}){
   const receipts:Record<string,any>={};
   let deferredPage=false;
   const client={
-   gmailAccounts:async()=>structuredClone(f.accounts),
+   gmailAccounts:async()=>{f.accountReads++;if(f.accountGate)await f.accountGate;if(f.accountFailure)throw Error('Network offline');return structuredClone(f.accounts);},
    gmailInboxCapabilities:async()=>({version:1,from:'owner@example.test',threads:true,send:false,providerDrafts:false,mailboxMutations:true,attachments:true,providerExactlyOnce:false,atomicDraftReplacement:false,readState:options.readState!==false}),
    gmailSearch:async(grant:string,query:string,_signal:AbortSignal,size:number,pageToken?:string)=>{
     f.searches.push({grant,query,size,pageToken:pageToken??null});
@@ -61,6 +61,45 @@ async function setup(page:Page,options:Options={}){
 }
 const gm=(page:Page)=>page.evaluate(()=>(window as any).gm);
 const inboxBadge=(page:Page)=>page.getByRole('button',{name:'Inbox',exact:true}).locator('.app-badge');
+
+for(const scenario of ['connected','empty','error','restored'] as const)test(`Shared email waits for Gmail account readiness: ${scenario}`,async({page})=>{
+ await setup(page);
+ await page.evaluate(async scenario=>{
+  const w=window as any,f=w.gm;f.originalAccounts=structuredClone(f.accounts);
+  if(scenario==='restored'){
+   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{serviceReadCache}=await import('/src/runtime/service-read-cache-store.ts');
+   const snapshot={...c.getSnapshot(),cloudAccount:{...c.getSnapshot().cloudAccount!,organizationId:'fixture-org'}};c.getSnapshot=()=>snapshot as any;
+   const cache=await serviceReadCache({environment:'production',userId:'fixture-owner',organizationId:'fixture-org',credentialId:'fixture'});
+   await cache.put('gmail:mailbox',{accounts:f.accounts,selected:'grant-0',spamTrashSearch:false,lists:[{at:Date.now(),messages:[],query:'in:inbox',cursor:null,revision:'saved',cursors:[],newerMail:false,status:'Your Inbox is empty'}],bodies:[]});
+   const read=cache.get.bind(cache);f.restoreReads=0;f.restoreGate=new Promise<void>(resolve=>f.releaseAccounts=resolve);
+   cache.get=async function<T>(key:string){const row=await read<T>(key);if(key==='gmail:mailbox'){f.restoreReads++;await f.restoreGate;}return row;};
+  }else f.accountGate=new Promise<void>(resolve=>f.releaseAccounts=resolve);
+ },scenario);
+ await page.getByRole('button',{name:'Notes',exact:true}).click();await page.getByRole('button',{name:'New note',exact:true}).click();
+ await page.getByRole('textbox',{name:'Title',exact:true}).fill('Waiting shared note');await page.getByRole('textbox',{name:'Note',exact:true}).fill('Exact retained shared body');
+ await page.getByRole('button',{name:'Share note',exact:true}).click();await page.getByRole('button',{name:'Share to email',exact:true}).click();
+ await expect.poll(async()=>{const f=await gm(page);return scenario==='restored'?f.restoreReads:f.accountReads;}).toBeGreaterThan(0);
+ await expect(page.getByText('Checking Gmail connection…',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Connect Gmail',exact:true})).toHaveCount(0);
+ await expect(page.getByText(/Shared content is ready for a new email\. Connect Gmail/)).toHaveCount(0);
+ expect((await gm(page)).prepares).toEqual([]);expect((await gm(page)).dispatches).toEqual([]);
+ await page.evaluate(scenario=>{const f=(window as any).gm;if(scenario==='empty')f.accounts=[];if(scenario==='error')f.accountFailure=true;f.accountGate=null;f.releaseAccounts();},scenario);
+ if(scenario==='empty'){
+  await expect(page.getByRole('button',{name:'Connect Gmail',exact:true})).toBeVisible();
+  await expect(page.getByText('Shared content is ready for a new email. Connect Gmail to continue; nothing has been sent.',{exact:true})).toBeVisible();
+  await page.evaluate(()=>{const f=(window as any).gm;f.accounts=f.originalAccounts;window.dispatchEvent(new Event('alpha:google-accounts-changed'));});
+ }else if(scenario==='error'){
+  await expect(page.getByRole('button',{name:'Retry',exact:true})).toBeVisible();
+  await expect(page.getByText('You appear to be offline. Gmail was not reached. Retry when you are connected.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Connect Gmail',exact:true})).toHaveCount(0);
+  await expect(page.getByText('Checking Gmail connection…',{exact:true})).toHaveCount(0);
+  await page.evaluate(()=>(window as any).gm.accountFailure=false);await page.getByRole('button',{name:'Retry',exact:true}).click();
+ }
+ await expect(page.getByRole('textbox',{name:'Subject',exact:true})).toHaveValue('Waiting shared note');
+ await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('Waiting shared note\n\nExact retained shared body');
+ expect((await gm(page)).prepares).toEqual([]);expect((await gm(page)).dispatches).toEqual([]);
+ if(scenario==='restored')expect((await gm(page)).accountReads).toBe(0);
+});
 
 test('Inbox loads on open, pages with Load more, shows Sent and drives the unread badge',async({page})=>{
  await setup(page,{pages:{inbox:2}});
