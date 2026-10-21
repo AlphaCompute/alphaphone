@@ -948,8 +948,16 @@ test('loops D and F on Android: schedules are stated as phone-bound, and mail wi
   await button(page, 'Inbox').click();
   // Signed in to Cloud but with no Gmail grant (the account list is refused): no messages, an explicit connect.
   await expect(page.locator('[data-screen]')).toContainText('Gmail access was revoked or needs authorization again. Reconnect Gmail, then retry.');
-  await expect(button(page, 'Connect Gmail')).toBeVisible();
+  await expect(button(page, 'Reconnect Gmail')).toHaveCount(1);
+  await expect(button(page, 'Reconnect Gmail')).toBeVisible();
+  await expect(button(page, 'Connect Gmail')).toHaveCount(0);
   await expect(page.getByText('Dinner Friday?', { exact: true })).toHaveCount(0);
+  await button(page, 'Reconnect Gmail').click();
+  const google = page.getByRole('dialog', { name: 'Google accounts', exact: true });
+  await expect(google).toBeVisible();
+  await google.getByRole('button', { name: 'Close Google accounts', exact: true }).click();
+  await expect(google).toHaveCount(0);
+  await expect(button(page, 'Reconnect Gmail')).toBeVisible();
   await expectNoDevelopmentSurface(page);
   expect(await native(page, f => f.unexpected)).toEqual([]);
   expect(foreign).toEqual([]);
