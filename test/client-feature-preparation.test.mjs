@@ -69,7 +69,7 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
-assert.equal(stamp.baseCommit,'3d6f68a129702a1a2779cc087c93a80ba0f2332e');assert.equal(stamp.projectionVersion,5);
+assert.equal(stamp.baseCommit,'5c1d7e4440e69e09241cad833f5626ebb886ba1a');assert.equal(stamp.projectionVersion,5);
  const relayPath='plugins/plugin-maps/src/client/navigation-relay.ts';
  assert.equal(stamp.sourceFiles[relayPath],'2742e4d581c1e9177fdf334199a564df02cd8f707263d62e861489f2cb40a7bd');
  assert.notEqual(stamp.sourceFiles[relayPath],stamp.files[relayPath]);

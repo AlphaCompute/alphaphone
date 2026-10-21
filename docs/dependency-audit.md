@@ -551,3 +551,14 @@ The previous SDK5c record had no pending upstream fixes; none was dropped. Its
 98 advisory rows remain in the fresh 113-row result; all 84 retained exceptions
 and their deadlines are byte-for-byte unchanged. Only the newly reported shipped
 Hono and markdown-it advisories add pending fixes.
+
+## SDK 5c1d source refresh (2026-10-21)
+
+The official resident full-lock audit at SDK `5c1d7e4440e69e09241cad833f5626ebb886ba1a`
+queried the registry again and returned the same 113 findings across 3691 versions,
+with normalized input `e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e`.
+All existing exceptions, pending findings and deadlines are retained unchanged.
+Their earlier staged-package evidence remains scoped to the recorded SDK 3d payload;
+new preparation/staging and its exact packaged notices audit have not run.
+The dedicated full-lock audit remains red on the three documented pending findings.
+No new packaged-runtime, APK or device acceptance is inferred from the refreshed pin.
