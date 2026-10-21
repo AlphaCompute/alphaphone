@@ -63,3 +63,18 @@ test('Settings FallbackHome alone does not qualify as a recovery launcher',()=>{
  const f=fixture({[key]:`${pkg}/.MainActivity\ncom.android.settings/.FallbackHome`});
  assert.throws(()=>verifyCuttlefishLauncher(f.run,expected,'0'),/recovery HOME/);
 });
+
+for(const [name,key,initial,changed] of [
+ ['HOME','shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME',pkg+'/.MainActivity','com.android.launcher3/.Launcher'],
+ ['ambiguous HOME','shell cmd package resolve-activity --brief --user 0 -a android.intent.action.MAIN -c android.intent.category.HOME',pkg+'/.MainActivity',pkg+'/.MainActivity\ncom.android.launcher3/.Launcher'],
+ ['SELinux','shell getenforce','Enforcing','Permissive'],
+ ['user running state','shell am get-started-user-state 0','RUNNING_UNLOCKED','STOPPING']
+])test('rejects '+name+' changing after initial admission',()=>{
+ let transitioned=false;
+ const f=fixture({[key]:()=>transitioned?changed:initial,
+  'shell dumpsys webviewupdate':()=>{transitioned=true;return 'Current WebView package (name, version): (com.android.webview, 145.0.1)';}});
+ assert.throws(()=>verifyCuttlefishLauncher(f.run,expected,'0'),/^Error: HOME, SELinux or user running state changed during verification$/);
+ assert.equal(transitioned,true);
+ assert.equal(f.calls.filter(args=>args.join(' ')===key).length,2,'Changed state must be independently re-observed');
+ assert.ok(f.calls.every(args=>args[0]==='shell'&&!args.some(value=>['install','uninstall','start','set','grant','reboot'].includes(value))));
+});
