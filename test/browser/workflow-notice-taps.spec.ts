@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 const ownerFence=(ownerId:string)=>({owner:{origin:'https://device.alpha.invalid',ownerId,agentId:'fixture-agent'}});
 // Production renderer and authenticated connection; controlled transport/native queue, no real notification.
-for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensitive','two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','owner-change','queue-changed','builder-race','new-tap-during-read'] as const){
+for(const scenario of ['lookup-unavailable','lookup-unavailable-navigation','ask','ask-cancel','ask-changed','ask-owner','ask-sensitive','two','other-owner','wrong-version','unconfirmed','navigation-race','owner-race','reconnect','owner-change','queue-changed','builder-race','new-tap-during-read'] as const){
  test('scoped native workflow tap '+scenario,async({page})=>{
  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.addInitScript(scenario=>{
@@ -9,6 +9,10 @@ for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensiti
    localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));
    const store=new Map();
    const f=w.deliveryFixture={configured:0,cancelled:0,disabled:[] as string[],nativeSync:0,foregroundSync:0,polling:true,enabled:false,notifications:false,events:[] as string[],input:null as any,release:null as any,holdRetire:false,retireRelease:null as any,mockHold:false,mockReleases:{} as Record<string,()=>void>,removed:[] as string[]};
+   if(scenario.startsWith('lookup-unavailable')){
+    f.lookupUnavailable=true;f.lookupFailures=0;f.noticeToasts=[];
+    new MutationObserver(()=>{const shown=document.body?.innerText.match(/Workflow notifications? (?:retained|could not be checked)[^\n]*/)?.[0];if(shown&&!f.noticeToasts.includes(shown))f.noticeToasts.push(shown);}).observe(document,{subtree:true,childList:true,characterData:true});
+   }
    const methods=(names:string[])=>names.map(name=>({name,rtype:'promise'}));
    w.Capacitor={PluginHeaders:[
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
@@ -22,7 +26,7 @@ for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensiti
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='AlphaNotifications'){
      if(method==='status'||method==='crossAppStatus')return {permissionGranted:true,appEnabled:true};
-     if(method==='pendingWorkflowTap'){f.pendingReads=(f.pendingReads||0)+1;return f.taps?.[0]||{};}
+     if(method==='pendingWorkflowTap'){f.pendingReads=(f.pendingReads||0)+1;if(f.holdLookup)await new Promise<void>(resolve=>f.lookupRelease=resolve);if(f.lookupUnavailable){f.lookupFailures++;throw Error('Activity inactive');}return f.taps?.[0]||{};}
      if(method==='consumeWorkflowTap'&&input.discard){f.discarded=(f.discarded||[]);if(f.taps[0]?.token!==input.token||!f.taps[0]?.question)throw Error('Changed');f.discarded.push(input.token);f.taps.shift();return {};}
      if(method==='consumeWorkflowTap'){f.consumed=(f.consumed||[]);if(f.taps[0]?.token!==input.token)throw Error('Changed');f.consumed.push(input.token);f.taps.shift();return {};}
      return {};
@@ -43,7 +47,7 @@ for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensiti
       else if(path==='/api/automations')body={automations:[]};
       else if(path==='/api/lifeops/reminders')body={reminders:[]};
       else if(path==='/api/lifeops/scheduled-tasks?ownerVisibleOnly=1')body={tasks:[]};
-      else if(path==='/api/workflow/status')body={hostedDigestProtocol:1};
+      else if(path==='/api/workflow/status'){f.workflowStatusReads=(f.workflowStatusReads||0)+1;body={hostedDigestProtocol:1};}
       else if(path==='/api/workflow/hosted/sources')body={sources:[]};
       else if(path==='/api/workflow/hosted/loops')body={loops:[]};
       else if(path==='/api/workflow/hosted/live-accounts')body={accounts:[]};
@@ -81,7 +85,7 @@ for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensiti
     }
     return {};
    }};
-  },'ready');
+  },scenario);
  // One scenario fails the first owner-change withdrawal, which the next connection change repeats.
  await page.addInitScript(fault=>{(window as any).__ownerWithdrawalFault=fault;},scenario==='reconnect');
 
@@ -94,7 +98,35 @@ for(const scenario of ['ask','ask-cancel','ask-changed','ask-owner','ask-sensiti
   if(scenario.startsWith('ask')){f.taps=[{...tap('run1'),question:true,notice:{id:'notice1',revision:'revision1',source:'own',appLabel:'Alpha Phone',title:'Completed task',text:'Public result text'}}];}
   document.dispatchEvent(new Event('visibilitychange'));
  },scenario);
- if(scenario.startsWith('ask')){
+ if(scenario.startsWith('lookup-unavailable')){
+  await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.lookupFailures)).toBeGreaterThan(0);
+  expect(await page.evaluate(()=>(window as any).deliveryFixture.noticeToasts)).toEqual([]);
+  expect(await page.evaluate(()=>({reads:(window as any).deliveryFixture.reads||0,consumed:(window as any).deliveryFixture.consumed||[]}))).toEqual({reads:0,consumed:[]});
+  await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await page.getByRole('button',{name:'Workflows',exact:true}).click();
+  // A user retry queued during a resume lookup keeps its feedback, even if another resume arrives.
+  await page.evaluate(()=>{const f=(window as any).deliveryFixture;f.holdLookup=true;document.dispatchEvent(new Event('visibilitychange'));});
+  await expect.poll(()=>page.evaluate(()=>Boolean((window as any).deliveryFixture.lookupRelease))).toBe(true);
+  await page.getByRole('button',{name:/^Saved workflow notification/}).click();
+  if(scenario==='lookup-unavailable-navigation'){
+   const statusReads=await page.evaluate(()=>{const before=(window as any).deliveryFixture.workflowStatusReads||0;window.dispatchEvent(new Event('launcher-home'));return before;});
+   await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.workflowStatusReads||0)).toBeGreaterThan(statusReads);
+   await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>resolve())));
+   const failures=await page.evaluate(()=>{const f=(window as any).deliveryFixture,before=f.lookupFailures;f.holdLookup=false;f.lookupRelease();return before;});
+   await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.lookupFailures)).toBeGreaterThanOrEqual(failures+2);
+   expect(await page.evaluate(()=>(window as any).deliveryFixture.noticeToasts)).toEqual([]);
+   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual([]);
+   await expect(page.locator('html')).toHaveAttribute('data-active-view','home');
+   await page.getByRole('button',{name:'Workflows',exact:true}).click();
+   await page.getByRole('button',{name:/^Saved workflow notification/}).click();
+  }else await page.evaluate(()=>{const f=(window as any).deliveryFixture;document.dispatchEvent(new Event('visibilitychange'));f.holdLookup=false;f.lookupRelease();});
+  const message='Workflow notifications could not be checked. Try again when Alpha is active.';
+  await expect(page.getByText(message,{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).deliveryFixture.noticeToasts)).toEqual([message]);
+  expect(await page.evaluate(()=>(window as any).deliveryFixture.taps.map((tap:any)=>tap.runId))).toEqual(['run1','run2']);
+  await page.evaluate(()=>{(window as any).deliveryFixture.lookupUnavailable=false;document.dispatchEvent(new Event('visibilitychange'));});
+  await expect(page.getByText('Verified retained result run1',{exact:true})).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual(['run1']);
+ }else if(scenario.startsWith('ask')){
   const review=page.getByRole('dialog',{name:'Ask about selected content'});
   await expect(review.getByRole('textbox',{name:'Content excerpt'})).toHaveValue('Completed task\nPublic result text');
   expect(await page.evaluate(()=>(window as any).deliveryFixture.consumed||[])).toEqual([]);
