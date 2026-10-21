@@ -194,13 +194,30 @@ gate. The only schedule is that opt-in resident trigger; there are no hidden
 branch-specific automatic diagnostic runs.
 
 ```sh
-# Use the reviewed branch/ref. A dispatch selects all lanes in that workflow.
+# Use the reviewed branch/ref. Native resident dispatch retains its qualification campaigns.
 gh workflow run browser.yml --ref main -f cross_browser=true
 gh workflow run android.yml --ref main
-gh workflow run resident-android.yml --ref main
+gh workflow run resident-android.yml --ref main -f runtime_profile=native
+# Build genuine Cloud-profile QA APKs without native/test-mocks campaigns.
+gh workflow run resident-android.yml --ref <reviewed-ref> -f runtime_profile=cloud
 gh workflow run resident-prepare.yml --ref main
 gh workflow run bun-spawn-seccomp.yml --ref main
 ```
+
+The resident workflow's manual `runtime_profile` choice defaults to `native`.
+Push and nightly runs always use `native`. Choosing `cloud` reuses the exact source,
+preparation, workflow-worker and runtime provenance checks, then stages the Cloud
+profile and uses the same archive builder for all four flag-off APKs. The separate
+test-mocks archive, private peer helper and native/recovery emulator campaigns are
+skipped for Cloud. No provider credentials or live provider calls are used.
+
+Cloud archives upload as `resident-cloud-archive-<sha>-<run>` with three-day
+retention. They include standalone and launcher debug APKs, release build outputs,
+source snapshots and packaged-runtime verification. They are build evidence;
+unsigned releases and missing device/native-speech qualification do not become
+release acceptance. Inspect the terminal result and retain needed artifacts before
+expiry. A later dispatch on the same ref still cancels an earlier dispatch, including
+one using the other profile.
 
 ### Emulator evidence (`android-emulator.yml`)
 
