@@ -548,8 +548,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
           page.groups.push(group([{kNav:true,label:'Eliza Cloud account & plan',lbl:'Eliza Cloud account & plan',val:plan.keyExpiring?'Sign-in expiring':plan.plan,hasVal:true,chev:true,noAB:true,go:()=>api.set({page:'cloud-plan'})}]));
           if(state.page==='cloud-plan'){
-            // The agent always runs on this phone; the plan decides only whether Eliza Cloud AI is connected.
-            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent','Running on this phone'),info('AI replies',plan.inference)];
+            // Runtime location and Cloud inference are separate facts.
+            const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent execution',runtimeLocation),info('AI replies',plan.inference)];
             if(plan.endsAt)rows.push(info(plan.status==='active'||plan.status==='trialing'||plan.status==='past_due'?'Plan runs until':'Plan ended',day(plan.endsAt)));
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
             const actions:Bag[]=plan.signedIn?[

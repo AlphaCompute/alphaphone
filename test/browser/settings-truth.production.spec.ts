@@ -6,9 +6,9 @@ import {test,expect,type Page} from '@playwright/test';
 test.describe.configure({timeout:240_000});
 test.beforeEach(async({},testInfo)=>{test.skip(testInfo.project.name!=='production','Production lane only (flag-off build)');});
 
-type Fixture={snapshot?:Record<string,unknown>;drop?:string[];subscription?:'credits'|'active'|'canceled'};
+type Fixture={snapshot?:Record<string,unknown>;drop?:string[];subscription?:'credits'|'active'|'canceled';agentStartFailure?:boolean};
 async function nativeStub(page:Page,fixture:Fixture={}){
- await page.addInitScript(({snapshot,drop,subscription})=>{
+ await page.addInitScript(({snapshot,drop,subscription,agentStartFailure})=>{
   const w=window as any;w.androidBridge={};
   if(subscription)localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));
   const now=Date.now(),store=new Map<string,string>();
@@ -59,6 +59,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     }
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='Agent'){
+     if(agentStartFailure&&method==='start')throw Error('Synthetic resident startup failure');
      if(subscription&&method==='request'){const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';return {status:200,body:JSON.stringify(input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{} )};}
      return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
     }
@@ -97,7 +98,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
   };
- },{snapshot:fixture.snapshot??{},drop:fixture.drop??[],subscription:fixture.subscription});
+ },{snapshot:fixture.snapshot??{},drop:fixture.drop??[],subscription:fixture.subscription,agentStartFailure:fixture.agentStartFailure});
 }
 const app=(page:Page)=>page.locator('[data-alpha-layer="app"]');
 const current=(page:Page)=>page.locator('[data-settings-page]:not([inert])').last();
@@ -461,4 +462,23 @@ test('the flag-off Problem log renders and exports finite inference facts withou
  for(const value of ['private-provider-message-sentinel','private-note-sentinel','private-token-sentinel','private-tool-sentinel'])expect(shared).not.toContain(value);
  page.once('dialog',dialog=>void dialog.accept());await current(page).getByRole('button',{name:'Clear problem log',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page)).toContainText('No problems recorded');
  await current(page).getByRole('button',{name:'Back to Settings',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page).getByRole('button',{name:'About',exact:true})).toBeVisible();
+});
+
+// Rendered production Settings; only native transport and Cloud responses are finite fixtures.
+for(const scenario of ['offline','recovering','connected'] as const)test(`Cloud plan agent execution location is truthful: ${scenario}`,async({page})=>{
+ await nativeStub(page,scenario==='offline'?{}:{subscription:'credits',agentStartFailure:scenario==='recovering'});
+ await page.goto('/');
+ if(scenario==='recovering'){
+  await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.some((call:any)=>call.plugin==='Agent'&&call.method==='start'))).toBe(true);
+  const close=page.getByRole('button',{name:'Close connection settings',exact:true});if(await close.isVisible())await close.click();
+ }
+ await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await current(page).getByRole('button',{name:/Eliza Cloud account & plan/}).click();
+ const plan=current(page);
+ await expect(plan).not.toContainText('Running on this phone',{timeout:1000});
+ await expect(plan).toContainText('Agent execution');
+ await expect(plan.getByText(scenario==='connected'?'On this device':'Not connected',{exact:true})).toBeVisible();
+ await expect(plan).not.toContainText('On this computer');
+ if(scenario==='connected')await expect(plan.getByText('Eliza Cloud',{exact:true})).toBeVisible();
 });
