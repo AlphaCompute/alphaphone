@@ -3,11 +3,11 @@
   "repository": "elizaOS/eliza",
   "base": "develop",
   "baseCommit": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
-  "head": "3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5",
+  "head": "6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
   "recordedAt": "2026-10-21",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
   "status": "ahead",
-  "aheadBy": 12,
+  "aheadBy": 13,
   "behindBy": 0,
   "mergeBase": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
   "pinOnlyCommits": [
@@ -38,6 +38,10 @@
     {
       "sha": "405cc18f3b11f0b56e3f807e25c78ce357263b1f",
       "subject": "Format PGlite snapshot guard and tests with pinned Biome"
+    },
+    {
+      "sha": "6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
+      "subject": "fix(voice): make Cartesia batch STT an explicit request choice"
     }
   ],
   "pullRequests": [
@@ -51,17 +55,5 @@
     "url": "https://github.com/elizaOS/eliza/pull/37198",
     "status": "draft",
     "head": "5c1d7e4440e69e09241cad833f5626ebb886ba1a"
-  },
-  "componentPullRequests": [
-    {
-      "url": "https://github.com/elizaOS/eliza/pull/37198",
-      "head": "5c1d7e4440e69e09241cad833f5626ebb886ba1a"
-    },
-    {
-      "url": "https://github.com/elizaOS/eliza/pull/37204",
-      "head": "3d6fb0f962424f554d08be81594328d455e54418"
-    }
-  ],
-  "publishedIntegrationBranch": "codex/alpha-resident-dependency-integration-20261021",
-  "recordingMethod": "Official node scripts/verify-upstream.mjs --record-reachability after complete legitimate owned vendor checkout passed strict immutable source verification. Existing component PR and published-branch bookkeeping preserved exactly; no check status invented."
+  }
 }

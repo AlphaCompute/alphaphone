@@ -111,7 +111,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== '3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== '6d465a126d02d0a4a64ccf3ed746fee6273c39b8') throw Error('Review voice projections for the new upstream pin.');
   const cameraContract=JSON.parse(fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.json'),'utf8'));
   const cameraBytes=fs.readFileSync(path.join(root,'patches/eliza/client-camera-contract.ts'));
   if(cameraContract.baseCommit!==upstream.pin||cameraContract.path!=='plugins/plugin-assistant/src/services/device-actions/camera-contract.ts'||hash(cameraBytes)!==cameraContract.sha256)throw Error('Camera contract projection changed');
