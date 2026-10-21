@@ -61,14 +61,14 @@ test('real native multipart method uploads decoded WAV and clears it on credenti
 public class CloudWavUploadTest {
  boolean destroyed;String failure="";Exception error;Pending pending;Connection connection;Capture capture=new Capture();
  static class PluginCall{String getString(String key){return "selected-recording";}}
- static class Pending{boolean cancelled;JSObject result;}
+ static class Pending{boolean cancelled;JSObject result;String failureCode;}
  static class JSObject{void put(String key,Object value){}}
  static class JSONObject{JSONObject(String value){}Object get(String key){return "transcript";}}
  static class Capture{File file=new File("opaque-selected-recording");File selected(String id){return file;}}
  interface Work{void run(Pending request)throws Exception;}
  void submit(PluginCall call,Work work){pending=new Pending();try{work.run(pending);}catch(Exception e){error=e;}}
  String required(String value,int limit){return value;}
- static class AlphaVoicePcm{static byte[] last;static File selected;static byte[] decode(File file,BooleanSupplier cancelled)throws Exception{if(cancelled.getAsBoolean())throw new IOException();selected=file;last=new byte[]{82,73,70,70,0,0,0,0,87,65,86,69};return last;}}
+ static class AlphaVoicePcm{static byte[] last;static File selected;static String failure;static byte[] decode(File file,BooleanSupplier cancelled)throws Exception{selected=file;if("decode".equals(failure)||cancelled.getAsBoolean())throw new IOException("PRIVATE_DECODE_SENTINEL");last=new byte[]{82,73,70,70,0,0,0,0,87,65,86,69};return last;}}
  class Connection extends HttpURLConnection {
   ByteArrayOutputStream bytes=new ByteArrayOutputStream();Connection()throws Exception{super(new URL("http://fixture.invalid"));}
   public void setRequestProperty(String key,String value){if(failure.equals("properties"))throw new IllegalStateException();super.setRequestProperty(key,value);}
@@ -78,17 +78,23 @@ public class CloudWavUploadTest {
  }
  HttpURLConnection connect(PluginCall call,String route,Pending request)throws Exception{if(!route.equals("stt"))throw new AssertionError();if(failure.equals("connect"))throw new IOException();if(failure.equals("cancel"))request.cancelled=true;return connection=new Connection();}
  void successful(HttpURLConnection c){}
- byte[] read(InputStream in,int max,Pending request)throws Exception{return in.readAllBytes();}
+ byte[] read(InputStream in,int max,Pending request)throws Exception{if(failure.equals("response"))throw new IOException("PRIVATE_RESPONSE_SENTINEL");return in.readAllBytes();}
  ${method}
  public static void main(String[] args)throws Exception{
-  for(String mode:new String[]{"","connect","properties","output","write","cancel"}){
-   CloudWavUploadTest host=new CloudWavUploadTest();host.failure=mode;host.transcribeRecording(new PluginCall());
+  for(String mode:new String[]{"","decode","connect","properties","output","write","cancel","response"}){
+   CloudWavUploadTest host=new CloudWavUploadTest();host.failure=mode;AlphaVoicePcm.last=null;AlphaVoicePcm.failure=mode;host.transcribeRecording(new PluginCall());
    if(AlphaVoicePcm.selected!=host.capture.file)throw new AssertionError("Selected recording changed");
-   for(byte value:AlphaVoicePcm.last)if(value!=0)throw new AssertionError("Decoded PCM not cleared on "+mode);
+   if(!mode.equals("decode")&&AlphaVoicePcm.last==null)throw new AssertionError("PCM fixture missing on "+mode);
+   for(byte value:AlphaVoicePcm.last==null?new byte[0]:AlphaVoicePcm.last)if(value!=0)throw new AssertionError("Decoded PCM not cleared on "+mode);
    if(mode.isEmpty()){
     if(host.error!=null||host.pending.result==null)throw new AssertionError("Upload failed");
+    if(host.pending.failureCode!=null)throw new AssertionError("Successful transcription kept a failure code");
     String wire=host.connection.bytes.toString("ISO-8859-1");if(!wire.contains("filename=\\\"recording.wav\\\"")||!wire.contains("Content-Type: audio/wav")||!wire.contains("RIFF")||!wire.contains("WAVE")||wire.contains("ftyp"))throw new AssertionError("Wrong multipart format");
-   }else if(host.error==null)throw new AssertionError("Failure was swallowed");
+   }else {
+    if(host.error==null)throw new AssertionError("Failure was swallowed");
+    String expected=mode.equals("decode")?"voice-stt-decode":mode.equals("connect")?"voice-stt-connect":mode.equals("response")?"voice-stt-response":"voice-stt-upload";
+    if(!expected.equals(host.pending.failureCode))throw new AssertionError("Expected "+expected+" on "+mode+", got "+host.pending.failureCode);
+   }
   }
   System.out.println("PASS real native multipart WAV upload and cleanup");
  }
@@ -97,6 +103,17 @@ public class CloudWavUploadTest {
  execFileSync(binary('javac'),['--release','11','-d',out,file]);
  assert.match(execFileSync(binary('java'),['-cp',out,'CloudWavUploadTest'],{encoding:'utf8'}),/PASS real native multipart WAV upload and cleanup/);
  }finally{fs.rmSync(out,{recursive:true,force:true});}
+});
+
+test('Cloud voice shows finite HTTP support codes without replacing sign-in or billing recovery',()=>{
+ const f=cloudVoiceViewFixture({cloudProfile:true});
+ try{
+  const failure=code=>f.box.cloudVoiceFailure({code,message:'PRIVATE_HTTP_SENTINEL'});
+  for(const status of [401,403])assert.equal(failure(`voice-http-${status}`),'Sign in to Eliza Cloud again in Settings, then retry voice.');
+  assert.equal(failure('voice-http-402'),"Eliza Cloud declined cloud voice for your account's billing. Check your account in Settings, then retry.");
+  for(const status of [400,429,503])assert.equal(failure(`voice-http-${status}`),`Cloud voice could not complete this request (${status}). Try again later.`);
+  for(const code of ['voice-http-200','voice-http-600','voice-http-400PRIVATE_HTTP_SENTINEL','voice-http-400\n','voice-http-400\r\n','voice-http-400\nPRIVATE_HTTP_SENTINEL','voice-http-0400',400,null])assert.equal(failure(code),null);
+ }finally{f.close();}
 });
 
 test('Cloud Notes exposes only read while idle, only Stop while live, and cancels reviewed text on leaving',async()=>{
