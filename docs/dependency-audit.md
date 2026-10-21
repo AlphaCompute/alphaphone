@@ -515,3 +515,39 @@ Read-back on 2026-10-10: only "Default branch baseline" is active (`deletion`,
 required. Installing it is the owner's step ([ci-cost-policy.md](ci-cost-policy.md)). A
 matching read-back is configuration evidence only; MVP-46 also needs a controlled pull
 request showing that a missing or failing check blocks the merge.
+
+## October 21 resident pin and registry refresh
+
+SDK `3d6f68a129702a1a2779cc087c93a80ba0f2332e` changes Android service
+lifecycle code and its tests from `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab`.
+The upstream `bun.lock` and every package manifest are byte-identical. The existing
+`node scripts/dependency-audit.mjs --resident --write` command queried the registry
+on 2026-10-21 for the same 3691 versions (normalized input SHA-256
+`e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e`).
+The fresh result is 113 findings: 1 critical, 48 high, 49 moderate and 15 low;
+15 finding rows covering 12 advisory IDs are new since the October 20 snapshot.
+Old exception review dates and deadlines remain unchanged.
+
+The existing packaged notices collector was also run read-only against the freshly
+staged SDK 3d runtime and worker: 674 entries, zero errors or warnings.
+`@modelcontextprotocol/sdk`, `follow-redirects` and `vite` are absent; the nine new
+advisory IDs for those packages have short-lived non-shipping exceptions.
+Hono 4.13.9 and markdown-it 14.3.2 are present. Their new advisories
+GHSA-5r4p-p66f-jhc7, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q remain
+unexcepted in `pendingUpstreamFixes`, pending upstream remediation or actual
+vulnerable-path review. In particular, the shipped high markdown-it finding cannot
+receive an exception. The dedicated resident audit therefore remains red; the
+offline repository test permits these explicitly recorded pending findings using
+its existing policy. No assertions or audit rules were relaxed.
+
+This is registry and staged package inventory evidence, not an audited APK,
+installed runtime, release qualification or physical-device result. Historical
+review sections above retain their original pins and evidence limits.
+
+The complete 674-entry collector result (including its empty errors/warnings arrays),
+serialized as two-space JSON with a trailing newline, has SHA-256
+`5fa9162fe4bbadc998e6427db89a27b7b1542baed3d0305a470e0390559627ec`.
+The previous SDK5c record had no pending upstream fixes; none was dropped. Its
+98 advisory rows remain in the fresh 113-row result; all 84 retained exceptions
+and their deadlines are byte-for-byte unchanged. Only the newly reported shipped
+Hono and markdown-it advisories add pending fixes.
