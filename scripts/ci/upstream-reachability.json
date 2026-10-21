@@ -2,20 +2,30 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "head": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "recordedAt": "2026-10-20",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "status": "identical",
-  "aheadBy": 0,
-  "behindBy": 0,
+  "baseCommit": "85b477c3cbecfaaaf89000d727416e6657e4bdd0",
+  "head": "3d6f68a129702a1a2779cc087c93a80ba0f2332e",
+  "recordedAt": "2026-10-21",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...3d6f68a129702a1a2779cc087c93a80ba0f2332e",
+  "status": "diverged",
+  "aheadBy": 1,
+  "behindBy": 19,
   "mergeBase": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "pinOnlyCommits": [],
+  "pinOnlyCommits": [
+    {
+      "sha": "3d6f68a129702a1a2779cc087c93a80ba0f2332e",
+      "subject": "fix(android): settle detached launches before releasing ownership"
+    }
+  ],
   "pullRequests": [
     {
       "url": "https://github.com/elizaOS/eliza/pull/37084",
       "status": "merged",
       "mergeCommit": "aed4983248cdef1e7bc3ff0412f3ef6a356507b6"
     }
-  ]
+  ],
+  "pendingPullRequest": {
+    "url": "https://github.com/elizaOS/eliza/pull/37198",
+    "status": "draft",
+    "head": "3d6f68a129702a1a2779cc087c93a80ba0f2332e"
+  }
 }

@@ -2,7 +2,7 @@
 
 Notes uses the common Share panel: Share to email opens an in-app draft,
 Share externally opens the platform chooser, Copy text copies the selected
-snapshot, and Save text locally opens the document destination picker.
+snapshot, and Save locally opens the document destination picker.
 Opening the panel does not send content. Cancellation and a changed selection
 retire the panel without invoking another destination.
 
