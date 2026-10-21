@@ -592,3 +592,7 @@ the registry at this new pin and returned exactly the same110 finding rows acros
 and disposition pin were refreshed after this comparison; no exception was added
 or renewed. No new provider call or packaged-subset result is claimed. Fresh
 exact-pin preparation and package verification remain required.
+
+### Local SDK public-read/usage source admission — 2026-10-21
+
+An actual `node scripts/dependency-audit.mjs --resident --write` refresh at `3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5` returned the same 3691 package versions and 110 finding rows (1 critical, 47 high, 48 moderate, 14 low) as405. The normalized lock input and all 93 exception objects, original dates/deadlines and pending rows are unchanged. Re-review updates only the current source binding/description; no exception is renewed. Prior source receipt/dispositions are preserved in Git history and external exact-preimage review artifacts. This is source-registry evidence; no new prepared runtime, packaged-subset audit, provider or device result is claimed. See [source admission evidence](evidence/sdk-public-reads-usage-source-20261021.json).
