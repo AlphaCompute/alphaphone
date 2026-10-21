@@ -580,3 +580,15 @@ above does not establish the new candidate's shipped package versions. Exact-pin
 dependency installation, normal runtime/worker preparation, packaged subset audit,
 and both APK/runtime qualification remain required. Source-only generated notices
 are attribution data and do not prove that a repaired dependency is packaged.
+
+## PGlite snapshot source admission (2026-10-21)
+
+SDK `405cc18f3b11f0b56e3f807e25c78ce357263b1f` changes the PGlite snapshot reader and its tests after CAD.
+Its `bun.lock` and every package manifest are unchanged from CAD. Existing advisory
+exception objects, deadlines and historical staged-set evidence remain unchanged.
+The actual official `node scripts/dependency-audit.mjs --resident --write` queried
+the registry at this new pin and returned exactly the same110 finding rows across
+3691 package versions (1 critical,47 high,48 moderate,14 low). The resident snapshot
+and disposition pin were refreshed after this comparison; no exception was added
+or renewed. No new provider call or packaged-subset result is claimed. Fresh
+exact-pin preparation and package verification remain required.

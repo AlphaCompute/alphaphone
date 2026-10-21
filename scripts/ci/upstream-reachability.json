@@ -2,14 +2,14 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "85b477c3cbecfaaaf89000d727416e6657e4bdd0",
-  "head": "cadacd7afa697851bd08f5574e7b2b00c9d3a446",
+  "baseCommit": "7504e63d339d2dd14a370711d127d13af95e3665",
+  "head": "405cc18f3b11f0b56e3f807e25c78ce357263b1f",
   "recordedAt": "2026-10-21",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...cadacd7afa697851bd08f5574e7b2b00c9d3a446",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...405cc18f3b11f0b56e3f807e25c78ce357263b1f",
   "status": "ahead",
-  "aheadBy": 9,
+  "aheadBy": 11,
   "behindBy": 0,
-  "mergeBase": "85b477c3cbecfaaaf89000d727416e6657e4bdd0",
+  "mergeBase": "7504e63d339d2dd14a370711d127d13af95e3665",
   "pinOnlyCommits": [
     {
       "sha": "ce2a2711f89c0cdc93a6cb437477748816066210",
@@ -34,6 +34,10 @@
     {
       "sha": "3d6fb0f962424f554d08be81594328d455e54418",
       "subject": "fix(deps): update resident Markdown and router dependencies"
+    },
+    {
+      "sha": "405cc18f3b11f0b56e3f807e25c78ce357263b1f",
+      "subject": "Format PGlite snapshot guard and tests with pinned Biome"
     }
   ],
   "pullRequests": [
@@ -58,5 +62,6 @@
       "head": "3d6fb0f962424f554d08be81594328d455e54418"
     }
   ],
-  "publishedIntegrationBranch": "codex/alpha-resident-dependency-integration-20261021"
+  "publishedIntegrationBranch": "codex/alpha-resident-dependency-integration-20261021",
+  "recordingMethod": "Direct authenticated GitHub compare and develop-branch API reads; canonical schema. Sparse source-only worktree cannot satisfy full immutable-workspace verifier; strict source verification pending full vendor integration."
 }
