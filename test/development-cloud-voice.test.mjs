@@ -20,11 +20,13 @@ async function fixture(enabled=true,moderation,direct=false){
   if(path==='/api/auth/me')return Response.json({identity:{id:owner},access:{role:'OWNER'},session:{id:paired,expiresAt:Date.now()+600000}});
   signal=input.signal;if(mode==='wait')return new Promise((_,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}));
   if(mode==='rotate')await writeFile(tokenFile,'2'.repeat(64),{mode:0o600});
+  if(mode==='unauthorized')return Response.json({secret:'never-project-provider-error'},{status:401});
   if(mode==='error')return Response.json({secret:'never-project-provider-error'},{status:402});
   const headers={'server-timing':mode==='timing'?'auth;dur=911, admission;dur=1497, synthesis;dur=195, private;desc=never-project-secret':'','x-eliza-speech-provider':mode==='wrong'?'paradee':'cartesia','x-eliza-speech-route':mode==='route'?'other':direct?'direct':'cloud'};
+  if(mode==='missing')delete headers['x-eliza-speech-provider'];
   const receipt=response=>{if(moderation!==undefined){const get=response.headers.get.bind(response.headers);response.headers.get=name=>name.toLowerCase()==='x-eliza-tts-moderation'?moderation:get(name);}return response;};
-  if(path==='/api/asr/cloud')return receipt(Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers}));
-  assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
+  if(path==='/api/asr/cloud'){assert.equal(input.headers['X-Eliza-STT-Provider'],'cartesia');return receipt(Response.json({text:'Heard exactly once',secret:'never-project-transcript-metadata'},{headers}));}
+  assert.equal(input.headers['X-Eliza-STT-Provider'],undefined);assert.deepEqual(JSON.parse(input.body),{text:'Hello'});
   headers['content-type']=mode==='type'?(direct?'audio/mpeg':'audio/wav'):direct?'audio/wav':'audio/mpeg';if(direct)headers['x-request-id']=input.headers['X-Request-Id'];const wav=Buffer.alloc(48);wav.write('RIFF',0);wav.writeUInt32LE(40,4);wav.write('WAVE',8);return receipt(new Response(mode==='large'?new Uint8Array(8*1024*1024+1):direct?wav:new Uint8Array([73,68,51,1]),{headers}));
  };
  const handler=createLocalAgentDevHandler({origin:'http://127.0.0.1:9',tokenFile,request,cloudVoiceEnabled:enabled&&!direct,cartesiaEnabled:enabled&&direct}),server=createServer(handler);await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin=`http://127.0.0.1:${server.address().port}`;
@@ -35,6 +37,14 @@ const tts=()=>({path:'/api/tts/cloud',method:'POST',requestId:randomUUID(),body:
 const asr=()=>({path:'/api/asr/cloud',method:'POST',requestId:randomUUID(),audioBase64:Buffer.from('RIFF fixture WAV').toString('base64')});
 test('disabled Cloud speech never enrolls or calls the runtime',async()=>{const f=await fixture(false);try{assert.equal((await f.call(tts())).status,400);assert.equal(f.calls.length,0);}finally{await f.close();}});
 test('owner-bound Cloud ASR/TTS project only verified Cartesia speech, not keys or vendor fields',async()=>{const f=await fixture();try{for(const input of [asr(),tts()]){const result=await f.call(input);assert.equal(result.status,200);assert.equal(result.data.status,200);const body=JSON.parse(result.data.body);assert.equal(body.provider,'cartesia');assert.equal(body.route,'cloud');assert.equal(body.requestId,input.requestId);assert.equal(body.secret,undefined);if(input.audioBase64)assert.equal(body.text,'Heard exactly once');else {assert.equal(body.contentType,'audio/mpeg');assert.deepEqual(Buffer.from(body.audioBase64,'base64'),Buffer.from([73,68,51,1]));}assert(!JSON.stringify(result).includes(paired));}assert.equal(f.calls.filter(x=>x.path==='/api/tts/cloud').length,1);assert.equal(f.calls.filter(x=>x.path==='/api/asr/cloud').length,1);}finally{await f.close();}});
+test('Cloud ASR rejects missing or wrong provider, owner rotation, unauthorized errors and cancellation',async()=>{
+ for(const mode of ['missing','wrong','route','rotate','unauthorized','error','wait']){const f=await fixture();try{
+  f.mode(mode);const controller=new AbortController(),pending=f.call(asr(),controller.signal);
+  if(mode==='wait'){while(!f.signal())await new Promise(r=>setTimeout(r,5));controller.abort();await assert.rejects(pending);for(let i=0;i<50&&!f.signal().aborted;i++)await new Promise(r=>setTimeout(r,5));assert.equal(f.signal().aborted,true);}
+  else {const response=await pending;assert.notEqual(response.data.status,200);assert(!JSON.stringify(response).includes('Heard exactly once'));}
+  assert.equal(f.calls.filter(x=>x.path==='/api/asr/cloud').length,1);
+ }finally{await f.close();}}
+});
 test('wrong owner and unapproved synthesis fields never reach speech dispatch',async()=>{const f=await fixture();try{assert.equal((await f.call({...tts(),ownerId:'other'})).status,409);assert.equal((await f.call({...tts(),body:JSON.stringify({text:'Hi',modelId:'other',apiKey:'no'})})).status,400);assert.equal(f.calls.filter(x=>x.path==='/api/tts/cloud').length,0);}finally{await f.close();}});
 test('non-Cartesia provider, wrong audio MIME and oversized audio fail closed',async()=>{for(const mode of ['wrong','type','large']){const f=await fixture();try{f.mode(mode);assert.notEqual((await f.call(tts())).data.status,200);}finally{await f.close();}}});
 test('upstream billing errors are sanitized and root rotation retires the old voice response',async()=>{for(const mode of ['error','rotate']){const f=await fixture();try{f.mode(mode);const result=await f.call(tts());if(mode==='error'){assert.equal(result.data.status,402);assert(!JSON.stringify(result).includes('never-project'));}else assert.equal(result.status,409);}finally{await f.close();}}});
