@@ -172,6 +172,7 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
  }
  private static void successful(HttpURLConnection c)throws Exception{int status=c.getResponseCode();if(status<200||status>=300)throw new VoiceHttpException(status);}
  @PluginMethod public void transcribeRecording(PluginCall call){submit(call,request->{
+  request.failureCode="voice-stt-decode";
   String recordingId=required(call.getString("recordingId"),256);File file=capture.selected(recordingId);if(file==null)throw new IOException();
   // Android's MPEG_4 recorder emits mp42, which the Cloud signature gate classifies as video.
   // Decode the selected bounded mono draft to real PCM WAV; changing its MIME label is insufficient.
@@ -180,11 +181,12 @@ public final class AlphaVoiceCloudPlugin extends Plugin {
   String boundary="AlphaVoice"+UUID.randomUUID().toString().replace("-","");
   byte[] prefix=("--"+boundary+"\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"recording.wav\"\r\nContent-Type: audio/wav\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
   byte[] suffix=("\r\n--"+boundary+"--\r\n").getBytes(StandardCharsets.US_ASCII);
-  c=connect(call,"stt",request);c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
+  request.failureCode="voice-stt-connect";c=connect(call,"stt",request);
+  request.failureCode="voice-stt-upload";c.setRequestProperty("Content-Type","multipart/form-data; boundary="+boundary);c.setFixedLengthStreamingMode(prefix.length+audio.length+suffix.length);
   try(OutputStream out=c.getOutputStream()){if(request.cancelled)throw new IOException();out.write(prefix);out.write(audio);out.write(suffix);}
   }finally{Arrays.fill(audio,(byte)0);}
-  successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,256*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object transcript=data.get("transcript");if(!(transcript instanceof String))throw new IOException();
-  if(request.cancelled||destroyed)throw new IOException();JSObject result=new JSObject();result.put("text",transcript);result.put("local",false);request.result=result;
+  request.failureCode="voice-stt-response";successful(c);byte[] response;try(InputStream in=c.getInputStream()){response=read(in,256*1024,request);}JSONObject data=new JSONObject(new String(response,StandardCharsets.UTF_8));Object transcript=data.get("transcript");if(!(transcript instanceof String))throw new IOException();
+  if(request.cancelled||destroyed)throw new IOException();JSObject result=new JSObject();result.put("text",transcript);result.put("local",false);request.result=result;request.failureCode=null;
  });}
  private void submitLocal(PluginCall call,Work work){submit(call,request->{main.removeCallbacks(localIdleRelease);synchronized(localCancellationGate){localActiveRequest=request;request.cancelNative=()->{synchronized(localCancellationGate){if(localActiveRequest==request)localEngine.cancel();}};}try{if(request.cancelled||!speechForeground)throw new IOException("Voice cancelled");work.run(request);}catch(Exception error){if(!keepsEngine(request))localEngine.release();throw error;}catch(LinkageError|OutOfMemoryError error){localEngine.release();throw new IOException("On-device speech unavailable",error);}finally{synchronized(localCancellationGate){if(localActiveRequest==request)localActiveRequest=null;request.cancelNative=null;}if(destroyed||(request.cancelled&&!keepsEngine(request)))localEngine.release();else scheduleLocalRelease(speechForeground?120000:30000);}});}
  /**
