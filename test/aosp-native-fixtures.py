@@ -25,6 +25,7 @@ def load(name, file):
 
 native = load('stage_native', 'stage-aosp-native.py')
 ELF = b'\x7fELF\x02\x01' + bytes(12) + b'\xb7\x00' + bytes(44)
+ELF_X86 = ELF[:18] + b'\x3e\x00' + ELF[20:]
 BP = '''// Generated from a hash- and signer-verified downstream launcher.
 android_app_import {
     name: "AlphaPhone",
@@ -92,7 +93,10 @@ class Packaging(unittest.TestCase):
             self.assertFalse(report[flag])
         self.assertEqual(json.loads((self.output / 'native-libraries.json').read_text()), report)
 
-    def resident_fixture(self):
+    def resident_fixture(self, target='stallion'):
+        config = native.TARGETS[target]
+        abi = config['abi']
+        elf = ELF_X86 if target == 'cuttlefish' else ELF
         # Synthetic source and binary pins keep these tests offline; actual APK
         # provenance and executable loading require their separate checks.
         trust = self.root / 'trust'
@@ -106,7 +110,7 @@ class Packaging(unittest.TestCase):
         }
         digest = lambda data: hashlib.sha256(data).hexdigest()
         bun = {'version': '1.4.2', 'revision': '2' * 40,
-               'artifacts': {'aarch64': {'binarySha256': digest(ELF)}}}
+               'artifacts': {config['bunArch']: {'binarySha256': digest(elf)}}}
         pin_files['vendor/eliza/packages/app/scripts/lib/android-bun-artifacts.lock.json'] = json.dumps({'channels': {'stable': bun}}).encode()
         for name, data in pin_files.items():
             target = trust / name
@@ -118,10 +122,10 @@ class Packaging(unittest.TestCase):
         script = "const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');const root=process.argv[1];const lock=JSON.parse(fs.readFileSync(path.join(root,'upstream.lock.json')));const digest=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');console.log(JSON.stringify(" + expression + "))"
         stamp = json.loads(subprocess.check_output(['node', '-e', script, str(trust)]))
         stamp_bytes = json.dumps(stamp).encode()
-        entries = {'lib/arm64-v8a/' + name: ELF for name in native.RUNTIME_MODES}
+        entries = {'lib/' + abi + '/' + name: elf for name in config['modes']}
         entries.update({'assets/agent/' + name: b'fixture asset' for name in native.REQUIRED_AGENT_ASSETS})
-        entries.update({'assets/agent/arm64-v8a/' + name: ELF for name in native.RUNTIME_ASSETS.values()})
-        entries['assets/agent/arm64-v8a/libstdc++.so.6.0.33'] = ELF
+        entries.update({'assets/agent/' + abi + '/' + name: elf for name in config['assets'].values()})
+        entries['assets/agent/' + abi + '/libstdc++.so.6.0.33'] = elf
         provenance = {'schema': 'eliza.android_agent_runtime_provenance.v1',
                       'bun': {'version': bun['version'], 'revision': bun['revision'], 'channel': 'stable'},
                       'files': [{'path': n, 'size_bytes': len(data), 'sha256': digest(data)} for n, data in entries.items()]}
@@ -140,8 +144,8 @@ class Packaging(unittest.TestCase):
         entries.update({prefix + n: data for n, data in worker_files.items()})
         return trust, entries
 
-    def cloud_fixture(self):
-        trust, entries = self.resident_fixture()
+    def cloud_fixture(self, target='stallion'):
+        trust, entries = self.resident_fixture(target)
         omitted = native.CLOUD_OMITTED_MODEL
         del entries[omitted['path']]
         provenance_path = 'assets/agent/android-agent-runtime-provenance.json'
@@ -286,6 +290,81 @@ class Packaging(unittest.TestCase):
         with patch.object(native, 'ROOT', trust), self.assertRaisesRegex(ValueError, 'pinned binary'):
             native.stage(self.apk, self.output, 'AlphaPhone')
         self.assertEqual(len(list(self.output.iterdir())), 1)
+
+    def test_cuttlefish_exact_x86_payload_modes_and_no_arm64_installation(self):
+        trust, entries = self.cloud_fixture('cuttlefish')
+        # A fat APK may contain another ABI; it must not be installed in x86's directory.
+        entries['lib/arm64-v8a/libcamera.so'] = ELF
+        self.archive(list(entries.items()))
+        before = self.apk.read_bytes()
+        self.overlay()
+        with patch.object(native, 'ROOT', trust):
+            report = native.stage(self.apk, self.output, 'AlphaPhone', 'cuttlefish')
+        self.assertEqual(self.apk.read_bytes(), before)
+        expected = {'libeliza_bun.so': '0755', 'libeliza_ld_musl_x86_64.so': '0755',
+                    'libeliza_ld_musl_x86_64_real.so': '0755', 'libeliza_stdcpp.so': '0644',
+                    'libeliza_gcc_s.so': '0644', 'libsigsys-handler.so': '0644'}
+        self.assertEqual({x.name for x in (self.output / 'native-x86_64').iterdir()}, set(expected))
+        self.assertFalse((self.output / 'native-arm64').exists())
+        import configparser
+        config = configparser.ConfigParser()
+        config.read(self.output / 'config.fs')
+        self.assertEqual(set(config.sections()), {'product/app/AlphaPhone/lib/x86_64/' + n for n in expected})
+        for name, mode in expected.items():
+            self.assertEqual((self.output / 'native-x86_64' / name).read_bytes(), ELF_X86)
+            self.assertEqual(dict(config['product/app/AlphaPhone/lib/x86_64/' + name]),
+                             {'mode': mode, 'user': 'AID_ROOT', 'group': 'AID_ROOT', 'caps': '0'})
+        makefile = (self.output / 'Android.mk').read_text()
+        self.assertIn('LOCAL_MODULE_TARGET_ARCH := x86_64\n', makefile)
+        self.assertNotIn('arm64', makefile)
+        for name in expected:
+            self.assertIn('native-x86_64/' + name, makefile)
+        self.assertTrue(report['residentAgentIncluded'])
+        self.assertFalse(report['runtimeVerified'])
+        self.assertFalse(report['deployReady'])
+        self.assertEqual(report['target'], 'cuttlefish')
+
+    def test_cuttlefish_wrong_abi_missing_runtime_and_unknown_target_fail_before_write(self):
+        trust, original = self.cloud_fixture('cuttlefish')
+        variants = []
+        for name in ['lib/x86_64/libeliza_bun.so', 'lib/x86_64/libsigsys-handler.so',
+                     'lib/x86_64/libeliza_ld_musl_x86_64_real.so']:
+            entries = dict(original)
+            del entries[name]
+            variants.append(entries)
+        variants.append({**original, 'lib/x86_64/libeliza_bun.so': ELF})
+        variants.append({**original, 'lib/x86_64/libeliza_unreviewed.so': ELF_X86})
+        # A complete ARM fixture cannot establish a Cuttlefish runtime.
+        _, arm = self.cloud_fixture()
+        variants.append(arm)
+        self.overlay()
+        for entries in variants:
+            self.archive(list(entries.items()))
+            with patch.object(native, 'ROOT', trust), self.assertRaises((ValueError, KeyError)):
+                native.stage(self.apk, self.output, 'AlphaPhone', 'cuttlefish')
+            self.assertEqual(list(self.output.iterdir()), [self.output / 'Android.bp'])
+        self.archive(list(original.items()))
+        with self.assertRaisesRegex(ValueError, 'Unsupported'):
+            native.stage(self.apk, self.output, 'AlphaPhone', 'generic-x86')
+        self.assertEqual((self.output / 'Android.bp').read_text(), BP)
+
+    def test_cuttlefish_self_consistent_bun_substitution_cannot_override_x64_pin(self):
+        trust, entries = self.cloud_fixture('cuttlefish')
+        replaced = ['lib/x86_64/libeliza_bun.so', 'assets/agent/x86_64/bun']
+        for name in replaced:
+            entries[name] += b'changed'
+        path = 'assets/agent/android-agent-runtime-provenance.json'
+        provenance = json.loads(entries[path])
+        for entry in provenance['files']:
+            if entry['path'] in replaced:
+                data = entries[entry['path']]
+                entry.update(size_bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        entries[path] = json.dumps(provenance).encode()
+        self.archive(list(entries.items()))
+        self.overlay()
+        with patch.object(native, 'ROOT', trust), self.assertRaisesRegex(ValueError, 'pinned binary'):
+            native.stage(self.apk, self.output, 'AlphaPhone', 'cuttlefish')
+        self.assertEqual(list(self.output.iterdir()), [self.output / 'Android.bp'])
 
 
 if __name__ == '__main__':

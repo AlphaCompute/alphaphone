@@ -321,7 +321,8 @@ html:not(.alpha-landscape) .alpha-phone [data-screen]:not([data-alpha-chat-half=
  * (.alpha-text-xl above); the capture rail starts below that row instead of under it. */
 .alpha-text-xl.alpha-landscape.standalone-app [data-alpha-camera-root]{--alpha-camera-top:calc(60px + 24px * var(--alpha-text-scale,1))}
 /* The camera's message stops at the capture rail in landscape instead of lying across it. */
-.alpha-landscape [data-alpha-camera="said"]{right:calc(var(--alpha-camera-rail) + 16px)!important}
+.alpha-landscape [data-alpha-camera="said"],
+.alpha-landscape [data-alpha-camera-access]{right:calc(var(--alpha-camera-rail) + 16px)!important}
 .alpha-landscape [data-alpha-camera="viewfinder"]{top:0!important;bottom:0!important;height:auto!important;right:var(--alpha-camera-rail)!important}
 .alpha-landscape [data-alpha-camera="capture"]{left:auto!important;right:0!important;top:var(--alpha-camera-top)!important;bottom:0!important;width:var(--alpha-camera-rail)!important;height:auto!important;flex-direction:column-reverse!important;padding:8px 0!important;box-sizing:border-box}
 .alpha-landscape [data-alpha-camera="modes"]{top:auto!important;bottom:8px!important;right:var(--alpha-camera-rail)!important;z-index:2}

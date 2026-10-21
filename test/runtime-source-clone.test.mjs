@@ -158,3 +158,15 @@ test('full source preparation uses the calling Bun frozen install and preserves 
  assert.deepEqual(JSON.parse(fs.readFileSync(receipt)),{args:['install','--frozen-lockfile'],cwd:f.destination});assert.ok(fs.existsSync(path.join(f.destination,'node_modules')));assert.deepEqual(f.snapshot(),before);
  const failed=f.run({full:true,env:{...env,ALPHA_INSTALL_FAIL:'1'}});assert.notEqual(failed.status,0);assert.deepEqual(f.snapshot(),before);assert.doesNotMatch(failed.stdout,/Prepared local runtime:/);
 });
+
+for(const selection of ['override','npm_execpath','bare'])test(`nested installer Bun follows ${selection} toolchain without changing admitted source`,t=>{
+ const f=fixture(t),before=f.snapshot(),selected=path.join(f.directory,'selected/bun'),old=path.join(f.directory,'old/bun'),receipt=path.join(f.directory,'nested.json');
+ const executable=(file,body)=>{f.write(file,`#!${process.execPath}\n${body}`);fs.chmodSync(file,0o700);};
+ executable(old,`require('node:fs').writeFileSync(process.env.ALPHA_INSTALL_RECEIPT,JSON.stringify({wrongBun:true}));process.exit(71);`);
+ executable(selected,`const fs=require('node:fs'),{execFileSync}=require('node:child_process');if(process.argv[2]==='nested'){fs.writeFileSync(process.env.ALPHA_INSTALL_RECEIPT,JSON.stringify({args:JSON.parse(process.env.ALPHA_INSTALL_ARGS),executable:process.argv[1],path:process.env.PATH,agent:process.env.CLAUDECODE??null}));}else{execFileSync('bun',['nested'],{env:{...process.env,ALPHA_INSTALL_ARGS:JSON.stringify(process.argv.slice(2))}});fs.mkdirSync('node_modules',{recursive:true});}`);
+ const inheritedPath=[selection==='bare'?path.dirname(selected):path.dirname(old),process.env.PATH].filter(Boolean).join(path.delimiter);
+ const env={PATH:inheritedPath,ALPHA_BUN:selection==='override'?selected:selection==='bare'?'bun':'',npm_execpath:selection==='npm_execpath'?selected:process.execPath,ALPHA_INSTALL_RECEIPT:receipt,CLAUDECODE:'1'};
+ const result=f.run({full:true,env});assert.equal(result.status,0,result.stderr);
+ const actual=JSON.parse(fs.readFileSync(receipt));assert.deepEqual(actual.args,['install','--frozen-lockfile']);assert.equal(actual.executable,selected);assert.equal(actual.agent,null);
+ assert.equal(actual.path,selection==='bare'?inheritedPath:[path.dirname(selected),inheritedPath].join(path.delimiter));assert.deepEqual(f.snapshot(),before);
+});

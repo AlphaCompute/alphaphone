@@ -1,3 +1,4 @@
+import { NAVIGATION_FIX_LIMITS, usableNavigationFix } from './navigation-fix.ts';
 import { boundedText, coordinate, MapsFailure, place as validPlace, type Coordinate, type Place, type TravelMode } from './contracts.ts';
 import type { MapsState } from './state.ts';
 import type { Position } from './native-location.ts';
@@ -71,7 +72,7 @@ export interface MapsNavigationSurface {
 /** The Cloud Maps installation (signed-in account) this binding belongs to. */
 export type NavigationOwner = Readonly<{ providerId: string; attribution: string; current(): boolean }>;
 export type NavigationLimits = Readonly<{ fixTimeoutMs: number; maxFixAgeMs: number; maxAccuracyMeters: number; now: () => number }>;
-const LIMITS: NavigationLimits = { fixTimeoutMs: 15_000, maxFixAgeMs: 30_000, maxAccuracyMeters: 50, now: () => Date.now() };
+const LIMITS: NavigationLimits = { fixTimeoutMs: 15_000, ...NAVIGATION_FIX_LIMITS, now: () => Date.now() };
 const MODES: readonly TravelMode[] = ['drive', 'walk', 'bicycle', 'transit'];
 /** The agent's Cloud adapter id; Cloud place ids are shared with the phone's Cloud provider. */
 const AGENT_CLOUD_PROVIDER = 'eliza-cloud';
@@ -253,7 +254,7 @@ export class AlphaMapsDeviceNavigation implements MapsDeviceNavigation {
  }
 
  private usable(fix: Position | undefined): fix is Position {
-  return !!fix && Number.isFinite(fix.timestamp) && this.limits.now() - fix.timestamp <= this.limits.maxFixAgeMs && fix.timestamp <= this.limits.now() + 5_000 && fix.accuracyMeters <= this.limits.maxAccuracyMeters;
+  return usableNavigationFix(fix, this.limits.now(), this.limits);
  }
 
  /** One bounded fix. A late, stale or approximate fix is never used as the route origin. */

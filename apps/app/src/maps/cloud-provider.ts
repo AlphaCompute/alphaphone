@@ -1,3 +1,4 @@
+import { readServiceLimit, retryDuration } from '../runtime/subscription-entitlement.ts';
 import { boundedText, coordinate, MapsFailure, place, type Coordinate, type MapsProvider, type Place, type ProviderConfig, type Route, type TravelMode } from './contracts.ts';
 
 /** Exact Eliza Cloud Maps routes (#412) that the managed-service transport admits. */
@@ -36,7 +37,16 @@ export function cloudMapsFailure(error: unknown, signal?: AbortSignal): MapsFail
    // An authenticated 404 means this Cloud deployment does not serve Maps yet (#412).
    case 404: return new MapsFailure('unconfigured', 'Eliza Cloud Maps is not available yet.');
    case 403: return new MapsFailure('unauthorized', code === 'subscription_required' ? 'Maps needs an active Eliza subscription.' : 'Eliza Cloud refused this Maps request.');
-   case 429: return new MapsFailure('rate-limited', code==='allowance_exhausted'?'You have used your Maps allowance for this period.':'Maps request limit reached. Try again later.');
+   case 429: {
+    const now = Date.now(), limit = readServiceLimit(error, now);
+    if (limit?.kind === 'allowance-exhausted') {
+     const reset = limit.resetsAt != null && limit.resetsAt > now && limit.resetsAt - now <= 400 * 86400000 ? ` It resets ${new Date(limit.resetsAt).toLocaleString()}.` : limit.retryAfterMs != null ? ` It resets in ${retryDuration(limit.retryAfterMs)}.` : '';
+     return new MapsFailure('rate-limited', `You have used your Maps allowance for this period.${reset}`);
+    }
+    const retryMs = limit?.retryAfterMs ?? (limit?.resetsAt != null && limit.resetsAt > now && limit.resetsAt - now <= 86400000 ? limit.resetsAt - now : null);
+    const wait = retryMs != null ? `Try again in ${retryDuration(retryMs)}.` : 'Try again later.';
+    return new MapsFailure('rate-limited', `Maps request limit reached. ${wait}`);
+   }
    case 422: return new MapsFailure('unsupported', code === 'no_route' ? 'No route is available between these places.' : code === 'unsupported_mode' ? 'This travel mode is not available from Eliza Cloud Maps.' : 'This location is outside Eliza Cloud Maps coverage.');
    case 503: return code === 'maps_not_configured' ? new MapsFailure('unconfigured', 'Eliza Cloud Maps is not available yet.') : new MapsFailure('unavailable', 'Eliza Cloud Maps is temporarily unavailable. Try again later.');
    default: return new MapsFailure(failure.status === 502 ? 'invalid-response' : 'unavailable', 'Eliza Cloud Maps could not complete this request.');

@@ -267,16 +267,22 @@ export function checkResident({snapshot, dispositions, commit, inputSha256, toda
   const resident = dispositions.resident || {};
   if (resident.upstreamCommit !== commit)
     problems.push(`${DISPOSITIONS}: resident dispositions were reviewed at upstream ${resident.upstreamCommit ?? 'none'}, not ${commit}; re-review them against the new snapshot`);
+  const packaged = snapshot.input === 'packaged-runtime notices';
   const exceptions = resident.exceptions || [], used = new Set();
   for (const finding of snapshot.findings || []) {
     const label = `${finding.severity} ${finding.advisory.id} via ${finding.package}@${finding.versions.join(',')}`;
     const match = exceptions.find(item => item.advisory === finding.advisory.id && item.packages?.includes(finding.package));
     if (!match) { problems.push(`Unrecorded resident advisory: ${label}. Fix it upstream or record a reviewed exception in ${DISPOSITIONS} (resident).`); continue; }
     used.add(match);
+    if (packaged && match.ships !== true) problems.push(`${label}: packaged finding lacks a reviewed shipped exception`);
+    if (packaged && ['high', 'critical'].includes(finding.severity)) problems.push(`${label}: shipped high or critical advisories require an upstream fix, not an exception`);
     if (SEVERITY.indexOf(finding.severity) > SEVERITY.indexOf(match.severity)) problems.push(`${label}: severity rose from the reviewed ${match.severity} to ${finding.severity}`);
   }
   for (const item of exceptions) {
     const label = `resident exception ${item.advisory}`;
+    // Packaged notices are a subset: absent lock-wide exceptions are not stale.
+    // The complete lock audit still validates every exception and its continued presence.
+    if (packaged && !used.has(item)) continue;
     if (!used.has(item)) problems.push(`${DISPOSITIONS}: stale ${label}; the resident snapshot no longer reports it`);
     for (const field of ['reachability', 'justification', 'removeWhen', 'reviewedBy'])
       if (typeof item[field] !== 'string' || item[field].trim().length < 3) problems.push(`${label}: missing ${field}`);
