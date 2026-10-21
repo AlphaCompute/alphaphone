@@ -1,5 +1,5 @@
 {
-  "baseCommit": "5c1d7e4440e69e09241cad833f5626ebb886ba1a",
+  "baseCommit": "cadacd7afa697851bd08f5574e7b2b00c9d3a446",
   "paths": [
     {
       "path": "packages/ui/src/voice/voice-session-client.ts",

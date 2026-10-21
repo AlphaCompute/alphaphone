@@ -1,3 +1,5 @@
+Current source admission candidate: SDK `cadacd7afa697851bd08f5574e7b2b00c9d3a446` merges the reviewed Hono/markdown-it dependency repair with the preserved native SDK fixes. Fresh exact-pin preparation, packaged audit and both APK/runtime qualification remain required; no previous acceptance transfers. Historical source-bound records below retain their original pins.
+
 Current source admission candidate: SDK `5c1d7e4440e69e09241cad833f5626ebb886ba1a` includes latest reviewed develop85 and preserves the native lifecycle repair. PGlite snapshot production and byte binding change the runtime payload; fresh preparation, APK and installed acceptance remain required. Historical source-bound evidence follows.
 
 Current source admission candidate: SDK `3d6f68a129702a1a2779cc087c93a80ba0f2332e` adds the reviewed Android resident start/stop lifecycle repair. Dependency lock and package manifests are byte-identical to SDK `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab`; native service inputs changed, so fresh preparation, APK checks and installed lifecycle acceptance are required. No prior device or provider acceptance transfers. Historical source-bound evidence follows.

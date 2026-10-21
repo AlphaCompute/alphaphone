@@ -103,16 +103,16 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "5c1d7e4440e69e09241cad833f5626ebb886ba1a",
+    "upstreamCommit": "cadacd7afa697851bd08f5574e7b2b00c9d3a446",
     "input": "vendor/eliza/bun.lock",
     "auditedOn": "2026-10-21",
-    "inputSha256": "e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e",
+    "inputSha256": "9add78fe98019a237b6e526d0c8ed380c0ad30682803cd0f3ac70a2848632be6",
     "packages": 3691,
     "counts": {
       "info": 0,
-      "low": 15,
-      "moderate": 49,
-      "high": 48,
+      "low": 14,
+      "moderate": 48,
+      "high": 47,
       "critical": 1
     },
     "findings": [
@@ -747,21 +747,6 @@
         }
       },
       {
-        "package": "hono",
-        "versions": [
-          "4.13.8",
-          "4.13.9"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-5r4p-p66f-jhc7",
-          "severity": "moderate",
-          "vulnerableRange": ">=4.12.4 <4.13.11",
-          "title": "Hono: `serveStatic` decodes the request path a second time, leading to bypass of middleware on static paths",
-          "url": "https://github.com/advisories/GHSA-5r4p-p66f-jhc7"
-        }
-      },
-      {
         "package": "http-cache-semantics",
         "versions": [
           "4.2.0"
@@ -830,34 +815,6 @@
           "vulnerableRange": ">=0.11.0 <0.18.2",
           "title": "KaTeX: Existing prototype pollution can bypass trust restrictions",
           "url": "https://github.com/advisories/GHSA-238p-pmpm-9mq7"
-        }
-      },
-      {
-        "package": "markdown-it",
-        "versions": [
-          "14.3.2"
-        ],
-        "severity": "high",
-        "advisory": {
-          "id": "GHSA-gfr2-rv44-r23c",
-          "severity": "high",
-          "vulnerableRange": ">=14.1.0 <14.3.3",
-          "title": "markdown-it: Quadratic-time rendering of a single multi-line link reference definition with default options (regression since 14.0)",
-          "url": "https://github.com/advisories/GHSA-gfr2-rv44-r23c"
-        }
-      },
-      {
-        "package": "markdown-it",
-        "versions": [
-          "14.3.2"
-        ],
-        "severity": "low",
-        "advisory": {
-          "id": "GHSA-vfgh-jcmw-g37q",
-          "severity": "low",
-          "vulnerableRange": "<14.3.3",
-          "title": "markdown-it: Quadratic-time denial of service in inline HTML parsing with html enabled",
-          "url": "https://github.com/advisories/GHSA-vfgh-jcmw-g37q"
         }
       },
       {

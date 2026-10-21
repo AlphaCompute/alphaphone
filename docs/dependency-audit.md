@@ -562,3 +562,21 @@ Their earlier staged-package evidence remains scoped to the recorded SDK 3d payl
 new preparation/staging and its exact packaged notices audit have not run.
 The dedicated full-lock audit remains red on the three documented pending findings.
 No new packaged-runtime, APK or device acceptance is inferred from the refreshed pin.
+
+## Resident dependency repair source candidate (2026-10-21)
+
+SDK `cadacd7afa697851bd08f5574e7b2b00c9d3a446` normally merges the reviewed
+Hono/markdown-it dependency repair with SDK5c1d's native fixes. The official
+`node scripts/dependency-audit.mjs --resident --write` queried the registry for
+3691 package versions and reports110 findings:1 critical, 47 high, 48 moderate, 14 low.
+The only removed rows are GHSA-5r4p-p66f-jhc7 (Hono), GHSA-gfr2-rv44-r23c and
+GHSA-vfgh-jcmw-g37q (markdown-it). All 110 retained finding rows are byte-identical
+to the previous snapshot. Their 93 exceptions and original review/deadline objects
+are unchanged. The three resolved rows are removed from pendingUpstreamFixes;
+no exception or audit rule was added or relaxed.
+
+This is fresh full-lock registry evidence. Historical staged inventory evidence
+above does not establish the new candidate's shipped package versions. Exact-pin
+dependency installation, normal runtime/worker preparation, packaged subset audit,
+and both APK/runtime qualification remain required. Source-only generated notices
+are attribution data and do not prove that a repaired dependency is packaged.
