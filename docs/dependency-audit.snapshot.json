@@ -1,7 +1,7 @@
 {
   "description": "Normalised `npm audit --json` for the package-lock.json with this SHA-256. Regenerate with: node scripts/dependency-audit.mjs --write. Dispositions live in docs/dependency-audit.dispositions.json.",
-  "auditedOn": "2026-10-16",
-  "lockSha256": "afa65699304f6b0994fc12bd0a06ae12c0819fc0facd328ee8c3b1438f1dce37",
+  "auditedOn": "2026-10-21",
+  "lockSha256": "316cd0ddcec8549ee7148e58e1bd9b46955dd7151ad1af7a68b0d9c3e8488085",
   "counts": {
     "info": 0,
     "low": 0,
@@ -74,7 +74,7 @@
       "package": "xcode",
       "severity": "moderate",
       "direct": false,
-      "affectedRange": ">=0.9.2",
+      "affectedRange": "0.9.2 - 3.0.2-nightly.20251125002453809.sha.e6b981ec",
       "via": [
         "uuid"
       ],
@@ -103,16 +103,16 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5",
+    "upstreamCommit": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
     "input": "vendor/eliza/bun.lock",
     "auditedOn": "2026-10-21",
-    "inputSha256": "9add78fe98019a237b6e526d0c8ed380c0ad30682803cd0f3ac70a2848632be6",
+    "inputSha256": "82b6ca080f333c29be296d1efb8e39164eb6664e8e5622ad96ba89ac7875bdb3",
     "packages": 3691,
     "counts": {
       "info": 0,
       "low": 14,
-      "moderate": 48,
-      "high": 47,
+      "moderate": 44,
+      "high": 45,
       "critical": 1
     },
     "findings": [
@@ -1575,90 +1575,6 @@
           "vulnerableRange": "<11.1.1",
           "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
           "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "7.3.5"
-        ],
-        "severity": "high",
-        "advisory": {
-          "id": "GHSA-587h-7wmj-h5pm",
-          "severity": "high",
-          "vulnerableRange": ">=7.0.0 <=7.3.6",
-          "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
-          "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "8.3.0"
-        ],
-        "severity": "high",
-        "advisory": {
-          "id": "GHSA-587h-7wmj-h5pm",
-          "severity": "high",
-          "vulnerableRange": ">=8.3.0 <=8.3.2",
-          "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
-          "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "7.3.5"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-698v-4r3x-3vcv",
-          "severity": "moderate",
-          "vulnerableRange": ">=7.0.0 <=7.3.6",
-          "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
-          "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "8.3.0"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-698v-4r3x-3vcv",
-          "severity": "moderate",
-          "vulnerableRange": ">=8.3.0 <=8.3.2",
-          "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
-          "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "7.3.5"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-r825-w8mm-5pxw",
-          "severity": "moderate",
-          "vulnerableRange": ">=7.0.0 <=7.3.6",
-          "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
-          "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw"
-        }
-      },
-      {
-        "package": "vite",
-        "versions": [
-          "8.3.0"
-        ],
-        "severity": "moderate",
-        "advisory": {
-          "id": "GHSA-r825-w8mm-5pxw",
-          "severity": "moderate",
-          "vulnerableRange": ">=8.3.0 <=8.3.2",
-          "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
-          "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw"
         }
       }
     ]

@@ -3,11 +3,11 @@
   "repository": "elizaOS/eliza",
   "base": "develop",
   "baseCommit": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
-  "head": "fbb3ae6beb30b94941208da891d492ce8902422b",
+  "head": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
   "recordedAt": "2026-10-21",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...fbb3ae6beb30b94941208da891d492ce8902422b",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...bdacc0709c3e47d81801deb6f409d3028b4c4304",
   "status": "ahead",
-  "aheadBy": 14,
+  "aheadBy": 15,
   "behindBy": 0,
   "mergeBase": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
   "pinOnlyCommits": [
@@ -46,6 +46,10 @@
     {
       "sha": "fbb3ae6beb30b94941208da891d492ce8902422b",
       "subject": "fix(files): separate browser bulk sharing from ZIP downloads"
+    },
+    {
+      "sha": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
+      "subject": "chore(deps): update Storybook and Vite development dependencies"
     }
   ],
   "pullRequests": [

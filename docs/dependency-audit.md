@@ -596,3 +596,10 @@ exact-pin preparation and package verification remain required.
 ### Local SDK public-read/usage source admission — 2026-10-21
 
 An actual `node scripts/dependency-audit.mjs --resident --write` refresh at `3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5` returned the same 3691 package versions and 110 finding rows (1 critical, 47 high, 48 moderate, 14 low) as405. The normalized lock input and all 93 exception objects, original dates/deadlines and pending rows are unchanged. Re-review updates only the current source binding/description; no exception is renewed. Prior source receipt/dispositions are preserved in Git history and external exact-preimage review artifacts. This is source-registry evidence; no new prepared runtime, packaged-subset audit, provider or device result is claimed. See [source admission evidence](evidence/sdk-public-reads-usage-source-20261021.json).
+
+
+### Development-tool source audit — October21, SDK bdacc0709c
+
+Normal root and resident registry audits were refreshed after Alpha Vite8.3.3 and the reviewed SDK development-tool update ([Eliza #37226](https://github.com/elizaOS/eliza/pull/37226)). The root audit retains its three reviewed moderate findings. The new resident lock input has3691 package versions and104 findings:1 critical,45 high,44 moderate,14 low. This removes12 rows from the immediately preceding fresh116-row audit: the six newly reported Storybook/Vite rows plus six older Vite rows. Compared with the historical110-row snapshot, every retained104 row is identical. Three stale Vite exceptions were removed; the90 remaining exception objects and original dates/deadlines were preserved exactly. No new exception was added or renewed.
+
+The Bun lock and normalized input hash changed. The old raw/normalized input equality receipt is historical and is not reused. This is a full-source-lock registry audit, a superset of the mobile payload; it does not establish a freshly staged runtime, packaged-subset audit, APK, provider response or device acceptance. Fresh normal runtime preparation and installed qualification remain required. See [source admission](evidence/sdk-dev-tool-source-admission-20261021.json).
