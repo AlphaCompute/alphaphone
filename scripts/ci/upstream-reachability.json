@@ -3,11 +3,11 @@
   "repository": "elizaOS/eliza",
   "base": "develop",
   "baseCommit": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
-  "head": "6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
+  "head": "fbb3ae6beb30b94941208da891d492ce8902422b",
   "recordedAt": "2026-10-21",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...fbb3ae6beb30b94941208da891d492ce8902422b",
   "status": "ahead",
-  "aheadBy": 13,
+  "aheadBy": 14,
   "behindBy": 0,
   "mergeBase": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
   "pinOnlyCommits": [
@@ -42,6 +42,10 @@
     {
       "sha": "6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
       "subject": "fix(voice): make Cartesia batch STT an explicit request choice"
+    },
+    {
+      "sha": "fbb3ae6beb30b94941208da891d492ce8902422b",
+      "subject": "fix(files): separate browser bulk sharing from ZIP downloads"
     }
   ],
   "pullRequests": [
