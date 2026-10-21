@@ -29,7 +29,7 @@ test('browser camera persists a real encoded frame, releases capture and restore
  await page.reload();await page.getByRole('button',{name:'Photos',exact:true}).click();
  const saved=page.getByRole('button',{name:/Captured photo/});await expect(saved).toHaveCount(1);await saved.click();
  await expect(page.getByText(/saved in this app/)).toBeVisible();
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Share photo',exact:true}).click();await page.getByRole('dialog',{name:'Share',exact:true}).getByRole('button',{name:'Share externally',exact:true}).click();
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Share photo',exact:true}).click();await page.getByRole('dialog',{name:'Share',exact:true}).getByRole('button',{name:'Save locally',exact:true}).click();
  expect((await download).suggestedFilename()).toMatch(/^Alpha-photo-\d+\.jpg$/);
  await page.getByRole('button',{name:'Favorite',exact:true}).click();
  await expect(page.getByRole('button',{name:'Remove from favorites',exact:true})).toBeVisible();

@@ -140,8 +140,28 @@ function selectedMedia(items:SelectedMedia[]){
  if(!Array.isArray(items)||items.length<1||items.length>20||items.some(item=>!item||typeof item.id!=='string'||!item.id||typeof item.revision!=='string'||!item.revision)||new Set(items.map(item=>item.id)).size!==items.length)throw Error('Select between 1 and 20 distinct items again.');
  return items.map(item=>({id:item.id,revision:item.revision}));
 }
-function downloadPhoto(row:Row){
- const link=document.createElement('a');link.href=row.path||row.image;link.download=`Alpha-${row.kind==='video'?'video':'photo'}-${row.id}.${row.kind==='video'?(row.path?.startsWith('data:video/mp4;')?'mp4':'webm'):'jpg'}`;document.body.append(link);try{link.click();}finally{link.remove();}
+async function selectedMediaRows(items:SelectedMedia[]){
+ return transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
+}
+async function selectedMediaFiles(items:SelectedMedia[]){
+  const selected=await selectedMediaRows(items);
+  // Validate the entire selection before preparing a handoff or explicit save.
+  return Promise.all(selected.map(async(row,index)=>{
+   const source=row.path||row.image;
+   if(!/^data:(image|video)\//.test(source))throw Error('Select saved local media.');
+   const response=await fetch(source),blob=await response.blob();
+   const extension=blob.type==='video/mp4'?'mp4':blob.type.startsWith('video/')?'webm':blob.type==='image/png'?'png':'jpg';
+   return new File([blob],`Alpha-${row.kind==='video'?'video':'photo'}-${selected.length===1?row.id:index+1}.${extension}`,{type:blob.type});
+  }));
+}
+export async function saveBrowserMedia(input:{items:SelectedMedia[]},current:()=>boolean){
+ if(!current())throw new DOMException('Share view changed','AbortError');
+ const items=selectedMedia(input.items),files=await selectedMediaFiles(items);
+ const blob=files.length===1?files[0]:fileArchive(await Promise.all(files.map(async file=>({path:file.name,bytes:new Uint8Array(await file.arrayBuffer())}))));
+ await selectedMediaRows(items);
+ if(document.hidden||!current())throw new DOMException('Share view changed','AbortError');
+ const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download=files.length===1?files[0].name:'Alpha photos.zip';document.body.append(link);
+ try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
 }
 async function saveVideoCopy(input:{id:string;revision:string;operationId:string;edit:VideoEdit},signal:AbortSignal):Promise<EditResult>{
  const key=editKey(input.operationId),edit={...input.edit},source=await read(input.id);signal.throwIfAborted();
@@ -162,20 +182,14 @@ export const browserPhotoLibrary={
  async read(input:{id:string}){return read(input.id);},
  async summary(){const all=await rows({},true);return {favorites:all.filter(r=>!r.trashed&&r.favorite).length,videos:all.filter(r=>!r.trashed&&r.kind==='video').length,trash:all.filter(r=>r.trashed).length,canFavorite:true};},
  async albums(){const live=new Set((await rows({},true)).filter(row=>!row.trashed).map(row=>row.id));return {items:(await albumDocument.read<Album[]>(()=>[])).map(album=>({...album,count:album.memberIds.filter(id=>live.has(id)).length}))};},
- async shareMany(input:{items:SelectedMedia[]}){
-  const items=selectedMedia(input.items);
-  const selected=await transaction<Row[]>('readonly',(store,set,fail)=>{const result:Row[]=[];set(result);for(const item of items){const request=store.get(item.id);request.onsuccess=()=>{const row=request.result as Row|undefined;if(!row||!['image','video'].includes(row.kind)||row.mutationRevision!==item.revision||row.trashed){fail(Error('Selection changed. Reselect the items.'));return;}result.push(row);};}});
-  // Validate the entire selection in one snapshot before requesting any download.
-  const entries=await Promise.all(selected.map(async(row,index)=>{
-   const source=row.path||row.image;
-   if(!/^data:(image|video)\//.test(source))throw Error('Select saved local media.');
-   const response=await fetch(source),blob=await response.blob();
-   const extension=blob.type==='video/mp4'?'mp4':blob.type.startsWith('video/')?'webm':blob.type==='image/png'?'png':'jpg';
-   return {path:`Alpha-${row.kind==='video'?'video':'photo'}-${index+1}.${extension}`,bytes:new Uint8Array(await blob.arrayBuffer())};
-  }));
-  const url=URL.createObjectURL(fileArchive(entries)),link=document.createElement('a');link.href=url;link.download='Alpha photos.zip';document.body.append(link);
-  try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}
-  return {status:'opened',count:selected.length,message:`${selected.length} items in Alpha photos.zip.`};
+ async shareMany(input:{items:SelectedMedia[]},current:()=>boolean){
+  if(!current())throw new DOMException('Share view changed','AbortError');
+  const items=selectedMedia(input.items),files=await selectedMediaFiles(items);
+  await selectedMediaRows(items);
+  if(document.hidden||!current())throw new DOMException('Share view changed','AbortError');
+  if(!navigator.share||!navigator.canShare?.({files}))throw Error('Sharing is unavailable in this browser. Use Save locally.');
+  await navigator.share({files});
+  return {status:'opened',count:files.length};
  },
  async changeAlbum(input:Record<string,unknown>){
   if(!['create','rename','delete','add','remove'].includes(String(input.operation)))throw Error('Unknown album operation.');
@@ -211,9 +225,7 @@ export const browserPhotoLibrary={
    };}
   });
  },
- async share(input:{id:string;revision?:string}){const row=await read(input.id);if(row.trashed)throw Error('Restore this photo before downloading.');if(input.revision&&input.revision!==row.mutationRevision)throw Error('Photo changed. Reselect it.');
-  downloadPhoto(row);return {status:'opened',message:'Photo download requested. Check your browser downloads.'};
- },
+ async share(input:{id:string;revision?:string},current:()=>boolean){const row=await read(input.id);return browserPhotoLibrary.shareMany({items:[{id:input.id,revision:input.revision??row.mutationRevision}]},current);},
  async prepareDeleteTrash(input?:{items:SelectedMedia[]}){const wanted=input?selectedMedia(input.items):null;const all=(await rows({},true)).filter(r=>r.trashed);if(wanted&&wanted.some(item=>!all.some(row=>row.id===item.id&&row.mutationRevision===item.revision)))throw Error('Selected deleted items changed. Select them again.');const selected=wanted||all.map(r=>({id:r.id,revision:r.mutationRevision}));const confirmation=revision();prepared.clear();prepared.set(confirmation,selected);return {confirmation,count:selected.length};},
  async cancelDeleteTrash(input:{confirmation:string}){prepared.delete(input.confirmation);},
  async deletePreparedTrash(input:{confirmation:string}){const selected=prepared.get(input.confirmation);if(!selected)throw Error('Review the trash again.');prepared.delete(input.confirmation);
