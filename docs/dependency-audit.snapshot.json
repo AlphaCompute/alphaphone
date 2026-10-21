@@ -103,16 +103,16 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
+    "upstreamCommit": "3d6f68a129702a1a2779cc087c93a80ba0f2332e",
     "input": "vendor/eliza/bun.lock",
-    "auditedOn": "2026-10-20",
+    "auditedOn": "2026-10-21",
     "inputSha256": "e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e",
     "packages": 3691,
     "counts": {
       "info": 0,
-      "low": 14,
-      "moderate": 42,
-      "high": 41,
+      "low": 15,
+      "moderate": 49,
+      "high": 48,
       "critical": 1
     },
     "findings": [
@@ -151,11 +151,67 @@
         ],
         "severity": "high",
         "advisory": {
+          "id": "GHSA-22jm-h49p-29qw",
+          "severity": "high",
+          "vulnerableRange": ">=1.24.0 <1.32.0",
+          "title": "MCP TypeScript SDK: Experimental tasks were not tied to the session that created them",
+          "url": "https://github.com/advisories/GHSA-22jm-h49p-29qw"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-46jr-4wx8-v453",
+          "severity": "high",
+          "vulnerableRange": ">=1.3.0 <1.32.0",
+          "title": "MCP TypeScript SDK: One HTTP request within the default size limit could exhaust server memory during validation",
+          "url": "https://github.com/advisories/GHSA-46jr-4wx8-v453"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-6prh-2h8m-c8cw",
+          "severity": "moderate",
+          "vulnerableRange": "<1.32.0",
+          "title": "MCP TypeScript client SDK: HTTP client transports and OAuth requests followed cross-origin redirects and re-sent custom headers and request bodies",
+          "url": "https://github.com/advisories/GHSA-6prh-2h8m-c8cw"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "high",
+        "advisory": {
           "id": "GHSA-6qxp-vccf-f47h",
           "severity": "high",
           "vulnerableRange": ">=1.12.0 <1.31.0",
           "title": "MCP TypeScript SDK: OAuth client could send credentials to an authorization server chosen by the MCP server",
           "url": "https://github.com/advisories/GHSA-6qxp-vccf-f47h"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-rvq5-wwqv-78pq",
+          "severity": "moderate",
+          "vulnerableRange": ">=1.6.0 <1.32.0",
+          "title": "MCP TypeScript SDK: Server bearer authentication accepted tokens issued for another service",
+          "url": "https://github.com/advisories/GHSA-rvq5-wwqv-78pq"
         }
       },
       {
@@ -663,6 +719,49 @@
         }
       },
       {
+        "package": "follow-redirects",
+        "versions": [
+          "1.16.0"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-8r9p-f939-6h3c",
+          "severity": "high",
+          "vulnerableRange": ">=1.16.0 <1.16.1",
+          "title": "follow-redirects sensitiveHeaders regex escaping can expose credential headers",
+          "url": "https://github.com/advisories/GHSA-8r9p-f939-6h3c"
+        }
+      },
+      {
+        "package": "follow-redirects",
+        "versions": [
+          "1.16.0"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-q3jh-wrc6-jgq8",
+          "severity": "high",
+          "vulnerableRange": ">=1.16.0 <1.16.1",
+          "title": "follow-redirects array-form headers bypass cross-origin credential stripping",
+          "url": "https://github.com/advisories/GHSA-q3jh-wrc6-jgq8"
+        }
+      },
+      {
+        "package": "hono",
+        "versions": [
+          "4.13.8",
+          "4.13.9"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-5r4p-p66f-jhc7",
+          "severity": "moderate",
+          "vulnerableRange": ">=4.12.4 <4.13.11",
+          "title": "Hono: `serveStatic` decodes the request path a second time, leading to bypass of middleware on static paths",
+          "url": "https://github.com/advisories/GHSA-5r4p-p66f-jhc7"
+        }
+      },
+      {
         "package": "http-cache-semantics",
         "versions": [
           "4.2.0"
@@ -731,6 +830,34 @@
           "vulnerableRange": ">=0.11.0 <0.18.2",
           "title": "KaTeX: Existing prototype pollution can bypass trust restrictions",
           "url": "https://github.com/advisories/GHSA-238p-pmpm-9mq7"
+        }
+      },
+      {
+        "package": "markdown-it",
+        "versions": [
+          "14.3.2"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-gfr2-rv44-r23c",
+          "severity": "high",
+          "vulnerableRange": ">=14.1.0 <14.3.3",
+          "title": "markdown-it: Quadratic-time rendering of a single multi-line link reference definition with default options (regression since 14.0)",
+          "url": "https://github.com/advisories/GHSA-gfr2-rv44-r23c"
+        }
+      },
+      {
+        "package": "markdown-it",
+        "versions": [
+          "14.3.2"
+        ],
+        "severity": "low",
+        "advisory": {
+          "id": "GHSA-vfgh-jcmw-g37q",
+          "severity": "low",
+          "vulnerableRange": "<14.3.3",
+          "title": "markdown-it: Quadratic-time denial of service in inline HTML parsing with html enabled",
+          "url": "https://github.com/advisories/GHSA-vfgh-jcmw-g37q"
         }
       },
       {
@@ -1491,6 +1618,90 @@
           "vulnerableRange": "<11.1.1",
           "title": "uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided",
           "url": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "7.3.5"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-587h-7wmj-h5pm",
+          "severity": "high",
+          "vulnerableRange": ">=7.0.0 <=7.3.6",
+          "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
+          "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "8.3.0"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-587h-7wmj-h5pm",
+          "severity": "high",
+          "vulnerableRange": ">=8.3.0 <=8.3.2",
+          "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
+          "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "7.3.5"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-698v-4r3x-3vcv",
+          "severity": "moderate",
+          "vulnerableRange": ">=7.0.0 <=7.3.6",
+          "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
+          "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "8.3.0"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-698v-4r3x-3vcv",
+          "severity": "moderate",
+          "vulnerableRange": ">=8.3.0 <=8.3.2",
+          "title": "launch-editor: escapeCmdArgs() omits % escaping on Windows",
+          "url": "https://github.com/advisories/GHSA-698v-4r3x-3vcv"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "7.3.5"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-r825-w8mm-5pxw",
+          "severity": "moderate",
+          "vulnerableRange": ">=7.0.0 <=7.3.6",
+          "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
+          "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw"
+        }
+      },
+      {
+        "package": "vite",
+        "versions": [
+          "8.3.0"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-r825-w8mm-5pxw",
+          "severity": "moderate",
+          "vulnerableRange": ">=8.3.0 <=8.3.2",
+          "title": "launch-editor: Editor CLI flag misinterpretation causing arbitrary command execution for some editors",
+          "url": "https://github.com/advisories/GHSA-r825-w8mm-5pxw"
         }
       }
     ]
