@@ -33,7 +33,7 @@ export function openSharePanel(options:SharePanelOptions):Promise<void>{
   };
   dialog.append(heading,title);action('Share to email',options.email,options.emailUnavailable||'Email is unavailable for this selection.');action('Share externally',options.external);
   if(options.copy)action(options.copyLabel||'Copy text',options.copy);
-  if(options.save)action('Save text locally',options.save);
+  if(options.save)action('Save locally',options.save);
   action('Cancel',()=>{});dialog.append(status);dialog.addEventListener('cancel',event=>{event.preventDefault();finish();});dialog.addEventListener('close',finish);
   // Keep keyboard traversal inside the panel; chooser handoff happens only after finish().
   dialog.addEventListener('keydown',event=>{if(event.key!=='Tab')return;const buttons=Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),first=buttons[0],last=buttons.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}});
