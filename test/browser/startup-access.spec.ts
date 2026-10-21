@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {createServer,type ViteDevServer} from 'vite';
 import {resolve} from 'node:path';
+import {setTextScale} from './accessibility-states';
 // Actual checklist + bundled CSS, synthetic native/account ports only. No device grants or Google consent.
 let server:ViteDevServer,origin:string;
 test.beforeAll(async()=>{
@@ -22,6 +23,25 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await page.goto(origin+'/access-composition');await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
  const panel=page.getByRole('dialog',{name:'Set up Alpha access'});await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.signin());await expect(panel).toBeVisible();
+ // The first permission must be usable before scrolling, not hidden under Not now.
+ const firstAction=panel.getByRole('button',{name:'Enable microphone',exact:true});
+ // Native 720px at420dpi has about274 CSS pixels; keep large-text coverage separate.
+ for(const viewport of [{width:274,height:538,scale:1},{width:280,height:538,scale:1},{width:360,height:740,scale:2},{width:360,height:800,scale:2}]){
+  await page.setViewportSize({width:viewport.width,height:viewport.height});
+  await setTextScale(page,viewport.scale);
+  await panel.evaluate(element=>{element.scrollTop=0;});
+  const action=await firstAction.boundingBox(),footerBox=await panel.locator('.alpha-startup-permission-footer').boundingBox();
+  expect(action!.height).toBeGreaterThanOrEqual(44);
+  expect(action!.y+action!.height).toBeLessThanOrEqual(footerBox!.y);
+  expect(await firstAction.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>{const range=document.createRange();range.selectNodeContents(element);return range.getClientRects().length;})).toBe(1);
+  await page.screenshot({path:`test-results/startup-access-first-action-${viewport.width}-${viewport.scale}.png`});
+ }
+ await setTextScale(page,1);
+ await page.setViewportSize({width:360,height:740});
+ await page.keyboard.press('Tab');await expect(firstAction).toBeFocused();
+
  await expect(panel.getByText('Approximate location allowed',{exact:true})).toBeVisible();
  await expect(panel.getByRole('heading',{name:'On-phone Calendar',exact:true})).toBeVisible();
  await expect(panel.getByText('Selected photos and videos only',{exact:true})).toBeVisible();

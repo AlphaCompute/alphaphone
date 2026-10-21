@@ -400,7 +400,7 @@ for (const mode of ['signed-out','empty','credits','unavailable','funded','repla
    await expect(dialog.getByRole('alert')).toHaveText('This developer build does not include the on-device agent.');
   }else await expect(dialog.getByText('Running on this device',{exact:true})).toBeVisible();
   if(signedOut){
-   await expect(dialog.getByText('Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this device meanwhile, with AI off until you sign in.',{exact:true})).toBeVisible();
+   await expect(dialog.getByText('Sign in to Eliza Cloud to use AI. Your agent keeps running on this phone.',{exact:true})).toBeVisible();
    await expect(dialog.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeVisible();
    await expect(dialog.getByRole('button',{name:'Close connection settings',exact:true})).toHaveCount(0);
    await page.keyboard.press('Escape');await expect(dialog).toBeVisible();

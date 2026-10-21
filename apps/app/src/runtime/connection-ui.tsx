@@ -2491,6 +2491,8 @@ export function ConnectionChooser() {
   const residentOffline=snapshot.residentPlanNotice==='offline'&&!snapshot.cloudAccount;
   // Only a required sign-in (first run, or a sign-in Cloud rejected) cannot be dismissed. The agent runs either way.
   const residentMustSignIn=residentCloudFlow()&&!snapshot.cloudAccount&&snapshot.residentPlanNotice!=='offline'&&!snapshot.residentStarting;
+  // Required sign-in stays focused; a recovery error retains the full connection controls.
+  const residentFirstSignIn=residentMustSignIn&&!snapshot.residentSavedCredential&&!residentSignInRejected&&!snapshot.residentRecoveryReason&&!snapshot.error;
   const planPanel=snapshot.purpose==='plan';
   // A check that ended without a view (identity or transport failure) is "unavailable", never a stale gate.
   const residentPlanView=snapshot.residentSubscription;
@@ -2499,7 +2501,7 @@ export function ConnectionChooser() {
   const residentPlan=residentNeedsPlan&&residentPlanView?.kind==='unavailable'&&residentPlanView.reason!=='not-published'
     ?{...residentPlanDescribed,detail:'Eliza Cloud could not confirm a plan for this account right now. Check again, redeem a subscription code or choose a plan. Your data on this phone is kept.'}:residentPlanDescribed;
   const residentPlanRecheck=residentPlanUnchecked||residentPlanView.kind==='inactive'||residentPlanView.kind==='unavailable';
-  const residentAiOff=residentMustSignIn&&!snapshot.residentSavedCredential?'Alpha Phone needs an Eliza Cloud account for AI. Your agent runs on this device meanwhile, with AI off until you sign in.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud for AI.';
+  const residentAiOff=residentFirstSignIn?'Sign in to Eliza Cloud to use AI. Your agent keeps running on this phone.':snapshot.residentSavedCredential?'AI is off. Retry your saved Eliza Cloud sign-in or sign in again.':'AI is off. Sign in to Eliza Cloud for AI.';
   const keyExpiresAt=snapshot.cloudAccount?.expiresAt;
   const keyExpiring=keyExpiresAt!==undefined&&keyExpiresAt-Date.now()<=CLOUD_KEY_EXPIRY_WARNING_MS;
   const day=(at:number)=>new Date(at).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
@@ -2522,9 +2524,9 @@ export function ConnectionChooser() {
           <button disabled={snapshot.busy} onClick={()=>void connectionController.reviewRecovery()}>Review recovery</button>
         </>}
       </section>}
-      {snapshot.session&&!planPanel&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
+      {snapshot.session&&!planPanel&&!residentFirstSignIn&&<div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.startLocal()}>Reconnect agent</button></div>}
     </section>
-    <section aria-label="AI inference"><h3>AI</h3><p>{snapshot.residentRecoveryReason?'AI is unavailable while your agent needs recovery.':snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this device.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>
+    <section aria-label="AI inference"><h3>AI</h3>{!residentFirstSignIn&&<p>{snapshot.residentRecoveryReason?'AI is unavailable while your agent needs recovery.':snapshot.cloudAccount&&!residentSignInRejected?(snapshot.residentInference==='cloud'?'Your agent uses Eliza Cloud for AI.':snapshot.residentInference==='unavailable'?'AI is off. Your saved Eliza Cloud sign-in is retained; check the connection below.':'AI connection is not confirmed. Your agent still runs on this device.'):'Your agent runs with AI off until you sign in to Eliza Cloud.'}</p>}
       {snapshot.cloudAccount&&!residentSignInRejected?<>
         {accountCreatedNotice}
         {(planPanel||residentNeedsPlan)&&<p>{snapshot.cloudAccount.email||`Account ${snapshot.cloudAccount.userId}`}</p>}
@@ -2552,8 +2554,8 @@ export function ConnectionChooser() {
     {snapshot.message&&<p role="status">{snapshot.message}</p>}
     {snapshot.error&&<p role="alert">{snapshot.error===errorMessage({status:401})?'Your saved Cloud sign-in is no longer valid.':snapshot.error}</p>}
     {snapshot.historyError&&<><p role="status">{snapshot.historyError}</p><button disabled={snapshot.busy} onClick={()=>void connectionController.retrySavedHistory()}>Retry saved conversation</button></>}
-    {conversations}
-    {actionReview}
+    {!residentFirstSignIn&&conversations}
+    {!residentFirstSignIn&&actionReview}
     {snapshot.busy&&!snapshot.residentStarting&&snapshot.residentRecovery?.step!=='archiving'&&<button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button>}
     {testMocksEnabled&&residentQa()&&<p><button disabled={snapshot.busy} onClick={()=>connectionController.setResidentQa(null)}>Leave subscription gate QA ({residentEnvironment()})</button></p>}
   </div></div>;

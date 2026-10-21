@@ -164,13 +164,13 @@ export function StartupPermissions() {
   const googleText = (connected: boolean) => googleStatus.state === 'checking' ? 'Checking connection…' : googleStatus.state === 'unavailable' ? 'Connection could not be verified. Check Google accounts.' : connected ? 'Connected with read access' : 'Not connected';
   return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={() => setDismissed(true)}>
     <h2 ref={heading} tabIndex={-1} id="alpha-permission-title">Set up Alpha access</h2>
-    <p id="alpha-permission-description">Set up the features you want now, or choose Not now. You can change access later in Settings; skipped features ask when you use them.</p>
+    <p id="alpha-permission-description">Choose access for the features you want. You can do this later in Settings.</p>
     {keys.map(key => <section key={key} aria-labelledby={`alpha-access-${key}`}>
       <h3 id={`alpha-access-${key}`}>{details[key].title}</h3><p>{details[key].description}</p>
       {states[key] === 'ready' ? <p role="status">{key === 'photos' ? photoStatus : key === 'location' ? locationStatus : 'Allowed'}</p> : states[key] === 'checking' ? <p role="status">Checking access…</p> : <>
         {states[key] === 'settings' && <p role="status">Access is off. You can enable it in Android settings.</p>}
         {states[key] === 'unavailable' && <p role="status">Access could not be checked. Try again, or manage it later in Settings.</p>}
-        <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? `Manage ${details[key].title.toLowerCase()} in Android` : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`}</button></div>
+        <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} aria-label={busy === key ? 'Checking…' : states[key] === 'settings' ? `Manage ${details[key].title.toLowerCase()} in Android` : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? 'Manage' : states[key] === 'unavailable' ? 'Check again' : 'Enable'}</button></div>
       </>}
       {(key === 'photos' || key === 'location') && states[key] === 'ready' && <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key, true)}>{key === 'photos' ? 'Manage photo access' : 'Manage location access'}</button></div>}
     </section>)}
