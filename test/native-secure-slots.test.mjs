@@ -147,3 +147,12 @@ test('the note-origin slot has its own native size bound above the renderer 200-
  const origin=readFileSync(join(root,'apps/app/src/runtime/note-origin.ts'),'utf8');
  assert.match(origin,/200/,'the renderer keeps its 200-link bound');
 });
+
+test('browser Cloud conditional cleanup is isolated from the native credential CAS namespace',()=>{
+ const native=readFileSync(join(root,'apps/app/src/runtime/native-connection.ts'),'utf8'),browser=readFileSync(join(root,'apps/app/src/browser/cloud-connection.ts'),'utf8');
+ assert.match(native,/browserCloudHost\?\{clearIfCurrent:[^\n]*clearBrowserCloudCredentialIfCurrent/);
+ assert.doesNotMatch(native,/secureConnectionStore\.compareExchange\(`cloud:/);
+ const start=browser.indexOf('export async function clearBrowserCloudCredentialIfCurrent('),end=browser.indexOf('\n}',start);assert.ok(start>=0&&end>start);const cleanup=browser.slice(start,end);
+ assert.match(cleanup,/new BrowserCloudConnection\(\)\.secureCompareExchange/);assert.doesNotMatch(cleanup,/secureConnectionStore|registerPlugin|nativePromise/);
+ const {admits}=nativeAllowList();assert.equal(admits('cloud:production'),false);assert.equal(admits('cloud:staging'),false);
+});

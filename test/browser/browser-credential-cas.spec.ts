@@ -31,3 +31,25 @@ test('browser transport admits only canonical automation writes and rejects host
  });
  expect(result.calls).toHaveLength(2);expect(result.rejected).toEqual([true,true,true]);
 });
+
+test('Android cloud cleanup retains the native credential restriction instead of claiming browser CAS support',async({page})=>{
+ await page.addInitScript(()=>{
+  const w=window as any;w.androidBridge={};const fixture=w.nativeCloudCleanup={credential:null,calls:[]};
+  w.Capacitor={PluginHeaders:[{name:'AlphaConnection',methods:['secureRead','secureWrite','secureRemove','secureCompareExchange','addListener','removeListener'].map(name=>({name,rtype:name==='addListener'?'callback':'promise'}))}],nativeCallback:()=> 'native-cleanup-fixture-listener',nativePromise:async(plugin:string,method:string,input:any)=>{
+   if(plugin!=='AlphaConnection')throw Error('Unimplemented fixture plugin');fixture.calls.push({method,slot:input?.slot});
+   if(method==='secureRead')return {value:input?.slot==='cloud:production'&&fixture.credential!==null?JSON.stringify(fixture.credential):null};
+   if(method==='removeListener')return {};
+   if(method==='secureRemove'){fixture.credential=null;return {};}
+   if(method==='secureCompareExchange')throw Error('Native credential CAS is not allowed');
+   throw Error('Unimplemented fixture method');
+  }};
+ });
+ await page.goto('/');
+ const result=await page.evaluate(async()=>{
+  const {cloudCredentialStore,cloudSelfRevocationSupported}=await import('/src/runtime/native-connection.ts'),f=(window as any).nativeCloudCleanup;
+  f.credential={credentialId:crypto.randomUUID(),token:'synthetic-native-cloud-key'};const before=f.calls.length;
+  const conditional=typeof cloudCredentialStore.clearIfCurrent;await cloudCredentialStore.clear('production');
+  return {conditional,supported:cloudSelfRevocationSupported,calls:f.calls.slice(before),credential:f.credential};
+ });
+ expect(result.conditional).toBe('undefined');expect(result.supported).toBe(true);expect(result.calls).toEqual([{method:'secureRemove',slot:'cloud:production'}]);expect(result.credential).toBeNull();
+});

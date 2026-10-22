@@ -19,6 +19,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   if(path==='/api/auth/cli-session/'+session)return Response.json({status:'authenticated',apiKey:secret});
   expect(new Headers(input.headers).get('Authorization')).toBe('Bearer '+secret);
   if(path==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:organizationId,email:'owned@example.invalid'}});
+  if(path==='/api/v1/api-keys/current'){expect(input.method).toBe('DELETE');return Response.json({success:true,status:'revoked',credentialId:'server-key',revokedAt:'2026-10-22T00:00:00Z'});}
   if(path==='/api/v1/billing/limits')return Response.json({success:true,data:{v2:{subscription:{status:'available',value:{planKey:'plus_monthly',state:'active'}}}}});
   if(path==='/api/v1/eliza/google/accounts')return Response.json([]);
   if(path==='/api/v1/voice/stt'){expect(input.body).toBeInstanceOf(FormData);expect((input.body as FormData).get('audio')).toBeInstanceOf(File);expect((input.body as FormData).get('provider')).toBe('cartesia');return Response.json({transcript:'Closed fixture transcript'},{headers:{'X-Eliza-STT-Provider':'cartesia'}});}
@@ -53,6 +54,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;c.openCloudAccount();});
   const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account.getByText('owned@example.invalid',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('existing-cloud-account.png'),animations:'disabled'});
   await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'This sign-in was revoked.'})).toBeVisible();
   // Reload only after sign-out has removed the host credential, not its earlier in-memory detach.
   await expect.poll(async()=>{
    try{return JSON.parse(await readFile(join(profile,'credentials.json'),'utf8'));}
@@ -60,6 +62,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   }).toEqual({});
   await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return !state.busy&&state.cloudAccount===null;})).toBe(true);
   await page.reload();
+  expect(calls.filter(p=>p==='/api/v1/api-keys/current')).toHaveLength(1);
   await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return state.startupResolved===true&&!state.busy&&state.cloudAccount===null;})).toBe(true);
   // Completed returning users still review access after explicit Settings sign-in.
   await page.evaluate(()=>window.dispatchEvent(new Event('alpha:agent-settings')));

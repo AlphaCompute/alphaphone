@@ -506,3 +506,85 @@ test('self-revocation stays exact, account-fenced, and never reports failed Clou
   await assert.rejects(client.revokeSession(new AbortController().signal));assert.equal(await store.read(),null);assert.equal(f.diagnostics[0].status,503);
  }finally{await f.close();}
 });
+
+// Real protocol + real private host, synthetic server only; no live key or revocation.
+async function revocationProtocol(f){
+ let observedReference=null;
+ const store={acceptsReferences:true,
+  async read(){const r=await f.rpc({operation:'secureRead',slot:'cloud:production'});const value=r.data.value===null?null:JSON.parse(r.data.value);observedReference=value?.credentialReference??null;return value;},
+  async write(){throw Error('No credential replacement expected through this fixture store');},
+  async clearIfCurrent(_environment,expected){const old=expected;const r=await f.rpc({operation:'secureCompareExchange',slot:'cloud:production',previousReference:observedReference,expectedValue:old===null?null:JSON.stringify(old),value:null});if(r.status!==200&&r.status!==409)throw Error('Fixture conditional clear failed');},
+  async clear(){return this.clearIfCurrent('production',await this.read());}
+ };
+ const protocol=new CloudProtocol('production',async input=>{
+  const r=await f.send({operation:'request',environment:'production',requestId:randomUUID(),input:{url:input.url,method:input.method,headers:input.headers,...(input.body===undefined?{}:{body:input.body}),credentialReference:input.credentialReference}},{signal:input.signal});const data=await r.json();return r.ok?data:{status:r.status,data};
+ },store,async()=>{}, {deleteRequests:true});
+ return {protocol,store};
+}
+test('browser self-revocation uses only the current private key, redacts response extras, and clears its own slot',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({success:true,status:'revoked',credentialId:'server-own-key',revokedAt:'2026-10-22T00:00:00Z',debug:'not-a-credential'}));
+  const result=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/v1/api-keys/current',method:'DELETE',headers:{Accept:'application/json'},credentialReference:reference}});
+  assert.equal(result.status,200);assert.equal(result.data.status,200);assert.equal(JSON.stringify(result.data).includes(secret),false);assert.equal(result.data.data.debug,undefined);
+  assert.equal(f.calls.length,1);assert.equal(f.calls[0].input.method,'DELETE');assert.equal(new Headers(f.calls[0].input.headers).get('Authorization'),'Bearer '+secret);
+  const {protocol,store}=await revocationProtocol(f);assert.equal((await protocol.revokeSession(new AbortController().signal)).revoked,true);assert.equal(await store.read(),null);
+ }finally{await f.close();}
+});
+test('browser does not admit broad DELETE, query variants, bodies, or stale credential references',async()=>{
+ const f=await fixture();try{
+  for(const input of [{url:'https://api.eliza.app/api/v1/api-keys'},{url:'https://api.eliza.app/api/v1/api-keys/current?other=1'},{url:'https://api.eliza.app/api/v1/api-keys/current',body:'{}'},{url:'https://api.eliza.app/api/v1/api-keys/current',credentialReference:'browser-cloud-reference:'+randomUUID()}]){
+   const r=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{method:'DELETE',headers:{Accept:'application/json'},credentialReference:reference,...input}});assert.ok([400,409].includes(r.status));
+  }
+  assert.equal(f.calls.length,0);
+ }finally{await f.close();}
+});
+for(const status of [405,403,500])test(`browser self-revocation reports ${status} honestly, clears locally once and never retries`,async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({error:'synthetic refusal'},{status}));const {protocol,store}=await revocationProtocol(f);
+  if(status===405)assert.deepEqual(await protocol.revokeSession(new AbortController().signal),{supported:false,reason:'server'});
+  else await assert.rejects(protocol.revokeSession(new AbortController().signal),error=>error.status===status);
+  assert.equal(await store.read(),null);assert.equal(f.calls.length,1);
+ }finally{await f.close();}
+});
+test('already aborted browser sign-out sends nothing and preserves the unstarted credential',async()=>{
+ const f=await fixture();try{
+  const {protocol,store}=await revocationProtocol(f),abort=new AbortController();abort.abort();await assert.rejects(protocol.revokeSession(abort.signal),error=>error.name==='AbortError');assert.equal(f.calls.length,0);assert.equal((await store.read()).credentialReference,reference);
+ }finally{await f.close();}
+});
+test('an account switch during old-key revocation cannot return old success or clear the new reference even with a reused local ID',async()=>{
+ const f=await fixture();try{
+  const otherUser=randomUUID(),otherOrg=randomUUID(),newKey=secret+'-replacement';f.setPollResponse(async()=>Response.json({status:'authenticated',apiKey:newKey}));
+  f.setSignIn(async(path,input)=>path==='/api/v1/user'&&new Headers(input.headers).get('Authorization')==='Bearer '+newKey?Response.json({success:true,data:{id:otherUser,organization_id:otherOrg}}):null);
+  const request=(url,method,body)=>f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app'+url,method,headers:{Accept:'application/json'},...(body===undefined?{}:{body})}});
+  const created=await request('/api/auth/cli-session','POST','{}'),polled=await request('/api/auth/cli-session/'+created.data.data.sessionId,'GET');const claimed=polled.data.data;
+  const entered=Promise.withResolvers(),release=Promise.withResolvers();f.setResponse(async()=>{entered.resolve();await release.promise;return Response.json({success:true,status:'revoked'});});
+  const {protocol,store}=await revocationProtocol(f),captured=await store.read(),pending=protocol.revokeSession(new AbortController().signal,captured);const observed=pending.then(value=>({value}),error=>({error}));await entered.promise;
+  const replacement={credentialReference:claimed.credentialReference,credentialId,userId:otherUser,organizationId:otherOrg};assert.equal((await f.rpc({operation:'secureWrite',slot:'cloud:production',previousReference:reference,value:JSON.stringify(replacement)})).status,200);release.resolve();
+  assert.ok((await observed).error);await protocol.disconnect(captured);const current=await store.read();assert.equal(current.credentialReference,replacement.credentialReference);assert.equal(current.userId,otherUser);assert.equal(f.calls.filter(x=>x.input.method==='DELETE').length,1);
+ }finally{await f.close();}
+});
+
+test('cancelling an in-flight self-revocation reports abort, clears only the old local slot, and never retries',async()=>{
+ const f=await fixture();try{
+  const entered=Promise.withResolvers();f.setResponse(async(_url,input)=>{entered.resolve();await new Promise(resolve=>input.signal.addEventListener('abort',resolve,{once:true}));return Response.json({success:true,status:'revoked'});});
+  const {protocol,store}=await revocationProtocol(f),abort=new AbortController(),pending=protocol.revokeSession(abort.signal);const observed=pending.then(value=>({value}),error=>({error}));await entered.promise;abort.abort();assert.equal((await observed).error.name,'AbortError');assert.equal(await store.read(),null);assert.equal(f.calls.length,1);
+ }finally{await f.close();}
+});
+
+test('captured self-revocation reference cannot follow a same-ID replacement between protocol reads',async()=>{
+ const old={credentialId,credentialReference:reference},replacement={credentialId,credentialReference:'browser-cloud-reference:'+randomUUID()};let reads=0,requests=0,clears=0;
+ const protocol=new CloudProtocol('production',async()=>{requests++;throw Error('Must not dispatch');},{acceptsReferences:true,async read(){return ++reads===1?old:replacement;},async write(){},async clear(){clears++;}},async()=>{}, {deleteRequests:true});
+ await assert.rejects(protocol.revokeSession(new AbortController().signal),/Cloud account changed/);assert.equal(requests,0);assert.equal(clears,0);
+});
+test('a self-revocation response containing a credential is refused without exposing it',async()=>{
+ const f=await fixture();try{
+  f.setResponse(async()=>Response.json({success:true,status:'revoked',token:secret}));const r=await f.rpc({operation:'request',environment:'production',requestId:randomUUID(),input:{url:'https://api.eliza.app/api/v1/api-keys/current',method:'DELETE',headers:{Accept:'application/json'},credentialReference:reference}});assert.equal(r.status,400);assert.equal(JSON.stringify(r.data).includes(secret),false);assert.equal(f.calls.length,1);
+ }finally{await f.close();}
+});
+
+test('stale logout identity cannot revoke or disconnect a newer reference before dispatch',async()=>{
+ const captured={credentialId,credentialReference:reference},replacement={credentialId,credentialReference:'browser-cloud-reference:'+randomUUID()};let requests=0,clears=0;
+ const store={acceptsReferences:true,async read(){return replacement;},async write(){},async clear(){clears++;},async clearIfCurrent(_env,expected){if(expected.credentialReference===replacement.credentialReference)clears++;}};
+ const protocol=new CloudProtocol('production',async()=>{requests++;throw Error('Must not dispatch');},store,async()=>{}, {deleteRequests:true});
+ await assert.rejects(protocol.revokeSession(new AbortController().signal,captured),/Cloud account changed/);await protocol.disconnect(captured);assert.equal(requests,0);assert.equal(clears,0);
+});

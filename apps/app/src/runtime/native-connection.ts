@@ -1,7 +1,7 @@
 import {browserCloudResidentEnabled,browserCloudManagedServiceAllowed} from './browser-cloud-resident';
 import {managedServiceRequest} from './managed-service-routes';
 import {automationsRouteAllowed} from './automations-route-policy';
-import {BrowserCloudConnection,BrowserCloudSignIn} from '../browser/cloud-connection';
+import {BrowserCloudConnection,BrowserCloudSignIn,clearBrowserCloudCredentialIfCurrent} from '../browser/cloud-connection';
 import {Capacitor} from '@capacitor/core';
 import {devSurfacesEnabled,testMocksEnabled} from '../build-flags';
 import { registerPlugin } from '../platform-plugins';
@@ -11,6 +11,8 @@ import type { RemoteRequester, RemoteCredentialStore } from './remote-protocol';
 
 const nativeConnectionHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaConnection')??false;
 const browserCloudHost=(devSurfacesEnabled||browserCloudResidentEnabled)&&!Capacitor.isNativePlatform()&&!nativeConnectionHeader;
+/** Exact current-key self-revocation is supported only by the owned Android/private browser hosts. */
+export const cloudSelfRevocationSupported=Capacitor.getPlatform()==='android'||browserCloudHost;
 const nativeSignInHeader=(Capacitor as typeof Capacitor&{PluginHeaders?:{name:string}[]}).PluginHeaders?.some(header=>header.name==='AlphaCloudSignIn')??false;
 /**
  * In-app Eliza Cloud sign-in host: AlphaCloudSignInPlugin on Android, or the development Cloud bridge
@@ -204,6 +206,8 @@ export const cloudCredentialStore:CloudCredentialStore={
     await secureConnectionStore.write(`cloud:${environment}`,{...value,credentialId:crypto.randomUUID()});
     if(signal.aborted){await secureConnectionStore.remove(`cloud:${environment}`);signal.throwIfAborted();}
   }),
+  // Native credential CAS remains prohibited; only the private browser host admits this capability.
+  ...(browserCloudHost?{clearIfCurrent:(environment:CloudEnvironment,expected:CloudCredential|null)=>serial(()=>clearBrowserCloudCredentialIfCurrent(environment,expected))}:{}),
   clear:environment=>serial(()=>secureConnectionStore.remove(`cloud:${environment}`)),
 };
 /**

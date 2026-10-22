@@ -83,7 +83,7 @@ test('plan state never stops or withholds the on-device agent', () => {
   const signOut = between(ui, 'async cloudSignOut()', 'async mock()');
   assert.ok(!signOut.includes('stopLocalAgent(') && signOut.includes('else{retire();try{await connectResident(signal);}'));
   // Cloud inference is unbound (native stops a process holding the key) before the key is revoked.
-  assert.ok(signOut.indexOf('await clearLocalProvider()') > 0 && signOut.indexOf('await clearLocalProvider()') < signOut.indexOf('client.revokeSession(signal)'));
+  assert.ok(signOut.indexOf('await clearLocalProvider()') > 0 && signOut.indexOf('await clearLocalProvider()') < signOut.indexOf('client.revokeSession(signal, expected)'));
 });
 
 test('the connection controller has no local-apps-only mode and migrates old selections to the resident', () => {

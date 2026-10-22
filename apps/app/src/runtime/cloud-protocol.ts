@@ -49,12 +49,17 @@ export interface CloudCredential {
   /** Cloud's id for an in-app sign-in key (mobile App Auth credentialId). Not a secret. */
   serverCredentialId?: string;
 }
+function sameCloudCredential(a: CloudCredential | null, b: CloudCredential | null): boolean {
+  return a === null || b === null ? a === b : a.credentialId === b.credentialId && a.token === b.token && a.credentialReference === b.credentialReference;
+}
 export interface CloudCredentialStore {
   acceptsReferences?: boolean;
   read(environment: CloudEnvironment): Promise<CloudCredential | null>;
   /** Must atomically reject an aborted signal before committing to native secure storage. */
   write(environment: CloudEnvironment, credential: CloudCredential, signal: AbortSignal): Promise<void>;
   clear(environment: CloudEnvironment): Promise<void>;
+  /** Optional browser-host capability: atomically remove only the captured reference generation. */
+  clearIfCurrent?(environment: CloudEnvironment, expected: CloudCredential | null): Promise<void>;
 }
 /** The native adapter must enforce the timeout and AbortSignal, reject redirects,
  * and return decoded JSON. It must never log headers, bodies, or auth URLs. */
@@ -207,7 +212,7 @@ export class CloudProtocol {
     if (!authority) throw new Error("This Eliza Cloud environment is unavailable in this build.");
     return authority;
   }
-  protected async requestData(path: string, signal: AbortSignal, options: { body?: unknown; method?: AutomationsMethod | 'PATCH'; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
+  protected async requestData(path: string, signal: AbortSignal, options: { credentialReference?: string; body?: unknown; method?: AutomationsMethod | 'PATCH'; authenticated?: boolean; runtimeBase?: string; timeoutMs?: number; headers?: Record<string,string>; credentialId?: string; expiresAt?: number; onStatus?: (status:number)=>void } = {}) {
     signal.throwIfAborted();
     let credentialReference: string | undefined;
     const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
@@ -216,6 +221,7 @@ export class CloudProtocol {
       signal.throwIfAborted();
       if (!credential) throw new CloudProtocolError("credentials-missing");
       if (options.credentialId && credential.credentialId !== options.credentialId) throw new Error("Cloud account changed");
+      if (options.credentialReference !== undefined && credential.credentialReference !== options.credentialReference) throw new Error("Cloud account changed");
       if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) throw new CloudProtocolError("expired");
       if(credential.credentialReference){
         if(!this.credentials.acceptsReferences || credential.token)throw new CloudProtocolError("invalid-response");
@@ -480,14 +486,19 @@ export class CloudProtocol {
     const outcome = await this.signInStep(signal, port => port.verifyMfa({ attemptId, code }), value => signInAuthenticated(value, this.environment));
     return this.storedSignIn(outcome, signal);
   }
-  async disconnect(): Promise<void> { this.cancelLogin(); await this.credentials.clear(this.environment); }
+  async disconnect(expected?: CloudCredential | null): Promise<void> {
+    this.cancelLogin();
+    if (expected !== undefined && this.credentials.clearIfCurrent) await this.credentials.clearIfCurrent(this.environment, expected);
+    else if (expected === undefined || sameCloudCredential(await this.credentials.read(this.environment), expected)) await this.credentials.clear(this.environment);
+  }
   /** Revokes the presented sign-in key with Cloud's self-revocation route
    * (`DELETE /api/v1/api-keys/current`), then clears local storage. One attempt, never retried:
    * a lost response is reported as an error and the local credential is still cleared. */
-  async revokeSession(signal: AbortSignal): Promise<CloudSessionRevocation> {
+  async revokeSession(signal: AbortSignal, expected?: CloudCredential | null): Promise<CloudSessionRevocation> {
     this.cancelLogin();
     const credential = await this.credentials.read(this.environment);
     signal.throwIfAborted();
+    if (expected !== undefined && !sameCloudCredential(credential, expected)) throw new Error("Cloud account changed");
     if (!credential) return { supported: false, reason: "no-credential" };
     return this.revokeStored(credential, signal);
   }
@@ -506,7 +517,7 @@ export class CloudProtocol {
       let data: unknown;
       try {
         data = await this.requestData("/api/v1/api-keys/current", signal, { authenticated: true, method: "DELETE",
-          ...(credential.credentialId ? { credentialId: credential.credentialId } : {}) });
+          ...(credential.credentialId ? { credentialId: credential.credentialId } : {}), ...(credential.credentialReference ? {credentialReference:credential.credentialReference} : {}) });
       } catch (error) {
         if (error instanceof CloudProtocolError && error.code === "http" && (error.status === 404 || error.status === 405 || error.status === 501)) return { supported: false, reason: "server" };
         throw error;
@@ -516,7 +527,10 @@ export class CloudProtocol {
       return { supported: true, revoked: true, credentialId: typeof result.credentialId === "string" ? result.credentialId : null, revokedAt: typeof result.revokedAt === "string" ? result.revokedAt : null };
     } finally {
       const current = clearLocal ? await this.credentials.read(this.environment) : null;
-      if (current?.credentialId === credential.credentialId && current?.token === credential.token) await this.credentials.clear(this.environment);
+      if (current?.credentialId === credential.credentialId && current?.token === credential.token && current?.credentialReference === credential.credentialReference) {
+        if(this.credentials.clearIfCurrent)await this.credentials.clearIfCurrent(this.environment,credential);
+        else await this.credentials.clear(this.environment);
+      }
     }
   }
   protected success(response: ObjectValue): unknown {
