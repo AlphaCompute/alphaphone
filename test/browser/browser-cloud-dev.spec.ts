@@ -1,7 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {completeOptionalAccessSetup} from './flag-off-android';
 import {createServer} from 'vite';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
@@ -55,9 +55,15 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account.getByText('owned@example.invalid',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('existing-cloud-account.png'),animations:'disabled'});
   await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();
   await expect(page.getByRole('status').filter({hasText:'This sign-in was revoked.'})).toBeVisible();
+  // Reload only after sign-out has removed the host credential, not its earlier in-memory detach.
+  await expect.poll(async()=>{
+   try{return JSON.parse(await readFile(join(profile,'credentials.json'),'utf8'));}
+   catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}
+  }).toEqual({});
+  await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return !state.busy&&state.cloudAccount===null;})).toBe(true);
   await page.reload();
   expect(calls.filter(p=>p==='/api/v1/api-keys/current')).toHaveLength(1);
-  await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount)).toBeNull();
+  await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return state.startupResolved===true&&!state.busy&&state.cloudAccount===null;})).toBe(true);
   // Completed returning users still review access after explicit Settings sign-in.
   await page.evaluate(()=>window.dispatchEvent(new Event('alpha:agent-settings')));
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());

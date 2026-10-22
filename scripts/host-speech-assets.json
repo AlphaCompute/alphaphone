@@ -1,8 +1,8 @@
 {
   "tts": [
     {
-      "path": "paradee-8m-v1_0.gguf",
-      "sha256": "357477651abb53b3fb1911a6e932026f3f1697fd772668326152e3ca04c9be27",
+      "path": "paradee-8m-v1_1.gguf",
+      "sha256": "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
       "bytes": 32072768
     },
     {
