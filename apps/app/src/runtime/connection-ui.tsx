@@ -2064,9 +2064,13 @@ export const connectionController = {
     if(!state.session||residentBinding!=='cloud'){void recheckResidentPlan();return;}
     entitlementRefresher?.refreshNow();
   },
-  /** A billing refusal asks only for fresh plan state; the failed turn is never retried. */
+  /** A billing refusal asks for fresh plan state; the failed turn is never retried. */
   recheckPlanAfterRefusal() {
     if(!residentCloudFlow()||!entitlementRefresher)return;
+    // Deliver the terminal refusal before refreshing a plan that could rebind the resident.
+    // Rebinding here aborts the known failed turn and replaces its billing feedback with an
+    // unknown-outcome notice. The next return from account management performs the check.
+    if(sending){planManagementReturn=true;return;}
     const now=Date.now();if(now-lastRefusalRecheck<PLAN_RECHECK_INTERVAL_MS)return;
     lastRefusalRecheck=now;entitlementRefresher.refreshNow();
   },
@@ -2337,19 +2341,6 @@ export const connectionController = {
 // A Google sign-in that native finished after Alpha restarted arrives as a retained event.
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInCompleted', outcome => { void connectionController.signInReturned(outcome); })).catch(() => { /* No retained return. */ });
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInIncomplete', value => { connectionController.signInIncomplete(value); })).catch(() => { /* No retained return. */ });
-function ResidentRecoveryPanel({snapshot}:{snapshot:ConnectionSnapshot}) {
-  return snapshot.residentRecoveryReason==='ipc-recovery-retention-limit'&&!snapshot.session&&<section aria-label="Agent recovery">
-        <p>Your notes, chats and sign-in stay unchanged.</p>
-        {snapshot.residentRecovery?.step==='review'?<>
-          <p>Alpha will keep {snapshot.residentRecovery.review.retainedCount} old startup records, then restart your agent.</p>
-          <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.confirmRecovery()}>Keep records and restart</button><button disabled={snapshot.busy} onClick={()=>connectionController.cancelRecoveryReview()}>Cancel</button></div>
-        </>:<>
-          {snapshot.residentRecovery?.step==='unavailable'&&<p role="status">Recovery could not be checked. Your records were kept. Review again later.</p>}
-          {snapshot.residentRecovery?.step==='partial'&&<p role="status">Recovery did not finish. Your records were kept. Review again before restarting.</p>}
-          <button disabled={snapshot.busy} onClick={()=>void connectionController.reviewRecovery()}>Review recovery</button>
-        </>}
-      </section>;
-}
 export function productionCloudSignInRequired(snapshot: Pick<ConnectionSnapshot,'cloudAccount'|'error'>): boolean {
   return isAndroid&&!testMocksEnabled&&(!snapshot.cloudAccount||snapshot.error===errorMessage({status:401})||(snapshot.cloudAccount.expiresAt!==undefined&&snapshot.cloudAccount.expiresAt<=Date.now()));
 }
@@ -2665,4 +2656,18 @@ export function ConnectionChooser() {
     {/* Test mocks only, where no resident runs: return to the fixture's offline state. */}
     {testMocksEnabled&&!isAndroid&&!residentAlwaysPresent&&<button className="alpha-connection-offline" disabled={snapshot.busy} onClick={() => void connectionController.offline()}>Continue offline</button>}
   </div></div>;
+}
+
+function ResidentRecoveryPanel({snapshot}:{snapshot:ConnectionSnapshot}) {
+  return snapshot.residentRecoveryReason==='ipc-recovery-retention-limit'&&!snapshot.session&&<section aria-label="Agent recovery">
+        <p>Your notes, chats and sign-in stay unchanged.</p>
+        {snapshot.residentRecovery?.step==='review'?<>
+          <p>Alpha will keep {snapshot.residentRecovery.review.retainedCount} old startup records, then restart your agent.</p>
+          <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.confirmRecovery()}>Keep records and restart</button><button disabled={snapshot.busy} onClick={()=>connectionController.cancelRecoveryReview()}>Cancel</button></div>
+        </>:<>
+          {snapshot.residentRecovery?.step==='unavailable'&&<p role="status">Recovery could not be checked. Your records were kept. Review again later.</p>}
+          {snapshot.residentRecovery?.step==='partial'&&<p role="status">Recovery did not finish. Your records were kept. Review again before restarting.</p>}
+          <button disabled={snapshot.busy} onClick={()=>void connectionController.reviewRecovery()}>Review recovery</button>
+        </>}
+      </section>;
 }
