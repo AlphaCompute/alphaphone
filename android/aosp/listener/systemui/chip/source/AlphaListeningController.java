@@ -9,6 +9,15 @@ import android.media.*;
 import android.os.*;
 import android.service.notification.StatusBarNotification;
 import android.view.Display;
+import android.graphics.Insets;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewTreeObserver;
+import android.widget.FrameLayout;
+import com.android.systemui.scene.ui.view.WindowRootView;
+import com.android.systemui.statusbar.NotificationShadeWindowController;
+import com.android.systemui.statusbar.phone.StatusBarWindowCallback;
+import javax.inject.Provider;
 import android.view.WindowInsets;
 import com.android.internal.statusbar.LetterboxDetails;
 import com.android.internal.view.AppearanceRegion;
@@ -42,6 +51,71 @@ public final class AlphaListeningController implements CoreStartable {
  private final StatusBarStateController statusBar;private final KeyguardStateController keyguard;
  private final CommandQueue commands;private final DisplayManager displays;
  private int uid=-1;private boolean active;
+ private final Provider<WindowRootView> windowRoot;
+ private final NotificationShadeWindowController shadeWindow;
+ private WindowRootView shadeRoot;
+ private AlphaListeningChipView shadeChip;
+ // A window-state callback is required before the shade can grant a lease.
+ private boolean shadeStateKnown,shadeBlocked=true;
+ private final StatusBarWindowCallback shadeState=(showing,occluded,goingAway,bouncer,dozing,expanded,dreaming,communal)->{
+  shadeStateKnown=true;
+  shadeBlocked=showing||occluded||goingAway||bouncer||dozing||dreaming||communal;
+  if(shadeChip!=null)shadeChip.render(active&&shadeEligible());
+  transition();
+ };
+ private boolean shadeEligible(){return shadeStateKnown&&!shadeBlocked&&!keyguard.isShowing()&&!keyguard.isOccluded()
+  &&statusBar.isExpanded()&&!statusBar.isDozing()&&users.getUserId()==0&&!users.isUserSwitching();}
+ /** Maintain one non-scrolling, inset-safe child in the common legacy/Compose window root.
+  * Compose may add children after CoreStartable starts, or remove all children on teardown.
+  * Reordering invalidates this frame; acknowledgement independently verifies current ordering.
+  */
+ private boolean prepareShadeFrame(){
+  if(shadeChip.getParent()!=shadeRoot){
+   if(shadeChip.getParent()!=null)return true; // Unexpected reparenting never grants a lease.
+   FrameLayout.LayoutParams params=new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,FrameLayout.LayoutParams.WRAP_CONTENT,Gravity.TOP|Gravity.CENTER_HORIZONTAL);
+   shadeRoot.addView(shadeChip,params);
+   shadeChip.render(active&&shadeEligible());
+   return false;
+  }
+  shadeChip.renderShade(active&&shadeEligible());
+  if(!shadeEligible())return true;
+  WindowInsets insets=shadeRoot.getRootWindowInsets();
+  if(insets==null){shadeChip.setVisibility(View.GONE);return true;}
+  Insets safe=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+  FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)shadeChip.getLayoutParams();
+  if(params.topMargin!=safe.top||params.leftMargin!=safe.left||params.rightMargin!=safe.right||params.bottomMargin!=safe.bottom){
+   params.topMargin=safe.top;params.leftMargin=safe.left;params.rightMargin=safe.right;params.bottomMargin=safe.bottom;
+   shadeChip.setLayoutParams(params);return false;
+  }
+  float highest=0;
+  for(int i=0;i<shadeRoot.getChildCount();i++){View child=shadeRoot.getChildAt(i);if(child!=shadeChip)highest=Math.max(highest,child.getZ());}
+  if(!Float.isFinite(highest))return true; // Measurement also rejects invalid ordering.
+  boolean changed=shadeRoot.indexOfChild(shadeChip)!=shadeRoot.getChildCount()-1||shadeChip.getZ()!=highest;
+  if(changed){shadeChip.setZ(highest);shadeChip.bringToFront();return false;}
+  return true;
+ }
+ private final ViewTreeObserver.OnPreDrawListener shadeFrame=this::prepareShadeFrame;
+ private void installShadeSurface(){
+  shadeRoot=windowRoot.get();shadeChip=AlphaListeningChipView.shade(context);
+  shadeRoot.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener(){
+   @Override public void onViewAttachedToWindow(View view){view.getViewTreeObserver().addOnPreDrawListener(shadeFrame);}
+   @Override public void onViewDetachedFromWindow(View view){view.getViewTreeObserver().removeOnPreDrawListener(shadeFrame);surfaceChanged();}
+  });
+  if(shadeRoot.isAttachedToWindow())shadeRoot.getViewTreeObserver().addOnPreDrawListener(shadeFrame);
+  prepareShadeFrame();
+ }
+ private boolean shadeInsetsApplied(){
+  WindowInsets insets=shadeRoot.getRootWindowInsets();
+  if(insets==null||shadeRoot.isLayoutRequested())return false;
+  Insets safe=insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()|WindowInsets.Type.displayCutout());
+  FrameLayout.LayoutParams params=(FrameLayout.LayoutParams)shadeChip.getLayoutParams();
+  return params.topMargin==safe.top&&params.leftMargin==safe.left&&params.rightMargin==safe.right&&params.bottomMargin==safe.bottom;
+ }
+ private boolean shadeSurfaceVisible(){
+  return shadeEligible()&&shadeRoot!=null&&shadeChip!=null&&shadeChip.getParent()==shadeRoot
+   &&shadeRoot.hasWindowFocus()&&shadeInsetsApplied()&&shadeChip.topmostIn(shadeRoot)
+   &&shadeChip.hostVisible();
+ }
  /** Default display: insets types the top app requested visible (immersive hides the status bar) and a transient reveal. */
  private int requestedVisibleTypes=~0;private boolean statusBarTransient;
  /** Uptime of the last reported keyguard, doze, shade-state or display-state change (main thread). */
@@ -82,12 +156,14 @@ public final class AlphaListeningController implements CoreStartable {
  };
  @Inject public AlphaListeningController(Context context,AudioManager audio,@Main Handler main,@Background Executor background,
    UserTracker users,NotificationListener notifications,StatusBarStateController statusBar,KeyguardStateController keyguard,
-   CommandQueue commands,DisplayManager displays){
+   CommandQueue commands,DisplayManager displays,Provider<WindowRootView> windowRoot,NotificationShadeWindowController shadeWindow){
   this.context=context;this.audio=audio;this.main=main;this.users=users;this.notifications=notifications;
-  this.statusBar=statusBar;this.keyguard=keyguard;this.commands=commands;this.displays=displays;
+  this.statusBar=statusBar;this.keyguard=keyguard;this.commands=commands;this.displays=displays;this.windowRoot=windowRoot;this.shadeWindow=shadeWindow;
   lease=new AlphaListeningLease(context,main,background,this::acknowledgement);}
  @Override public void start(){
   instance=this;
+  shadeWindow.registerCallback(shadeState);
+  installShadeSurface();
   audio.registerAudioRecordingCallback(recording,main);
   users.addCallback(userCallback,main::post);
   IntentFilter filter=new IntentFilter();filter.addAction(Intent.ACTION_PACKAGE_ADDED);filter.addAction(Intent.ACTION_PACKAGE_REMOVED);filter.addAction(Intent.ACTION_PACKAGE_REPLACED);filter.addDataScheme("package");
@@ -106,7 +182,7 @@ public final class AlphaListeningController implements CoreStartable {
   * Main thread: what SystemUI itself measures and reports. Unverified identity or user switching
   * acknowledges nothing. Lock screen and AOD use the keyguard chip; the unlocked status bar uses
   * the status-bar chip unless the shade covers it or an app hid the status bar; the expanded shade
-  * counts only through the listener's verified ongoing notification. The display state lets the
+  * counts only through the measured, topmost dedicated shade chip. The display state lets the
   * listener pause (not stop) while nothing can be shown.
   */
  private AlphaListeningLease.Acknowledgement acknowledgement(){
@@ -115,11 +191,12 @@ public final class AlphaListeningController implements CoreStartable {
   boolean hidden=AlphaListeningPolicy.statusBarHidden(requestedVisibleTypes,WindowInsets.Type.statusBars(),statusBarTransient);
   boolean surface=false,chip=false;
   for(AlphaListeningChipView view:views){
+   if(view.shadeSurface())continue;
    boolean shown=view.chipVisible(),host=shown||view.hostVisible();
    if(view.keyguardSurface()){chip|=AlphaListeningPolicy.keyguardCounts(shown,locked,shade);surface|=AlphaListeningPolicy.keyguardCounts(host,locked,shade);}
    else{chip|=AlphaListeningPolicy.statusBarCounts(shown,locked,shade,hidden);surface|=AlphaListeningPolicy.statusBarCounts(host,locked,shade,hidden);}
   }
-  if(AlphaListeningPolicy.shadeCounts(shade,shadeNotificationShown())){surface=true;chip=true;}
+  if(shadeSurfaceVisible()){surface=true;chip=shadeChip.chipVisible();}
   Display display=displays.getDisplay(Display.DEFAULT_DISPLAY);
   String state=AlphaListeningPolicy.display(display==null?Display.STATE_UNKNOWN:display.getState());
   boolean shown=surface&&(!active||chip);
@@ -127,19 +204,7 @@ public final class AlphaListeningController implements CoreStartable {
   return new AlphaListeningLease.Acknowledgement(admitted?uid:-1,surface,chip,active,state,reason);
  }
 
- private boolean shadeNotificationShown(){
-  try{
-   StatusBarNotification[] entries=notifications.getActiveNotifications();
-   if(entries==null)return false;
-   for(StatusBarNotification entry:entries){
-    Notification notification=entry.getNotification();
-    if(AlphaListeningPolicy.shadeNotification(uid,entry.getUid(),entry.getPackageName(),entry.getId(),notification.getChannelId(),
-      (notification.flags&Notification.FLAG_ONGOING_EVENT)!=0))return true;
-   }
-  }catch(RuntimeException unavailable){}
-  return false;
- }
- private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active);lease.now();}
+ private void publish(){for(AlphaListeningChipView view:new ArrayList<>(views))view.render(active&&(!view.shadeSurface()||shadeEligible()));lease.now();}
  private void refreshCurrent(){try{refresh(audio.getActiveRecordingConfigurations());}catch(RuntimeException unavailable){uid=-1;active=false;publish();}}
  private int verifiedUid(){
   try{

@@ -8,6 +8,8 @@ android_app_import {
     // Signed by the same release key as the Alpha launcher APK (checked at staging):
     // the listener's LISTENER_CONTROL permission is signature-level.
     presigned: true,
+    // Preserve modern APK v2/v3 signatures. Staging requires stored, aligned JNI/DEX.
+    preprocessed: true,
     privileged: true,
     system_ext_specific: true,
     dex_preopt: {

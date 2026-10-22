@@ -1,6 +1,7 @@
 // AOSP listener staging (issue #424) from the checked-in image configuration and fabricated
 // `aapt dump permissions` output. Not image-build, boot, grant or device evidence.
 import test from "node:test";
+import {execFileSync} from "node:child_process";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
@@ -68,19 +69,21 @@ test("hardware invocation keeps emergency and camera gestures and clears indicat
   assert.match(bp, /privileged: true/);
   assert.match(bp, /presigned: true/);
   assert.match(bp, /system_ext_specific: true/);
+  assert.match(bp, /preprocessed: true/);
+  assert.doesNotMatch(bp, /skip_preprocessed_apk_checks/);
 });
 
 test("staging copies the reviewed configuration and APK and refuses a different signer", t => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "listener-stage-"));
   t.after(() => fs.rmSync(output, { recursive: true, force: true }));
   const apk = path.join(output, "input.apk");
-  fs.writeFileSync(apk, "apk-bytes");
+  execFileSync("python3", ["test/fixtures/write-listener-apk.py", apk]);
   fs.writeFileSync(path.join(output, "product.mk"), "# launcher\n");
   assert.throws(() => stageListener({ root, output, apk, dump: dump(), signer: "b".repeat(64), launcherSigner: SIGNER, appId: APP }), /launcher's certificate/);
   assert.throws(() => stageListener({ root, output, apk, dump: dump(), signer: undefined, launcherSigner: undefined, appId: APP }), /launcher's certificate/);
   assert.equal(fs.existsSync(path.join(output, "listener")), false, "nothing copied after a refusal");
   const target = stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP });
-  assert.equal(fs.readFileSync(path.join(target, "AlphaSense.apk"), "utf8"), "apk-bytes");
+  assert.deepEqual(fs.readFileSync(path.join(target, "AlphaSense.apk")), fs.readFileSync(apk));
   const chipSigner = fs.readFileSync(path.join(target, "systemui/chip/overlay/frameworks/base/packages/SystemUI/res/values/alpha-listener-certificate.xml"), "utf8");
   assert.match(chipSigner, new RegExp(`>${SIGNER}</string>`), "only the admitted APK signer is configured for SystemUI");
   assert.equal(fs.readFileSync(path.join(target, "systemui/chip/manifest.json"), "utf8"), read("systemui/chip/manifest.json"));
@@ -107,7 +110,7 @@ test("production staging includes the Listening chip by default; only an explici
   const output = fs.mkdtempSync(path.join(os.tmpdir(), "listener-stage-nochip-"));
   t.after(() => fs.rmSync(output, { recursive: true, force: true }));
   const apk = path.join(output, "input.apk");
-  fs.writeFileSync(apk, "apk-bytes");
+  execFileSync("python3", ["test/fixtures/write-listener-apk.py", apk]);
   fs.writeFileSync(path.join(output, "product.mk"), "# launcher\n");
   const target = stageListener({ root, output, apk, dump: dump(), signer: SIGNER, launcherSigner: SIGNER, appId: APP, systemuiChip: false });
   assert.doesNotMatch(fs.readFileSync(path.join(output, "product.mk"), "utf8"), /chip\.mk/);
@@ -184,4 +187,42 @@ test("the read-only image check needs a privileged, persistent listener and a no
   assert.equal(verifyAospListener(device({ icons: "true\n" }), "0", APP).privileged, true);
   assert.throws(() => verifyAospListener(device({ roles: { "android.app.role.SYSTEM_UI_INTELLIGENCE": "com.example.intelligence\n" } }), "0", APP), /SYSTEM_UI_INTELLIGENCE is held/);
   assert.equal(verifyAospListener(device({ services: `  * ServiceRecord{1 u0 ${PKG}/.ListeningService}\n` }), "0", APP).listeningServiceRunning, true);
+});
+
+test('listener staging rejects compressed or unaligned archives before copying any configuration',t=>{
+ const output=fs.mkdtempSync(path.join(os.tmpdir(),'listener-invalid-'));t.after(()=>fs.rmSync(output,{recursive:true,force:true}));
+ const apk=path.join(output,'input.apk');fs.writeFileSync(path.join(output,'product.mk'),'# unchanged\n');
+ for(const extension of ['.so','.dex']){
+  execFileSync('python3',['test/fixtures/write-listener-apk.py',apk,extension]);
+  assert.throws(()=>stageListener({root,output,apk,dump:dump(),signer:SIGNER,launcherSigner:SIGNER,appId:APP}),/JNI and DEX must be stored/);
+  assert.equal(fs.existsSync(path.join(output,'listener')),false);
+  assert.equal(fs.readFileSync(path.join(output,'product.mk'),'utf8'),'# unchanged\n');
+ }
+ execFileSync('python3',['-c',"import zipfile,sys;z=zipfile.ZipFile(sys.argv[1],'w');[z.writestr(n,b'x') for n in ['AndroidManifest.xml','classes.dex','lib/arm64-v8a/libfixture.so']];z.close()",apk]);
+ assert.throws(()=>stageListener({root,output,apk,dump:dump(),signer:SIGNER,launcherSigner:SIGNER,appId:APP}),/not aligned/);
+ assert.equal(fs.existsSync(path.join(output,'listener')),false);
+});
+
+test('pinned Soong requires preprocessed modern APKs and accepts only normalized privileged archives',
+ {skip:!process.env.ALPHA_SYSTEMUI_TEST_SOURCE||!process.env.ANDROID_HOME},async t=>{
+ const {createHash}=await import('node:crypto');
+ const checker=path.join(process.env.ALPHA_SYSTEMUI_TEST_SOURCE,'build/soong/scripts/check_prebuilt_presigned_apk.py');
+ assert.equal(createHash('sha256').update(fs.readFileSync(checker)).digest('hex'),'b122f7b0b5224a0ffbf5135751e99d02f1dfcc93f4a1f8ffd1e07b2b98996614');
+ const tools=path.join(process.env.ANDROID_HOME,'build-tools','36.0.0');const zipalign=path.join(tools,'zipalign');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'listener-soong-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ // ZIP payload and target metadata are synthetic; the Soong checker and SDK zipalign are real.
+ const aapt=path.join(dir,'fixture-aapt');fs.writeFileSync(aapt,"#!/bin/sh\nprintf \"targetSdkVersion: '36'\\n\"\n",{mode:0o755});
+ const raw=path.join(dir,'raw.apk');execFileSync('python3',['test/fixtures/write-listener-apk.py',raw,'.so']);
+ const stamp=path.join(dir,'checked');
+ assert.throws(()=>execFileSync('python3',[checker,'--aapt2',aapt,raw,stamp],{stdio:'pipe'}),/must set preprocessed: true/);
+ const args=[checker,'--preprocessed','--privileged','--uncompress-priv-app-dex','--zipalign',zipalign];
+ assert.throws(()=>execFileSync('python3',[...args,raw,stamp],{stdio:'pipe'}),/compressed JNI/);
+ execFileSync('python3',['test/fixtures/write-listener-apk.py',raw,'.dex']);
+ assert.throws(()=>execFileSync('python3',[...args,raw,stamp],{stdio:'pipe'}),/compressed dex/);
+ const prepared=path.join(dir,'prepared');
+ execFileSync('python3',['scripts/prepare-aosp-apk.py','--input',raw,'--output',prepared,'--zipalign',zipalign]);
+ const apk=path.join(prepared,'launcher-aosp-unsigned.apk');
+ execFileSync('python3',[...args,apk,stamp]);assert.ok(fs.existsSync(stamp));
+ execFileSync('python3',['scripts/verify-aosp-listener-apk.py',apk]);
+ assert.equal(JSON.parse(fs.readFileSync(path.join(prepared,'preparation.json'))).payloadUnchanged,true);
 });

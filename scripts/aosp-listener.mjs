@@ -11,6 +11,7 @@
  * indicator and press-and-hold invocation are proven only by booting the built image.
  */
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 export const LISTENER_SOURCE = "android/aosp/listener";
@@ -208,6 +209,8 @@ export function stageListener({ root, output, apk, dump, signer, launcherSigner,
     throw new Error("The listener APK must be signed with the launcher's certificate (its control permission is signature-level)");
   const target = path.join(output, "listener");
   if (fs.existsSync(target)) throw new Error(`${target} already exists`);
+  // Refuse incompatible signed archives before copying any listener configuration.
+  execFileSync("python3", [path.join(root, "scripts/verify-aosp-listener-apk.py"), apk], { stdio: "pipe" });
   fs.cpSync(source, target, { recursive: true, errorOnExist: true, force: false });
   fs.copyFileSync(apk, path.join(target, "AlphaSense.apk"), fs.constants.COPYFILE_EXCL);
   // The optional source-patched SystemUI trusts only the APK certificate admitted above.

@@ -17,6 +17,9 @@ android {
  namespace 'ai.elizaresearch.alphaphone.sense'
  // Voice bundle models are stored, not deflated (paradee-voice README).
  androidResources { noCompress += ['gguf', 'lex'] }
+ // Match the pinned paradee-voice consumer so AGP strips the shared STL with the
+ // same NDK used to build it; AGP's implicit default may be absent on the host.
+ ndkVersion '28.2.13676358'
  compileSdk rootProject.ext.compileSdkVersion
  defaultConfig {
   applicationId "${identity.appId}.sense"
