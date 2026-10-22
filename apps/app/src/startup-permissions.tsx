@@ -153,7 +153,7 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
     const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); if (!actionPending.current) setFinishing(true); };
     if (visible) window.addEventListener('alpha-back', back, true);
     return () => { if (panel?.open) panel.close(); window.removeEventListener('alpha-back', back, true); };
-  }, [visible]);
+  }, [visible, complete, reopened]);
   async function enable(key: PermissionKey, manage = false) {
     if (actionPending.current) return;
     actionPending.current = true; setBusy(key);
@@ -169,11 +169,11 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
   return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={event => { event.preventDefault(); if (!actionPending.current) setFinishing(true); }}>
     <div className="alpha-startup-content"><span className="alpha-compute-mark" role="img" aria-label="Alpha Phone"/>
     {complete ? <>
-      <h2 id="alpha-permission-title">You’re all set</h2>
+      <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">You’re all set</h2>
       <p id="alpha-permission-description">You can start using Alpha and manage skipped permissions and Google connections in Settings.</p>
       <div className="alpha-startup-permission-actions"><button type="button" onClick={() => { setDismissed(true); if (!reopened) window.dispatchEvent(new Event('launcher-home')); }}>Go to Alpha</button></div>
     </> : <>
-    <h2 ref={heading} tabIndex={-1} id="alpha-permission-title">Set up Alpha access</h2>
+    <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">Set up Alpha access</h2>
     <p id="alpha-permission-description">Choose access for the features you want. You can do this later in Settings.</p>
     {activeKeys.map(key => <section key={key} aria-labelledby={`alpha-access-${key}`}>
       <h3 id={`alpha-access-${key}`}>{details[key].title}</h3><p>{details[key].description}</p>

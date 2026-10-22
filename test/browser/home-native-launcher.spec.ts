@@ -130,6 +130,7 @@ test('startup permission "Not now" survives a cold start, and a denied prompt is
   // Still denied: the next step is Android settings, never a second prompt.
   await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
   await panel.getByRole('button', { name: 'Not now', exact: true }).click();
+  await page.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
   await expect(panel).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).toEqual({ dismissed: true, attempted: { notifications: true } });
 

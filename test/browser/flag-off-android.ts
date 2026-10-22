@@ -382,7 +382,10 @@ export async function expectNoDevelopmentSurface(page: Page) {
 export async function completeOptionalAccessSetup(page: Page) {
   const setup = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
   await setup.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(setup).toHaveCount(0);
+  const complete = page.getByRole('dialog', { name: 'You’re all set', exact: true });
+  await expect(complete).toBeVisible();
+  await complete.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
+  await expect(page.locator('.alpha-startup-permissions')).toHaveCount(0);
 }
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
 export async function residentHome(page: Page) {

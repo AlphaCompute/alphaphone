@@ -58,7 +58,7 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await expect(panel.getByText('Gmail: Connected with read access')).toBeVisible();
  await panel.getByRole('button',{name:'Review Google connections'}).click();expect(await page.evaluate(()=>(window as any).access.googleOpens)).toBe(1);
  const footer=panel.getByRole('button',{name:'Not now',exact:true});await footer.scrollIntoViewIfNeeded();const rect=await footer.boundingBox();expect(rect!.height).toBeGreaterThanOrEqual(44);expect(rect!.x).toBeGreaterThanOrEqual(0);expect(rect!.x+rect!.width).toBeLessThanOrEqual(360);
- await page.screenshot({path:'test-results/startup-access-360.png'});await footer.click();await expect(panel).toHaveCount(0);
+ await page.screenshot({path:'test-results/startup-access-360.png'});await footer.click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
  await page.reload();await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');await page.evaluate(()=>(window as any).access.signin());await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.reopen());await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
 });
@@ -84,7 +84,7 @@ test('reopening an allowed checklist starts at its heading without requesting ac
  await page.evaluate(()=>(window as any).access.signin());
  await page.evaluate(()=>(window as any).access.reopen());
  const panel=page.getByRole('dialog',{name:'Set up Alpha access'});
- await expect(panel.getByRole('button',{name:'Done',exact:true})).toBeAttached();
+ await expect(panel.getByRole('button',{name:'Continue',exact:true})).toBeAttached();
  const assertTop=async()=>{
   await expect(panel.getByRole('heading',{name:'Set up Alpha access',exact:true})).toBeFocused();
   expect(await panel.evaluate(element=>element.scrollTop)).toBe(0);
@@ -94,7 +94,7 @@ test('reopening an allowed checklist starts at its heading without requesting ac
  };
  await assertTop();
  await page.keyboard.press('Tab');await expect(panel.getByRole('button',{name:'Manage photo access',exact:true})).toBeFocused();
- await panel.getByRole('button',{name:'Done',exact:true}).click();await expect(panel).toHaveCount(0);
+ await panel.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.reopen());await assertTop();
  expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['requestPermissions','requestAccess','openSettings'].includes(c.method)))).toEqual([]);
  await page.screenshot({path:'test-results/startup-access-reopen-top-360.png'});
