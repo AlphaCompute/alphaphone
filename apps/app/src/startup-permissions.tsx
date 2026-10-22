@@ -177,7 +177,7 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
     {connection.residentInference && connection.residentInference !== 'cloud' && <p role="status">{connection.residentPlanNotice === 'needs-plan' ? 'AI needs an active Cloud plan. You can finish phone setup and manage your plan in Settings.' : 'Signed in. AI is not ready yet. You can finish phone setup and check your connection in Settings.'}</p>}
     {connection.error && <p role="alert">{connection.error}</p>}
     {connection.message?.includes('did not confirm revoking') && <p role="status">{connection.message}</p>}
-    {connection.accountCreated && <p role="status">A new Eliza Cloud account was created for this sign-in.</p>}
+    {connection.accountCreated && <p role="status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email ? ` (${connection.cloudAccount.email})` : ''}.</p>}
     {complete ? <>
       <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">You’re all set</h2>
       <p id="alpha-permission-description">You can start using Alpha and manage skipped permissions and Google connections in Settings.</p>

@@ -85,3 +85,8 @@ test('Ready does not imply Cloud inference is usable when the account needs a pl
  const f=await fixture(t,{notifications:true,microphone:true,connection:{residentInference:'unavailable',residentPlanNotice:'needs-plan'}});
  assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.match(f.document.body.textContent,/AI needs an active Cloud plan/);assert.equal(f.requests.length,0);
 });
+
+test('unexpected account creation names only the verified current Cloud email inside setup',async t=>{
+ const f=await fixture(t,{notifications:true,microphone:true,connection:{accountCreated:true,cloudAccount:{credentialId:'fixture-credential',email:'verified-owner@example.invalid'}}});
+ assert.match(f.document.body.textContent,/This sign-in created a new Eliza Cloud account \(verified-owner@example\.invalid\)/);assert.equal(f.document.querySelectorAll('dialog').length,1);assert.equal(f.requests.length,0);
+});

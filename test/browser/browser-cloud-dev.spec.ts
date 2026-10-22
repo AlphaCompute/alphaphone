@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+import {completeOptionalAccessSetup} from './flag-off-android';
 import {createServer} from 'vite';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -74,13 +75,13 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByText('owned@example.invalid',{exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).openedCloudURLs)).toContain(`https://eliza.app/auth/cli-login?session=${session}&app=alpha`);
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.close());
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.reload();
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toHaveLength(2);
-  expect(await page.evaluate(()=>(window as any).openedCloudURLs)).toContain(`https://eliza.app/auth/cli-login?session=${session}&app=alpha`);
   await info.attach('closed-cloud-requests',{body:JSON.stringify({calls,mediaCapture:false,playback:false,providerRequests:false}),contentType:'application/json'});
  }finally{await server.close();await rm(profile,{recursive:true,force:true});}
 });

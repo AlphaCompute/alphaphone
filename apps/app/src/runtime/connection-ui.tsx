@@ -470,7 +470,7 @@ async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated
   if (!active) save({ kind: 'none' });
   if (accountOnly || created || unconfirmed) update({ message: created ? 'Signed in. Eliza Cloud created a new account for this sign-in.' : unconfirmed ? 'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.' : 'Signed in to Eliza Cloud.' });
   else if (hosted) await hosted.inspectPersonal(signal);
-  showPostSignInSetup();
+  if(accountOnly)showPostSignInSetup();
 }
 /** The development hosted-agent client. Product builds have none (#406). */
 function developmentCloud(): DevelopmentCloudAgentProtocol { if (!testMocksEnabled || !(cloud instanceof DevelopmentCloudAgentProtocol)) throw Error(PAIRING_RETIRED); return cloud; }
@@ -1446,7 +1446,7 @@ async function browserCloudLoginAction(environment: CloudEnvironment, signal: Ab
   await verifyService(cloud, signal);
   if (!active) save({ kind: 'none' });
   if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
-  showPostSignInSetup();
+  if(accountOnly)showPostSignInSetup();
 }
 
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
