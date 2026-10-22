@@ -278,7 +278,8 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
 
  test('an entitlement for another account is refused and binds no inference',async({page})=>{
   await boot(page,await entitlements({sub:'33333333-3333-4333-8333-333333333333'}));
-  await idle(page);const panel=await openAccountPlan(page);await expect(panel.getByRole('alert')).toContainText('different account');await started(page);
+  await idle(page);const panel=signInPage(page);await expect(panel).toBeVisible();await expect(panel.getByRole('alert')).toContainText('different account');await started(page);
+  expect(await page.evaluate(()=>(window as any).planController.getSnapshot().cloudAccount)).toBeNull();
   expect(await configured(page)).toBe(0);
  });
 
