@@ -1,5 +1,4 @@
 import { test, expect, type Page } from '@playwright/test';
-import {completeOptionalAccessSetup} from './flag-off-android';
 // Development lane with a native-plugin stub: the page sees an Android Capacitor bridge whose
 // DeviceApps, AlphaNotifications and AlphaVoiceCloud answers come from this file. No Android
 // device, package manager or permission prompt is involved; LauncherHomeInstrumentedTest covers
@@ -117,40 +116,19 @@ test('typing a search while the installed-app list is still loading still shows 
   await expect(drawer.getByText('Reading installed apps…', { exact: true })).toHaveCount(0);
 });
 
-test('startup permission "Not now" survives a cold start, and a denied prompt is not requested again', async ({ page }) => {
-  await nativeStub(page, { notifications: { permissionGranted: false, appEnabled: false }, microphone: 'granted' });
-  await page.goto('/');
-  const panel = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
-  // Signed-out first run defers optional setup until sign-in; Settings can explicitly reopen it.
-  await expect(panel).toHaveCount(0);
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
-  await expect(panel).toBeVisible();
-  await panel.getByRole('button',{name:'Continue',exact:true}).click();
-  await panel.getByRole('button', { name: 'Enable notifications', exact: true }).click();
-  await expect.poll(() => calls(page, 'DailyApps', 'requestPermissions')).toEqual([{ permissions: ['notifications'] }]);
-  // Still denied: the next step is Android settings, never a second prompt.
-  await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
-  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).dismissed).toBe(false);
-  await completeOptionalAccessSetup(page);
-  await expect(panel).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).toEqual({ dismissed: true, attempted: { notifications: true } });
-
-  // Cold start: the panel stays dismissed.
-  await page.reload();
-  await expect(page.getByRole('textbox', { name: 'Ask Alpha', exact: true })).toBeVisible();
-  await page.waitForTimeout(500);
-  await expect(panel).toHaveCount(0);
-
-  // Reopened from Settings: the denied permission goes to Android settings, no prompt.
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'settings');
-  await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
-  await expect(panel).toBeVisible();
-  expect((await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).dismissed).toBe(false);
-  await panel.getByRole('button',{name:'Continue',exact:true}).click();
-  await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
-  expect(await calls(page, 'DailyApps', 'requestPermissions')).toEqual([]);
+test('required denied notification remains pending after cold start without repeating a prompt',async({page})=>{
+ await nativeStub(page,{notifications:{permissionGranted:false,appEnabled:false},microphone:'granted'});
+ await page.goto('/');const panel=page.locator('dialog.alpha-startup-permissions');await expect(panel).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Set up Alpha access',exact:true}).click();
+ await expect(panel.getByRole('heading',{name:'Stay in the loop.',exact:true})).toBeVisible();await panel.getByRole('button',{name:'Allow',exact:true}).click();
+ await expect.poll(()=>calls(page,'DailyApps','requestPermissions')).toEqual([{permissions:['notifications']}]);
+ await expect(panel.getByRole('button',{name:'Open Android settings',exact:true})).toBeVisible();
+ await expect(panel.getByRole('button',{name:/Skip|Not now|Back/})).toHaveCount(0);
+ await page.keyboard.press('Escape');await expect(panel).toBeVisible();await page.reload();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Set up Alpha access',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'Open Android settings',exact:true})).toBeVisible();
+ expect(await calls(page,'DailyApps','requestPermissions')).toEqual([]);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha:startup-permission-walkthrough:v1')!))).toEqual({version:3,status:'pending',step:0});
 });
 
 test('an Activity opened with the alpha.assistant extra renders chat and Close only', async ({ page }) => {

@@ -1,4 +1,5 @@
-import {completeOptionalAccessSetup} from './flag-off-android';
+import {seedCompletedAccessSetup} from './flag-off-android';
+import {completeAccessSetup} from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 
 // Reviewed send on the FLAG-OFF bundle with the Android bridge stubbed (docs/core-loop-audit.md
@@ -155,7 +156,7 @@ async function connected(page: Page) {
   if (await start.isVisible().catch(() => false)) await start.click();
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.installationId), { timeout: 30_000 }).not.toBe('');
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
 }
 
 test('Android: the send review shows Cc and Bcc, an edit after review is reviewed again, and only the last reviewed request is dispatched, byte for byte', async ({ page }) => {
@@ -227,3 +228,6 @@ test('Android: after an account change elsewhere, the Home Inbox card says when 
   await expect(button(page, 'Synthetic sender, Harbour schedule')).toBeVisible({ timeout: 30_000 });
   expect((await fixture(page)).unexpected).toEqual([]);
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

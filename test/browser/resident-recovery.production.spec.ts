@@ -1,5 +1,6 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect,type Page} from '@playwright/test';
-import {flagOffAndroid,fenceNetwork,harness,button,completeOptionalAccessSetup} from './flag-off-android';
+import {flagOffAndroid,fenceNetwork,harness,button,completeAccessSetup} from './flag-off-android';
 import {residentStub} from './resident-stub';
 // Actual flag-off UI/CSS with closed native boundary fixtures. These tests do not archive real files.
 const token='d32f7f34-962b-47b7-8f0d-f2fe7f12610a';
@@ -27,7 +28,7 @@ async function boot(page:Page,mode:Mode='success',signedOut=false){
  },{mode,token});
  await page.goto('/');await expect.poll(()=>page.evaluate(()=>(window as any).recoveryCalls.starts)).toBe(1);
  if(signedOut){const gate=page.getByRole('main',{name:'Sign in',exact:true});await expect(gate).toBeVisible();return gate;}
- await expect(button(page,'Settings')).toBeVisible();await completeOptionalAccessSetup(page);await button(page,'Settings').click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();
+ await expect(button(page,'Settings')).toBeVisible();await completeAccessSetup(page);await button(page,'Settings').click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();
  const panel=page.getByRole('region',{name:'Settings',exact:true});await expect(panel.getByRole('heading',{name:'Agent connection',exact:true})).toBeVisible();return panel;
 }
 const calls=(page:Page)=>page.evaluate(()=>(window as any).recoveryCalls as {starts:number;reviews:number;archives:unknown[]});
@@ -61,3 +62,6 @@ test('a signed-out startup refusal keeps recovery review reachable on the mandat
  await expect(gate.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();
  expect(await harness(page,f=>f.slots['cloud:production']??null)).toBeNull();
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

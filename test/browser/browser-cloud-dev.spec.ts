@@ -1,5 +1,6 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect} from '@playwright/test';
-import {completeOptionalAccessSetup} from './flag-off-android';
+import {completeAccessSetup} from './flag-off-android';
 import {createServer} from 'vite';
 import {mkdtemp,writeFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -34,8 +35,8 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await expect.poll(()=>page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return c.getSnapshot().cloudAccount?.userId;})).toBe(owner);
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toEqual([]);
   const setup=page.locator('dialog.alpha-startup-permissions');
-  await expect(setup).toBeVisible();
-  await completeOptionalAccessSetup(page);
+  await expect(setup).toHaveCount(0);
+  await completeAccessSetup(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
   expect(await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().open)).toBe(false);
@@ -68,11 +69,11 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true})).toHaveCount(0);
-  const postSignInSetup=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
+  const postSignInSetup=page.getByRole('dialog',{name:'You’re all set',exact:true});
   await expect(postSignInSetup).toBeVisible();
   const box=await postSignInSetup.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width*.95);expect(box!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height*.95);
-  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.startup-permissions.v1')!).dismissed)).toBe(true);
-  await completeOptionalAccessSetup(page);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha:startup-permission-walkthrough:v1')!).status)).toBe('completed');
+  await completeAccessSetup(page);
   await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
@@ -120,3 +121,6 @@ test('flag-off real resident reads Notes through its owner-bound verified Cloud 
   provider='wrong-provider';await page.evaluate(async()=>{(window as any).residentSpeech.outcome=await(await import('/src/prototype/local-speech-playback.ts')).speakNote('QA test note. The recovery test phrase is silver maple.');});expect(await page.evaluate(()=>(window as any).residentSpeech.outcome)).toBe('failed');expect(await page.evaluate(()=>(window as any).residentSpeech.plays)).toBe(1);expect(calls.filter(p=>p==='/api/tts/cloud')).toHaveLength(2);expect(foreign).toEqual([]);
  }finally{handler.closeVoice();await server.close();await rm(directory,{recursive:true,force:true});}
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

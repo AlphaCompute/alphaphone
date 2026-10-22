@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {writeFileSync} from 'node:fs';
 import {test,expect,type Page} from '@playwright/test';
 // Production lane only: the flag-off bundle that the APKs package, with only the Android IPC
@@ -476,3 +477,5 @@ for(const scenario of ['unbound','recovering','connected'] as const)test(`Cloud 
  await expect(plan).not.toContainText('On this computer');
  if(scenario==='connected')await expect(plan.getByText('Eliza Cloud',{exact:true})).toBeVisible();
 });
+
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

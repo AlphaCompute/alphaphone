@@ -19,6 +19,8 @@ export interface FlagOffEvent { id: string; calendarId: string; title: string; b
 /** A file the Android document picker offers, as the bytes the selected provider holds. */
 export interface FlagOffDocument { name: string; mimeType: string; text: string }
 export interface FlagOffOptions {
+  /** Fresh onboarding owns real permission ports; other feature fixtures represent completed setup only. */
+  freshAccess?: boolean;
   /** Managed Gmail accounts behind the synthetic Eliza Cloud. Omitted: the account list is refused. */
   accounts?: FlagOffAccount[];
   /** Scheduled digests: `native` = the Android result inbox delivers results (the phone's normal
@@ -52,6 +54,7 @@ export const AGENT_NAME = 'Alpha';
 export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
   await page.addInitScript(({ options, agentName }) => {
     const w = window as any; w.androidBridge = {};
+    if(!options.freshAccess)localStorage.setItem('alpha:startup-permission-walkthrough:v1',JSON.stringify({version:1,status:'completed',step:4}));
     const id = '9f1dc45a-4011-4e44-947a-30d999d24fa5', agentId = '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11';
     const kept = (key: string, initial: unknown) => { try { return JSON.parse(sessionStorage.getItem(key) || 'null') ?? initial; } catch { return initial; } };
     // Keystore-backed slots and the resident agent's own store survive a reload of the page.
@@ -378,18 +381,20 @@ export async function expectNoDevelopmentSurface(page: Page) {
   await expect(button(page, 'Device controls')).toHaveCount(0);
   await expect(page.getByText(/Development (connections|device actions|reply|provider|inbox)/)).toHaveCount(0);
 }
-/** Walk each real optional access step without fabricating a grant. */
-export async function completeOptionalAccessSetup(page: Page) {
-  const setup = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
-  const ready = page.getByRole('dialog', { name: 'You’re all set', exact: true });
-  for (let index = 0; index < 10 && !await ready.isVisible(); index++) {
-    await expect(setup).toBeVisible();
-    const skip=setup.getByRole('button',{name:'Not now',exact:true});
-    if(await skip.count())await skip.click();else await setup.getByRole('button',{name:'Continue',exact:true}).click();
+/** Existing-installation fixtures seed UI progress only. OS/plugin grants remain independent. */
+export async function seedCompletedAccessSetup(page: Page) {
+  await page.addInitScript(()=>localStorage.setItem('alpha:startup-permission-walkthrough:v1',JSON.stringify({version:1,status:'completed',step:4})));
+}
+/** Dismiss the explicit post-auth Ready card; quiet restoration of completed setup opens no card. */
+export async function completeAccessSetup(page: Page) {
+  const panel=page.locator('dialog.alpha-startup-permissions');
+  const ready=panel.getByRole('heading',{name:'You’re all set',exact:true});
+  if(await panel.count()){
+    await expect(ready).toBeVisible();
+    await panel.getByRole('button',{name:'Go to Alpha',exact:true}).click();
+    await expect(panel).toHaveCount(0);
   }
-  await expect(ready).toBeVisible();
-  await ready.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
-  await expect(page.locator('dialog.alpha-startup-permissions')).toHaveCount(0);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha:startup-permission-walkthrough:v1')||'null')?.status)).toBe('completed');
 }
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
 export async function residentHome(page: Page) {
@@ -397,7 +402,7 @@ export async function residentHome(page: Page) {
   await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await expect(button(page, 'Notes')).toBeVisible();
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
 }
 /** Production sign-in is a page; signed-in agent controls live in Settings. */
 export async function openYourAgent(page: Page) {

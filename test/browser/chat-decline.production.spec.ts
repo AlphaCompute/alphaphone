@@ -1,4 +1,5 @@
-import { completeOptionalAccessSetup } from './flag-off-android';
+import {seedCompletedAccessSetup} from './flag-off-android';
+import { completeAccessSetup } from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 
 // Flag-off product surfaces: the packaged resident agent behind a funded Eliza Cloud account, over
@@ -112,7 +113,7 @@ async function connected(page: Page, options: { review?: boolean } = {}) {
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.installationId), { timeout: 30_000 }).not.toBe('');
   // Review history is retained for Activity without opening an automatic modal.
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
 }
 
 test('a proposal is declined from its chat card and the agent records the rejection', async ({ page }) => {
@@ -161,3 +162,6 @@ test('Activity reconciles a reconciliation-required entry as not applied', async
   expect(state.decisions).toEqual([]);
   expect(state.journal.filter((m: string) => ['reserve', 'markApplying', 'finish'].includes(m))).toEqual([]);
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

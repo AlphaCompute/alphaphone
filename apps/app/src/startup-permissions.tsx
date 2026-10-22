@@ -1,229 +1,227 @@
-import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
-import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { registerPlugin } from './platform-plugins';
-import { connectionController } from './runtime/connection-ui';
-import { googleConnectionController } from './runtime/google-connection-ui';
-import { createGoogleAccounts, GOOGLE_ACCOUNTS_CHANGED } from './runtime/google-accounts';
-import { GMAIL_ACCOUNTS_CHANGED } from './runtime/gmail-mailbox';
-import { createStartupPermissionFlow, readStartupPermissionMemory, writeStartupPermissionMemory, startupPhotoAccess, startupGoogleAccess, startupLocationAccess, STARTUP_PERMISSIONS_REOPEN, type StartupPermissionState } from './startup-permission-flow';
-import { browserStartupPermissions } from './browser-startup-permissions';
+import {Capacitor, type PluginListenerHandle} from '@capacitor/core';
+import React, {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {registerPlugin} from './platform-plugins';
+import {connectionController} from './runtime/connection-ui';
+import {googleConnectionController} from './runtime/google-connection-ui';
+import {readStartupPermissionMemory,writeStartupPermissionMemory,startupPhotoAccess,startupLocationAccess,STARTUP_PERMISSIONS_REOPEN} from './startup-permission-flow';
+import {iconStyle} from './icon-style';
+import {browserStartupPermission} from './startup-browser-permissions';
+import {createStartupPermissionFlow, startupPermissionKeys, nativeStartupPermissionKeys, type NativeStartupPermissionKey as PermissionKey, type StartupPermissionState} from './startup-permission-flow';
+import {readStartupPermissionProgress, writeStartupPermissionProgress, startupPermissionProgressKey} from './startup-permission-progress';
 import './startup-permissions.css';
 
 const notifications = registerPlugin<{status(): Promise<{permissionGranted: boolean; appEnabled: boolean}>}>('AlphaNotifications');
 const permissions = registerPlugin<{
-  requestPermissions(options: {permissions: ['notifications' | 'camera']}): Promise<unknown>;
+  checkPermissions(): Promise<{camera: string}>;
+  requestPermissions(options: {permissions: ['notifications'] | ['camera']}): Promise<unknown>;
   addListener(event: 'appResumed', callback: () => void): Promise<PluginListenerHandle>;
 }>('DailyApps');
-const microphone = registerPlugin<{
-  checkPermissions(): Promise<{microphone: string}>;
-  requestPermissions(options: {permissions: ['microphone']}): Promise<unknown>;
-}>('AlphaVoiceCloud');
-const camera = registerPlugin<{checkPermissions(): Promise<{camera: string}>}>('ElizaCamera');
-const photos = registerPlugin<{scope(): Promise<unknown>; requestAccess(): Promise<unknown>}>('AlphaPhotoLibrary');
+const microphone = registerPlugin<{checkPermissions(): Promise<{microphone: string}>; requestPermissions(options: {permissions: ['microphone']}): Promise<unknown>}>('AlphaVoiceCloud');
+const location = registerPlugin<{checkPermissions(): Promise<{location: string}>; requestPermissions(): Promise<unknown>}>('ElizaLocation');
+const photos = registerPlugin<{scope():Promise<unknown>;requestAccess():Promise<unknown>}>('AlphaPhotoLibrary');
+const calendar = registerPlugin<{checkPermissions(): Promise<{calendar: string}>; requestAccess(): Promise<{status: string}>}>('AlphaCalendar');
 const device = registerPlugin<{openSettings(options: {page: 'notifications' | 'privacy'}): Promise<unknown>}>('AlphaDevice');
-const location = registerPlugin<{checkPermissions(): Promise<unknown>; requestPermissions(): Promise<unknown>}>('ElizaLocation');
-const calendar = registerPlugin<{checkPermissions(): Promise<{calendar: string}>; requestPermissions(options: {permissions: ['calendar']}): Promise<unknown>}>('AlphaCalendar');
-const keys = ['microphone', 'notifications', 'camera', 'photos', 'location', 'calendar'] as const;
-type PermissionKey = typeof keys[number];
 const details = {
-  microphone: {title: 'Talk to Alpha', description: 'Ask questions and get replies with your voice.', icon: 'mic'},
-  notifications: {title: 'Stay in the loop', description: 'Get reminders and updates, even when Alpha is in the background.', icon: 'bell'},
-  camera: {title: 'Capture a moment', description: 'Take photos and scan documents with Alpha.', icon: 'camera'},
-  photos: {title: 'Your photos, here', description: 'Choose the photos and videos you want to use in Alpha.', icon: 'images'},
-  location: {title: 'Find your way', description: 'Use your location for nearby places and directions.', icon: 'map-pin'},
-  calendar: {title: 'Make time for it', description: 'View and save events in this phone’s calendars.', icon: 'calendar-days'},
-  google: {title: 'Bring your day together', description: 'Connect Gmail and Google Calendar with your Google account.', icon: 'mail'},
-  files: {title: 'Keep your files handy', description: 'Choose a file or folder whenever you need it. You stay in control.', icon: 'folder'},
+  notifications: {title: 'Stay in the loop.', icon: 'bell', description: 'Allow notifications for reminders and task updates.', browser: 'Show reminders and task alerts while Alpha is open.'},
+  microphone: {title: 'Talk to Alpha.', icon: 'mic', description: 'Allow the microphone for voice conversations.', browser: 'Use your voice to talk with Alpha.'},
+  camera: {title: 'Capture a moment.', icon: 'camera', description: 'Allow the camera when you want to take a photo.', browser: 'Take photos and scan documents.'},
+  photos: {title: 'Your photos, here.', icon: 'images', description: 'Choose which photos and videos Alpha can use.', browser: ''},
+  calendar: {title: 'Plan your day.', icon: 'calendar', description: 'Allow calendar access to view and save events.', browser: ''},
+  location: {title: 'Find your way.', icon: 'map-pin', description: 'Allow location for Maps. Approximate location is enough.', browser: 'Use your location in Maps.'},
 };
-type SetupStep = PermissionKey | 'google' | 'files';
-function runtimeAccess(value: string) {
-  if (!['granted', 'denied', 'prompt', 'prompt-with-rationale'].includes(value)) throw Error('Access unavailable');
-  return {granted: value === 'granted', enabled: value === 'granted'};
+const progressKey = 'alpha:startup-permission-progress:v1';
+const dismissedKey = 'alpha:startup-permissions-dismissed:v1';
+type Progress = {version: 3; step: number; choices: ('allowed' | 'continued')[]};
+function savedProgress(native = false): Progress | null {
+  const keys: readonly PermissionKey[] = native ? nativeStartupPermissionKeys : startupPermissionKeys;
+  try {
+    const durable = readStartupPermissionProgress(localStorage, native);
+    if (durable.status === 'completed') return null;
+    const raw = localStorage.getItem(startupPermissionProgressKey) === null ? sessionStorage.getItem(progressKey) : null;
+    if (!raw) return {version: 3, step: durable.step, choices: Array(durable.step).fill('continued')};
+    const value = JSON.parse(raw);
+    if (![1, 2, 3].includes(value.version) || !Number.isInteger(value.step) || value.step < 0 || value.step >= keys.length || !Array.isArray(value.choices) || value.choices.length !== value.step || value.choices.some((choice: unknown) => typeof choice !== 'string' || !['allowed', 'skipped', 'continued'].includes(choice))) return {version: 3, step: 0, choices: []};
+    // Old optional choices cannot bypass the now-required walkthrough.
+    if (value.choices.includes('skipped')) return {version: 3, step: 0, choices: []};
+    return {version: 3, step: value.step, choices: value.choices};
+  } catch { return {version: 3, step: 0, choices: []}; }
 }
-type GoogleStatus = {state: 'checking' | 'checked' | 'unavailable' | 'signed-out'; gmail: boolean; calendar: boolean};
-
-/** Optional setup after sign-in. Each tap opens one real platform or provider consent flow. */
-export function StartupPermissions({active = true}: {active?: boolean} = {}) {
+function permissionAccess(value: unknown) {
+  if (typeof value !== 'string' || !['granted', 'denied', 'prompt', 'prompt-with-rationale'].includes(value)) throw Error('Permission status unavailable');
+  return {granted: value === 'granted', enabled: value === 'granted', requestable: value !== 'denied'};
+}
+/** UI progress is never permission authority. Every grant is read back from the platform. */
+export function StartupPermissions({active:enabled = true}: {active?: boolean} = {}) {
+  const connection = useSyncExternalStore(connectionController.subscribe,connectionController.getSnapshot);
+  const googleOpen = useSyncExternalStore(googleConnectionController.subscribe,googleConnectionController.getSnapshot);
+  const [reopened,setReopened] = useState(false);
+  const [ready,setReady] = useState(false);
+  const locationDescription=useRef(''),photoDescription=useRef('');
+  const completedReady = useRef(false);
+  const readyRef = useRef(false);
+  readyRef.current=ready;
   const native = Capacitor.getPlatform() === 'android';
-  const activeKeys: readonly PermissionKey[] = native ? keys : ['microphone', 'notifications'];
-  const [browser] = useState(() => browserStartupPermissions());
-  const [finishing, setFinishing] = useState(false);
-  const [stepIndex, setStepIndex] = useState(0);
-  const steps: readonly SetupStep[] = [...activeKeys, 'google', 'files'];
-  const step = steps[stepIndex];
-  const detail = details[step];
-  const connection = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
-  const googleOpen = useSyncExternalStore(googleConnectionController.subscribe, googleConnectionController.getSnapshot);
-  const photoDescription = useRef('');
-  const [photoStatus, setPhotoStatus] = useState('');
-  const locationDescription = useRef('');
-  const [locationStatus, setLocationStatus] = useState('');
-  const [flows] = useState(() => ({
-    notifications: createStartupPermissionFlow(native ? {
-      status: async () => { const status = await notifications.status(); return {granted: status.permissionGranted, enabled: status.appEnabled}; },
-      request: () => permissions.requestPermissions({permissions: ['notifications']}),
-      openSettings: () => device.openSettings({page: 'notifications'}),
-    } : browser.notifications, {key: native ? 'notifications' : 'browsernotifications'}),
-    microphone: createStartupPermissionFlow(native ? {
-      status: async () => runtimeAccess((await microphone.checkPermissions()).microphone),
-      request: () => microphone.requestPermissions({permissions: ['microphone']}),
-      openSettings: () => device.openSettings({page: 'privacy'}),
-    } : browser.microphone, {key: native ? 'microphone' : 'browsermicrophone'}),
-    camera: createStartupPermissionFlow({
-      status: async () => runtimeAccess((await camera.checkPermissions()).camera),
-      // ElizaCamera.requestPermissions requests microphone too. The consumer alias requests only camera.
-      request: () => permissions.requestPermissions({permissions: ['camera']}),
-      openSettings: () => device.openSettings({page: 'privacy'}),
-    }, {key: 'camera'}),
-    location: createStartupPermissionFlow({
-      status: async () => { const access = startupLocationAccess(await location.checkPermissions()); locationDescription.current = access.description; return access; },
-      request: () => location.requestPermissions(),
-      openSettings: () => device.openSettings({page: 'privacy'}),
-    }, {key: 'location'}),
-    calendar: createStartupPermissionFlow({
-      status: async () => runtimeAccess((await calendar.checkPermissions()).calendar),
-      request: () => calendar.requestPermissions({permissions: ['calendar']}),
-      openSettings: () => device.openSettings({page: 'privacy'}),
-    }, {key: 'calendar'}),
-    photos: createStartupPermissionFlow({
-      status: async () => { const access = startupPhotoAccess(await photos.scope()); photoDescription.current = access.description; return access; },
-      request: () => photos.requestAccess(),
-      openSettings: () => device.openSettings({page: 'privacy'}),
-    }, {key: 'photos'}),
-  }));
-  const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking', camera: 'checking', photos: 'checking', location: 'checking', calendar: 'checking'});
-  const [dismissed, setDismissedState] = useState(() => readStartupPermissionMemory().dismissed);
-  const [reopened, setReopened] = useState(false);
-  const [busy, setBusy] = useState<PermissionKey | null>(null);
-  const [googleStatus, setGoogleStatus] = useState<GoogleStatus>({state: 'checking', gmail: false, calendar: false});
-  const heading = useRef<HTMLHeadingElement>(null);
-  const dialog = useRef<HTMLDialogElement>(null), alive = useRef(false), actionPending = useRef(false);
-  const cloud = connectionController.getCloudClient();
-  const cloudIdentity = JSON.stringify([cloud?.sessionId, cloud?.credentialId]);
-  const allReady = activeKeys.every(key => states[key] === 'ready') && googleStatus.state === 'checked' && googleStatus.gmail && googleStatus.calendar;
-  const complete = finishing || (!reopened && allReady);
-  const visible = (active || reopened) && !dismissed && !googleOpen && !connection.open && (reopened || !!connection.cloudAccount) && activeKeys.some(key => states[key] !== 'checking');
-  const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); if (value) setReopened(false); };
+  const keys: readonly PermissionKey[] = native ? nativeStartupPermissionKeys : startupPermissionKeys;
+  const [flows] = useState(() => {
+    const nativeBridges = {
+      notifications: {status: async () => {const status = await notifications.status(); return {granted: status.permissionGranted, enabled: status.appEnabled};}, request: () => permissions.requestPermissions({permissions: ['notifications']}), openSettings: () => device.openSettings({page: 'notifications'})},
+      microphone: {status: async () => permissionAccess((await microphone.checkPermissions()).microphone), request: () => microphone.requestPermissions({permissions: ['microphone']}), openSettings: () => device.openSettings({page: 'privacy'})},
+      // Shared ElizaCamera requests all aliases. The product DailyApps alias requests CAMERA only.
+      camera: {status: async () => permissionAccess((await permissions.checkPermissions()).camera), request: () => permissions.requestPermissions({permissions: ['camera']}), openSettings: () => device.openSettings({page: 'privacy'})},
+      photos: {status: async () => {const access=startupPhotoAccess(await photos.scope());photoDescription.current=access.description;return access;},request: () => photos.requestAccess(),openSettings: () => device.openSettings({page:'privacy'})},
+      calendar: {status: async () => permissionAccess((await calendar.checkPermissions()).calendar), request: () => calendar.requestAccess(), openSettings: () => device.openSettings({page: 'privacy'})},
+      location: {status: async () => {const raw=await location.checkPermissions();const access=startupLocationAccess(raw);locationDescription.current=access.description;return {...access,requestable:raw.location!=='denied'};}, request: () => location.requestPermissions(), openSettings: () => device.openSettings({page: 'privacy'})},
+    } as const;
+    return Object.fromEntries(keys.map(key => [key, createStartupPermissionFlow(native ? nativeBridges[key] : browserStartupPermission(key as typeof startupPermissionKeys[number], {permissions: navigator.permissions, media: navigator.mediaDevices, geolocation: navigator.geolocation, notifications: typeof Notification === 'undefined' ? undefined : Notification}), {key: native ? key : 'browser'+key})])) as Record<PermissionKey, ReturnType<typeof createStartupPermissionFlow>>;
+  });
+  const [progress, setProgress] = useState(() => savedProgress(native));
+  const [active, setActive] = useState(() => !!savedProgress(native));
+  const [target, setTarget] = useState<PermissionKey | null>(null);
+  const progressRef = useRef(progress), targetRef = useRef<PermissionKey | null>(null);
+  const [states, setStates] = useState<Record<PermissionKey, StartupPermissionState>>({notifications: 'checking', microphone: 'checking', camera: 'checking', location: 'checking', calendar: 'checking', photos: 'checking'});
+  const [busy, setBusy] = useState(false);
+  const [progressError, setProgressError] = useState(false);
+  const alive = useRef(false), actionPending = useRef(false), sequence = useRef(0);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const key = target ?? keys[progress?.step ?? 0];
+  const state = states[key];
+  const visible = (active || ready) && (enabled || reopened) && !connection.open && !googleOpen;
+  const writeProgress = (value: Progress | null) => {
+    try {
+      writeStartupPermissionProgress(localStorage, {version: native ? 3 : 1, status: value ? 'pending' : 'completed', step: value?.step ?? keys.length}, native);
+    } catch { setProgressError(true); return false; }
+    setProgressError(false); progressRef.current = value; setProgress(value);
+    // Legacy session progress is a read-only migration source; the durable marker now owns continuation.
+    return true;
+  };
+  const changed = () => window.dispatchEvent(new Event('alpha:permissions-changed'));
+
+  useEffect(() => { if (!enabled) ++sequence.current; }, [enabled, connection.cloudAccount?.credentialId]);
   useEffect(() => {
     if (!connection.setupRevision) return;
-    // Review current access after an explicit sign-in while retaining completed/attempted memory.
-    // This component stays mounted while account dialogs open, so a normal close never replays it.
-    setDismissedState(false); setReopened(false); setFinishing(false); setStepIndex(0);
+    ++sequence.current;setReopened(false);setTarget(null);targetRef.current=null;
+    const resume=savedProgress(native);completedReady.current=!resume;setReady(!resume);setActive(!!resume);if(resume)writeProgress(resume);
   }, [connection.setupRevision]);
   useEffect(() => {
-    const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setFinishing(false); setStepIndex(0); setReopened(true); };
-    window.addEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
-    return () => window.removeEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
-  }, []);
-  useEffect(() => {
-    alive.current = true;
-    let disposed = false;
-    const refresh = (key: PermissionKey) => {
-      void flows[key].refresh().then(value => {
-        if (!disposed && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); }
-      });
+    alive.current = true; let disposed = false;
+    const refresh = async () => {
+      const results = await Promise.all(keys.map(async key => {const value = await flows[key].refresh(); if (!disposed && value !== null) setStates(previous => ({...previous, [key]: value})); return value;}));
+      if (!disposed && results.some(value => value !== null)) {
+        const current = progressRef.current, missing = results.findIndex(value => value !== 'ready');
+        if (!targetRef.current && current && missing >= 0 && (missing < current.step || readyRef.current)) {setReady(false);setActive(true);writeProgress({version: 3, step: missing, choices: current.choices.slice(0, missing)});}
+        changed();
+      }
     };
-    const resume = () => { if (!document.hidden && !actionPending.current) activeKeys.forEach(refresh); };
-    activeKeys.forEach(refresh);
+    void refresh();
+    const resume = () => {if (!document.hidden && !actionPending.current) void refresh();};
     document.addEventListener('visibilitychange', resume);
     let listener: PluginListenerHandle | undefined;
-    if (native) void permissions.addListener('appResumed', resume).then(handle => {
-      if (disposed) void handle.remove(); else listener = handle;
-    }).catch(() => { /* Visibility refresh remains available. */ });
-    return () => { disposed = true; alive.current = false; document.removeEventListener('visibilitychange', resume); void listener?.remove(); };
+    if (native) void permissions.addListener('appResumed', resume).then(handle => {if (disposed) void handle.remove(); else listener = handle;}).catch(() => {});
+    return () => {disposed = true; alive.current = false; document.removeEventListener('visibilitychange', resume); void listener?.remove();};
   }, [flows, native]);
   useEffect(() => {
-    if (!active || (dismissed && !reopened) || googleOpen) return;
-    let request: AbortController | undefined;
-    let disposed = false;
-    const refresh = () => {
-      request?.abort(); const abort = request = new AbortController();
-      if (!cloud) { setGoogleStatus({state: 'signed-out', gmail: false, calendar: false}); return; }
-      setGoogleStatus({state: 'checking', gmail: false, calendar: false});
-      void createGoogleAccounts(cloud, () => connectionController.getCloudClient()).list(abort.signal).then(accounts => {
-        if (!disposed && !abort.signal.aborted && connectionController.getCloudClient()?.client === cloud.client && connectionController.getCloudClient()?.sessionId === cloud.sessionId && connectionController.getCloudClient()?.credentialId === cloud.credentialId) setGoogleStatus({state: 'checked', ...startupGoogleAccess(accounts)});
-      }).catch(() => { if (!disposed && !abort.signal.aborted) setGoogleStatus({state: 'unavailable', gmail: false, calendar: false}); });
+    const reopen = (event: Event) => {
+      const selected = (event as CustomEvent<{permission?: unknown}>).detail?.permission;
+      if (selected !== undefined && (typeof selected !== 'string' || !keys.includes(selected as PermissionKey))) return;
+      ++sequence.current;completedReady.current=false;
+      targetRef.current = typeof selected === 'string' && keys.includes(selected as PermissionKey) ? selected as PermissionKey : null;
+      setTarget(targetRef.current);
+      if (!selected) {const resume=savedProgress(native)??{version:3 as const,step:0,choices:[]};if(!writeProgress(resume))return;}
+      setReopened(true);setReady(false);
+      setActive(true);
+      void Promise.all(keys.map(async key => {const value = await flows[key].refresh(); if (alive.current && value !== null) setStates(previous => ({...previous, [key]: value}));}));
     };
-    const resume = () => { if (!document.hidden) refresh(); };
-    refresh();
-    window.addEventListener(GOOGLE_ACCOUNTS_CHANGED, refresh); window.addEventListener(GMAIL_ACCOUNTS_CHANGED, refresh);
-    document.addEventListener('visibilitychange', resume);
-    let listener: PluginListenerHandle | undefined;
-    if (native) void permissions.addListener('appResumed', resume).then(handle => { if (disposed) void handle.remove(); else listener = handle; }).catch(() => {});
-    return () => { disposed = true; request?.abort(); void listener?.remove(); window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, refresh); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, refresh); document.removeEventListener('visibilitychange', resume); };
-  }, [cloudIdentity, cloud?.client, native, active, dismissed, reopened, googleOpen]);
-  const advance = () => { if (actionPending.current) return; if (stepIndex === steps.length - 1) setFinishing(true); else setStepIndex(value => value + 1); };
-  const previous = () => { if (actionPending.current) return; if (finishing) setFinishing(false); else setStepIndex(value => Math.max(0, value - 1)); };
-  useEffect(() => {
+    window.addEventListener('alpha:setup-permissions', reopen);window.addEventListener(STARTUP_PERMISSIONS_REOPEN,reopen);
+    return () => {window.removeEventListener('alpha:setup-permissions', reopen);window.removeEventListener(STARTUP_PERMISSIONS_REOPEN,reopen);};
+  }, [flows]);
+  useLayoutEffect(() => {
     const panel = dialog.current;
-    if (visible && panel && !panel.open) {
-      const phone = document.querySelector('.os');
-      if (phone) { const theme = getComputedStyle(phone); for (const token of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.style.setProperty(`--connection-${token}`, theme.getPropertyValue(token === 'acc' ? '--acct' : `--${token}`)); }
-      panel.showModal();
-      // Each step owns focus without scrolling to its footer or requesting access.
-      heading.current?.focus({preventScroll: true});
-      panel.scrollTop = 0;
-    }
-    const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); if (!actionPending.current) { if (stepIndex > 0 || finishing) previous(); else advance(); } };
-    if (visible) window.addEventListener('alpha-back', back, true);
-    return () => { if (panel?.open) panel.close(); window.removeEventListener('alpha-back', back, true); };
-  }, [visible, complete, reopened, stepIndex]);
-  async function enable(key: PermissionKey, manage = false) {
+    if (visible && panel && !panel.open) panel.showModal();
+    return () => {if (panel?.open) panel.close();};
+  }, [visible]);
+  useLayoutEffect(() => {
+    if (!visible) return;
+    const panel = dialog.current, phone = document.querySelector<HTMLElement>('.os');
+    if (panel && phone) {const theme = getComputedStyle(phone); for (const token of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.style.setProperty(`--connection-${token}`, theme.getPropertyValue(token==='acc'?'--acct':`--${token}`));}
+    const back = (event: Event) => {event.preventDefault(); event.stopImmediatePropagation();};
+    window.addEventListener('alpha-back', back, true);
+    return () => window.removeEventListener('alpha-back', back, true);
+  }, [visible]);
+
+  useEffect(() => {if (visible && !target && progress) {try {writeStartupPermissionProgress(localStorage, {version: native ? 3 : 1, status: 'pending', step: progress.step}, native); setProgressError(false);} catch {setProgressError(true);}}}, [visible, target, progress]);
+
+  useEffect(() => {if (visible) dialog.current?.querySelector<HTMLHeadingElement>('h2')?.focus({preventScroll: true});}, [key, visible, ready]);
+
+  function advance(choice: Progress['choices'][number]) {
+    if (target) {setActive(false); return;}
+    const current = progress ?? {version: 3 as const, step: 0, choices: []};
+    if (current.step + 1 < keys.length) writeProgress({version: 3, step: current.step + 1, choices: [...current.choices, choice]});
+    else {setActive(false);setReady(true);}
+  }
+  async function allow() {
     if (actionPending.current) return;
-    actionPending.current = true; setBusy(key);
+    if (target && !native && state === 'ready') {advance('continued'); return;}
+    actionPending.current = true; setBusy(true);
+    const ticket = sequence.current;
     try {
-      if (manage) await device.openSettings({page: 'privacy'});
-      const value = manage || states[key] === 'unavailable' ? await flows[key].refresh() : await flows[key].enable();
-      if (alive.current && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); if (value === 'ready' && !manage) setStepIndex(index => Math.min(index + 1, steps.length - 1)); }
-    } catch { if (alive.current) setStates(previous => ({...previous, [key]: 'unavailable'})); }
-    finally { actionPending.current = false; if (alive.current) setBusy(null); }
+      let value: StartupPermissionState | null;
+      if (target && native && state === 'ready') {await device.openSettings({page: key === 'notifications' ? 'notifications' : 'privacy'}); value = await flows[key].refresh();}
+      else value = state === 'unavailable' || (!native && state === 'settings') ? await flows[key].refresh() : await flows[key].enable();
+      if (alive.current && value !== null) {setStates(previous => ({...previous, [key]: value})); changed(); if (ticket === sequence.current && value === 'ready' && !target) advance(state === 'ready' ? 'continued' : 'allowed');}
+    } catch {if (alive.current) setStates(previous => ({...previous, [key]: 'unavailable'}));}
+    finally {actionPending.current = false; if (alive.current) setBusy(false);}
+  }
+  async function finish() {
+    if(actionPending.current)return;actionPending.current=true;setBusy(true);const ticket=sequence.current;
+    try {
+      // A historical completed installation remains complete after auth. This UI marker grants
+      // no OS/provider authority; every feature still checks its actual access on use.
+      if(completedReady.current){
+        const marker=readStartupPermissionProgress(localStorage,native);
+        if(marker.status==='completed'){
+          writeStartupPermissionMemory({dismissed:true});setActive(false);setReady(false);
+          if(!reopened)window.dispatchEvent(new Event('launcher-home'));
+          return;
+        }
+        completedReady.current=false;setReady(false);setActive(true);
+        const resume=savedProgress(native)??{version:3 as const,step:0,choices:[]};writeProgress(resume);return;
+      }
+      const results=await Promise.all(keys.map(key=>flows[key].refresh()));
+      if(!alive.current||ticket!==sequence.current)return;
+      setStates(previous=>({...previous,...Object.fromEntries(keys.map((key,index)=>[key,results[index]??'unavailable']))}));
+      const missing=results.findIndex(value=>value!=='ready');
+      if(missing>=0){setReady(false);setActive(true);writeProgress({version:3,step:missing,choices:Array(missing).fill('continued')});return;}
+      if(!writeProgress(null))return;
+      writeStartupPermissionMemory({dismissed:true});setActive(false);setReady(false);
+      try{sessionStorage.setItem(dismissedKey,'1');}catch{}
+      if(!reopened)window.dispatchEvent(new Event('launcher-home'));
+    } catch {if(alive.current&&ticket===sequence.current)setProgressError(true);}
+    finally {actionPending.current=false;if(alive.current)setBusy(false);}
   }
   if (!visible) return null;
-  const permission = activeKeys.includes(step as PermissionKey) ? step as PermissionKey : null;
-  const status = permission ? states[permission] : null;
-  const googleReady = googleStatus.state === 'checked' && googleStatus.gmail && googleStatus.calendar;
-  const ready = status === 'ready' || step === 'files' || step === 'google' && googleReady;
-  const icon = complete ? 'check' : detail.icon;
-  const act = () => {
-    if (actionPending.current) return;
-    if (ready) { advance(); return; }
-    if (step === 'google') { googleConnectionController.open(); return; }
-    if (permission) void enable(permission);
-  };
-  const permissionName = permission === 'location' ? 'location' : permission === 'photos' ? 'photo access' : permission;
-  const actionLabel = busy ? 'Checking…' : ready ? 'Continue' : step === 'google' ? 'Connect Google' : status === 'settings' ? (native ? 'Open settings' : 'Check again') : status === 'unavailable' ? 'Try again' : 'Allow';
-  const statusText = status === 'ready' ? permission === 'photos' ? photoStatus : permission === 'location' ? locationStatus : 'Already allowed'
-    : status === 'settings' ? (native ? 'Access is off. You can change it in Android settings or continue without it.' : 'Access is blocked. Allow it in this site’s browser settings, then check again.')
-    : status === 'unavailable' ? 'Access couldn’t be checked. Try again, or choose Not now.'
-    : status === 'checking' ? 'Checking access…' : '';
-  return <dialog ref={dialog} className="alpha-startup-permissions" aria-label={complete ? 'You’re all set' : 'Set up Alpha access'} aria-describedby="alpha-permission-description" onCancel={event => { event.preventDefault(); if (!actionPending.current) { if (stepIndex > 0 || finishing) previous(); else advance(); } }}>
-    <div className="alpha-startup-layout">
-      <header className="alpha-startup-header">
-        <div>{!complete && stepIndex > 0 && <button type="button" className="alpha-startup-back" aria-label="Previous setup step" disabled={busy !== null} onClick={previous}><span aria-hidden="true" style={{maskImage:"url('/icons/lucide/chevron-left.svg')",WebkitMaskImage:"url('/icons/lucide/chevron-left.svg')"}}/></button>}</div>
-        <span className="alpha-compute-mark" role="img" aria-label="Alpha Phone"/>
-        <span className="alpha-startup-count">{!complete && `${stepIndex + 1} of ${steps.length}`}</span>
-      </header>
-      <div className="alpha-startup-stage" key={complete ? 'ready' : step}>
-        <div className="alpha-startup-symbol"><span className="alpha-startup-icon" aria-hidden="true" style={{maskImage:`url('/icons/lucide/${icon}.svg')`,WebkitMaskImage:`url('/icons/lucide/${icon}.svg')`}}/></div>
-        <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">{complete ? 'You’re all set' : detail.title}</h2>
-        <p id="alpha-permission-description">{complete ? 'Make yourself at home. You can change your choices anytime in Settings.' : detail.description}</p>
-        {!complete && statusText && <p className="alpha-startup-status" role="status">{statusText}</p>}
-        {!complete && step === 'google' && <p className="alpha-startup-status" role="status">{googleStatus.state === 'checking' ? 'Checking your connection…' : googleStatus.state === 'unavailable' ? 'Your Google connection couldn’t be checked.' : `Gmail: ${googleStatus.gmail ? 'Connected' : 'Not connected'} · Calendar: ${googleStatus.calendar ? 'Connected' : 'Not connected'}`}</p>}
-        {complete && <div className="alpha-startup-notices">
-          {connection.residentInference && connection.residentInference !== 'cloud' && <p role="status">{connection.residentPlanNotice === 'needs-plan' ? 'AI needs an active Cloud plan. Manage your plan in Settings.' : 'AI is not ready yet. Check your connection in Settings.'}</p>}
-          {connection.error && <p role="alert">{connection.error}</p>}
-          {connection.message?.includes('did not confirm revoking') && <p role="status">{connection.message}</p>}
-          {connection.accountCreated && <p role="status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email ? ` (${connection.cloudAccount.email})` : ''}.</p>}
-        </div>}
-      </div>
-      <footer className="alpha-startup-footer">
-        {!complete && <progress className="alpha-startup-progress" value={stepIndex + 1} max={steps.length} aria-label={`Setup step ${stepIndex + 1} of ${steps.length}`}/>}
-        <div className="alpha-startup-permission-actions">
-          {complete ? <button type="button" className="alpha-startup-primary" onClick={() => { setDismissed(true); if (!reopened) window.dispatchEvent(new Event('launcher-home')); }}>Go to Alpha</button>
-            : <><button type="button" className="alpha-startup-primary" disabled={busy !== null || status === 'checking'} aria-label={permission && status !== 'ready' ? status === 'settings' ? (native ? `Manage ${permissionName} in Android` : `Check ${permission} again`) : status === 'unavailable' ? `Check ${permission} again` : `Enable ${permission}` : undefined} onClick={act}>{actionLabel}</button>
-              {step !== 'files' && <button type="button" className="alpha-startup-skip" disabled={busy !== null} onClick={advance}>Not now</button>}</>}
-        </div>
-      </footer>
+  if(ready)return <dialog ref={dialog} className="alpha-startup-permissions" aria-label="You’re all set" onCancel={event=>event.preventDefault()}><div className="alpha-permission-content">
+    <span className="alpha-permission-icon" aria-hidden="true"><span style={iconStyle('check')}/></span><h2 className="serif" tabIndex={-1}>You’re all set</h2>
+    <p>Your choices are saved.</p>
+    {connection.residentInference&&connection.residentInference!=='cloud'&&<p role="status" className="alpha-permission-status">{connection.residentPlanNotice==='needs-plan'?'AI needs an active Cloud plan. Manage it in Settings.':'AI is not ready yet. Check your connection in Settings.'}</p>}
+    {connection.error&&<p role="alert" className="alpha-permission-status">{connection.error}</p>}
+    {connection.message?.includes('did not confirm revoking')&&<p role="status" className="alpha-permission-status">{connection.message}</p>}
+    {connection.accountCreated&&<p role="status" className="alpha-permission-status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email?` (${connection.cloudAccount.email})`:''}.</p>}
+    {progressError&&<p role="alert" className="alpha-permission-status">Setup progress could not be saved. Try again.</p>}
+    <div className="alpha-permission-actions"><button type="button" className="alpha-permission-primary" disabled={busy} onClick={()=>void finish()}>{busy?'Checking…':'Go to Alpha'}</button></div>
+  </div></dialog>;
+  const info = details[key];
+  const primary = busy ? 'Checking…' : target && native && (state === 'ready' || state === 'settings') ? 'Open Android settings' : target && !native && state === 'ready' ? 'Done' : state === 'ready' ? 'Continue' : state === 'settings' ? native ? 'Open Android settings' : 'Check access' : state === 'unavailable' ? 'Try again' : 'Allow';
+  return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={event => event.preventDefault()}>
+    <div className="alpha-permission-content" key={key}>
+      <span className="alpha-permission-icon" aria-hidden="true"><span style={iconStyle(info.icon)}/></span>
+      <h2 id="alpha-permission-title" className="serif" tabIndex={-1}>{info.title}</h2>
+      <p id="alpha-permission-description">{native ? info.description : info.browser}</p>
+      {state === 'ready' && <p className="alpha-permission-status" role="status">{native&&key==='location'?locationDescription.current:native&&key==='photos'?photoDescription.current:'Access is allowed.'}{target && !native ? ' Change it using the site controls in the address bar.' : ''}</p>}
+      {state === 'settings' && <p className="alpha-permission-status" role="status">{native ? 'Access is off. You can change it in Android settings.' : 'Review access using the site controls in the address bar.'}</p>}
+      {state === 'unavailable' && <p className="alpha-permission-status" role="status">Access could not be confirmed. {native ? 'Check Android app settings.' : 'Check the site controls in the address bar.'}</p>}
+      {progressError && <p className="alpha-permission-status" role="alert">Setup progress could not be saved. Try again.</p>}
+      {/* Nubs removed Skip from full onboarding; the previous optional flow remains in Git. */}
+      <div className="alpha-permission-actions"><button className="alpha-permission-primary" type="button" disabled={busy || state === 'checking'} onClick={() => void allow()}>{state === 'checking' ? 'Checking…' : primary}</button>{target && !( !native && state === 'ready') && <button className="alpha-permission-skip" type="button" disabled={busy} onClick={() => advance('continued')}>Done</button>}</div>
     </div>
   </dialog>;
 }

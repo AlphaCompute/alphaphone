@@ -1,4 +1,4 @@
-import {flagOffAndroid,completeOptionalAccessSetup} from '../flag-off-android';
+import {flagOffAndroid,completeAccessSetup} from '../flag-off-android';
 import {type Page} from '@playwright/test';
 // Renderer contract only. The synthetic bridge does not qualify Android permissions or MediaStore.
 export async function photosBridge(page:Page,scope='full',openPhotos=true,authenticated=false){
@@ -38,5 +38,5 @@ export async function photosBridge(page:Page,scope='full',openPhotos=true,authen
     return previous?previous.nativePromise(plugin,method,input):{};
    }};
  },scope);
- await page.goto('/');if(authenticated)await completeOptionalAccessSetup(page);if(openPhotos)await page.getByRole('button',{name:'Photos',exact:true}).click();
+ await page.goto('/');if(authenticated)await completeAccessSetup(page);if(openPhotos)await page.getByRole('button',{name:'Photos',exact:true}).click();
 }

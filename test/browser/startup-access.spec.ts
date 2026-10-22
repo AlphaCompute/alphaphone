@@ -13,89 +13,54 @@ test.beforeAll(async()=>{
  await server.listen();origin=`http://127.0.0.1:${(server.httpServer!.address()as {port:number}).port}`;
 });
 test.afterAll(async()=>{await server?.close();});
-test('post-sign-in checklist has real layout, explicit requests, honest limited photos and persistent skip',async({page})=>{
- await page.setViewportSize({width:360,height:740});
- await page.addInitScript(()=>{
- const w=window as any;w.access={calls:[],accounts:[{connected:true,connectionId:'synthetic',grantedCapabilities:[]}],googleOpens:0};
- const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaCamera:['checkPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestPermissions'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
- w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{w.access.calls.push({plugin,method,input});if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};if(plugin==='AlphaVoiceCloud')return {microphone:'denied'};if(plugin==='ElizaCamera')return {camera:'denied'};if(plugin==='ElizaLocation')return {location:'granted',accuracy:'approximate'};if(plugin==='AlphaCalendar')return {calendar:'denied'};if(plugin==='AlphaPhotoLibrary')return {scope:'selected',locked:false};return {};}};
- });
- await page.goto(origin+'/access-composition');await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
- const panel=page.getByRole('dialog',{name:'Set up Alpha access'});await expect(panel).toHaveCount(0);
- await page.evaluate(()=>(window as any).access.signin());await expect(panel).toBeVisible();
- // The first permission must be usable before scrolling, not hidden under Not now.
- const firstAction=panel.getByRole('button',{name:'Enable microphone',exact:true});
- // Native 720px at420dpi has about274 CSS pixels; keep large-text coverage separate.
- for(const viewport of [{width:274,height:538,scale:1},{width:280,height:538,scale:1},{width:360,height:740,scale:2},{width:360,height:800,scale:2}]){
-  await page.setViewportSize({width:viewport.width,height:viewport.height});
-  await setTextScale(page,viewport.scale);
-  await panel.evaluate(element=>{element.scrollTop=0;});
-  const action=await firstAction.boundingBox(),footerBox=await panel.locator('.alpha-startup-permission-footer').boundingBox();
-  expect(action!.height).toBeGreaterThanOrEqual(44);
-  expect(action!.y+action!.height).toBeLessThanOrEqual(footerBox!.y);
-  expect(await firstAction.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
-  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
-  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>{const range=document.createRange();range.selectNodeContents(element);return range.getClientRects().length;})).toBe(1);
-  await page.screenshot({path:`test-results/startup-access-first-action-${viewport.width}-${viewport.scale}.png`});
- }
- await setTextScale(page,1);
- await page.setViewportSize({width:360,height:740});
- await page.keyboard.press('Tab');await expect(firstAction).toBeFocused();
 
- await expect(panel.getByText('Approximate location allowed',{exact:true})).toBeVisible();
- await expect(panel.getByRole('heading',{name:'On-phone Calendar',exact:true})).toBeVisible();
- await expect(panel.getByText('Selected photos and videos only',{exact:true})).toBeVisible();
- await expect(panel.getByText('Gmail: Not connected')).toBeVisible();
- expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([]);
- await panel.getByRole('button',{name:'Enable camera',exact:true}).click();
- await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([{plugin:'DailyApps',method:'requestPermissions',input:{permissions:['camera']}}]);
- await panel.getByRole('button',{name:'Enable calendar',exact:true}).click();
- await expect(panel.getByRole('button',{name:'Manage on-phone calendar in Android',exact:true})).toBeVisible();
- expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>c.method==='requestPermissions'))).toEqual([{plugin:'DailyApps',method:'requestPermissions',input:{permissions:['camera']}},{plugin:'AlphaCalendar',method:'requestPermissions',input:{permissions:['calendar']}}]);
- expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['getCurrentPosition','watchPosition','list','sync','requestAccess'].includes(c.method)))).toEqual([]);
- await page.evaluate(()=>{(window as any).access.accounts=[{connected:true,connectionId:'synthetic',grantedCapabilities:['google.gmail.triage','google.calendar.read']}];window.dispatchEvent(new Event('alpha:google-accounts-changed'));});
- await expect(panel.getByText('Gmail: Connected with read access')).toBeVisible();
- await panel.getByRole('button',{name:'Review Google connections'}).click();expect(await page.evaluate(()=>(window as any).access.googleOpens)).toBe(1);
- const footer=panel.getByRole('button',{name:'Not now',exact:true});await footer.scrollIntoViewIfNeeded();const rect=await footer.boundingBox();expect(rect!.height).toBeGreaterThanOrEqual(44);expect(rect!.x).toBeGreaterThanOrEqual(0);expect(rect!.x+rect!.width).toBeLessThanOrEqual(360);
- await page.screenshot({path:'test-results/startup-access-360.png'});await footer.click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
- await page.reload();await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');await page.evaluate(()=>(window as any).access.signin());await expect(panel).toHaveCount(0);
- await page.evaluate(()=>(window as any).access.reopen());await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
-});
-
-test('reopening an allowed checklist starts at its heading without requesting access',async({page})=>{
- await page.setViewportSize({width:360,height:740});
+async function accessFixture(page:import('@playwright/test').Page){
  await page.addInitScript(()=>{
-  const w=window as any;w.access={calls:[],accounts:[{connected:true,connectionId:'synthetic',grantedCapabilities:['google.gmail.triage','google.calendar.read']}],googleOpens:0};
-  const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaCamera:['checkPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestPermissions'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
+  const w=window as any;w.access={calls:[],accounts:[],googleOpens:0};
+  const names={AlphaNotifications:['status'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestAccess'],AlphaPhotoLibrary:['scope','requestAccess'],DailyApps:['checkPermissions','requestPermissions','addListener','removeListener'],AlphaDevice:['openSettings']};
   w.Capacitor={PluginHeaders:Object.entries(names).map(([name,methods])=>({name,methods:methods.map(name=>({name,rtype:'promise'}))})),nativePromise:async(plugin:string,method:string,input:any)=>{
    w.access.calls.push({plugin,method,input});
    if(plugin==='AlphaNotifications')return {permissionGranted:true,appEnabled:true};
    if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
-   if(plugin==='ElizaCamera')return {camera:'granted'};
+   if(plugin==='DailyApps'&&method==='checkPermissions')return {camera:'granted'};
    if(plugin==='ElizaLocation')return {location:'granted',accuracy:'approximate'};
    if(plugin==='AlphaCalendar')return {calendar:'granted'};
-   if(plugin==='AlphaPhotoLibrary')return {scope:'full',locked:false};
+   if(plugin==='AlphaPhotoLibrary')return {scope:'selected',locked:false};
    return {};
   }};
  });
- await page.goto(origin+'/access-composition');
- await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
+ await page.goto(origin+'/access-composition');await expect.poll(()=>page.evaluate(()=>typeof(window as any).access.reopen)).toBe('function');
  await page.evaluate(()=>(window as any).access.signin());
- await page.evaluate(()=>(window as any).access.reopen());
- const panel=page.getByRole('dialog',{name:'Set up Alpha access'});
- await expect(panel.getByRole('button',{name:'Continue',exact:true})).toBeAttached();
- const assertTop=async()=>{
-  await expect(panel.getByRole('heading',{name:'Set up Alpha access',exact:true})).toBeFocused();
-  expect(await panel.evaluate(element=>element.scrollTop)).toBe(0);
-  const box=await panel.boundingBox(),heading=await panel.getByRole('heading',{name:'Set up Alpha access',exact:true}).boundingBox(),microphone=await panel.getByRole('heading',{name:'Microphone',exact:true}).boundingBox();
-  expect(heading!.y).toBeGreaterThanOrEqual(box!.y);
-  expect(microphone!.y+microphone!.height).toBeLessThan(box!.y+box!.height);
- };
- await assertTop();
- await page.keyboard.press('Tab');await expect(panel.getByRole('button',{name:'Manage photo access',exact:true})).toBeFocused();
- await panel.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
- await page.evaluate(()=>(window as any).access.reopen());await assertTop();
+ return page.locator('dialog.alpha-startup-permissions');
+}
+test('required native access keeps focused, reachable controls at narrow widths and large text, with honest limited grants',async({page})=>{
+ const panel=await accessFixture(page);const heading=panel.getByRole('heading',{name:'Stay in the loop.',exact:true}),action=panel.getByRole('button',{name:'Continue',exact:true});
+ await expect(heading).toBeFocused();
+ for(const viewport of [{width:274,height:538,scale:1},{width:280,height:538,scale:1},{width:360,height:740,scale:2},{width:360,height:800,scale:2}]){
+  await page.setViewportSize({width:viewport.width,height:viewport.height});await setTextScale(page,viewport.scale);await action.scrollIntoViewIfNeeded();
+  const box=await action.boundingBox();expect(box!.height).toBeGreaterThanOrEqual(44);expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(viewport.width);expect(box!.y+box!.height).toBeLessThanOrEqual(viewport.height);
+  await expect(panel.getByRole('button',{name:/Skip|Not now|Back/})).toHaveCount(0);
+ }
+ await page.setViewportSize({width:360,height:740});await setTextScale(page,1);
+ await heading.focus();await page.keyboard.press('Tab');await expect(action).toBeFocused();
+ for(const name of ['Stay in the loop.','Talk to Alpha.','Capture a moment.','Find your way.','Plan your day.','Your photos, here.']){
+  await expect(panel.getByRole('heading',{name,exact:true})).toBeVisible();
+  if(name==='Find your way.')await expect(panel.getByText('Approximate location allowed',{exact:true})).toBeVisible();
+  if(name==='Your photos, here.')await expect(panel.getByText('Selected photos and videos only',{exact:true})).toBeVisible();
+  await panel.getByRole('button',{name:'Continue',exact:true}).click();
+ }
+ await expect(panel.getByRole('heading',{name:'You’re all set',exact:true})).toBeFocused();await panel.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
+ expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['requestPermissions','requestAccess','openSettings','list','sync'].includes(c.method)))).toEqual([]);
+ await page.reload();await expect.poll(()=>page.evaluate(()=>typeof(window as any).access.reopen)).toBe('function');await page.evaluate(()=>(window as any).access.signin());await expect(panel).toHaveCount(0);
+});
+test('explicit Settings review starts at the original heading and targeted Done preserves completion',async({page})=>{
+ const panel=await accessFixture(page);
+ for(let i=0;i<6;i++)await panel.getByRole('button',{name:'Continue',exact:true}).click();await panel.getByRole('button',{name:'Go to Alpha',exact:true}).click();
+ await page.evaluate(()=>(window as any).access.reopen());await expect(panel.getByRole('heading',{name:'Stay in the loop.',exact:true})).toBeFocused();expect(await panel.evaluate(el=>el.scrollTop)).toBe(0);
+ for(let i=0;i<6;i++)await panel.getByRole('button',{name:'Continue',exact:true}).click();await panel.getByRole('button',{name:'Go to Alpha',exact:true}).click();
+ const before=await page.evaluate(()=>localStorage.getItem('alpha:startup-permission-walkthrough:v1'));
+ await page.evaluate(()=>window.dispatchEvent(new CustomEvent('alpha:startup-permissions-reopen',{detail:{permission:'camera'}})));
+ await expect(panel.getByRole('heading',{name:'Capture a moment.',exact:true})).toBeVisible();await panel.getByRole('button',{name:'Done',exact:true}).click();await expect(panel).toHaveCount(0);
+ expect(await page.evaluate(()=>localStorage.getItem('alpha:startup-permission-walkthrough:v1'))).toBe(before);
  expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['requestPermissions','requestAccess','openSettings'].includes(c.method)))).toEqual([]);
- await page.screenshot({path:'test-results/startup-access-reopen-top-360.png'});
 });

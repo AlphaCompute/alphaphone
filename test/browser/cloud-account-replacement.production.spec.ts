@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 // Replacing one Eliza Cloud account with another on the flag-off Android renderer, and a second
 // sign-in over a saved key.
 //
@@ -5,7 +6,7 @@
 // (flag-off-android.ts and resident-stub.ts) is not the native plugins, Eliza Cloud, Google, the
 // resident runtime or a device. Two synthetic accounts stand in for two real ones.
 import { test, expect, type Page } from '@playwright/test';
-import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, residentHome, openYourAgent, completeOptionalAccessSetup } from './flag-off-android';
+import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, residentHome, openYourAgent, completeAccessSetup } from './flag-off-android';
 import { residentStub, stub, setStub, type StubAccount } from './resident-stub';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
@@ -59,7 +60,7 @@ test('signing out of account A and into account B stops the resident before A is
   await setStub(page, { nextToken: B.token });
   await dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
 
   const order = await stub(page, s => s.order) as string[];
   const stored = JSON.parse(await harness(page, f => f.slots['cloud:production']));
@@ -129,7 +130,7 @@ test('a second sign-in over a saved key revokes that key once, before the new ke
   let welcome = await openYourAgent(page);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('revoke')))).toEqual([]);
   // Eliza Cloud stops accepting A's key; the next start asks for a new sign-in.
   await page.evaluate(() => { const s = (window as any).residentStub; s.accounts[0].userStatus = 401; s.nextToken = 'account-b-key'; s.polls = 0; s.persist(); });
@@ -141,10 +142,13 @@ test('a second sign-in over a saved key revokes that key once, before the new ke
   await expect(welcome).not.toContainText(/pair/i);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
-  await completeOptionalAccessSetup(page);
+  await completeAccessSetup(page);
   const order = await stub(page, s => s.order) as string[];
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual(['revoke Bearer ' + A.token]);
   expect(order.indexOf('revoke Bearer ' + A.token)).toBeLessThan(order.indexOf('store ' + B.token));
   expect(order.indexOf('revoke Bearer ' + A.token)).toBeGreaterThan(order.indexOf('poll authenticated', order.indexOf('store ' + A.token)));
   expect(JSON.parse(await harness(page, f => f.slots['cloud:production'])).token).toBe(B.token);
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));
