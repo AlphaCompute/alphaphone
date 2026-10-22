@@ -36,7 +36,8 @@ test("JVM: journal binding, evidence-only status, durable reconciliation and pro
     execFileSync(java("javac"), ["--release", "11", "-d", dir, join(JAVA, "SmsSendJournal.java"), join(JAVA, "SmsRecords.java"), join(JAVA, "SmsPageCursor.java"), join(root, "test/fixtures/SmsSendJournalTest.java")], { timeout: 60000 });
     const body = "Running late \"5\" min\né😀\t\u0001";
     const expected = createHash("sha256").update(smsBindingText({ recipients: ["+15555550100", "5550101"], body, subscriptionId: 3 })).digest("hex");
-    assert.match(execFileSync(java("java"), ["-cp", dir, "ai.elizaresearch.alphaphone.SmsSendJournalTest", expected], { encoding: "utf8", timeout: 20000 }), /PASS sms send journal/);
+    // Keep scratch inside the owned fixture. Use the existing host-JVM helper budget for durable I/O on capped builders.
+    assert.match(execFileSync(java("java"), ["-Djava.io.tmpdir=" + dir, "-cp", dir, "ai.elizaresearch.alphaphone.SmsSendJournalTest", expected], { encoding: "utf8", timeout: 120000 }), /PASS sms send journal/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
