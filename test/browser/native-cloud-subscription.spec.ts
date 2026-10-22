@@ -140,7 +140,7 @@ async function needsPlan(page:Page){
  await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
  // A fresh phone's startup access panel (a modal) is declined first; the notice stays beside the agent.
  const startup=page.locator('dialog.alpha-startup-permissions');
- if(await startup.isVisible().catch(()=>false)){await startup.getByRole('button',{name:'Not now',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(startup).toHaveCount(0);}
+ if(await startup.isVisible().catch(()=>false)){await startup.getByRole('button',{name:'Not now',exact:true}).click();await expect(page.getByRole('dialog',{name:'You’re all set',exact:true})).toBeVisible();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(startup).toHaveCount(0);}
  await notice.getByRole('button',{name:'Redeem code',exact:true}).click();
  const panel=page.getByRole('dialog',{name:'Eliza Cloud account & plan',exact:true});await expect(panel).toBeVisible();return panel;
 }
