@@ -1,6 +1,6 @@
 import {test,expect} from '@playwright/test';
 import {createServer} from 'vite';
-import {mkdtemp,writeFile,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {randomUUID,createHash} from 'node:crypto';
@@ -51,8 +51,15 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   expect(voice.transcript).toEqual({text:'Closed fixture transcript',local:false});expect(voice.prepared).toBe(true);expect(voice.plan).toBe('active');expect(voice.publicStorage).not.toContain(secret);expect(voice.opened).toEqual(['https://cloud.eliza.app/cloud/billing']);
   await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;c.openCloudAccount();});
   const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account.getByText('owned@example.invalid',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('existing-cloud-account.png'),animations:'disabled'});
-  await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();await page.reload();
-  await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount)).toBeNull();
+  await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();
+  // Reload only after sign-out has removed the host credential, not its earlier in-memory detach.
+  await expect.poll(async()=>{
+   try{return JSON.parse(await readFile(join(profile,'credentials.json'),'utf8'));}
+   catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')return null;throw error;}
+  }).toEqual({});
+  await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return !state.busy&&state.cloudAccount===null;})).toBe(true);
+  await page.reload();
+  await expect.poll(()=>page.evaluate(async()=>{const state=(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot();return state.startupResolved===true&&!state.busy&&state.cloudAccount===null;})).toBe(true);
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
   // In-app sign-in through the development host offers the email code (Google needs the phone's App
