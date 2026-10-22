@@ -41,7 +41,10 @@ export class BrowserCloudConnection extends WebPlugin {
 export async function clearBrowserCloudCredentialIfCurrent(environment:CloudEnvironment,expected:CloudCredential|null){
  if(environment!=='production'&&environment!=='staging')throw Error('Unsupported Cloud environment');
  if(expected!==null&&(!expected.credentialReference||expected.token))throw Error('A browser Cloud reference is required');
- await new BrowserCloudConnection().secureCompareExchange({slot:'cloud:'+environment,expectedValue:expected===null?null:JSON.stringify(expected),value:null});
+ const host=new BrowserCloudConnection(),slot='cloud:'+environment;
+ const result=await host.secureCompareExchange({slot,expectedValue:expected===null?null:JSON.stringify(expected),value:null});
+ // A lost swap is success only when the slot is already empty; another account's reference stays and is reported.
+ if(result.status==='conflict'&&(await host.secureRead({slot})).value!==null)throw Error('Cloud account changed');
 }
 /** Binds native-compatible voice calls to the current host reference and account generation. */
 export async function browserCloudCredential(environment:string,credentialId:string,signal:AbortSignal){

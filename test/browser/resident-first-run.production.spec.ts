@@ -182,3 +182,18 @@ test('first run: Cloud refusing the new key (401 on the account read) removes it
 // retires local orchestration and Cloud refuses AI requests itself (subscription-entitlement.ts,
 // connection-ui.tsx admitCloudResident). The plan view and its billing link are covered by
 // native-cloud-subscription.spec.ts; the refusal on send by resident-failures.production.spec.ts.
+
+// A provider rebind can fail once while native shuts down, then recover in ensureResident.
+// The recovered connection must not restore the earlier startup error.
+test('first run: recovered provider restart clears its stale startup error', async ({ page }) => {
+  test.setTimeout(120_000);
+  const { foreign, welcome } = await firstRun(page);
+  await setStub(page, { start: 'reject-once' });
+  await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
+  await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(welcome.getByText('Your agent uses Eliza Cloud for AI.', { exact: true })).toBeVisible();
+  await expect(welcome.getByText('Local agent failed to start.', { exact: true })).toHaveCount(0);
+  await expect.poll(() => starts(page)).toBe(3);
+  expect(await harness(page, f => f.slots['cloud:production'] != null)).toBe(true);
+  expect(foreign).toEqual([]);
+});

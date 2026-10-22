@@ -51,7 +51,7 @@ export async function residentStub(page: Page, options: ResidentStubOptions = {}
     const s = w.residentStub = {
       order: [] as string[], cloud: [] as Array<{ method: string; path: string; auth?: string }>, bodies: [] as any[], opened: [] as string[],
       accounts: structuredClone(options.accounts ?? []) as any[], login: 'authenticated' as 'authenticated' | 'expired' | 'hold', nextToken: '', polls: 0,
-      start: 'ok' as 'ok' | 'reject' | 'starting', held: null as null | { conversation: string; reply: string },
+      start: 'ok' as 'ok' | 'reject' | 'reject-once' | 'starting', held: null as null | { conversation: string; reply: string },
       ...kept,
       // Per page load: the stream mode and a held reply do not survive a restart.
       stream: null as any, release: null as null | (() => void), recoveries: [] as string[], capabilities: '',
@@ -89,7 +89,7 @@ export async function residentStub(page: Page, options: ResidentStubOptions = {}
       // Removing a stored provider stops the process launched with it (AlphaCredentialStore requiresShutdown).
       if (plugin === 'Agent' && method === 'clearProvider' && f.slots['native:local-agent-provider']) { s.order.push('Agent.stop'); persist(); }
       if (plugin === 'Agent' && ['start', 'stop', 'configureCloudProvider'].includes(method)) { s.order.push(method === 'configureCloudProvider' ? 'configureCloudProvider ' + input.credentialId : 'Agent.' + method); persist(); }
-      if (plugin === 'Agent' && method === 'start' && s.start === 'reject') { f.calls.push('Agent.start'); throw Error('Local agent failed to start.'); }
+      if (plugin === 'Agent' && method === 'start' && (s.start === 'reject' || s.start === 'reject-once')) { if (s.start === 'reject-once') { s.start = 'ok'; persist(); } f.calls.push('Agent.start'); throw Error('Local agent failed to start.'); }
       if (plugin === 'Agent' && method === 'request' && input.path === '/api/agents' && s.start === 'starting') { f.calls.push('Agent.request'); return { status: 200, body: JSON.stringify({ agents: [{ id: '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11', name: 'Alpha', status: 'starting' }] }) }; }
       if (plugin === 'Agent' && method === 'request' && input.path === '/api/client-devices/register' && options.offered) { f.calls.push('Agent.request'); return { status: 200, body: JSON.stringify({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: options.offered }) }; }
       if (plugin === 'DailyApps' && method === 'surfaceInfo' && options.clockRepeatDaysVersion !== undefined) { f.calls.push('DailyApps.surfaceInfo'); return { developmentBuild: false, assistant: false, clockRepeatDaysVersion: options.clockRepeatDaysVersion }; }
