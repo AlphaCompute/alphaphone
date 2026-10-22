@@ -192,7 +192,7 @@ test('first run: recovered provider restart clears its stale startup error', asy
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   // Successful sign-in now continues into access setup; the recovered start must leave no error anywhere.
   await expect(welcome).toHaveCount(0, { timeout: 30_000 });
-  await expect(page.getByRole('dialog', { name: 'Set up Alpha access', exact: true })).toBeVisible();
+  await expect(page.locator('dialog.alpha-startup-permissions')).toBeVisible();
   await expect.poll(() => starts(page)).toBe(3);
   await expect(page.getByText('Local agent failed to start.', { exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] != null)).toBe(true);
