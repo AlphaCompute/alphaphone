@@ -19,6 +19,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   if(path==='/api/auth/cli-session/'+session)return Response.json({status:'authenticated',apiKey:secret});
   expect(new Headers(input.headers).get('Authorization')).toBe('Bearer '+secret);
   if(path==='/api/v1/user')return Response.json({success:true,data:{id:owner,organization_id:organizationId,email:'owned@example.invalid'}});
+  if(path==='/api/v1/api-keys/current'){expect(input.method).toBe('DELETE');return Response.json({success:true,status:'revoked',credentialId:'server-key',revokedAt:'2026-10-22T00:00:00Z'});}
   if(path==='/api/v1/billing/limits')return Response.json({success:true,data:{v2:{subscription:{status:'available',value:{planKey:'plus_monthly',state:'active'}}}}});
   if(path==='/api/v1/eliza/google/accounts')return Response.json([]);
   if(path==='/api/v1/voice/stt'){expect(input.body).toBeInstanceOf(FormData);expect((input.body as FormData).get('audio')).toBeInstanceOf(File);expect((input.body as FormData).get('provider')).toBe('cartesia');return Response.json({transcript:'Closed fixture transcript'},{headers:{'X-Eliza-STT-Provider':'cartesia'}});}
@@ -52,7 +53,10 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   expect(voice.transcript).toEqual({text:'Closed fixture transcript',local:false});expect(voice.prepared).toBe(true);expect(voice.plan).toBe('active');expect(voice.publicStorage).not.toContain(secret);expect(voice.opened).toEqual(['https://cloud.eliza.app/cloud/billing']);
   await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;c.openCloudAccount();});
   const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account.getByText('owned@example.invalid',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('existing-cloud-account.png'),animations:'disabled'});
-  await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();await page.reload();
+  await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();
+  await expect(page.getByRole('status').filter({hasText:'This sign-in was revoked.'})).toBeVisible();
+  await page.reload();
+  expect(calls.filter(p=>p==='/api/v1/api-keys/current')).toHaveLength(1);
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount)).toBeNull();
   // Completed returning users still review access after explicit Settings sign-in.
   await page.evaluate(()=>window.dispatchEvent(new Event('alpha:agent-settings')));

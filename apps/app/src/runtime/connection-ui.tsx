@@ -56,7 +56,7 @@ import { checkEntitlement, clearEntitlementKeyCache, describeSubscription, Entit
 import { RemoteProtocol, RemoteProtocolError } from './remote-protocol';
 import { phoneContextMessage } from './phone-context';
 import { CloudSignInPanel } from './cloud-sign-in-ui';
-import { cloudCredentialStore, cloudSignIn, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
+import { cloudCredentialStore, cloudSelfRevocationSupported, cloudSignIn, remoteCredentialStore, nativeCloudRequest, nativeRemoteRequest, openConnectionBrowser, removeStoredCloudCredential, secureConnectionStore } from './native-connection';
 import { findStoppedUserTurn, type StoppedTurn } from './stopped-reply-match';
 import './connection-ui.css';
 
@@ -310,7 +310,7 @@ const actionJournal = registerPlugin<ActionJournal>('AlphaActionJournal');
 let savedCloudEnvironment: unknown;
 try { savedCloudEnvironment = localStorage.getItem(CLOUD_SERVICE); } catch { /* Use the explicit public preview default when storage is unavailable. */ }
 let cloud = makeCloud(resolveCloudEnvironment(cloudEnvironmentPolicy, savedCloudEnvironment));
-let service: { client: CloudProtocol; identity: CloudServiceSession } | null = null;
+let service: { client: CloudProtocol; identity: CloudServiceSession; credentialReference?: string } | null = null;
 let entitlementRefresher: EntitlementRefresher | null = null;
 /**
  * The Eliza Cloud inference binding the running resident was started with: 'cloud' (bound to an
@@ -333,12 +333,12 @@ async function verifyService(client: CloudProtocol, signal: AbortSignal, expecte
   if (!credential?.credentialId) throw new Error('Cloud credentials are unavailable. Sign in again.');
   const identity = await client.identity(signal); signal.throwIfAborted();
   const current=await cloudCredentialStore.read(client.environment);
-  if (current?.credentialId !== credential.credentialId || expected&&current?.credentialReference!==expected.credentialReference) throw new Error('Cloud account changed. Try again.');
+  if (current?.credentialId !== credential.credentialId || current?.credentialReference !== credential.credentialReference || expected&&current?.credentialReference!==expected.credentialReference) throw new Error('Cloud account changed. Try again.');
   signal.throwIfAborted();
-  const same = service?.identity.environment === client.environment && service.identity.userId === identity.userId && service.identity.organizationId === identity.organizationId && service.identity.credentialId === credential.credentialId;
+  const same = service?.identity.environment === client.environment && service.identity.userId === identity.userId && service.identity.organizationId === identity.organizationId && service.identity.credentialId === credential.credentialId && service.credentialReference === credential.credentialReference;
   const account = { ...identity, credentialId: credential.credentialId, environment: client.environment, sessionId: same ? service!.identity.sessionId : crypto.randomUUID(), ...(Number.isFinite(credential.expiresAt) ? { expiresAt: credential.expiresAt } : {}) };
   localStorage.setItem(CLOUD_SERVICE, client.environment);
-  service = { client, identity: account }; update({ cloudAccount: account });
+  service = { client, identity: account, credentialReference:credential.credentialReference }; update({ cloudAccount: account });
   return identity;
 }
 let personalSetup: { client:CloudPersonalProtocol; serviceId:string } | null = null;
@@ -395,7 +395,7 @@ async function personalWork(message:string,action:(binding:NonNullable<typeof pe
 function detachCloudTarget() { if (testMocksEnabled && active?.kind === 'cloud') retire(); }
 // Only the Android transport admits Cloud's self-revocation DELETE; elsewhere sign-out reports a local removal.
 // Product builds construct only the managed-services adapter; the hosted-agent fixture exists only with test mocks.
-function makeCloud(environment: CloudEnvironment): CloudProtocol { return testMocksEnabled ? new DevelopmentCloudAgentProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid || browserCloudResidentEnabled, signIn: cloudSignIn }) : new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: isAndroid || browserCloudResidentEnabled, signIn: cloudSignIn }); }
+function makeCloud(environment: CloudEnvironment): CloudProtocol { return testMocksEnabled ? new DevelopmentCloudAgentProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: cloudSelfRevocationSupported, signIn: cloudSignIn }) : new CloudProtocol(environment, nativeCloudRequest, cloudCredentialStore, openConnectionBrowser, { deleteRequests: cloudSelfRevocationSupported, signIn: cloudSignIn }); }
 /** The client for an in-app sign-in in this environment; replaced when the environment changes. */
 function signInClient(environment: CloudEnvironment): CloudProtocol {
   if (cloud.environment !== environment) cloud = makeCloud(environment);
@@ -2132,6 +2132,9 @@ export const connectionController = {
   },
   async cloudSignOut() {
     await work('Signing out of Cloud services…', async signal => {
+      const previous = service, client = (previous?.client ?? cloud) as CloudProtocol;
+      const expected = await cloudCredentialStore.read(client.environment);
+      if(previous && (expected?.credentialId!==previous.identity.credentialId || expected?.credentialReference!==previous.credentialReference))throw new Error('Cloud account changed. Reopen account settings before signing out.');
       if(residentCloudFlow()){
         stopEntitlementRefresh();writePlanAdmission(null);update({residentSubscription:null,residentPlanNotice:null,planEndsAt:null,redeemError:'',redeemNotice:''});
         // Unbind Cloud inference before the key is revoked: native stops a process holding the key
@@ -2140,15 +2143,15 @@ export const connectionController = {
         await retire();residentBinding=null;update({residentInference:'unknown'});
         if(residentBindable())try{await clearLocalProvider();residentBinding='unbound';update({residentInference:'unavailable'});}catch{/* Retried by the restart below, which reports an unconfirmed removal. */}
       }
-      const previous = service; detachCloudTarget(); detachService();
+      detachCloudTarget(); detachService();
       localStorage.removeItem(CLOUD_SERVICE);
       if (!active) save({ kind: 'none' });
-      const client = (previous?.client ?? cloud) as CloudProtocol;
+
       // Only a confirmed server-side revocation counts. A transport or server that does not offer
       // the route ({supported:false}) or a failed request removes this phone's token only, and the copy says so.
       let revoked = false;
-      if (typeof client.revokeSession === 'function') { try { const result = await client.revokeSession(signal); revoked = result?.supported === true && result.revoked === true; } catch { /* Unconfirmed. A cancelled or failed revocation still removes the local token below. */ } }
-      await client.disconnect();
+      if (typeof client.revokeSession === 'function') { try { const result = await client.revokeSession(signal, expected); revoked = result?.supported === true && result.revoked === true; } catch { /* Unconfirmed. A cancelled or failed revocation still removes the local token below. */ } }
+      await client.disconnect(expected);
       const message = (revoked ? 'Signed out of Eliza Cloud. This sign-in was revoked.' : 'Signed out of Eliza Cloud on this phone. The sign-in token was removed here; Eliza Cloud did not confirm revoking it.')+(isAndroid&&!testMocksEnabled?' '+AI_OFF_MESSAGE:'');
       update({ agents: [], residentSavedCredential:false, ...(residentCloudFlow()?{purpose:'agent' as const}:{}), message });
       // The agent keeps running: reconnected (or restarted) without Cloud inference, and the
