@@ -469,6 +469,7 @@ async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated
 function developmentCloud(): DevelopmentCloudAgentProtocol { if (!testMocksEnabled || !(cloud instanceof DevelopmentCloudAgentProtocol)) throw Error(PAIRING_RETIRED); return cloud; }
 function update(patch: Partial<ConnectionSnapshot>) {
   const next = { ...state, ...patch };
+  if (state.purpose === 'cloud-account' && patch.cloudAccount && !state.cloudAccount) { next.open = false; next.purpose = 'agent'; }
   // Modal ownership follows production presentation. Automatic restore only suppresses rendering
   // temporarily; it must not erase an explicitly opened account or plan panel.
   state = isAndroid && !testMocksEnabled ? { ...next, open: connectionChooserVisible({ ...next, automaticRestore: false }) } : next;
