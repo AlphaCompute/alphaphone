@@ -118,7 +118,7 @@ const selectionSource = stripTypeScriptTypes(await readFile(new URL('../apps/app
   .replace(/^import .*;\n/gm, '').replace(/export /g, '');
 vm.runInNewContext(selectionSource + '\nglobalThis.selectionApi = { captureConversationChoice, selectConversation };', selectionSandbox);
 Object.assign(sandbox, selectionSandbox.selectionApi);
-let source = (await readFile(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8')).split('export function ConnectionChooser()')[0];
+let source = (await readFile(new URL('../apps/app/src/runtime/connection-ui.tsx', import.meta.url), 'utf8')).split('export function ConnectionChooser()')[0].split('\nfunction ResidentRecoveryPanel(')[0];
 source = source.replace(/^import .*;\n/gm, '').replace(/export /g, '').replaceAll('import.meta.env','fixtureViteEnv');
 source += '\nglobalThis.controller = connectionController;';
 vm.runInNewContext(stripTypeScriptTypes(source, { mode: 'transform' }), sandbox);
