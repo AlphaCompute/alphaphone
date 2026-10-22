@@ -16,7 +16,7 @@ export function openSharePanel(options:SharePanelOptions):Promise<void>{
   const prior=document.activeElement as HTMLElement|null,dialog=document.createElement('dialog');
   dialog.className='alpha-share-panel';dialog.setAttribute('aria-label','Share');
   Object.assign(dialog.style,{border:'0',borderRadius:'24px',padding:'24px',width:'min(360px,calc(100vw - 32px))',maxHeight:'80dvh',boxSizing:'border-box',background:'var(--bg,#fff)',color:'var(--fg,#222)',overflow:'auto'});
-  const theme=document.querySelector('.os');if(theme)dialog.style.fontSize=getComputedStyle(theme).fontSize;if(theme)for(const name of ['--bg','--fg','--s2','--mut'])dialog.style.setProperty(name,getComputedStyle(theme).getPropertyValue(name));
+  const theme=document.querySelector('.os');if(theme){const style=getComputedStyle(theme);dialog.style.fontSize=style.fontSize;dialog.style.fontFamily=style.fontFamily;for(const name of ['--bg','--fg','--s2','--mut'])dialog.style.setProperty(name,style.getPropertyValue(name));}
   const heading=document.createElement('h2');heading.textContent='Share';heading.style.margin='0 0 8px';
   const title=document.createElement('p');title.textContent=options.title;Object.assign(title.style,{overflowWrap:'anywhere',margin:'0 0 18px',color:'var(--mut,#666)'});
   const status=document.createElement('p');status.setAttribute('role','status');
@@ -33,7 +33,7 @@ export function openSharePanel(options:SharePanelOptions):Promise<void>{
   };
   dialog.append(heading,title);action('Share to email',options.email,options.emailUnavailable||'Email is unavailable for this selection.');action('Share externally',options.external);
   if(options.copy)action(options.copyLabel||'Copy text',options.copy);
-  if(options.save)action('Save text locally',options.save);
+  if(options.save)action('Save locally',options.save);
   action('Cancel',()=>{});dialog.append(status);dialog.addEventListener('cancel',event=>{event.preventDefault();finish();});dialog.addEventListener('close',finish);
   // Keep keyboard traversal inside the panel; chooser handoff happens only after finish().
   dialog.addEventListener('keydown',event=>{if(event.key!=='Tab')return;const buttons=Array.from(dialog.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')),first=buttons[0],last=buttons.at(-1);if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}});

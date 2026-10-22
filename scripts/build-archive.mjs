@@ -1,7 +1,7 @@
 /**
  * Verify, build both distributions and retain immutable matching app/test artifacts.
  *
- *   node scripts/build-archive.mjs [--test-mocks] test-results/<new-archive>
+ *   node scripts/build-archive.mjs [--test-mocks | --runtime-profile=cloud] test-results/<new-archive>
  *
  * Default archives the flag-off distribution build from artifacts/. --test-mocks
  * archives the separate, never-distributable test-mocks build from
@@ -13,16 +13,18 @@ import crypto from 'node:crypto';
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {archiveWebPayload} from './apk.mjs';
+import {parseBuildArgs,buildEnv as androidBuildEnv} from './build-android.mjs';
 const cli=process.argv.slice(2);
-const testMocks=cli.includes('--test-mocks');
-const positional=cli.filter(arg=>arg!=='--test-mocks');
-assert.ok(positional.length===1&&!positional[0].startsWith('--'),'Use: node scripts/build-archive.mjs [--test-mocks] test-results/<new-archive>');
+const buildArgs=cli.filter(arg=>arg==='--test-mocks'||arg==='--runtime-profile=cloud');
+const options=parseBuildArgs(buildArgs);
+const {testMocks,runtimeProfile='native'}=options;
+const positional=cli.filter(arg=>!buildArgs.includes(arg));
+assert.ok(positional.length===1&&!positional[0].startsWith('--'),'Use: node scripts/build-archive.mjs [--test-mocks | --runtime-profile=cloud] test-results/<new-archive>');
 const [destination]=positional;
 const sourceDir=testMocks?'artifacts/test-mocks':'artifacts';
 // Distribution archives are always flag-off; build-android also strips these.
-const buildEnv={...process.env};
-for(const name of ['ELIZA_DEV_ALLOW_TEST_MOCKS','VITE_ELIZA_DEV_ALLOW_TEST_MOCKS','ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS'])delete buildEnv[name];
-if(testMocks)buildEnv.ELIZA_DEV_ALLOW_TEST_MOCKS='1';
+const buildEnv=androidBuildEnv(process.env,options);
+const verifyEnv=androidBuildEnv(process.env,{testMocks:false,runtimeProfile});
 assert.ok(destination && path.resolve(destination).startsWith(path.resolve('test-results')+path.sep), 'Use a new archive beneath test-results');
 assert.ok(!fs.existsSync(destination), 'Archive already exists; preserve earlier evidence');
 fs.mkdirSync(destination,{recursive:true});
@@ -31,7 +33,7 @@ const snapshot=()=>JSON.parse(execFileSync(process.execPath,['scripts/source-sna
 // before freezing the baseline. Gradle repeats this stage; final equality below
 // still rejects any non-deterministic regeneration or later source drift.
 const nativeStageLog=fs.openSync(path.join(destination,'native-source-prestage.log'),'wx');
-try{execFileSync(process.execPath,['scripts/stage-local-agent-sources.mjs'],{stdio:['ignore',nativeStageLog,nativeStageLog],timeout:180000});}
+try{execFileSync(process.execPath,['scripts/stage-local-agent-sources.mjs'],{stdio:['ignore',nativeStageLog,nativeStageLog],timeout:180000,env:buildEnv});}
 finally{fs.closeSync(nativeStageLog);}
 // Capacitor generates res/xml/config.xml, an authenticated native build input.
 // Complete normal sync before freezing; the build repeats sync and equality
@@ -41,11 +43,11 @@ try{execFileSync('npm',['run','android:sync'],{stdio:['ignore',capacitorStageLog
 finally{fs.closeSync(capacitorStageLog);}
 const before=snapshot();
 fs.writeFileSync(path.join(destination,'inputs-before.json'),JSON.stringify(before,null,2));
-fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({testMocks,mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));
+fs.writeFileSync(path.join(destination,'configuration.json'),JSON.stringify({testMocks,runtimeProfile,mapsConfigured:Boolean(process.env.VITE_MAPS_BASE_URL),startedAt:new Date().toISOString()},null,2));
 for(const command of ['verify','android:build']){
  const log=fs.openSync(path.join(destination,command.replace(':','-')+'.log'),'wx');
- const extra=command==='android:build'&&testMocks?['--','--test-mocks']:[];
- try{execFileSync('npm',['run',command,...extra],{stdio:['ignore',log,log],timeout:1200000,env:command==='verify'?process.env:buildEnv});}
+ const extra=command==='android:build'&&buildArgs.length?['--',...buildArgs]:[];
+ try{execFileSync('npm',['run',command,...extra],{stdio:['ignore',log,log],timeout:1200000,env:command==='verify'?verifyEnv:buildEnv});}
  finally{fs.closeSync(log);}
  console.log(command+': passed');
 }
@@ -57,6 +59,7 @@ function retain(source,name){const target=path.join(destination,name);fs.copyFil
 // Retain exactly the build verify-apks checked, with its flag state.
 const verification=JSON.parse(fs.readFileSync(path.join(sourceDir,'apk-manifest.json'),'utf8'));
 assert.equal(verification.testMocks,testMocks,`Archive expects a testMocks=${testMocks} build`);
+assert.equal(verification.runtimeProfile||'native',runtimeProfile,'Verified APK runtime profile differs from archive');
 // apk-manifest.json keeps its six-APK name->hash shape for existing consumers;
 // release mappings are retained beside it with their own hashes.
 const mappings={};

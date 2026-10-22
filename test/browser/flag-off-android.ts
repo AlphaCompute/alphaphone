@@ -238,7 +238,7 @@ export async function flagOffAndroid(page: Page, options: FlagOffOptions = {}) {
         { name: 'DailyApps', methods: withListeners(['surfaceInfo', 'listReminders', 'pendingReminderTap', ...(options.document ? ['perform', 'readSelected', 'forgetSelected', 'describeSelected'] : [])]) },
         ...(options.document ? [{ name: 'AlphaMailAttachments', methods: promise(['readSelected', 'retainSourceReference', 'openSourceReference', 'cancel']) }] : []),
         { name: 'Agent', methods: withListeners(['getStatus', 'start', 'stop', 'configureCloudProvider', 'clearProvider', 'request', 'providerStatus', 'requestStream', 'cancelStream']) },
-        { name: 'AlphaConnection', methods: promise(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
+        { name: 'AlphaConnection', methods: withListeners(['secureRead', 'secureWrite', 'secureRemove', 'secureCompareExchange', 'request', 'cancel', 'openExternal']) },
         { name: 'AlphaActionJournal', methods: promise(['list', 'get']) },
         { name: 'AlphaNotifications', methods: promise(['status', 'crossAppStatus']) },
         { name: 'AlphaVoiceCloud', methods: promise(['checkPermissions']) },
@@ -382,7 +382,9 @@ export async function expectNoDevelopmentSurface(page: Page) {
 export async function completeOptionalAccessSetup(page: Page) {
   const setup = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
   await setup.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(setup).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'You’re all set', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
+  await expect(page.locator('dialog.alpha-startup-permissions')).toHaveCount(0);
 }
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */
 export async function residentHome(page: Page) {
@@ -392,14 +394,13 @@ export async function residentHome(page: Page) {
   await expect(button(page, 'Notes')).toBeVisible();
   await completeOptionalAccessSetup(page);
 }
-/** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
+/** Production sign-in is a page; signed-in agent controls live in Settings. */
 export async function openYourAgent(page: Page) {
-  // Signed out, the Eliza Cloud sign-in dialog is already open and cannot be dismissed (P-43).
-  const open = page.getByRole('dialog', { name: 'Your agent' });
-  if (await open.isVisible()) return open;
+  const gate = page.getByRole('main', { name: 'Sign in', exact: true });
+  if (await gate.isVisible()) return gate;
   await button(page, 'Settings').click();
-  await page.getByRole('button', { name: /Agent connection/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Your agent' });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Settings', exact: true });
+  await expect(panel.getByRole('heading', {name:'Agent connection',exact:true})).toBeVisible();
+  return panel;
 }

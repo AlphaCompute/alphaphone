@@ -70,3 +70,30 @@ test('a file chosen in a framed page reaches that page only, never the host docu
  expect(JSON.stringify(await page.evaluate(async()=>(await import('/src/runtime/alpha-client.ts')).alphaClient.getState().context))).not.toMatch(/synthetic-upload|Synthetic upload body/);
  expect(requests).toEqual(['GET https://upload.example/form']);
 });
+
+for(const available of [false,true])test(`page sharing keeps external handoff and explicit copy separate: Web Share ${available?'available':'unavailable'}`,async({page})=>{
+ const url='https://navigation.example/share';
+ await page.route(url,route=>route.fulfill({contentType:'text/html',body:'<h1>Share this page</h1>'}));
+ await page.evaluate(available=>{
+  const w=window as any;w.shareCalls=[];w.copiedUrls=[];
+  Object.defineProperty(navigator,'share',{configurable:true,value:available?async(data:ShareData)=>{w.shareCalls.push(data);}:undefined});
+  Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(text:string)=>{w.copiedUrls.push(text);}}});
+ },available);
+ await page.getByRole('button',{name:'Browser',exact:true}).click();
+ await page.getByRole('button',{name:'Search or type address',exact:true}).click();
+ await page.getByRole('textbox',{name:'Address',exact:true}).fill(url);
+ await page.getByRole('textbox',{name:'Address',exact:true}).press('Enter');
+ await expect(page.frameLocator('iframe[title="Website"]').getByRole('heading',{name:'Share this page'})).toBeVisible();
+ await page.getByRole('button',{name:'Menu',exact:true}).click();
+ await page.getByRole('dialog',{name:'Browser menu',exact:true}).getByRole('button',{name:'Share',exact:true}).click();
+ const panel=page.getByRole('dialog',{name:'Share',exact:true});
+ await expect(panel.getByRole('button',{name:'Share to email',exact:true})).toBeVisible();
+ await panel.getByRole('button',{name:'Share externally',exact:true}).click();
+ if(available)await expect.poll(()=>page.evaluate(()=>(window as any).shareCalls)).toEqual([{url}]);
+ else await expect(page.getByText('Sharing is unavailable in this browser. Use Copy text.',{exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).copiedUrls)).toEqual([]);
+ await page.getByRole('button',{name:'Menu',exact:true}).click();
+ await page.getByRole('dialog',{name:'Browser menu',exact:true}).getByRole('button',{name:'Share',exact:true}).click();
+ await page.getByRole('dialog',{name:'Share',exact:true}).getByRole('button',{name:'Copy text',exact:true}).click();
+ await expect.poll(()=>page.evaluate(()=>(window as any).copiedUrls)).toEqual([url]);
+});

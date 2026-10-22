@@ -1,7 +1,7 @@
 {
   "description": "Normalised `npm audit --json` for the package-lock.json with this SHA-256. Regenerate with: node scripts/dependency-audit.mjs --write. Dispositions live in docs/dependency-audit.dispositions.json.",
-  "auditedOn": "2026-10-16",
-  "lockSha256": "afa65699304f6b0994fc12bd0a06ae12c0819fc0facd328ee8c3b1438f1dce37",
+  "auditedOn": "2026-10-21",
+  "lockSha256": "316cd0ddcec8549ee7148e58e1bd9b46955dd7151ad1af7a68b0d9c3e8488085",
   "counts": {
     "info": 0,
     "low": 0,
@@ -74,7 +74,7 @@
       "package": "xcode",
       "severity": "moderate",
       "direct": false,
-      "affectedRange": ">=0.9.2",
+      "affectedRange": "0.9.2 - 3.0.2-nightly.20251125002453809.sha.e6b981ec",
       "via": [
         "uuid"
       ],
@@ -103,16 +103,16 @@
   ],
   "resident": {
     "description": "Advisories for the resident runtime's npm packages at the pinned upstream commit, from the npm bulk advisory endpoint. Regenerate with: node scripts/dependency-audit.mjs --resident --write. Dispositions live in docs/dependency-audit.dispositions.json under \"resident\".",
-    "upstreamCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
+    "upstreamCommit": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
     "input": "vendor/eliza/bun.lock",
-    "auditedOn": "2026-10-20",
-    "inputSha256": "e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e",
+    "auditedOn": "2026-10-21",
+    "inputSha256": "82b6ca080f333c29be296d1efb8e39164eb6664e8e5622ad96ba89ac7875bdb3",
     "packages": 3691,
     "counts": {
       "info": 0,
       "low": 14,
-      "moderate": 42,
-      "high": 41,
+      "moderate": 44,
+      "high": 45,
       "critical": 1
     },
     "findings": [
@@ -151,11 +151,67 @@
         ],
         "severity": "high",
         "advisory": {
+          "id": "GHSA-22jm-h49p-29qw",
+          "severity": "high",
+          "vulnerableRange": ">=1.24.0 <1.32.0",
+          "title": "MCP TypeScript SDK: Experimental tasks were not tied to the session that created them",
+          "url": "https://github.com/advisories/GHSA-22jm-h49p-29qw"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-46jr-4wx8-v453",
+          "severity": "high",
+          "vulnerableRange": ">=1.3.0 <1.32.0",
+          "title": "MCP TypeScript SDK: One HTTP request within the default size limit could exhaust server memory during validation",
+          "url": "https://github.com/advisories/GHSA-46jr-4wx8-v453"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-6prh-2h8m-c8cw",
+          "severity": "moderate",
+          "vulnerableRange": "<1.32.0",
+          "title": "MCP TypeScript client SDK: HTTP client transports and OAuth requests followed cross-origin redirects and re-sent custom headers and request bodies",
+          "url": "https://github.com/advisories/GHSA-6prh-2h8m-c8cw"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "high",
+        "advisory": {
           "id": "GHSA-6qxp-vccf-f47h",
           "severity": "high",
           "vulnerableRange": ">=1.12.0 <1.31.0",
           "title": "MCP TypeScript SDK: OAuth client could send credentials to an authorization server chosen by the MCP server",
           "url": "https://github.com/advisories/GHSA-6qxp-vccf-f47h"
+        }
+      },
+      {
+        "package": "@modelcontextprotocol/sdk",
+        "versions": [
+          "1.30.1"
+        ],
+        "severity": "moderate",
+        "advisory": {
+          "id": "GHSA-rvq5-wwqv-78pq",
+          "severity": "moderate",
+          "vulnerableRange": ">=1.6.0 <1.32.0",
+          "title": "MCP TypeScript SDK: Server bearer authentication accepted tokens issued for another service",
+          "url": "https://github.com/advisories/GHSA-rvq5-wwqv-78pq"
         }
       },
       {
@@ -660,6 +716,34 @@
           "vulnerableRange": ">=13.0.0 <21.3.1",
           "title": "file-type affected by infinite loop in ASF parser on malformed input with zero-size sub-header",
           "url": "https://github.com/advisories/GHSA-5v7r-6r5c-r473"
+        }
+      },
+      {
+        "package": "follow-redirects",
+        "versions": [
+          "1.16.0"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-8r9p-f939-6h3c",
+          "severity": "high",
+          "vulnerableRange": ">=1.16.0 <1.16.1",
+          "title": "follow-redirects sensitiveHeaders regex escaping can expose credential headers",
+          "url": "https://github.com/advisories/GHSA-8r9p-f939-6h3c"
+        }
+      },
+      {
+        "package": "follow-redirects",
+        "versions": [
+          "1.16.0"
+        ],
+        "severity": "high",
+        "advisory": {
+          "id": "GHSA-q3jh-wrc6-jgq8",
+          "severity": "high",
+          "vulnerableRange": ">=1.16.0 <1.16.1",
+          "title": "follow-redirects array-form headers bypass cross-origin credential stripping",
+          "url": "https://github.com/advisories/GHSA-q3jh-wrc6-jgq8"
         }
       },
       {

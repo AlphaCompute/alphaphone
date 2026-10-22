@@ -60,14 +60,15 @@ export function describeLauncherApps(apps: InstalledApp[]): Map<string, string[]
       const parts: string[] = [];
       if (app.profile) parts.push(PROFILE_LABEL[app.profile] + (app.locked ? ' · locked' : ''));
       if (group.length > 1) {
+        const packageLabel = app.packageName.startsWith('alpha:') ? 'Alpha Phone' : app.packageName;
         const siblings = group.filter(other => other.packageName === app.packageName);
         const before = parts.length;
-        if (siblings.length < group.length) parts.push(app.packageName);
+        if (siblings.length < group.length) parts.push(packageLabel);
         if (siblings.length > 1 && app.activityName) {
           parts.push(siblings.filter(other => short(other) === short(app)).length === 1 ? short(app) : app.activityName);
           if (app.user && siblings.filter(other => other.activityName === app.activityName).length > 1) parts.push(`profile ${app.user}`);
         }
-        if (parts.length === before) parts.push(app.packageName);
+        if (parts.length === before) parts.push(packageLabel);
       }
       details.set(appKey(app), parts);
     }

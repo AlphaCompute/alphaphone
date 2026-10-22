@@ -7,7 +7,7 @@ import {transform} from 'esbuild';
 // Execute the production review/delete methods with a synthetic transactional media store.
 // No personal media, DOM, provider or Android device is touched by this host test.
 const source=readFileSync('apps/app/src/prototype/browser-camera.ts','utf8');
-const selection=source.slice(source.indexOf('function selectedMedia('),source.indexOf('function downloadPhoto('));
+const selection=source.slice(source.indexOf('function selectedMedia('),source.indexOf('async function selectedMediaRows('));
 const methods=source.slice(source.indexOf(' async prepareDeleteTrash('),source.indexOf('\n};',source.indexOf(' async prepareDeleteTrash(')));
 async function fixture(){
  const records=new Map(['a','b','c'].map(id=>[id,{id,kind:'image',trashed:id!=='c',mutationRevision:'r-'+id}]));

@@ -110,12 +110,7 @@ async function connected(page: Page, options: { review?: boolean } = {}) {
   await expect.poll(async () => await start.isVisible().catch(() => false) || await page.evaluate(() => (window as any).declineFixture.installationId !== ''), { timeout: 30_000 }).toBe(true);
   if (await start.isVisible().catch(() => false)) await start.click();
   await expect.poll(() => page.evaluate(() => (window as any).declineFixture.installationId), { timeout: 30_000 }).not.toBe('');
-  if (options.review) {
-    // An uncertain phone action surfaces itself after connecting; close that notice to review it from Activity.
-    await expect(page.locator('.alpha-connection').getByText('A phone action needs your review. Check this phone, then record whether it happened.', { exact: true })).toBeVisible({ timeout: 30_000 });
-    const close = page.getByRole('button', { name: 'Close connection settings' }).first();
-    if (await close.isVisible().catch(() => false)) await close.click(); else await page.keyboard.press('Escape');
-  }
+  // Review history is retained for Activity without opening an automatic modal.
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   await completeOptionalAccessSetup(page);
 }

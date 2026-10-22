@@ -11,7 +11,7 @@ final class CloudSpeechPolicy {
   if (mocks && "staging".equals(environment)) return "api-staging.eliza.app";
   throw new IOException("Cloud speech environment is unavailable");
  }
- static void requireTtsProvider(String profile, String provider) throws IOException {
+ static void requireProvider(String profile, String provider) throws IOException {
   if ("cloud".equals(profile) && !"cartesia".equals(provider)) throw new IOException("Cartesia speech is unavailable");
  }
 }

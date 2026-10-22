@@ -99,9 +99,16 @@ test('fresh Alpha Home shows core apps and loads installed apps only in All apps
   const drawer = await openDrawer(page);
   await expect(drawer.getByRole('button', {name: 'Open Clock', exact: true})).toHaveCount(1);
   await expect(drawer.getByRole('button', {name: 'Open Settings (com.android.settings)', exact: true})).toHaveCount(1);
+  const alphaSettings = drawer.getByRole('button', {name: 'Open Settings (Alpha Phone)', exact: true});
+  await expect(alphaSettings).toBeVisible();
+  await expect(alphaSettings.getByText('Alpha Phone', {exact: true})).toBeVisible();
+  await expect(drawer.getByRole('button', {name: 'Open Settings (alpha:settings)', exact: true})).toHaveCount(0);
   expect(await calls(page, 'list')).toHaveLength(1);
   await drawer.getByRole('button', {name: 'Open Clock', exact: true}).click();
   await expect.poll(() => calls(page, 'launch')).toEqual([{packageName: CLOCK.packageName, activityName: CLOCK.activityName}]);
+  await alphaSettings.click();
+  await expect(page.locator('html')).toHaveAttribute('data-active-view', 'settings');
+  expect(await calls(page, 'launch')).toEqual([{packageName: CLOCK.packageName, activityName: CLOCK.activityName}]);
 });
 
 test('same-label apps are separate entries and each opens exactly its own component and profile', async ({ page }, info) => {

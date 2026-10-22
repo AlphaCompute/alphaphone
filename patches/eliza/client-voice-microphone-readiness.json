@@ -1,5 +1,5 @@
 {
-  "baseCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
+  "baseCommit": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
   "paths": [
     {
       "path": "packages/ui/src/voice/voice-session-mic-capture.ts",

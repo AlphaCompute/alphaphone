@@ -5,7 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 // model is called. This is browser source evidence, not emulator or device acceptance.
 const REMOTE = 'https://agent.example.test';
 const ROOM = '99999999-8888-4777-8666-555555555555';
-type Options = { createFails?: boolean; createHangs?: boolean; createLimited?: boolean; abortRoute?: boolean; abortResult?: boolean; long?: boolean };
+type Options = { holdIdentity?: boolean; createFails?: boolean; createHangs?: boolean; createLimited?: boolean; abortRoute?: boolean; abortResult?: boolean; long?: boolean };
 
 async function remoteAgent(page: Page, options: Options = {}) {
   await page.addInitScript(({ remote, room, options }) => {
@@ -29,9 +29,9 @@ async function remoteAgent(page: Page, options: Options = {}) {
     } catch { /* storage failures are covered elsewhere */ }
     const persist = () => { try { sessionStorage.setItem('continuity-agent', JSON.stringify(agent)); } catch { /* fixture only */ } };
     const f = w.continuity = {
-      posts: 0, creates: 0, aborts: 0, historyReads: 0, pageReads: 0, ready: false, messageIds: [] as unknown[],
+      ownerId: 'fixture-owner', posts: 0, creates: 0, aborts: 0, historyReads: 0, pageReads: 0, ready: false, messageIds: [] as unknown[],
       createFails: !!options.createFails, createHangs: !!options.createHangs, createLimited: !!options.createLimited, abortResult: !!options.abortResult,
-      holdReads: false, lists: 0, heldRead: null as null | (() => void), heldList: null as null | (() => void),
+      holdReads: false, identityReleased:false, heldIdentity:null as null|(()=>void), lists: 0, heldRead: null as null | (() => void), heldList: null as null | (() => void),
       release: null as null | ((text: string) => void),
       /** The agent finishes the held turn and persists its reply, whether or not the phone still listens. */
       finish(text: string) { const user = [...agent.history].reverse().find(item => item.role === 'user'); agent.history.push({ id: crypto.randomUUID(), role: 'assistant', text, timestamp: Date.now() + 1, replyToMessageId: user?.id }); persist(); },
@@ -58,7 +58,8 @@ async function remoteAgent(page: Page, options: Options = {}) {
         if (method !== 'request') return {};
         const url = new URL(input.url), ok = (data: unknown) => ({ status: 200, data }), path = url.pathname;
         if (url.origin !== remote || input.headers?.Authorization !== 'Bearer remote-session-token') return { status: 401, data: {} };
-        if (path === '/api/auth/me') return ok({ identity: { kind: 'owner', id: 'fixture-owner', displayName: 'Owner' }, session: { kind: 'machine', id: 'remote-session-token', expiresAt }, access: { role: 'OWNER', mode: 'session' } });
+        if (path === '/api/auth/me' && options.holdIdentity && !f.identityReleased) await new Promise<void>(resolve=>{f.heldIdentity=()=>{f.identityReleased=true;resolve();};});
+        if (path === '/api/auth/me') return ok({ identity: { kind: 'owner', id: f.ownerId, displayName: 'Owner' }, session: { kind: 'machine', id: 'remote-session-token', expiresAt }, access: { role: 'OWNER', mode: 'session' } });
         if (path === '/api/agents') { f.ready = true; return ok({ agents: [{ id: '6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11', name: 'Continuity fixture', status: 'running' }] }); }
         if (path === '/api/client-devices/register') return ok({ installationId: input.headers['X-Eliza-Device-Id'], enrollmentId: 'fixture-enrollment', capabilities: [] });
         if (path === '/api/client-devices/proposals') return ok({ proposals: [] });
@@ -497,4 +498,36 @@ test('HOME from another app during a reply is a Stop: one cancel, the reconcilia
   await expect(conversation(page).getByText('Asked from Notes', { exact: true })).toHaveCount(1);
   await page.waitForTimeout(1_000);
   expect(await fixture(page, f => ({ posts: f.posts, aborts: f.aborts, reads: f.historyReads }))).toEqual({ posts: 1, aborts: 1, reads: 1 });
+});
+
+
+test('typing during initial identity verification survives Minimize and admission', async({page})=>{
+ await remoteAgent(page,{holdIdentity:true});await page.goto('/');await expect.poll(()=>fixture(page,f=>!!f.heldIdentity)).toBe(true);
+ await composer(page).pressSequentially('Typed before identity is restored');await page.getByRole('button',{name:'Open conversation',exact:true}).click();await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await expect(conversation(page)).toHaveAttribute('aria-hidden','true');await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(composer(page)).toHaveValue('Typed before identity is restored');await page.getByRole('button',{name:'Minimize chat',exact:true}).click();await expect(conversation(page)).toHaveAttribute('aria-hidden','true');
+ await fixture(page,f=>f.heldIdentity());await expect.poll(()=>fixture(page,f=>f.ready)).toBe(true);await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);await expect(conversation(page)).toHaveAttribute('aria-hidden','true');await page.getByRole('button',{name:'Open conversation',exact:true}).click();await expect(composer(page)).toHaveValue('Typed before identity is restored');expect(await fixture(page,f=>f.posts)).toBe(0);
+});
+
+
+for(const edit of [false,true])test(`initial identity admission never transfers a restored offline draft${edit?' with edits':''}`,async({page})=>{
+ await remoteAgent(page,{holdIdentity:true});await page.goto('/');await expect.poll(()=>fixture(page,f=>!!f.heldIdentity)).toBe(true);
+ await page.evaluate(async()=>{const {assistantDraftStore}=await import('/src/runtime/assistant-draft-store.ts');const store=await assistantDraftStore(JSON.stringify(['offline']));await store.save(await store.read(),'Earlier offline private words');});
+ await page.reload();await expect.poll(()=>fixture(page,f=>!!f.heldIdentity)).toBe(true);await expect(composer(page)).toHaveValue('Earlier offline private words');if(edit)await composer(page).fill('Earlier offline private words with new edits');
+ await fixture(page,f=>f.heldIdentity());await expect.poll(()=>fixture(page,f=>f.ready)).toBe(true);await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);await expect(composer(page)).toHaveValue('');
+ expect(await savedDraft(page,JSON.stringify(['offline']))).toContain('Earlier offline private words');expect(await savedDraft(page)).toBeNull();expect(await fixture(page,f=>f.posts)).toBe(0);
+});
+
+test('fresh startup typing never overwrites the verified owner saved draft',async({page})=>{
+ await remoteAgent(page,{holdIdentity:true});await page.goto('/');await expect.poll(()=>fixture(page,f=>!!f.heldIdentity)).toBe(true);
+ const key=JSON.stringify([REMOTE,'fixture-owner','6f1d3c3e-8c55-4c1b-9d1f-2b6f0b0d3a11',null]);await page.evaluate(async key=>{const {assistantDraftStore}=await import('/src/runtime/assistant-draft-store.ts');const store=await assistantDraftStore(key);await store.save(await store.read(),'Existing verified-owner draft');},key);
+ await composer(page).fill('Fresh words while connecting');await fixture(page,f=>f.heldIdentity());await expect.poll(()=>fixture(page,f=>f.ready)).toBe(true);await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await expect(composer(page)).toHaveValue('Fresh words while connecting');await expect(page.getByRole('status',{name:'Assistant draft status',exact:true})).toContainText('A saved draft is available');expect(await savedDraft(page,key)).toBe('Existing verified-owner draft');expect(await fixture(page,f=>f.posts)).toBe(0);
+});
+
+
+test('fresh startup draft stays with owner A after a verified switch to owner B',async({page})=>{
+ await remoteAgent(page,{holdIdentity:true});await page.goto('/');await expect.poll(()=>fixture(page,f=>!!f.heldIdentity)).toBe(true);
+ await composer(page).fill('Fresh startup words for owner A');await fixture(page,f=>f.heldIdentity());await expect.poll(()=>fixture(page,f=>f.ready)).toBe(true);await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);await expect(composer(page)).toHaveValue('Fresh startup words for owner A');
+ const ownerA=await bindingKey(page);await expect.poll(()=>savedDraft(page,ownerA)).toBe('Fresh startup words for owner A');
+ await page.evaluate(async remote=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');await c.disconnect();(window as any).continuity.ownerId='fixture-owner-b';await(window as any).Capacitor.nativePromise('AlphaConnection','secureWrite',{slot:'remote:'+remote,value:JSON.stringify({origin:remote,token:'remote-session-token',identityId:'fixture-owner-b',sessionId:'remote-session-token',expiresAt:Date.now()+86_400_000})});await c.pair('remote',remote,'');},REMOTE);
+ await expect.poll(()=>page.evaluate(async()=>{const {connectionController:c}=await import('/src/runtime/connection-ui.tsx');return c.getSnapshot().session?.ownerId;})).toBe('fixture-owner-b');await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);await expect(composer(page)).toHaveValue('');expect(await bindingKey(page)).not.toBe(ownerA);expect(await savedDraft(page,ownerA)).toBe('Fresh startup words for owner A');expect(await savedDraft(page)).toBeNull();expect(await fixture(page,f=>f.posts)).toBe(0);
 });

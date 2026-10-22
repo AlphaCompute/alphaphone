@@ -754,6 +754,28 @@ export function runtimeEntries(root, templates, errors, {agentDir = path.join(ro
       add({name: dep.name, version: dep.version, source: `https://www.npmjs.com/package/${dep.name}/v/${dep.version}`, ...notice, _bundles: ['workflow worker']});
     }
   } else errors.push(`${workerDir}/dependencies.json is missing from the staged runtime`);
+  // The compiled native Google host is a third bundled surface. Its input map is
+  // recorded by the normal producer; inspect the real package roots, not guessed names.
+  const workerManifest = path.join(workerDir, 'manifest.json');
+  if (fs.existsSync(workerManifest)) {
+    const host = JSON.parse(fs.readFileSync(workerManifest, 'utf8')).nativeGoogleHost;
+    if (host) {
+      if (!host.inputs || typeof host.inputs !== 'object' || Array.isArray(host.inputs)) errors.push('native Google host: missing input map');
+      else {
+        const packages = new Set();
+        for (const input of Object.keys(host.inputs)) {
+          if (path.isAbsolute(input) || input.split('/').some(part => !part || part === '..' || part === '.')) { errors.push('native Google host: invalid input path'); continue; }
+          let dir = path.dirname(input);
+          while (dir !== '.' && dir !== path.dirname(dir)) {
+            const parent = path.dirname(dir);
+            if (path.basename(parent) === 'node_modules' || (path.basename(parent).startsWith('@') && path.basename(path.dirname(parent)) === 'node_modules')) { packages.add(dir); break; }
+            dir = parent;
+          }
+        }
+        for (const dir of [...packages].sort()) add(runtimePackageEntry(path.join(root, dir), 'native Google host', templates, errors));
+      }
+    }
+  }
   for (const entry of byId.values()) {
     entry.text = `Bundled in the on-device ${entry._bundles.join(' and ')}.\n\n${entry.text}`;
     entries.push(entry);

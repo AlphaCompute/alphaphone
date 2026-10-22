@@ -1,6 +1,7 @@
 import {test,expect} from '@playwright/test';
 import {createServer,type ViteDevServer} from 'vite';
 import {resolve} from 'node:path';
+import {setTextScale} from './accessibility-states';
 // Actual checklist + bundled CSS, synthetic native/account ports only. No device grants or Google consent.
 let server:ViteDevServer,origin:string;
 test.beforeAll(async()=>{
@@ -22,6 +23,25 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await page.goto(origin+'/access-composition');await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');
  const panel=page.getByRole('dialog',{name:'Set up Alpha access'});await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.signin());await expect(panel).toBeVisible();
+ // The first permission must be usable before scrolling, not hidden under Not now.
+ const firstAction=panel.getByRole('button',{name:'Enable microphone',exact:true});
+ // Native 720px at420dpi has about274 CSS pixels; keep large-text coverage separate.
+ for(const viewport of [{width:274,height:538,scale:1},{width:280,height:538,scale:1},{width:360,height:740,scale:2},{width:360,height:800,scale:2}]){
+  await page.setViewportSize({width:viewport.width,height:viewport.height});
+  await setTextScale(page,viewport.scale);
+  await panel.evaluate(element=>{element.scrollTop=0;});
+  const action=await firstAction.boundingBox(),footerBox=await panel.locator('.alpha-startup-permission-footer').boundingBox();
+  expect(action!.height).toBeGreaterThanOrEqual(44);
+  expect(action!.y+action!.height).toBeLessThanOrEqual(footerBox!.y);
+  expect(await firstAction.evaluate(element=>{const r=element.getBoundingClientRect();return element.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>element.scrollWidth<=element.clientWidth)).toBe(true);
+  expect(await panel.getByRole('heading',{name:'Microphone',exact:true}).evaluate(element=>{const range=document.createRange();range.selectNodeContents(element);return range.getClientRects().length;})).toBe(1);
+  await page.screenshot({path:`test-results/startup-access-first-action-${viewport.width}-${viewport.scale}.png`});
+ }
+ await setTextScale(page,1);
+ await page.setViewportSize({width:360,height:740});
+ await page.keyboard.press('Tab');await expect(firstAction).toBeFocused();
+
  await expect(panel.getByText('Approximate location allowed',{exact:true})).toBeVisible();
  await expect(panel.getByRole('heading',{name:'On-phone Calendar',exact:true})).toBeVisible();
  await expect(panel.getByText('Selected photos and videos only',{exact:true})).toBeVisible();
@@ -38,7 +58,7 @@ test('post-sign-in checklist has real layout, explicit requests, honest limited 
  await expect(panel.getByText('Gmail: Connected with read access')).toBeVisible();
  await panel.getByRole('button',{name:'Review Google connections'}).click();expect(await page.evaluate(()=>(window as any).access.googleOpens)).toBe(1);
  const footer=panel.getByRole('button',{name:'Not now',exact:true});await footer.scrollIntoViewIfNeeded();const rect=await footer.boundingBox();expect(rect!.height).toBeGreaterThanOrEqual(44);expect(rect!.x).toBeGreaterThanOrEqual(0);expect(rect!.x+rect!.width).toBeLessThanOrEqual(360);
- await page.screenshot({path:'test-results/startup-access-360.png'});await footer.click();await expect(panel).toHaveCount(0);
+ await page.screenshot({path:'test-results/startup-access-360.png'});await footer.click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
  await page.reload();await expect.poll(()=>page.evaluate(()=>typeof (window as any).access.reopen)).toBe('function');await page.evaluate(()=>(window as any).access.signin());await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.reopen());await expect(panel).toBeVisible();await expect(panel.getByRole('button',{name:'Manage camera in Android',exact:true})).toBeVisible();
 });
@@ -64,7 +84,7 @@ test('reopening an allowed checklist starts at its heading without requesting ac
  await page.evaluate(()=>(window as any).access.signin());
  await page.evaluate(()=>(window as any).access.reopen());
  const panel=page.getByRole('dialog',{name:'Set up Alpha access'});
- await expect(panel.getByRole('button',{name:'Done',exact:true})).toBeAttached();
+ await expect(panel.getByRole('button',{name:'Continue',exact:true})).toBeAttached();
  const assertTop=async()=>{
   await expect(panel.getByRole('heading',{name:'Set up Alpha access',exact:true})).toBeFocused();
   expect(await panel.evaluate(element=>element.scrollTop)).toBe(0);
@@ -74,7 +94,7 @@ test('reopening an allowed checklist starts at its heading without requesting ac
  };
  await assertTop();
  await page.keyboard.press('Tab');await expect(panel.getByRole('button',{name:'Manage photo access',exact:true})).toBeFocused();
- await panel.getByRole('button',{name:'Done',exact:true}).click();await expect(panel).toHaveCount(0);
+ await panel.getByRole('button',{name:'Continue',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(panel).toHaveCount(0);
  await page.evaluate(()=>(window as any).access.reopen());await assertTop();
  expect(await page.evaluate(()=>(window as any).access.calls.filter((c:any)=>['requestPermissions','requestAccess','openSettings'].includes(c.method)))).toEqual([]);
  await page.screenshot({path:'test-results/startup-access-reopen-top-360.png'});

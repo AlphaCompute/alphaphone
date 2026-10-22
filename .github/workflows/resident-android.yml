@@ -1,6 +1,15 @@
 name: Resident Android exact source
 on:
   workflow_dispatch:
+    inputs:
+      runtime_profile:
+        description: Resident runtime profile (Cloud builds skip native qualification campaigns)
+        type: choice
+        required: true
+        default: native
+        options:
+          - native
+          - cloud
   # Optional automatic PACKAGED qualification. Both triggers are inert unless the
   # repository variable ELIZA_RESIDENT_QUALIFICATION is "push" (every main commit)
   # or "nightly" (once a day, default branch only). See docs/ci-cost-policy.md.
@@ -24,6 +33,8 @@ jobs:
       (github.event_name == 'schedule' && vars.ELIZA_RESIDENT_QUALIFICATION == 'nightly')
     # All consumers select the reviewed NDK before unused image SDKs are removed.
     env:
+      # Automatic qualification always retains the native profile.
+      ALPHA_RUNTIME_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.runtime_profile || 'native' }}
       ANDROID_NDK: /usr/local/lib/android/sdk/ndk/28.2.13676358
       ANDROID_NDK_HOME: /usr/local/lib/android/sdk/ndk/28.2.13676358
       ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/28.2.13676358
@@ -38,6 +49,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
+      # Install the selected toolchain before capacity provisioning authenticates it.
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install pinned Android native toolchain
+        run: |
+          python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          # The fused engine wrappers (prepare-embedding-host) require the CMake release of the qualified build.
+          python3 -m pip install cmake==4.0.3
+          test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       # Fresh hosted image provisioning only. Never prune source, dependency
       # caches, selected Android tools or generated artifacts during a running phase.
       - name: Provision build capacity on the disposable hosted runner
@@ -120,29 +150,11 @@ jobs:
           python3 -c 'import shutil; assert shutil.disk_usage(".").free >= 10*1024**3'
           echo "ALPHA_LOCAL_AGENT_SOURCE_DIR=$GITHUB_WORKSPACE/artifacts/resident-ci-92fc" >> "$GITHUB_ENV"
           echo "ALPHA_WORKFLOW_WORKER_OUTPUT=$GITHUB_WORKSPACE/artifacts/worker-ci-92fc" >> "$GITHUB_ENV"
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
-        with:
-          distribution: temurin
-          java-version: "21"
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
-        with:
-          packages: platform-tools
-          log-accepted-android-sdk-licenses: false
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
       - name: Qualify supervisor on real Linux processes
         timeout-minutes: 10
         run: |
           python3 scripts/ci/test-resident-phase.py
           python3 test/resident-crash-diagnostic.test.py
-      - name: Install pinned Android native toolchain
-        run: |
-          python3 scripts/ci/resident-phase.py --name android-toolchain --seconds 1200 sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.2.13676358" >> "$GITHUB_ENV"
-          # The fused engine wrappers (prepare-embedding-host) require the CMake release of the qualified build.
-          python3 -m pip install cmake==4.0.3
-          test "$(cmake --version | head -1)" = "cmake version 4.0.3"
       - run: python3 scripts/ci/resident-phase.py --name product-install --seconds 600 npm ci
       - run: node --test vendor/eliza/packages/os/scripts/__tests__/stage-launcher-overlay.node.test.ts
       # On-device speech is libelizainference with the shared paradee-voice library only; this archive
@@ -165,25 +177,44 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci/resident-phase.py --name bun-downloads --seconds 600 python3 scripts/ci/acquire-resident-bun.py
+      - name: Prepare pinned JSON dependency for host contract tests
+        shell: bash
+        run: bash scripts/ci/prepare-host-test-json.sh
       - name: Stage and archive qualified resident runtime
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           RUN_TURBO_CONCURRENCY: "1"
         run: |
-          python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
+          case "$ALPHA_RUNTIME_PROFILE" in
+            native)
+              python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android
+              ;;
+            cloud)
+              python3 scripts/ci/resident-phase.py --name runtime-stage --seconds 1800 npm run agent:stage-android -- --runtime-profile=cloud
+              ;;
+            *) echo "Unsupported runtime profile" >&2; exit 2 ;;
+          esac
           python3 scripts/ci/resident-phase.py --name mobile-bundle --seconds 300 npm run agent:test-mobile-workflow-bundle
           # Fresh native artifacts and the runtime pin are inputs to shipped notices.
           python3 scripts/ci/resident-phase.py --name license-notices --seconds 120 node scripts/generate-licenses.mjs --packaged-runtime
-          # Flag-off distribution: release verification requires the PACKAGED runtime.
-          python3 scripts/ci/resident-phase.py --name distribution-archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-distribution
-          # The native suites need the private peer fixture, a debug-only test hook
-          # that exists only in the separate, never-distributable test-mocks build.
-          python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs --test-mocks test-results/resident-ci-archive
+          if [ "$ALPHA_RUNTIME_PROFILE" = cloud ]; then
+            # Genuine Cloud resident, all four APKs, test mocks off. No provider calls.
+            python3 scripts/ci/resident-phase.py --name cloud-archive --seconds 3000 node scripts/build-archive.mjs --runtime-profile=cloud test-results/resident-ci-cloud
+          else
+            # Flag-off distribution: release verification requires the PACKAGED runtime.
+            python3 scripts/ci/resident-phase.py --name distribution-archive --seconds 3000 node scripts/build-archive.mjs test-results/resident-ci-distribution
+            # The native suites need the private peer fixture, a debug-only test hook
+            # that exists only in the separate, never-distributable test-mocks build.
+            python3 scripts/ci/resident-phase.py --name archive --seconds 3000 node scripts/build-archive.mjs --test-mocks test-results/resident-ci-archive
+          fi
       - name: Build and anchor private endpoint helper
+        if: env.ALPHA_RUNTIME_PROFILE == 'native'
         run: python3 scripts/ci/build-private-peer.py
       - name: Preserve native generated provenance
+        if: env.ALPHA_RUNTIME_PROFILE == 'native'
         run: cp android/app/build/generated/local-agent/source-manifest.json test-results/resident-ci-archive/native-generated-source-manifest.json
       - name: Anchor exact archive manifest
+        if: env.ALPHA_RUNTIME_PROFILE == 'native'
         id: freeze
         run: echo "sha256=$(sha256sum test-results/resident-ci-archive/apk-manifest.json | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       # build-archive.mjs retains each release R8 mapping (<variant>-release-mapping.txt,
@@ -191,8 +222,8 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         id: apks
         with:
-          name: resident-archive-${{ github.sha }}-${{ github.run_id }}
-          path: test-results/resident-ci-archive/
+          name: ${{ env.ALPHA_RUNTIME_PROFILE == 'cloud' && 'resident-cloud-archive' || 'resident-archive' }}-${{ github.sha }}-${{ github.run_id }}
+          path: ${{ env.ALPHA_RUNTIME_PROFILE == 'cloud' && 'test-results/resident-ci-cloud/' || 'test-results/resident-ci-archive/' }}
           retention-days: 3
           if-no-files-found: error
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -204,9 +235,12 @@ jobs:
             test-results/resident-ci-supervisor/
             test-results/resident-ci/
             test-results/resident-ci-distribution/
+            test-results/resident-ci-cloud/*.log
+            test-results/resident-ci-cloud/*.json
             android/app/build/reports/
   native:
     needs: build
+    if: github.event_name != 'workflow_dispatch' || inputs.runtime_profile != 'cloud'
     runs-on: ubuntu-24.04
     timeout-minutes: 100
     env:
@@ -289,6 +323,7 @@ jobs:
 
   recovery-ui:
     needs: build
+    if: github.event_name != 'workflow_dispatch' || inputs.runtime_profile != 'cloud'
     runs-on: ubuntu-24.04
     timeout-minutes: 55
     env:

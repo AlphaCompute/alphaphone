@@ -100,7 +100,7 @@ for(const mode of ['compose','cancel','source-changed','owner-changed'] as const
  await page.getByRole('button',{name:'Set up Alpha access',exact:true}).click();
  const access=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
  await expect(access).toBeVisible();
- await access.getByRole('button',{name:'Not now',exact:true}).click();
+ await access.getByRole('button',{name:'Not now',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();
  await expect(access).toBeHidden();
  await page.evaluate(async()=>{
   const c=(await import('/src/runtime/connection-ui.tsx')).connectionController,f=(window as any).deliveryFixture,snapshot=c.getSnapshot.bind(c);f.reads=0;

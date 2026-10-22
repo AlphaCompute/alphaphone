@@ -4,8 +4,8 @@ import {residentStub} from './resident-stub';
 // Actual flag-off UI/CSS with closed native boundary fixtures. These tests do not archive real files.
 const token='d32f7f34-962b-47b7-8f0d-f2fe7f12610a';
 type Mode='success'|'review-unavailable'|'changed'|'partial'|'transient';
-async function boot(page:Page,mode:Mode='success'){
- await fenceNetwork(page);await flagOffAndroid(page);await residentStub(page,{accounts:[{token:'synthetic-cloud-key',userId:'9f1dc45a-4011-4e44-947a-30d999d24fa5',email:'owner@example.invalid',balance:5}]});
+async function boot(page:Page,mode:Mode='success',signedOut=false){
+ await fenceNetwork(page);await flagOffAndroid(page);await residentStub(page,{emptyKeystore:signedOut,accounts:[{token:'synthetic-cloud-key',userId:'9f1dc45a-4011-4e44-947a-30d999d24fa5',email:'owner@example.invalid',balance:5}]});
  await page.addInitScript(({mode,token})=>{
   const w=window as any,c=w.Capacitor,previous=c.nativePromise;let archived=false;
   const calls=w.recoveryCalls={starts:0,reviews:0,archives:[] as unknown[]};
@@ -26,8 +26,9 @@ async function boot(page:Page,mode:Mode='success'){
   };
  },{mode,token});
  await page.goto('/');await expect.poll(()=>page.evaluate(()=>(window as any).recoveryCalls.starts)).toBe(1);
+ if(signedOut){const gate=page.getByRole('main',{name:'Sign in',exact:true});await expect(gate).toBeVisible();return gate;}
  await expect(button(page,'Settings')).toBeVisible();await completeOptionalAccessSetup(page);await button(page,'Settings').click();await page.getByRole('button',{name:'Agent connection',exact:true}).click();
- const dialog=page.getByRole('dialog',{name:'Your agent',exact:true});await expect(dialog).toBeVisible();return dialog;
+ const panel=page.getByRole('region',{name:'Settings',exact:true});await expect(panel.getByRole('heading',{name:'Agent connection',exact:true})).toBeVisible();return panel;
 }
 const calls=(page:Page)=>page.evaluate(()=>(window as any).recoveryCalls as {starts:number;reviews:number;archives:unknown[]});
 test('recovery review is explicit and cancelling preserves the block without archival or another start',async({page},testInfo)=>{
@@ -38,7 +39,7 @@ test('recovery review is explicit and cancelling preserves the block without arc
 });
 test('only confirmed complete archival dispatches one ordinary start and retains the Cloud credential',async({page})=>{
  const dialog=await boot(page);const key=await harness(page,f=>f.slots['cloud:production']);await dialog.getByRole('button',{name:'Review recovery',exact:true}).click();await dialog.getByRole('button',{name:'Keep records and restart',exact:true}).click();
- await expect.poll(()=>calls(page)).toEqual({starts:2,reviews:1,archives:[{reviewToken:token}]});await expect(dialog).toHaveCount(0);
+ await expect.poll(()=>calls(page)).toEqual({starts:2,reviews:1,archives:[{reviewToken:token}]});await expect(dialog.getByRole('button',{name:'Reconnect agent',exact:true})).toBeVisible();
  expect(await harness(page,f=>f.slots['cloud:production'])).toBe(key);expect(await harness(page,f=>f.streams)).toBe(0);await expect(page.getByRole('region',{name:'Settings',exact:true})).toBeVisible();await page.evaluate(()=>window.dispatchEvent(new Event('launcher-home')));await expect(button(page,'Notes')).toBeVisible();
 });
 test('unavailable native inventory cannot expose confirmation or start the agent',async({page})=>{
@@ -48,5 +49,15 @@ for(const mode of ['changed','partial'] as const)test(`${mode} archival keeps re
  const dialog=await boot(page,mode);await dialog.getByRole('button',{name:'Review recovery',exact:true}).click();await dialog.getByRole('button',{name:'Keep records and restart',exact:true}).click();await expect(dialog.getByRole('button',{name:'Review recovery',exact:true})).toBeEnabled();await expect(dialog.getByText('Recovery review needed',{exact:true})).toBeVisible();await expect(dialog.getByRole('button',{name:'Keep records and restart',exact:true})).toHaveCount(0);await expect(dialog.getByRole('button',{name:'Retry',exact:true})).toHaveCount(0);expect(await calls(page)).toEqual({starts:1,reviews:1,archives:[{reviewToken:token}]});
 });
 test('ordinary transient startup failure retains normal Retry without recovery operations',async({page})=>{
- const dialog=await boot(page,'transient');await expect(dialog.getByRole('button',{name:'Review recovery',exact:true})).toHaveCount(0);await dialog.getByRole('button',{name:'Retry',exact:true}).click();await expect.poll(()=>calls(page)).toEqual({starts:2,reviews:0,archives:[]});await expect(dialog).toHaveCount(0);
+ const dialog=await boot(page,'transient');await expect(dialog.getByRole('button',{name:'Review recovery',exact:true})).toHaveCount(0);await dialog.getByRole('button',{name:'Retry',exact:true}).click();await expect.poll(()=>calls(page)).toEqual({starts:2,reviews:0,archives:[]});await expect(dialog.getByRole('button',{name:'Reconnect agent',exact:true})).toBeVisible();
+});
+
+test('a signed-out startup refusal keeps recovery review reachable on the mandatory sign-in page',async({page})=>{
+ const gate=await boot(page,'success',true);
+ await gate.getByRole('button',{name:'Review recovery',exact:true}).click();
+ await expect(gate.getByText('Alpha will keep 8 old startup records, then restart your agent.',{exact:true})).toBeVisible();
+ await gate.getByRole('button',{name:'Cancel',exact:true}).click();
+ expect(await calls(page)).toEqual({starts:1,reviews:1,archives:[]});
+ await expect(gate.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();
+ expect(await harness(page,f=>f.slots['cloud:production']??null)).toBeNull();
 });

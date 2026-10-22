@@ -430,20 +430,24 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     this.stopTileWatch = watchReturnToApp(() => { if (this.live && this.S().shade) this.refreshTileFacts(); });
     this.dialogBackObserver = new MutationObserver(() => updateBackAvailability(this));
     this.dialogBackObserver.observe(document.body, {subtree:true, childList:true, attributes:true, attributeFilter:['open']});
-    this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),text=>{this.reviewedSourceDraft=null;if(this.live)this.setState({draft:text});},()=>{if(this.live)this.setState({});});
+    this.composerDraft=new AssistantDraftController(assistantDraftStore,()=>String(this.S().draft||''),(text,expected,current)=>new Promise<void>(resolve=>{if(!this.live||current&&!current()){resolve();return;}this.setState((previous:Shell)=>{if(current&&!current()||expected!==undefined&&String(previous.draft||'')!==expected)return null;if(this.startupDraft!==null)this.startupDraft=undefined;this.reviewedSourceDraft=null;return {draft:text};},resolve);}),()=>{if(this.live)this.setState({});});
     this.refreshDraftBinding=()=>{this.draftBindingAbort?.abort();const controller=this.draftBindingAbort=new AbortController();this.draftBindingTask=connectionController.assistantDraftBinding(controller.signal).then(key=>{if(this.live&&!controller.signal.aborted)return this.composerDraft.open(key);}).catch(()=>{if(this.live&&!controller.signal.aborted)this.composerDraft.unavailable();});};
     this.refreshDraftBinding();
     this.connectionSession = connectionController.getSnapshot().session?.sessionId;
+    // Only fresh typing before the first verified session can cross startup admission.
+    this.startupDraft=this.connectionSession?null:undefined;
     this.connectionUnsubscribe = connectionController.subscribe(() => {
-      const session = connectionController.getSnapshot().session?.sessionId;
+      const connection=connectionController.getSnapshot(),session=connection.session?.sessionId;
       if (session !== this.connectionSession) {
+        const preserveStartupDraft=!this.connectionSession&&!!session&&!connection.startupResolved&&typeof this.startupDraft==='string'&&this.startupDraft===String(this.S().draft||'');
+        this.startupDraft=null;
         cancelMessageContext(this);
         this.draftRecoveryAbort?.abort();this.composerDraft.retire();
         this.closeSummaryReview?.();this.reviewedSourceDraft=null;
         clearMapsSelection();
         this.connectionSession = session;
         alphaClient.disconnect();
-        if (this.live) this.setState({ msgs: [], draft: '', typing: false });
+        if (this.live) this.setState({ msgs: [], ...(preserveStartupDraft?{}:{draft:''}), typing: false });
       }
       const history = connectionController.getSnapshot().history;
       if (history && history.sessionId === session && this.restoredHistory !== history) {
@@ -997,6 +1001,14 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     const residentPending=residentAlwaysPresent&&!connection.session&&connection.kind==='recovering'?agentPendingText(connection):'';
     out.draftRetry=!!draft?.error;out.draftStatus=[draft?.message,offline?INFERENCE_OFFLINE_NOTICE:'',residentPending].filter(Boolean).join(' ');out.draftConflict=!!draft?.conflict;out.draftSavedText=draft?.savedText||'(Empty saved draft)';out.draftOpening=!!draft?.consuming;
     out.restoreSavedDraft=()=>this.composerDraft?.restoreSaved();out.keepCurrentDraft=()=>this.composerDraft?.keepCurrent();out.retryDraft=()=>{this.composerDraft?.retire();this.refreshDraftBinding();};
+    const onDraft=out.onDraft;
+    out.onDraft=(event:Event&{target:HTMLTextAreaElement})=>{
+      const connection=connectionController.getSnapshot(),current=String(this.S().draft||'');
+      if(this.startupDraft!==null&&!connection.startupResolved&&!connection.session){
+        this.startupDraft=!current||this.startupDraft===current?event.target.value:undefined;
+      }else this.startupDraft=null;
+      onDraft(event);
+    };
     out.composerPointer=(event:PointerEvent)=>event.stopPropagation();
     out.sendNow=()=>sendFromComposer(this);
     out.onKey=(event:KeyboardEvent&{nativeEvent?:KeyboardEvent})=>{
@@ -1005,7 +1017,17 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
     // Pending proposals offer Decline beside approval. The digest card renders one button per row.
     const live:Shell[]=this.S().msgs||[];
     out.msgs=(out.msgs||[]).map((m:Shell)=>{
-      const c=m.c||{};if(!c.proposalId||c.done||c.reviewUnavailable||!m.cGeneric)return m;
+      const c=m.c||{};
+      // Keep the real billing link and expose the existing code form from the
+      // same account-bound refusal. Neither option purchases or redeems by itself.
+      if(c.billingCodeEntry&&c.managePlan&&m.cGeneric&&connection.kind==='resident'&&connection.cloudAccount){
+        const ic=out.ic||{};
+        return {...m,cGeneric:false,cDigest:true,actionReviewClass:'alpha-action-review',rows:[
+          {ini:'',who:c.title,text:c.sub,icon:ic.right,open:()=>void connectionController.residentManagePlan()},
+          {ini:'',who:'Use a membership code',text:'Opens the code form for your Eliza Cloud account.',icon:ic.right,open:()=>connectionController.openPlan()},
+        ]};
+      }
+      if(!c.proposalId||c.done||c.reviewUnavailable||!m.cGeneric)return m;
       const message=live.find(item=>item.card===c);if(!message)return m;
       const ic=out.ic||{},busy=!!this.decliningProposal||!!this.pendingActionApproval;
       return {...m,hasCalendarText:m.hasCalendarText&&m.displayText!==c.sub,cGeneric:false,cDigest:true,actionReviewClass:'alpha-action-review',rows:[
@@ -1233,7 +1255,7 @@ export function installAgentAdapter(Component: Shell, views: Shell) {
           else this.setState((previous:Shell)=>({chat:previous.chat==='full'?'full':'sheet',msgs:[...(previous.msgs||[]),{id:crypto.randomUUID(),from:'agent',text:message,card:planCard??null,interrupted:true}]}));
           const limit=(e as {serviceLimit?:unknown}).serviceLimit;
           // A plan or billing refusal offers Cloud's plan page only; nothing is bought or upgraded here.
-          if((limit==='billing-refused'||limit==='subscription-required'||limit==='allowance-exhausted')&&connectionController.getSnapshot().kind==='resident')this.agentSay(limit==='subscription-required'?'Your Eliza Cloud plan needs attention before your agent can answer.':'Your Eliza Cloud billing needs attention before your agent can answer.',{type:'generic',icon:'info',title:limit==='subscription-required'?'Manage plan in Eliza Cloud':'Manage billing in Eliza Cloud',sub:'Opens Eliza Cloud billing in your browser. Nothing is sent or purchased.',managePlan:true});
+          if((limit==='billing-refused'||limit==='subscription-required'||limit==='allowance-exhausted')&&connectionController.getSnapshot().kind==='resident')this.agentSay(limit==='subscription-required'?'Your Eliza Cloud plan needs attention before your agent can answer.':'Your Eliza Cloud billing needs attention before your agent can answer.',{type:'generic',icon:'info',title:limit==='subscription-required'?'Manage plan in Eliza Cloud':'Manage billing in Eliza Cloud',sub:'Opens Eliza Cloud billing in your browser. Nothing is sent or purchased.',managePlan:true,billingCodeEntry:limit==='billing-refused'});
         }
         else if(this.live&&reconciling){if(streamed)this.setState((previous:Shell)=>({msgs:previous.msgs.map((item:Shell)=>item.id===streamedId?{...item,streaming:false,interrupted:true,text:`${item.text}\n\nStopped.`}:item)}));}
         else if (this.live) {

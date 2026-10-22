@@ -3,7 +3,8 @@ import {returnToApps} from './app-navigation';
 
 const tile=(page:Page)=>page.getByRole('region',{name:'Home',exact:true}).locator('[data-alpha-home-inbox]');
 async function fixture(page:Page,theme='light'){
- await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+// Model an existing configured account; permission onboarding has its own acceptance tests.
+ await page.addInitScript(()=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));});
  await page.goto('/?theme='+theme);
  await page.evaluate(async()=>{
   const {connectionController:c}=await import('/src/runtime/connection-ui.tsx'),{secureConnectionStore:s}=await import('/src/runtime/native-connection.ts');
@@ -37,7 +38,7 @@ test('Home Inbox distinguishes complete empty results from partial loaded result
 });
 
 test('Home Inbox offers Connect email before a connection and never reads mail',async({page})=>{
- await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));await page.goto('/');await expect(tile(page)).toContainText('Connect email');await expect(tile(page)).not.toContainText('View email accounts');await expect(tile(page)).not.toContainText('No unread');
+ await page.addInitScript(()=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));});await page.goto('/');await expect(tile(page)).toContainText('Connect email');await expect(tile(page)).not.toContainText('View email accounts');await expect(tile(page)).not.toContainText('No unread');
 });
 
 test('Home Inbox retains failure and retires cached subjects on owner change',async({page})=>{

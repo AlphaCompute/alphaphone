@@ -176,3 +176,82 @@ for (const testMocks of [false, true]) test(`archive retains actual APK web byte
   assert.throws(() => archiveWebPayload(apkFile, path.join(dir, 'wrong-mode'), { testMocks: !testMocks }), /testMocks/);
   assert.equal(fs.existsSync(path.join(dir, 'wrong-mode')), false);
 });
+
+// Exercise the archive CLI, its child environments and real ZIP retention without
+// running Gradle. Only the Android builder and source snapshot are fixture commands.
+for (const mode of ['native', 'test-mocks', 'cloud', 'wrong-cloud-profile']) test(`build archive preserves its selected runtime profile: ${mode}`, t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-build-archive-'));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  for (const name of ['scripts', 'bin']) fs.mkdirSync(path.join(dir, name));
+  fs.symlinkSync(path.join(root, 'scripts/audit-production-bundle.mjs'), path.join(dir, 'scripts/audit-production-bundle.mjs'));
+  fs.writeFileSync(path.join(dir, 'scripts/stage-local-agent-sources.mjs'), '');
+  fs.writeFileSync(path.join(dir, 'scripts/source-snapshot.mjs'), 'console.log(JSON.stringify({digest:"synthetic-stable-source"}));');
+  fs.writeFileSync(path.join(dir, 'bin/npm'), `#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+const args=process.argv.slice(2), profile=process.env.VITE_ELIZA_RUNTIME_PROFILE||'native';
+const mocks=process.env.ELIZA_DEV_ALLOW_TEST_MOCKS==='1';
+fs.appendFileSync('calls.jsonl',JSON.stringify({args,profile,mocks})+'\\n');
+if(args[1]==='android:build'){
+ const output=mocks?'artifacts/test-mocks':'artifacts';
+ fs.mkdirSync(output,{recursive:true});
+ fs.mkdirSync('payload/assets/public',{recursive:true});
+ fs.writeFileSync('payload/assets/public/build-flags.json',JSON.stringify({testMocks:mocks,runtimeProfile:profile}));
+ fs.writeFileSync('payload/assets/public/index.html','<html>Synthetic build payload</html>');
+ const results=[];
+ for(const variant of ['standalone','launcher']){
+  for(const suffix of ['debug','release-unsigned']){
+   const file=path.join(output,variant+'-'+suffix+'.apk');
+   execFileSync('zip',['-q','-r',path.resolve(file),'assets'],{cwd:'payload'});
+   results.push({file,sha256:createHash('sha256').update(fs.readFileSync(file)).digest('hex')});
+  }
+  const file=mocks?path.join(output,variant+'-androidTest.apk'):'android/app/build/outputs/apk/androidTest/'+variant+'/debug/app-'+variant+'-debug-androidTest.apk';
+  fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,'synthetic instrumentation');
+ }
+ fs.writeFileSync(path.join(output,'apk-manifest.json'),JSON.stringify({testMocks:mocks,runtimeProfile:process.env.FIXTURE_WRONG_PROFILE?'native':profile,results}));
+}
+`, {mode:0o755});
+  const cloud = mode.includes('cloud'), testMocks = mode === 'test-mocks';
+  const args = cloud ? ['--runtime-profile=cloud'] : testMocks ? ['--test-mocks'] : [];
+  const env = {...process.env, PATH:path.join(dir, 'bin')+path.delimiter+process.env.PATH};
+  for (const name of ['ELIZA_DEV_ALLOW_TEST_MOCKS', 'VITE_ELIZA_DEV_ALLOW_TEST_MOCKS', 'ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS', 'FIXTURE_WRONG_PROFILE']) delete env[name];
+  if (cloud) Object.assign(env, {ELIZA_DEV_ALLOW_TEST_MOCKS:'1', VITE_ELIZA_DEV_ALLOW_TEST_MOCKS:'1', ORG_GRADLE_PROJECT_ELIZA_DEV_ALLOW_TEST_MOCKS:'1'});
+  if (mode === 'wrong-cloud-profile') env.FIXTURE_WRONG_PROFILE='1';
+  const run = spawnSync(process.execPath, [path.join(root, 'scripts/build-archive.mjs'), ...args, 'test-results/archive'], {cwd:dir, env, encoding:'utf8'});
+  const archive = path.join(dir, 'test-results/archive');
+  if (mode === 'wrong-cloud-profile') {
+    assert.notEqual(run.status, 0);
+    assert.match(run.stderr, /Verified APK runtime profile differs from archive/);
+    assert.ok(!fs.existsSync(path.join(archive, 'apk-manifest.json')));
+    return;
+  }
+  assert.equal(run.status, 0, run.stderr);
+  const calls = fs.readFileSync(path.join(dir, 'calls.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(calls.map(row => row.args[1]), ['android:sync', 'verify', 'android:build']);
+  assert.ok(calls.every(row => row.profile === (cloud ? 'cloud' : 'native')));
+  assert.equal(calls[1].mocks, false, 'verification stays flag-off even for a fixture archive');
+  assert.equal(calls[0].mocks, testMocks);
+  assert.equal(calls[2].mocks, testMocks);
+  assert.deepEqual(calls[2].args, ['run', 'android:build', ...(args.length ? ['--', ...args] : [])]);
+  const configuration = JSON.parse(fs.readFileSync(path.join(archive, 'configuration.json')));
+  assert.equal(configuration.runtimeProfile, cloud ? 'cloud' : 'native');
+  assert.equal(configuration.testMocks, testMocks);
+  const manifest = JSON.parse(fs.readFileSync(path.join(archive, 'apk-manifest.json')));
+  assert.equal(Object.keys(manifest).length, 6);
+  for (const [name, expected] of Object.entries(manifest)) assert.equal(createHash('sha256').update(fs.readFileSync(path.join(archive, name))).digest('hex'), expected);
+  const flags = JSON.parse(fs.readFileSync(path.join(archive, 'web-dist/build-flags.json')));
+  assert.equal(flags.runtimeProfile, cloud ? 'cloud' : 'native');
+  assert.equal(flags.testMocks, testMocks);
+});
+
+test('archive rejects Cloud mocks and unsupported profile switches before creating output', t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-build-archive-invalid-'));
+  t.after(() => fs.rmSync(dir, {recursive:true, force:true}));
+  for (const args of [['--runtime-profile=cloud', '--test-mocks'], ['--runtime-profile=other'], ['--allow-unpackaged-runtime']]) {
+    const run = spawnSync(process.execPath, [path.join(root, 'scripts/build-archive.mjs'), ...args, 'test-results/archive'], {cwd:dir, encoding:'utf8'});
+    assert.notEqual(run.status, 0);
+    assert.ok(!fs.existsSync(path.join(dir, 'test-results')));
+  }
+});

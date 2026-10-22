@@ -10,8 +10,8 @@ public final class CloudSpeechPolicyTest {
   rejects(()->CloudSpeechPolicy.host("native",false,"production"));
   rejects(()->CloudSpeechPolicy.host("unknown",false,"production"));
   if(!"api-staging.eliza.app".equals(CloudSpeechPolicy.host("native",true,"staging")))throw new AssertionError();
-  CloudSpeechPolicy.requireTtsProvider("cloud","cartesia");
-  for(String provider:new String[]{null,"","elevenlabs","kokoro","Cartesia","cartesia,elevenlabs"})rejects(()->CloudSpeechPolicy.requireTtsProvider("cloud",provider));
+  CloudSpeechPolicy.requireProvider("cloud","cartesia");
+  for(String provider:new String[]{null,"","elevenlabs","kokoro","Cartesia","cartesia,elevenlabs"})rejects(()->CloudSpeechPolicy.requireProvider("cloud",provider));
   System.out.println("PASS Cloud speech production host and Cartesia admission");
  }
 }

@@ -2,20 +2,66 @@
   "schema": 1,
   "repository": "elizaOS/eliza",
   "base": "develop",
-  "baseCommit": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "head": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "recordedAt": "2026-10-20",
-  "command": "gh api repos/elizaOS/eliza/compare/develop...5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "status": "identical",
-  "aheadBy": 0,
+  "baseCommit": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
+  "head": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
+  "recordedAt": "2026-10-21",
+  "command": "gh api repos/elizaOS/eliza/compare/develop...bdacc0709c3e47d81801deb6f409d3028b4c4304",
+  "status": "ahead",
+  "aheadBy": 15,
   "behindBy": 0,
-  "mergeBase": "5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab",
-  "pinOnlyCommits": [],
+  "mergeBase": "b6dfdfe6d75c08e7c180bc7ed8f0debb457ba1ba",
+  "pinOnlyCommits": [
+    {
+      "sha": "ce2a2711f89c0cdc93a6cb437477748816066210",
+      "subject": "fix(plugin-sql): apply Biome format and import order to the initdb snapshot files"
+    },
+    {
+      "sha": "5a795cd95b5891144281ec9a9074704fd1668f1f",
+      "subject": "fix(plugin-sql): copy initdb snapshot bytes into a Blob-compatible view"
+    },
+    {
+      "sha": "3d6f68a129702a1a2779cc087c93a80ba0f2332e",
+      "subject": "fix(android): settle detached launches before releasing ownership"
+    },
+    {
+      "sha": "760ee81aa7250eac450a34a2865d5f1399497831",
+      "subject": "Format the mobile snapshot build error message"
+    },
+    {
+      "sha": "e22a47c4da3e7355c1258dc79b9b157d0b519ec6",
+      "subject": "build(deps): bump the npm_and_yarn group across 6 directories with 1 update"
+    },
+    {
+      "sha": "3d6fb0f962424f554d08be81594328d455e54418",
+      "subject": "fix(deps): update resident Markdown and router dependencies"
+    },
+    {
+      "sha": "405cc18f3b11f0b56e3f807e25c78ce357263b1f",
+      "subject": "Format PGlite snapshot guard and tests with pinned Biome"
+    },
+    {
+      "sha": "6d465a126d02d0a4a64ccf3ed746fee6273c39b8",
+      "subject": "fix(voice): make Cartesia batch STT an explicit request choice"
+    },
+    {
+      "sha": "fbb3ae6beb30b94941208da891d492ce8902422b",
+      "subject": "fix(files): separate browser bulk sharing from ZIP downloads"
+    },
+    {
+      "sha": "bdacc0709c3e47d81801deb6f409d3028b4c4304",
+      "subject": "chore(deps): update Storybook and Vite development dependencies"
+    }
+  ],
   "pullRequests": [
     {
       "url": "https://github.com/elizaOS/eliza/pull/37084",
       "status": "merged",
       "mergeCommit": "aed4983248cdef1e7bc3ff0412f3ef6a356507b6"
     }
-  ]
+  ],
+  "pendingPullRequest": {
+    "url": "https://github.com/elizaOS/eliza/pull/37198",
+    "status": "draft",
+    "head": "5c1d7e4440e69e09241cad833f5626ebb886ba1a"
+  }
 }

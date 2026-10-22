@@ -1,3 +1,4 @@
+import {browserCloudResidentEnabled} from './browser-cloud-resident';
 import {developmentCartesiaVoiceEnabled} from './development-cartesia-flag';
 import {developmentCloudVoiceEnabled} from './development-cloud-voice';
 import {markTtsPlaybackStarted,markTtsPlaybackEnded} from '../../../../.eliza/client-features/packages/ui/src/voice/tts-playback-activity.ts';
@@ -9,9 +10,14 @@ import { connectionController } from './connection-ui';
 /** Native status codes retain recovery meaning without exposing a provider response body. */
 export function cloudVoiceFailure(error: unknown): string | null {
   const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
-  if(developmentCloudVoiceEnabled&&(code==='voice-http-401'||code==='voice-http-403'))return 'The developer agent’s Cloud speech authorization was refused. Check its server-side Cloud configuration, then retry.';
+  if(developmentCloudVoiceEnabled&&!browserCloudResidentEnabled&&(code==='voice-http-401'||code==='voice-http-403'))return 'The developer agent’s Cloud speech authorization was refused. Check its server-side Cloud configuration, then retry.';
   if (code === 'voice-http-401' || code === 'voice-http-403') return 'Sign in to Eliza Cloud again in Settings, then retry voice.';
   if (code === 'voice-http-402') return 'Eliza Cloud declined cloud voice for your account\'s billing. Check your account in Settings, then retry.';
+  if (typeof code === 'string' && /^voice-http-[45][0-9]{2}$/.test(code)) return `Cloud voice could not complete this request (${code.slice(-3)}). Try again later.`;
+  if (code === 'voice-stt-decode') return 'This recording could not be prepared for transcription. Choose Record again.';
+  if (code === 'voice-stt-connect') return 'Cloud voice could not use your saved account. Sign in again in Settings. Your recording is kept.';
+  if (code === 'voice-stt-upload') return 'The recording upload could not be confirmed. Your recording is kept. Check your connection before trying again.';
+  if (code === 'voice-stt-response') return 'Cloud voice returned no usable transcript. Your recording is kept. Try again later.';
   return null;
 }
 

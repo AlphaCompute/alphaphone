@@ -23,8 +23,8 @@ async function accounts(page: Page) {
 async function agentConnection(page: Page) {
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Settings').click();
-  await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  return page.getByRole('dialog');
+  await page.getByRole('button', { name: 'Eliza Cloud account & plan', exact: true }).click();
+  return page.getByRole('region',{name:'Settings',exact:true});
 }
 
 test('signing out of account A and into account B stops the resident before A is revoked and uses only B afterwards', async ({ page }) => {
@@ -51,13 +51,14 @@ test('signing out of account A and into account B stops the resident before A is
 
   // Sign out of A: the resident stops before A's key is revoked and removed.
   let dialog = await agentConnection(page);
-  await dialog.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Sign out of Eliza Cloud', exact: true }).click();
+  dialog=page.getByRole('main',{name:'Sign in',exact:true});
   await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled({ timeout: 30_000 });
   const signOut = await stub(page, s => s.order.length) as number;
   // Sign in as B.
   await setStub(page, { nextToken: B.token });
   await dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
 
   const order = await stub(page, s => s.order) as string[];
   const stored = JSON.parse(await harness(page, f => f.slots['cloud:production']));
@@ -84,9 +85,9 @@ test('signing out of account A and into account B stops the resident before A is
   await expect(page.getByText(B.email, { exact: true })).toBeVisible();
   await expect(page.getByText(A.email, { exact: true })).toHaveCount(0);
   dialog = await agentConnection(page);
-  await expect(dialog.getByRole('region', { name: 'Eliza Cloud plan' })).toContainText('Plus');
+  await expect(dialog).toContainText('Plus');
   await expect(dialog).not.toContainText(/Credits available|Add credits/);
-  await dialog.getByRole('button', { name: 'Close connection settings', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Back to Settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Inbox').click();
   await expect.poll(() => stub(page, s => s.cloud.filter((row: any) => row.path === '/api/v1/eliza/google/accounts' && row.auth === 'Bearer account-b-key').length), { timeout: 30_000 }).toBeGreaterThan(0);
@@ -126,7 +127,7 @@ test('a second sign-in over a saved key revokes that key once, before the new ke
   await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   let welcome = await openYourAgent(page);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('revoke')))).toEqual([]);
   // Eliza Cloud stops accepting A's key; the next start asks for a new sign-in.
   await page.evaluate(() => { const s = (window as any).residentStub; s.accounts[0].userStatus = 401; s.nextToken = 'account-b-key'; s.polls = 0; s.persist(); });
@@ -134,10 +135,10 @@ test('a second sign-in over a saved key revokes that key once, before the new ke
   // The resident starts again with AI off; Your agent says the saved sign-in is no longer valid.
   await expect.poll(() => harness(page, f => f.calls.includes('Agent.start')), { timeout: 30_000 }).toBe(true);
   welcome = await openYourAgent(page);
-  await expect(welcome.getByText('Your saved Cloud sign-in is no longer valid.', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(welcome.getByText('Your Eliza Cloud sign-in has expired. Sign in with Eliza Cloud again.', { exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(welcome).not.toContainText(/pair/i);
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole('main',{name:'Sign in',exact:true})).toHaveCount(0, { timeout: 30_000 });
   const order = await stub(page, s => s.order) as string[];
   expect(order.filter(entry => entry.startsWith('revoke'))).toEqual(['revoke Bearer ' + A.token]);
   expect(order.indexOf('revoke Bearer ' + A.token)).toBeLessThan(order.indexOf('store ' + B.token));

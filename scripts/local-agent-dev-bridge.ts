@@ -161,6 +161,7 @@ export function createLocalAgentDevHandler(options:{origin:string;tokenFile:stri
       for(const key of ['X-Eliza-Device-Id','X-Eliza-Device-Key','X-Eliza-Device-Capabilities']){
         const value=input.headers?.[key];if(value!==undefined){if(typeof value!=='string'||value.length>2048||/[\r\n]/.test(value))throw new Error('Invalid device header');headers[key]=value;}
       }
+      if(cloudAsr)headers['X-Eliza-STT-Provider']='cartesia';
       if(audio){headers['Content-Type']='audio/wav';headers['X-Request-Id']=input.requestId;}
       if(ttsAudio){headers['X-Request-Id']=input.requestId;headers.Accept=cloudTts?'audio/mpeg':'audio/wav';}
       const result=await request(origin.origin+input.path,{method:input.method,headers,body:audio??input.body,redirect:'error',

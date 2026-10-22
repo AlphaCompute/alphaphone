@@ -16,7 +16,10 @@ export interface WorkflowTapBinding {
 }
 /** Only an authenticated read can open a tap. Never starts, retries or approves a run. */
 export async function resolveWorkflowTap(native:WorkflowTapNative,binding:WorkflowTapBinding|null,signal:AbortSignal){
- const tap=await native.pendingWorkflowTap();signal.throwIfAborted();
+ let tap:Partial<WorkflowTap>;
+ try{tap=await native.pendingWorkflowTap();}
+ catch{signal.throwIfAborted();return {kind:'lookup-unavailable' as const};}
+ signal.throwIfAborted();
  if(!tap.token)return {kind:'none' as const};
  if(!binding||!binding.current()||tap.scope!==binding.scope||tap.origin!==binding.origin||tap.ownerId!==binding.ownerId||tap.agentId!==binding.agentId)return {kind:'other-account' as const};
  if(tap.retained!==true||typeof tap.runId!=='string'||typeof tap.workflowId!=='string'||typeof tap.versionId!=='string')return {kind:'unavailable' as const};

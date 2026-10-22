@@ -17,7 +17,8 @@ globalThis.fetch=(async()=>{providerRequests++;throw Error('Provider traffic for
 try{
  const {startNativeManagedGoogleHost}=await import(pathToFileURL(path.join(sdk,'packages/app/src/runtime/native-managed-google-host.ts')).href);
  host=await startNativeManagedGoogleHost();assert.ok(host);
- for(const key of ['ELIZA_MANAGED_GMAIL_READ_BROKER','ELIZA_MANAGED_GMAIL_SEND_BROKER','ELIZA_MANAGED_GMAIL_OPERATION_BROKER','ELIZA_MANAGED_CALENDAR_READ_BROKER'])assert.match(process.env[key]??'',/^http:\/\/127\.0\.0\.1:\d+\/__alpha-owner-gmail$/);
+ for(const key of ['ELIZA_MANAGED_GMAIL_READ_BROKER','ELIZA_MANAGED_GMAIL_OPERATION_BROKER','ELIZA_MANAGED_CALENDAR_READ_BROKER'])assert.match(process.env[key]??'',/^http:\/\/127\.0\.0\.1:\d+\/__alpha-owner-gmail$/);
+ assert.equal(process.env.ELIZA_MANAGED_GMAIL_SEND_BROKER,undefined);
  const actual=JSON.parse(fs.readFileSync(process.env.ELIZA_CONFIG_PATH!,'utf8'));
  assert.equal(actual.serviceRouting.embeddings.backend,'elizacloud');assert.equal(actual.serviceRouting.embeddings.transport,'cloud-proxy');assert.equal(actual.serviceRouting.llmText.backend,'elizacloud');assert.equal(actual.serviceRouting.llmText.transport,'cloud-proxy');assert.equal(actual.serviceRouting.llmText.smallModel,'cerebras/qwen-3.8-27b');assert.equal(actual.serviceRouting.llmText.largeModel,'cerebras/qwen-3.8-27b');assert.equal(actual.features.shellEnabled,false);
  const prefs=JSON.parse(fs.readFileSync(path.join(state,'local-inference/routing.json'),'utf8')).preferences;

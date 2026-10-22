@@ -77,60 +77,23 @@ const cloudRequests = async (page: Page) => (await calls(page)).filter(call => c
 const agentCalls = async (page: Page) => (await calls(page)).filter(call => call.plugin === 'Agent').map(call => call.method);
 const selection = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.selection.v1') || 'null'));
 
-const PANELS = {
-  Inbox: {
-    heading: 'Eliza Cloud',
-    retry: 'Retry saved connection',
-    open: async (page: Page) => {
-      await page.getByRole('button', { name: 'Inbox', exact: true }).click();
-      await expect(page.locator('html')).toHaveAttribute('data-active-view', 'inbox');
-      await expect(page.getByText('Connect Eliza Cloud to use Gmail')).toBeVisible();
-      await page.getByRole('button', { name: 'Connect Eliza Cloud', exact: true }).click();
-    },
-  },
-  Settings: {
-    heading: 'Your agent',
-    retry: 'Try again',
-    open: async (page: Page) => {
-      await page.getByRole('button', { name: 'Settings', exact: true }).click();
-      await page.getByRole('button', { name: /Agent connection/ }).click();
-    },
-  },
-} as const;
-
-for (const [name, panel] of Object.entries(PANELS)) {
-  test.describe(`${name} panel`, () => {
-    test('a kept sign-in Cloud cannot reach is offered as a retry that says what failed; the agent keeps running', async ({ page }) => {
-      await boot(page, 'offline');
-      expect(await agentCalls(page)).not.toContain('configureCloudProvider');
-      // Beside the running agent, a closable notice says Cloud is unreachable; the owner dismisses it.
-      const notice = page.getByRole('region', { name: 'Eliza Cloud plan notice' });
-      await expect(notice).toContainText('Eliza Cloud cannot be reached right now. Your agent is running on this phone');
-      await notice.getByRole('button', { name: 'Dismiss plan notice', exact: true }).click();
-      await expect(notice).toHaveCount(0);
-      await panel.open(page);
-      const dialog = page.getByRole('dialog', { name: panel.heading });
-      await expect(dialog.getByRole('button', { name: panel.retry, exact: true })).toBeVisible();
-      await expect(dialog.getByText(/Eliza Cloud cannot be reached right now/)).toBeVisible();
-      // Nothing claims an account: no account summary, no "Signed in", no credits.
-      await expect(dialog.locator('.alpha-cloud-account-summary')).toHaveCount(0);
-      await expect(dialog.getByText(/Signed in|Credits available/)).toHaveCount(0);
-      const starts = (await agentCalls(page)).filter(call => call === 'start').length;
-      await dialog.getByRole('button', { name: panel.retry, exact: true }).click();
-      // The retry restarts the resident and tries the sign-in once more; it fails the same way.
-      await expect.poll(async () => (await agentCalls(page)).filter(call => call === 'start').length).toBeGreaterThan(starts);
-      expect(await agentCalls(page)).not.toContain('configureCloudProvider');
-      expect(await selection(page)).toEqual({ kind: 'resident' });
-    });
-
-  });
-}
+test('an unreachable saved sign-in remains on the mandatory page and can be retried without replacing its key',async({page})=>{
+  await boot(page,'offline');
+  const gate=page.getByRole('main',{name:'Sign in',exact:true});await expect(gate).toBeVisible();
+  await expect(gate.getByRole('button',{name:'Retry saved connection',exact:true})).toBeEnabled();
+  await expect(gate).not.toContainText(/Signed in|Credits available/);
+  const starts=(await agentCalls(page)).filter(call=>call==='start').length;
+  await gate.getByRole('button',{name:'Retry saved connection',exact:true}).click();
+  await expect.poll(async()=>(await agentCalls(page)).filter(call=>call==='start').length).toBeGreaterThan(starts);
+  await expect(gate).toBeVisible();expect(await agentCalls(page)).not.toContain('configureCloudProvider');
+  expect(await selection(page)).toEqual({kind:'resident'});
+});
 
 test('a kept sign-in Cloud rejects is reported as no longer valid in the sign-in dialog that opens by itself; the agent keeps running', async ({ page }) => {
   await boot(page, 'rejected');
   // Every Alpha Phone needs an Eliza Cloud account: the sign-in dialog opens and cannot be dismissed.
-  const dialog = page.getByRole('dialog', { name: 'Your agent' });
-  await expect(dialog.getByText('Your saved Cloud sign-in is no longer valid.', { exact: true })).toBeVisible();
+  const dialog = page.getByRole('main', { name: 'Sign in',exact:true });
+  await expect(dialog.getByText('Your Eliza Cloud sign-in has expired. Sign in with Eliza Cloud again.', { exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Retry saved connection', exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
   await expect(dialog.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
@@ -149,8 +112,8 @@ test('a kept sign-in Cloud admits binds inference at start and runs the on-devic
   expect(paths.filter(path => !['/api/v1/user', '/api/v1/subscription/entitlement', '/api/v1/billing/limits', '/api/v1/eliza/google/accounts'].includes(path))).toEqual([]);
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: /Agent connection/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Your agent' });
+  const dialog = page.getByRole('region', { name: 'Settings',exact:true });
   await expect(dialog.getByText('Running on this device', { exact: true })).toBeVisible();
-  await expect(dialog.getByRole('region', { name: 'Eliza Cloud plan' })).toBeVisible();
+  await expect(dialog.getByText('Eliza Cloud',{exact:true})).toBeVisible();
   expect((await selection(page))?.kind).toBe('resident');
 });

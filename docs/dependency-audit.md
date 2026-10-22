@@ -515,3 +515,91 @@ Read-back on 2026-10-10: only "Default branch baseline" is active (`deletion`,
 required. Installing it is the owner's step ([ci-cost-policy.md](ci-cost-policy.md)). A
 matching read-back is configuration evidence only; MVP-46 also needs a controlled pull
 request showing that a missing or failing check blocks the merge.
+
+## October 21 resident pin and registry refresh
+
+SDK `3d6f68a129702a1a2779cc087c93a80ba0f2332e` changes Android service
+lifecycle code and its tests from `5c36344786274ce1a0b0e2ebcb560bc2da6ac0ab`.
+The upstream `bun.lock` and every package manifest are byte-identical. The existing
+`node scripts/dependency-audit.mjs --resident --write` command queried the registry
+on 2026-10-21 for the same 3691 versions (normalized input SHA-256
+`e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e`).
+The fresh result is 113 findings: 1 critical, 48 high, 49 moderate and 15 low;
+15 finding rows covering 12 advisory IDs are new since the October 20 snapshot.
+Old exception review dates and deadlines remain unchanged.
+
+The existing packaged notices collector was also run read-only against the freshly
+staged SDK 3d runtime and worker: 674 entries, zero errors or warnings.
+`@modelcontextprotocol/sdk`, `follow-redirects` and `vite` are absent; the nine new
+advisory IDs for those packages have short-lived non-shipping exceptions.
+Hono 4.13.9 and markdown-it 14.3.2 are present. Their new advisories
+GHSA-5r4p-p66f-jhc7, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q remain
+unexcepted in `pendingUpstreamFixes`, pending upstream remediation or actual
+vulnerable-path review. In particular, the shipped high markdown-it finding cannot
+receive an exception. The dedicated resident audit therefore remains red; the
+offline repository test permits these explicitly recorded pending findings using
+its existing policy. No assertions or audit rules were relaxed.
+
+This is registry and staged package inventory evidence, not an audited APK,
+installed runtime, release qualification or physical-device result. Historical
+review sections above retain their original pins and evidence limits.
+
+The complete 674-entry collector result (including its empty errors/warnings arrays),
+serialized as two-space JSON with a trailing newline, has SHA-256
+`5fa9162fe4bbadc998e6427db89a27b7b1542baed3d0305a470e0390559627ec`.
+The previous SDK5c record had no pending upstream fixes; none was dropped. Its
+98 advisory rows remain in the fresh 113-row result; all 84 retained exceptions
+and their deadlines are byte-for-byte unchanged. Only the newly reported shipped
+Hono and markdown-it advisories add pending fixes.
+
+## SDK 5c1d source refresh (2026-10-21)
+
+The official resident full-lock audit at SDK `5c1d7e4440e69e09241cad833f5626ebb886ba1a`
+queried the registry again and returned the same 113 findings across 3691 versions,
+with normalized input `e988789dc9267ab121df8114f3dd79d88a69c7de34545ec9024cba42f80bf85e`.
+All existing exceptions, pending findings and deadlines are retained unchanged.
+Their earlier staged-package evidence remains scoped to the recorded SDK 3d payload;
+new preparation/staging and its exact packaged notices audit have not run.
+The dedicated full-lock audit remains red on the three documented pending findings.
+No new packaged-runtime, APK or device acceptance is inferred from the refreshed pin.
+
+## Resident dependency repair source candidate (2026-10-21)
+
+SDK `cadacd7afa697851bd08f5574e7b2b00c9d3a446` normally merges the reviewed
+Hono/markdown-it dependency repair with SDK5c1d's native fixes. The official
+`node scripts/dependency-audit.mjs --resident --write` queried the registry for
+3691 package versions and reports110 findings:1 critical, 47 high, 48 moderate, 14 low.
+The only removed rows are GHSA-5r4p-p66f-jhc7 (Hono), GHSA-gfr2-rv44-r23c and
+GHSA-vfgh-jcmw-g37q (markdown-it). All 110 retained finding rows are byte-identical
+to the previous snapshot. Their 93 exceptions and original review/deadline objects
+are unchanged. The three resolved rows are removed from pendingUpstreamFixes;
+no exception or audit rule was added or relaxed.
+
+This is fresh full-lock registry evidence. Historical staged inventory evidence
+above does not establish the new candidate's shipped package versions. Exact-pin
+dependency installation, normal runtime/worker preparation, packaged subset audit,
+and both APK/runtime qualification remain required. Source-only generated notices
+are attribution data and do not prove that a repaired dependency is packaged.
+
+## PGlite snapshot source admission (2026-10-21)
+
+SDK `405cc18f3b11f0b56e3f807e25c78ce357263b1f` changes the PGlite snapshot reader and its tests after CAD.
+Its `bun.lock` and every package manifest are unchanged from CAD. Existing advisory
+exception objects, deadlines and historical staged-set evidence remain unchanged.
+The actual official `node scripts/dependency-audit.mjs --resident --write` queried
+the registry at this new pin and returned exactly the same110 finding rows across
+3691 package versions (1 critical,47 high,48 moderate,14 low). The resident snapshot
+and disposition pin were refreshed after this comparison; no exception was added
+or renewed. No new provider call or packaged-subset result is claimed. Fresh
+exact-pin preparation and package verification remain required.
+
+### Local SDK public-read/usage source admission — 2026-10-21
+
+An actual `node scripts/dependency-audit.mjs --resident --write` refresh at `3e4c3c447e813080777aa4f6dcd4a6ee494f6fc5` returned the same 3691 package versions and 110 finding rows (1 critical, 47 high, 48 moderate, 14 low) as405. The normalized lock input and all 93 exception objects, original dates/deadlines and pending rows are unchanged. Re-review updates only the current source binding/description; no exception is renewed. Prior source receipt/dispositions are preserved in Git history and external exact-preimage review artifacts. This is source-registry evidence; no new prepared runtime, packaged-subset audit, provider or device result is claimed. See [source admission evidence](evidence/sdk-public-reads-usage-source-20261021.json).
+
+
+### Development-tool source audit — October21, SDK bdacc0709c
+
+Normal root and resident registry audits were refreshed after Alpha Vite8.3.3 and the reviewed SDK development-tool update ([Eliza #37226](https://github.com/elizaOS/eliza/pull/37226)). The root audit retains its three reviewed moderate findings. The new resident lock input has3691 package versions and104 findings:1 critical,45 high,44 moderate,14 low. This removes12 rows from the immediately preceding fresh116-row audit: the six newly reported Storybook/Vite rows plus six older Vite rows. Compared with the historical110-row snapshot, every retained104 row is identical. Three stale Vite exceptions were removed; the90 remaining exception objects and original dates/deadlines were preserved exactly. No new exception was added or renewed.
+
+The Bun lock and normalized input hash changed. The old raw/normalized input equality receipt is historical and is not reused. This is a full-source-lock registry audit, a superset of the mobile payload; it does not establish a freshly staged runtime, packaged-subset audit, APK, provider response or device acceptance. Fresh normal runtime preparation and installed qualification remain required. See [source admission](evidence/sdk-dev-tool-source-admission-20261021.json).

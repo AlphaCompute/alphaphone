@@ -90,11 +90,29 @@ test('normal canonical CLI poll claims stay server-private and commit by referen
 });
 test('Cloud STT uses multipart canonical audio route, TTS uses canonical JSON; no local speech route exists',async()=>{
  const f=await fixture();try{
-  f.setResponse(async(url,input)=>{if(url.endsWith('/voice/stt')){assert.ok(input.body instanceof FormData);assert.equal(input.body.get('audio').type,'audio/webm');return Response.json({transcript:'Synthetic fixture transcript'});}assert.equal(url,'https://api.eliza.app/api/v1/voice/tts');assert.deepEqual(JSON.parse(input.body),{text:'Synthetic fixture text',format:'mp3'});return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/mpeg'}});});
+  f.setResponse(async(url,input)=>{if(url.endsWith('/voice/stt')){assert.ok(input.body instanceof FormData);assert.equal(input.body.get('audio').type,'audio/webm');assert.deepEqual(input.body.getAll('provider'),['cartesia']);return Response.json({transcript:'Synthetic fixture transcript'},{headers:{'X-Eliza-STT-Provider':'cartesia'}});}assert.equal(url,'https://api.eliza.app/api/v1/voice/tts');assert.deepEqual(JSON.parse(input.body),{text:'Synthetic fixture text',format:'mp3'});return new Response(new Uint8Array([1,2,3]),{headers:{'Content-Type':'audio/mpeg'}});});
   const form=new FormData();for(const [k,v]of Object.entries({operation:'stt',environment:'production',credentialReference:reference,credentialId,requestId:randomUUID()}))form.append(k,v);form.append('audio',new Blob(['synthetic closed fixture'],{type:'audio/webm'}),'fixture.webm');
   const response=await fetch(f.origin(),{method:'POST',headers:{Origin:f.origin(),'X-Alpha-Browser-Cloud':'1'},body:form});assert.equal(response.status,200);assert.deepEqual(await response.json(),{text:'Synthetic fixture transcript',local:false});
   const tts=await f.send({operation:'tts',environment:'production',credentialReference:reference,credentialId,requestId:randomUUID(),text:'Synthetic fixture text'});assert.equal(tts.status,200);assert.equal(tts.headers.get('Content-Type'),'audio/mpeg');assert.equal((await tts.arrayBuffer()).byteLength,3);assert.equal(f.calls.filter(x=>x.url.includes('voice')).length,2);assert.ok(f.calls.every(x=>!x.url.includes('whisper')&&!x.url.includes('kokoro')));
  }finally{await f.close();}
+});
+test('Cloud STT refuses missing, wrong or ambiguous provider evidence without returning a transcript',async()=>{
+ for(const provider of [null,'whisper','Cartesia','cartesia,whisper']){const f=await fixture();try{
+  f.setResponse(async()=>Response.json({transcript:'must never be returned'},{headers:provider===null?{}:{'X-Eliza-STT-Provider':provider}}));
+  const form=new FormData();for(const [k,v]of Object.entries({operation:'stt',environment:'production',credentialReference:reference,credentialId,requestId:randomUUID()}))form.append(k,v);form.append('audio',new Blob(['fixture'],{type:'audio/wav'}),'fixture.wav');
+  const response=await fetch(f.origin(),{method:'POST',headers:{Origin:f.origin(),'X-Alpha-Browser-Cloud':'1'},body:form});assert.equal(response.status,400);assert(!JSON.stringify(await response.json()).includes('must never be returned'));assert.equal(f.calls.filter(x=>x.url.endsWith('/voice/stt')).length,1);
+ }finally{await f.close();}}
+});
+test('Cloud STT preserves cancellation, logout and unauthorized-response fences',async()=>{
+ for(const mode of ['cancel','logout','401']){const f=await fixture();try{
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(),id=randomUUID();
+  f.setResponse(async(_url,input)=>{entered.resolve();if(mode==='401')return Response.json({transcript:'must not escape'},{status:401});if(mode==='cancel')return new Promise((_,reject)=>input.signal.addEventListener('abort',()=>reject(input.signal.reason),{once:true}));await release.promise;return Response.json({transcript:'must not escape'},{headers:{'X-Eliza-STT-Provider':'cartesia'}});});
+  const form=new FormData();for(const [k,v]of Object.entries({operation:'stt',environment:'production',credentialReference:reference,credentialId,requestId:id}))form.append(k,v);form.append('audio',new Blob(['fixture'],{type:'audio/wav'}),'fixture.wav');
+  const pending=fetch(f.origin(),{method:'POST',headers:{Origin:f.origin(),'X-Alpha-Browser-Cloud':'1'},body:form});await entered.promise;
+  if(mode==='cancel')await f.rpc({operation:'cancel',requestId:id});
+  if(mode==='logout'){await f.rpc({operation:'secureRemove',slot:'cloud:production',previousReference:reference});release.resolve();}
+  const response=await pending;assert.equal(response.status,mode==='401'?401:409);assert(!JSON.stringify(await response.json()).includes('must not escape'));assert.equal(f.calls.filter(x=>x.url.endsWith('/voice/stt')).length,1);
+ }finally{await f.close();}}
 });
 test('wrong account, logout and server restart invalidate old references without deleting another account',async()=>{
  const f=await fixture();try{

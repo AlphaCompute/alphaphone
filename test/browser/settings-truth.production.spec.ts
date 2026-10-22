@@ -6,13 +6,13 @@ import {test,expect,type Page} from '@playwright/test';
 test.describe.configure({timeout:240_000});
 test.beforeEach(async({},testInfo)=>{test.skip(testInfo.project.name!=='production','Production lane only (flag-off build)');});
 
-type Fixture={snapshot?:Record<string,unknown>;drop?:string[]};
+type Fixture={snapshot?:Record<string,unknown>;drop?:string[];subscription?:'credits'|'active'|'canceled';agentStartFailure?:boolean};
 async function nativeStub(page:Page,fixture:Fixture={}){
- await page.addInitScript(({snapshot,drop})=>{
+ await page.addInitScript(({snapshot,drop,subscription,agentStartFailure})=>{
   const w=window as any;w.androidBridge={};
+  localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));
   const now=Date.now(),store=new Map<string,string>();
-  // A signed-in phone whose plan was verified recently, started offline: the plan gate keeps local apps
-  // and Settings available (Cloud is unreachable, so no agent starts). Synthetic sign-in, not a real key.
+  // A signed-in phone with finite Cloud identity and plan answers. No real key or provider is used.
   const credentialId='5c1f2a9e-3b4d-4e6f-8a7b-9c0d1e2f3a4b';
   store.set('cloud:production',JSON.stringify({token:'synthetic-settings-key',credentialId,expiresAt:now+60*24*3600_000}));
   try{localStorage.setItem('alpha.connection.plan-admission.v1',JSON.stringify({version:1,environment:'production',credentialId,userId:'9f1dc45a-4011-4e44-947a-30d999d24fa5',organizationId:null,status:'active',planName:'Synthetic plan',verifiedAt:now,endsAt:null}));}catch{/* covered elsewhere */}
@@ -35,7 +35,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
         { name: 'AlphaDeletions', methods: methods(['pending']) },
     {name:'AlphaNotifications',methods:methods(['pendingWorkflowTap','status','crossAppStatus','notificationHistory','list','open','dismiss','clear','openChannelSettings','openAppSettings','addListener','removeListener'])},
     {name:'AlphaVoiceCloud',methods:methods(['checkPermissions'])},
-    {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus'])},
+    {name:'Agent',methods:methods(['getStatus','start','stop','providerStatus','configureCloudProvider','clearProvider','request'])},
     {name:'AlphaConnection',methods:methods(['secureRead','secureWrite','secureCompareExchange','secureRemove','request','cancel','addListener','removeListener'])},
     {name:'DeviceApps',methods:methods(['buildInfo'])},
     {name:'ElizaSystem',methods:methods(['getStatus','requestRole','getDeviceSettings','setFlashlight'])},
@@ -57,13 +57,23 @@ async function nativeStub(page:Page,fixture:Fixture={}){
      return {};
     }
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
-    if(plugin==='Agent')return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+    if(plugin==='Agent'){
+     if(agentStartFailure&&method==='start')throw Error('Synthetic resident startup failure');
+     if(method==='request'){const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';return {status:200,body:JSON.stringify(input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{} )};}
+     return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
+    }
     if(plugin==='AlphaConnection'){
      if(method==='secureRead')return {value:store.get(input.slot)??null};
      if(method==='secureCompareExchange'){if((store.get(input.slot)??null)!==input.expectedValue)return {status:'conflict'};if(input.value===null)store.delete(input.slot);else store.set(input.slot,input.value);return {status:'saved'};}
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
-     // No network in this fixture: every Cloud request fails before an answer.
-     if(method==='request')throw Error('Connection request failed');
+     // Cloud answers are finite and every unlisted route is refused.
+     if(method==='request'){
+      const path=new URL(input.url).pathname;
+      if(path==='/api/v1/user')return {status:200,data:{success:true,data:{id:'9f1dc45a-4011-4e44-947a-30d999d24fa5',email:'synthetic-settings@example.invalid'}}};
+      if(path==='/api/v1/subscription/entitlement')return {status:404,data:{}};
+      if(path==='/api/v1/billing/limits')return {status:200,data:{success:true,data:{schemaVersion:2,v2:{subscription:subscription==='credits'?{status:'not_applicable',reason:'no_organization_subscription'}:{status:'available',value:{planKey:'plus_monthly',state:subscription||'active',currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}}}}};
+      return {status:404,data:{}};
+     }
      return {};
     }
     if(plugin==='DeviceApps')return {launcher:true,version:'0.1.0'};
@@ -86,7 +96,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     throw Error('Unexpected native operation '+plugin+'.'+method);
    },
   };
- },{snapshot:fixture.snapshot??{},drop:fixture.drop??[]});
+ },{snapshot:fixture.snapshot??{},drop:fixture.drop??[],subscription:fixture.subscription,agentStartFailure:fixture.agentStartFailure});
 }
 const app=(page:Page)=>page.locator('[data-alpha-layer="app"]');
 const current=(page:Page)=>page.locator('[data-settings-page]:not([inert])').last();
@@ -222,6 +232,7 @@ test('every Settings page shows native facts or an honest handoff, with no fixtu
   const text=await current(page).innerText();visited.push(label);
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
+  if(label==='Privacy & data')await expect(current(page).getByText('Memory',{exact:true})).toHaveCount(0);
   for(const pattern of shown[label]||[])expect(text,`${label} shows ${pattern}`).toMatch(pattern);
   if(label==='About'){await expect(current(page).getByRole('button',{name:'Problem log',exact:true})).toBeVisible();await expect(current(page).getByRole('button',{name:'Export diagnostics',exact:true})).toBeVisible();}
   // A switch must be backed by app-owned state; the email preference is exercised here and across reload below.
@@ -359,6 +370,7 @@ test('the browser build of Settings shows no fixture value and no radio or senso
   const text=await current(page).innerText();
   report.push(`${label}: ${text.replace(/\s+/g,' ')}`);
   noFixtures(text,label);
+  if(label==='Privacy & data')await expect(current(page).getByText('Memory',{exact:true})).toHaveCount(0);
   expect(text).not.toMatch(/Wi-Fi\s*(On|Off)\b|Bluetooth\s*(On|Off)\b|Airplane mode\s*(On|Off)\b/);
   if(label==='Connections'){expect(text).toMatch(/Other connectors\s*Not available in this version/);expect(text).not.toMatch(/Other connectors\s*Not connected/);}
   if(label==='Notifications'){
@@ -395,20 +407,37 @@ test('the browser build of Settings shows no fixture value and no radio or senso
  expect(await page.locator('[aria-pressed]').evaluateAll(list=>list.map(e=>e.getAttribute('aria-label')))).toEqual([]);
 });
 
-test('Settings › Eliza Cloud account & plan reports the offline plan state and offers a real plan check',async({page})=>{
+test('Settings › Eliza Cloud account & plan reports the verified plan and opens explicit code entry',async({page})=>{
  await nativeStub(page);
  await openSettings(page);
  const row=current(page).getByRole('button',{name:/Eliza Cloud account & plan/});
- await expect(row).toBeVisible();
- await expect(row).toContainText('Synthetic plan · offline');
- await row.click();
+ await expect(row).toContainText('Plus');await row.click();
  const plan=current(page);
- await expect(plan.getByText('Eliza Cloud unreachable',{exact:true})).toBeVisible();
- await expect(plan.getByText('Synthetic plan · offline',{exact:true})).toBeVisible();
- // The plan check is the real gate: it opens the account panel and asks Cloud again (no network here).
- await plan.getByRole('button',{name:'Check plan again',exact:true}).click();
- await expect(page.locator('.alpha-connection-scrim')).toBeVisible();
- await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request').length)).toBeGreaterThan(1);
+ await expect(plan.getByText('synthetic-settings@example.invalid',{exact:true})).toBeVisible();
+ await expect(plan.getByText('Plus',{exact:true})).toBeVisible();
+ await plan.getByRole('button',{name:'Redeem code',exact:true}).click();
+ await expect(page.getByRole('dialog',{name:'Eliza Cloud account & plan',exact:true}).getByRole('textbox',{name:'Subscription code',exact:true})).toBeVisible();
+ expect(await page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request'&&new URL(c.input.url).pathname==='/api/v1/subscription/redeem').length)).toBe(0);
+});
+
+for(const subscription of ['credits','active','canceled'] as const)test(`Settings redemption matches ${subscription} account controls`,async({page})=>{
+ await nativeStub(page,{subscription});
+ await page.goto('/');
+ // Plan admission does not open an automatic account sheet.
+ await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await current(page).getByRole('button',{name:/Eliza Cloud account & plan/}).click();
+ const plan=current(page),redeem=plan.getByRole('button',{name:'Redeem code',exact:true});
+ if(subscription==='credits'){
+  await expect(plan.getByText('Eliza Cloud credits',{exact:true})).toBeVisible();
+  await expect(redeem).toHaveCount(0);
+  await expect(plan.getByRole('button',{name:'Manage plan',exact:true})).toBeVisible();
+ }else{
+  await expect(redeem).toBeVisible();await redeem.click();
+  await expect(page.getByLabel('Subscription code',{exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog',{name:'Eliza Cloud account & plan',exact:true}).getByRole('button',{name:'Redeem code',exact:true})).toBeVisible();
+ }
+ expect(await page.evaluate(()=>(window as any).truth.calls.filter((c:any)=>c.plugin==='AlphaConnection'&&c.method==='request'&&new URL(c.input.url).pathname==='/api/v1/subscription/redeem').length)).toBe(0);
 });
 
 test('the flag-off Problem log renders and exports finite inference facts without provider content',async({page})=>{
@@ -427,4 +456,23 @@ test('the flag-off Problem log renders and exports finite inference facts withou
  for(const value of ['private-provider-message-sentinel','private-note-sentinel','private-token-sentinel','private-tool-sentinel'])expect(shared).not.toContain(value);
  page.once('dialog',dialog=>void dialog.accept());await current(page).getByRole('button',{name:'Clear problem log',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page)).toContainText('No problems recorded');
  await current(page).getByRole('button',{name:'Back to Settings',exact:true}).click();await expect(current(page)).not.toContainText('Cloud AI request failed');await expect(current(page).getByRole('button',{name:'About',exact:true})).toBeVisible();
+});
+
+// Rendered production Settings; only native transport and Cloud responses are finite fixtures.
+for(const scenario of ['unbound','recovering','connected'] as const)test(`Cloud plan agent execution location is truthful: ${scenario}`,async({page})=>{
+ await nativeStub(page,scenario==='unbound'?{subscription:'canceled'}:{subscription:'credits',agentStartFailure:scenario==='recovering'});
+ await page.goto('/');
+ if(scenario==='recovering'){
+  await expect.poll(()=>page.evaluate(()=>(window as any).truth.calls.some((call:any)=>call.plugin==='Agent'&&call.method==='start'))).toBe(true);
+  const close=page.getByRole('button',{name:'Close connection settings',exact:true});if(await close.isVisible())await close.click();
+ }
+ await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();
+ await current(page).getByRole('button',{name:/Eliza Cloud account & plan/}).click();
+ const plan=current(page);
+ await expect(plan).not.toContainText('Running on this phone',{timeout:1000});
+ await expect(plan).toContainText('Agent execution');
+ await expect(plan.getByText(scenario==='recovering'?'Not connected':'On this device',{exact:true})).toBeVisible();
+ await expect(plan).not.toContainText('On this computer');
+ if(scenario==='connected')await expect(plan.getByText('Eliza Cloud',{exact:true})).toBeVisible();
 });

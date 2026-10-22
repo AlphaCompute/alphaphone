@@ -75,6 +75,14 @@ are rejected. The default remains `native` with its existing qualification gates
 Cloud QA builds do not establish offline/native-speech, AOSP or release acceptance;
 real account, inference, microphone and playback evidence is still required.
 
+For a hosted build, dispatch `resident-android.yml` on the reviewed ref with
+`runtime_profile=cloud`. It prepares the exact SDK and workflow worker, stages the
+Cloud profile and archives all four flag-off APKs, including standalone and launcher
+debug APKs. The `resident-cloud-archive-<sha>-<run>` artifact retains source and APK
+verification records for three days. This choice skips the separate test-mocks
+build and native/recovery qualification campaigns; it does not run Cloud providers.
+The default manual profile and automatic resident qualification remain `native`.
+
 ## Setup
 
 ```sh
