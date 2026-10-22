@@ -11,7 +11,7 @@ import {pathToFileURL} from 'node:url';
 import {tsImport} from 'tsx/esm/api';
 const bridgeSource=`export const Capacitor={getPlatform:()=>globalThis.__alphaStartupPlatform||'android'};export function registerPlugin(name){return new Proxy({}, {get:(_target,method)=>(...args)=>globalThis.__alphaStartupPermissionPorts[name][method](...args)});}`;
 const shim=await mkdtemp(path.join(tmpdir(),'alpha-permission-boundary-'));const bridgeURL=pathToFileURL(path.join(shim,'capacitor.mjs')).href,styleURL=pathToFileURL(path.join(shim,'style.mjs')).href;await writeFile(new URL(bridgeURL),bridgeSource);await writeFile(new URL(styleURL),'export{}');
-const connectionsURL=pathToFileURL(path.join(shim,'connections.mjs')).href;await writeFile(new URL(connectionsURL),`const session={sessionId:'fixture-session',credentialId:'fixture-credential',client:{}};const snapshot={cloudAccount:{credentialId:'fixture-credential'},open:false};export const connectionController={subscribe:()=>()=>{},getSnapshot:()=>snapshot,getCloudClient:()=>session};export const googleConnectionController={subscribe:()=>()=>{},getSnapshot:()=>false,open(){}};export function createGoogleAccounts(){return {async list(){return [{connected:true,connectionId:'fixture-google',grantedCapabilities:['google.gmail.triage','google.calendar.read']}]}};}export const GOOGLE_ACCOUNTS_CHANGED='fixture-google-changed',GMAIL_ACCOUNTS_CHANGED='fixture-gmail-changed';`);test.after(()=>rm(shim,{recursive:true,force:true}));
+const connectionsURL=pathToFileURL(path.join(shim,'connections.mjs')).href;await writeFile(new URL(connectionsURL),`const session={sessionId:'fixture-session',credentialId:'fixture-credential',client:{}};const snapshot={cloudAccount:{credentialId:'fixture-credential'},open:false};export const connectionController={subscribe:()=>()=>{},getSnapshot:()=>globalThis.__alphaStartupConnectionSnapshot||snapshot,getCloudClient:()=>session};export const googleConnectionController={subscribe:()=>()=>{},getSnapshot:()=>false,open(){}};export function createGoogleAccounts(){return {async list(){return [{connected:true,connectionId:'fixture-google',grantedCapabilities:['google.gmail.triage','google.calendar.read']}]}};}export const GOOGLE_ACCOUNTS_CHANGED='fixture-google-changed',GMAIL_ACCOUNTS_CHANGED='fixture-gmail-changed';`);test.after(()=>rm(shim,{recursive:true,force:true}));
 const hooks=registerHooks({resolve(specifier,context,next){
  if(/(?:^|\/)(?:connection-ui|google-connection-ui|google-accounts|gmail-mailbox)(?:\.tsx?)?(?:\?.*)?$/.test(specifier))return {url:connectionsURL,shortCircuit:true};
  if(specifier==='@capacitor/core'||specifier==='./platform-plugins')return {url:bridgeURL,shortCircuit:true};
@@ -22,13 +22,14 @@ const config={parentURL:import.meta.url,tsconfig:new URL('../tsconfig.json',impo
 const {StartupPermissions}=await tsImport(process.env.STARTUP_SOURCE||new URL('../apps/app/src/startup-permissions.tsx',import.meta.url).href,config);
 const {reopenStartupPermissions,STARTUP_PERMISSIONS_KEY}=await tsImport(process.env.STARTUP_FLOW_SOURCE||new URL('../apps/app/src/startup-permission-flow.ts',import.meta.url).href,config);
 hooks.deregister();
-async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,platform='android',dismissed=false,active=true}={}){
+async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,platform='android',dismissed=false,active=true,connection={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'https://permission-qa.invalid',pretendToBeVisual:true});const old={};
- for(const key of ['window','document','localStorage','Event','dispatchEvent','IS_REACT_ACT_ENVIRONMENT','__alphaStartupPermissionPorts','__alphaStartupPlatform','navigator','Notification'])old[key]=Object.getOwnPropertyDescriptor(globalThis,key);
+ for(const key of ['window','document','localStorage','Event','dispatchEvent','IS_REACT_ACT_ENVIRONMENT','__alphaStartupPermissionPorts','__alphaStartupPlatform','__alphaStartupConnectionSnapshot','navigator','Notification'])old[key]=Object.getOwnPropertyDescriptor(globalThis,key);
  const values={window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage,Event:dom.window.Event,dispatchEvent:event=>dom.window.dispatchEvent(event),IS_REACT_ACT_ENVIRONMENT:true};
  for(const[key,value]of Object.entries(values))Object.defineProperty(globalThis,key,{value,writable:true,configurable:true});
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
  globalThis.__alphaStartupPlatform=platform;
+ globalThis.__alphaStartupConnectionSnapshot={cloudAccount:{credentialId:'fixture-credential'},open:false,...connection};
  if(dismissed)dom.window.localStorage.setItem(STARTUP_PERMISSIONS_KEY,JSON.stringify({dismissed:true,attempted:{}}));
  const state={notifications,microphone},requests=[];
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{userAgent:'Alpha permission QA',permissions:{async query(){return {state:state.microphone?'granted':'prompt'};}},mediaDevices:{async getUserMedia(options){requests.push({port:'browsermicrophone',input:options});state.microphone=true;return {getAudioTracks:()=>[{readyState:'live'}],getTracks:()=>[{stop(){requests.push({port:'stop'});}}]};}}}});
@@ -70,3 +71,22 @@ test('completed browser setup stays dismissed until Settings explicitly reopens 
 });
 
 test('Settings can explicitly reopen browser access while signed out without requesting permissions',async t=>{const f=await fixture(t,{platform:'web',active:false});assert.equal(f.document.querySelector('dialog'),null);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');assert.equal(f.requests.length,0);});
+
+test('Ready preserves unknown AI binding and unconfirmed prior-key revocation without another modal',async t=>{
+ const message='Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.';
+ const f=await fixture(t,{notifications:true,microphone:true,connection:{residentInference:'unknown',message,error:'Cloud binding could not be verified.'}});
+ assert.equal(f.document.querySelector('h2').textContent,'You’re all set');
+ assert.match(f.document.body.textContent,/AI is not ready yet/);assert(f.document.body.textContent.includes(message));
+ assert.equal(f.document.querySelector('[role=alert]').textContent,'Cloud binding could not be verified.');
+ assert.equal(f.document.querySelectorAll('dialog').length,1);assert.equal(f.requests.length,0);
+ await f.click('Go to Alpha');assert.equal(f.document.querySelector('dialog'),null);
+});
+test('Ready does not imply Cloud inference is usable when the account needs a plan',async t=>{
+ const f=await fixture(t,{notifications:true,microphone:true,connection:{residentInference:'unavailable',residentPlanNotice:'needs-plan'}});
+ assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.match(f.document.body.textContent,/AI needs an active Cloud plan/);assert.equal(f.requests.length,0);
+});
+
+test('unexpected account creation names only the verified current Cloud email inside setup',async t=>{
+ const f=await fixture(t,{notifications:true,microphone:true,connection:{accountCreated:true,cloudAccount:{credentialId:'fixture-credential',email:'verified-owner@example.invalid'}}});
+ assert.match(f.document.body.textContent,/This sign-in created a new Eliza Cloud account \(verified-owner@example\.invalid\)/);assert.equal(f.document.querySelectorAll('dialog').length,1);assert.equal(f.requests.length,0);
+});

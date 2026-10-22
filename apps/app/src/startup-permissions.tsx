@@ -98,6 +98,12 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
   const visible = (active || reopened) && !dismissed && !googleOpen && !connection.open && (reopened || !!connection.cloudAccount) && activeKeys.some(key => states[key] !== 'checking');
   const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); if (value) setReopened(false); };
   useEffect(() => {
+    if (!connection.setupRevision) return;
+    // Review current access after an explicit sign-in while retaining completed/attempted memory.
+    // This component stays mounted while account dialogs open, so a normal close never replays it.
+    setDismissedState(false); setReopened(false); setFinishing(false);
+  }, [connection.setupRevision]);
+  useEffect(() => {
     const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setFinishing(false); setReopened(true); };
     window.addEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
     return () => window.removeEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
@@ -168,6 +174,10 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
   const googleText = (connected: boolean) => googleStatus.state === 'checking' ? 'Checking connection…' : googleStatus.state === 'unavailable' ? 'Connection could not be verified. Check Google accounts.' : connected ? 'Connected with read access' : 'Not connected';
   return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={event => { event.preventDefault(); if (!actionPending.current) setFinishing(true); }}>
     <div className="alpha-startup-content"><span className="alpha-compute-mark" role="img" aria-label="Alpha Phone"/>
+    {connection.residentInference && connection.residentInference !== 'cloud' && <p role="status">{connection.residentPlanNotice === 'needs-plan' ? 'AI needs an active Cloud plan. You can finish phone setup and manage your plan in Settings.' : 'Signed in. AI is not ready yet. You can finish phone setup and check your connection in Settings.'}</p>}
+    {connection.error && <p role="alert">{connection.error}</p>}
+    {connection.message?.includes('did not confirm revoking') && <p role="status">{connection.message}</p>}
+    {connection.accountCreated && <p role="status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email ? ` (${connection.cloudAccount.email})` : ''}.</p>}
     {complete ? <>
       <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">You’re all set</h2>
       <p id="alpha-permission-description">You can start using Alpha and manage skipped permissions and Google connections in Settings.</p>
