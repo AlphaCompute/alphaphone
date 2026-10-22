@@ -579,14 +579,17 @@ async function startResident(message = RESIDENT_STARTING, background = true) {
   // A cancelled start is a resident that is not running: it recovers, with Retry.
   if (residentAlwaysPresent && !active && state.kind === 'starting') update({ kind: 'recovering' });
 }
+// Keep startup-error provenance separate from account and sign-out outcomes.
+let residentStartFailure = '';
 /** After an operation that stopped the resident (sign-in, sign-out, provider change, disconnect),
  * start it again in the background. That operation's outcome (message, error, open dialog) stays
  * visible; a failed restart shows its own error and leaves the resident recovering with Retry. */
 async function ensureResident() {
   if (!residentAlwaysPresent || active || operation) return;
   const { message, error, open } = state;
+  const startFailed = !!error && error === residentStartFailure;
   await startResident('Restarting your agent…', true);
-  update({ open: open || state.open, message: message || (state.session ? '' : state.message), error: state.error || error });
+  update({ open: open || state.open, message: message || (state.session ? '' : state.message), error: state.error || (state.session && startFailed ? '' : error) });
 }
 /** P-43: a startup path that ended without any agent (a Cloud account check that returned early, or
  * a saved development/remote/Cloud agent that could not be restored) must not keep claiming
@@ -622,7 +625,7 @@ function queueResidentRebind() {
   if (operation) { residentRebindQueued = true; return; }
   residentRebindQueued = false;
   // An outcome the open dialog is showing (a sign-out, a cancelled sign-in) stays visible after the rebind.
-  const shown = state.open ? { message: state.message, error: state.error } : null;
+  const shown = state.open ? { message: state.message, error: state.error, startFailed: !!state.error && state.error === residentStartFailure } : null;
   const signIn = state.signIn;
   void work('Updating your agent…', async signal => {
     retire();
@@ -631,7 +634,7 @@ function queueResidentRebind() {
     // Rebinding inference must not discard the sign-in screen just selected by readiness.
     // Only the same still-active view is restored; a cancelled or completed sign-in stays closed.
     if (signIn && state.signIn === signIn && signIn.environment === residentEnvironment()) update({ open: true });
-    if (shown && state.open) update({ ...(shown.message && !state.message ? { message: shown.message } : {}), ...(shown.error && !state.error ? { error: shown.error } : {}) });
+    if (shown && state.open) update({ ...(shown.message && !state.message ? { message: shown.message } : {}), ...(shown.error && !shown.startFailed && !state.error ? { error: shown.error } : {}) });
   }, true, true);
 }
 /** A native sign-in return that arrived while another step was running; handled once it ends. */
@@ -884,7 +887,11 @@ async function connectResident(signal: AbortSignal) {
   if (!await localAgentPackaged()) throw new Error(RESIDENT_UNPACKAGED);
   signal.throwIfAborted();
   const client = new LocalAgentProtocol();
-  const { session, name } = await client.connect(signal);
+  const { session, name } = await client.connect(signal).catch(error => {
+    residentStartFailure = errorMessage(error);
+    throw error;
+  });
+  residentStartFailure = '';
   signal.throwIfAborted();
   let actions:DeviceActions|undefined;
   let deviceRequest:DeviceRequest|undefined;
