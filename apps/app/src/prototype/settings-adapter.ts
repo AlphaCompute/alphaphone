@@ -472,7 +472,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         const native=Capacitor.isNativePlatform(), provider=facts.passwordProvider||{};
         const installation:Bag={installed:'Installed · publisher verified',disabled:'Installed but disabled',absent:'Not installed','unrecognized-publisher':'Installed · publisher not recognized',unknown:'Not checked'};
         const selection:Bag={proton:provider.installation==='installed'?'Proton Pass selected':provider.installation==='disabled'?'Proton Pass selected · app disabled':'Provider package selected · publisher not verified',other:'Another provider selected',none:'No provider selected',unknown:'Selection unavailable'};
-        const action=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
+        const passwordAction=(label:string,kind:string):Bag=>({kNav:true,label,lbl:passwordOpening?'Opening…':label,chev:true,noAB:true,go:async()=>{
           if(passwordOpening)return;passwordOpening=true;const instance=owner;changed();
           try{const result=await device.openPasswordProvider({action:kind});if(result?.status!=='opened')throw Error('Unconfirmed provider handoff');if(owner===instance&&result.destination!=='development')api.toast(result.destination==='system-settings'?'Opened Android settings. Search for passwords or autofill, then choose your provider.':'Opened provider setup. Complete or cancel there; no change is confirmed yet.');}
           catch{if(owner===instance)api.toast('Password provider setup is unavailable. No provider change is confirmed.');}
@@ -482,15 +482,15 @@ export function installSettingsAdapter(Component: any, views: Bag) {
           info('Provider',provider.installation==='installed'?'Development provider installed':'Not installed'),
           info('Selection',provider.selection==='proton'?'Development provider selected':'No provider selected'),
           info('Autofill','Sample sign-in in the development vault'),
-          action('Choose password provider','settings'),
-          provider.installation==='installed'?action('Open development vault','open'):action('Add development provider','install'),
+          passwordAction('Choose password provider','settings'),
+          provider.installation==='installed'?passwordAction('Open development vault','open'):passwordAction('Add development provider','install'),
         ]:[
           info('Proton Pass',native?(installation[provider.installation]||'Status unavailable'):'Managed by your browser and operating system'),
           info('Selection',native?(selection[provider.selection]||'Selection unavailable'):'Native provider status is unavailable here'),
           info('Autofill',native?(provider.support==='available'?'Available on this device':provider.support==='unavailable'?'Unavailable for this device or user':'Availability not checked'):'Use your browser’s password settings'),
           info('Vault','Confirm unlock, saved passwords and filling in your provider.'),
           info('Compatibility','Proton may show a browser warning. Check the website address before filling.'),
-          ...(native?[action('Choose password provider in Android','settings'),...(provider.installation==='installed'?[action('Open Proton Pass','open')]:provider.installation==='absent'?[action('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
+          ...(native?[passwordAction('Choose password provider in Android','settings'),...(provider.installation==='installed'?[passwordAction('Open Proton Pass','open')]:provider.installation==='absent'?[passwordAction('Get Proton Pass from Proton','install')]:[]),{kNav:true,label:'Refresh password provider status',lbl:'Refresh password provider status',chev:true,noAB:true,go:()=>void refresh()}]:[]),
         ]);
         if(native){
           const photoAction=(label:string,go:()=>void):Bag=>({kNav:true,label,lbl:label,chev:true,noAB:true,go});
@@ -552,7 +552,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent execution',runtimeLocation),info('AI replies',plan.inference)];
             if(plan.endsAt)rows.push(info(plan.status==='active'||plan.status==='trialing'||plan.status==='past_due'?'Plan runs until':'Plan ended',day(plan.endsAt)));
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
-            const actions:Bag[]=plan.signedIn?[
+            if(connection.busy)rows.push(info('Status',connection.message||'Please wait…'));
+            const actions:Bag[]=connection.busy?[action('Cancel',()=>connectionController.cancel())]:plan.signedIn?[
               ...(plan.keyExpiring?[{kNav:true,label:'Approve this phone again',lbl:'Approve this phone again',chev:true,noAB:true,go:()=>void connectionController.residentCloudLogin()}]:[]),
               ...(connection.residentSubscription?.kind!=='credits'?[{kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()}]:[]),
               {kNav:true,label:'Manage plan',lbl:'Manage plan',chev:true,noAB:true,go:()=>void connectionController.residentManagePlan()},
@@ -562,7 +563,54 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Eliza Cloud account & plan',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups:[group(rows),group(actions)]});
           }
         }
-        page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>connectionController.open()}]));
+        page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>native&&!testMocksEnabled?api.set({page:'agent-connection'}):connectionController.open()}]));
+        if(native&&!testMocksEnabled&&state.page==='agent-connection'){
+          const agentRows=[info('Agent',connection.session?'Running on this device':connection.residentRecoveryReason?'Recovery review needed':connection.kind==='recovering'?'Not running':'Starting…'),info('AI',connection.residentInference==='cloud'?'Eliza Cloud':connection.cloudAccount?'Not available':'Sign in required')];
+          if(connection.message)agentRows.push(info('Status',connection.message));
+          if(connection.error)agentRows.push(info('Connection problem',connection.error));
+          if(connection.residentRecoveryReason&&!connection.session){
+            agentRows.push(info('Records','Your notes, chats and sign-in stay unchanged.'));
+            if(connection.residentRecoveryReason==='ipc-recovery-retention-limit'){
+              const recovery=connection.residentRecovery;
+              if(recovery?.step==='review'){
+                agentRows.push(info('Review',`Alpha will keep ${recovery.review.retainedCount} old startup records, then restart your agent.`));
+                if(!connection.busy)agentRows.push(action('Keep records and restart',()=>void connectionController.confirmRecovery()),action('Cancel',()=>connectionController.cancelRecoveryReview()));
+              }else{
+                if(recovery?.step==='unavailable')agentRows.push(info('Recovery','Recovery could not be checked. Your records were kept. Review again later.'));
+                if(recovery?.step==='partial')agentRows.push(info('Recovery','Recovery did not finish. Your records were kept. Review again before restarting.'));
+                if(!connection.busy)agentRows.push(action('Review recovery',()=>void connectionController.reviewRecovery()));
+              }
+            }
+          }else if(!connection.busy)agentRows.push(action(connection.session?'Reconnect agent':'Retry',()=>void connectionController.startLocal()));
+          if(connection.busy){
+            agentRows.push(info('Connection','Please wait…'));
+            if(connection.residentRecovery?.step!=='archiving')agentRows.push(action('Cancel',()=>connectionController.cancel()));
+          }
+          const groups:Bag[]=[group(agentRows)];
+          if(connection.session){
+            const historyRows=[info('Conversation history','Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.')];
+            if(!connection.busy){
+              historyRows.push(action('New conversation',()=>void connectionController.newConversation()),action('Load conversations',()=>void connectionController.listHistory()));
+              for(const item of connection.conversations)historyRows.push(action(`Restore conversation: ${item.title}`,()=>void connectionController.restoreHistory(item.id)));
+            }
+            if(connection.historyError){historyRows.push(info('History',connection.historyError));if(!connection.busy)historyRows.push(action('Retry saved conversation',()=>void connectionController.retrySavedHistory()));}
+            groups.push(group(historyRows));
+          }
+          if(connection.session&&connection.phoneActionsAvailable){
+            const refreshRows=connection.busy?[info('Phone action history','Please wait…')]:[action('Refresh actions',()=>void connectionController.actionHistory()),action('Sync recorded receipts',()=>void connectionController.actionHistory(true))];
+            groups.push(group(refreshRows));
+            for(const item of connection.actionHistory){
+              const rows=[info(item.title,item.outcome+(item.timestamp?` · ${item.timestamp}`:''))];
+              if(item.detail)rows.push(info('Details',item.detail));
+              if(!connection.busy){
+                if(item.state==='pending')rows.push(action('Reject proposal',()=>void connectionController.rejectAction(item.id)));
+                if(['executing','reconciliation_required'].includes(item.state))rows.push(info('Review','After checking this phone, confirm whether this exact action happened.'),action('I verified it happened',()=>void connectionController.reconcileAction(item.id,'applied')),action('I verified it did not happen',()=>void connectionController.reconcileAction(item.id,'not_applied')));
+              }
+              groups.push(group(rows));
+            }
+          }
+          out.stack.push({isTop:false,notTop:true,cls:'enter',z:4,title:'Agent connection',hasTitle:true,backLabel:'Back to Settings',back:()=>api.set({page:null}),hero:{},groups});
+        }
         if(native)page.groups.push(group([{kNav:true,label:'Reset Alpha data',lbl:'Reset Alpha data',sub:'Erase local Alpha data · device unlock required',hasSub:true,chev:true,noAB:true,go:async()=>{
           try{const result=await registerPlugin<{review():Promise<{status:string;message:string}>}>('AlphaReset').review();api.toast(result.message);}
           catch{api.toast('Reset could not be opened. No completed reset is confirmed.');}

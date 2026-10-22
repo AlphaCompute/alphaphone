@@ -200,3 +200,17 @@ test('generation follows the shipped mode, and --packaged-runtime is wired into 
   const resident = fs.readFileSync(path.join(ROOT, '.github/workflows/resident-android.yml'), 'utf8');
   assert.match(resident, /node scripts\/generate-licenses\.mjs --packaged-runtime\n/);
 });
+
+test('compiled Google host enumerates its actual scoped package inputs and deduplicates shared packages', t => {
+ const {root,agent,source}=stagedRuntime(t);
+ const write=(file,text)=>{fs.mkdirSync(path.dirname(file),{recursive:true});fs.writeFileSync(file,text);};
+ const packageRoot='node_modules/.bun/@noble+curves@2.2.0/node_modules/@noble/curves';
+ write(path.join(root,packageRoot,'package.json'),JSON.stringify({name:'@noble/curves',version:'2.2.0',license:'MIT'}));
+ write(path.join(root,packageRoot,'LICENSE'),'actual curves notice');
+ const shared=path.relative(root,path.join(source,'node_modules/.bun/zod@4.1.0/node_modules/zod'));
+ write(path.join(agent,'workflow-worker/manifest.json'),JSON.stringify({nativeGoogleHost:{inputs:{[packageRoot+'/esm/curve.js']:'a'.repeat(64),[packageRoot+'/esm/utils.js']:'b'.repeat(64),[shared+'/index.js']:'c'.repeat(64),'apps/app/src/host.ts':'d'.repeat(64)}}}));
+ const errors=[];const entries=runtimeEntries(root,templates,errors,{agentDir:agent,sourceDir:source});assert.deepEqual(errors,[]);
+ const curves=entries.filter(entry=>entry.name==='@noble/curves');assert.equal(curves.length,1);assert.equal(curves[0].version,'2.2.0');assert.match(curves[0].text,/actual curves notice/);assert.match(curves[0].text,/native Google host/);
+ assert.equal(entries.filter(entry=>entry.name==='zod').length,1);assert.match(entries.find(entry=>entry.name==='zod').text,/agent bundle and workflow worker and native Google host/);
+ fs.unlinkSync(path.join(root,packageRoot,'package.json'));const missing=[];runtimeEntries(root,templates,missing,{agentDir:agent,sourceDir:source});assert(missing.some(error=>error.includes('native Google host')&&error.includes('not in the prepared runtime')));
+});

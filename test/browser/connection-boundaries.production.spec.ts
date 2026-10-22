@@ -122,14 +122,14 @@ for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origi
     // Eliza Cloud account, so the sign-in dialog opens and cannot be dismissed while the agent runs.
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     const saved = await secureValues(page);
-    const welcome = page.getByRole('dialog', { name: 'Your agent' });
+    const welcome = page.getByRole('main', { name: 'Sign in',exact:true });
     await expect(welcome).toBeVisible();
     // The retired route has no entry: no address, code or connect control, and no fake remote state.
     await expect(welcome.getByLabel('Agent HTTPS address')).toHaveCount(0);
     await expect(welcome.getByLabel('Pairing code')).toHaveCount(0);
     await expect(welcome.getByRole('button', { name: /Connect (remote|local) agent/ })).toHaveCount(0);
     await expect(welcome.getByText(/Remote agent|Connected ·/)).toHaveCount(0);
-    await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible();
+    await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     // Every Alpha Phone signs in to Eliza Cloud: no local-only bypass and no close while signed out.
     await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
     await expect(welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
@@ -140,7 +140,7 @@ for (const legacy of [{ name: 'remote agent', selection: { kind: 'remote', origi
     expect(await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), SELECTION)).toEqual({ kind: 'resident' });
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.connection.legacy-hosted-selection.v1')!))).toEqual([legacy.selection]);
     await page.reload();
-    await expect(page.getByRole('dialog', { name: 'Your agent' })).toBeVisible();
+    await expect(page.getByRole('main', { name: 'Sign in',exact:true })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     const calls = await nativeCalls(page);
     expectRemoteUntouched(calls);
@@ -183,7 +183,7 @@ test('production Android without a packaged agent says so and does not advertise
   // A developer build without the runtime opens no gate; Your agent says so, with Retry, never an offline mode.
   await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
   const dialog = await openYourAgent(page);
-  const alert = dialog.getByRole('alert');
+  const alert = dialog.getByText('This developer build does not include the on-device agent.',{exact:true});
   await expect(alert).toHaveText('This developer build does not include the on-device agent.');
   await expect(alert).not.toContainText(/remote agent|pair/i);
   await expect(dialog.getByText('Not running', { exact: true })).toBeVisible();
@@ -203,8 +203,8 @@ for (const [start, text] of [['reject', 'Local agent failed to start.'], ['start
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
     const dialog = await openYourAgent(page);
     await expect(dialog.getByText('Not running', { exact: true })).toBeVisible();
-    await expect(dialog.getByRole('alert')).toContainText(text);
-    await expect(dialog.getByRole('alert')).not.toContainText(/pair/i);
+    await expect(dialog.getByText(text,{exact:true})).toContainText(text);
+    await expect(dialog.getByText(text,{exact:true})).not.toContainText(/pair/i);
     await expect(dialog.getByRole('button', { name: 'Retry', exact: true })).toBeEnabled();
     await expect(dialog.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
     const calls = await nativeCalls(page);
@@ -215,7 +215,7 @@ for (const [start, text] of [['reject', 'Local agent failed to start.'], ['start
     const starts = calls.filter(call => call.plugin === 'Agent' && call.method === 'start').length;
     await dialog.getByRole('button', { name: 'Retry', exact: true }).click();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent' && call.method === 'start').length).toBe(starts + 1);
-    await expect(dialog.getByRole('alert')).toContainText(text);
+    await expect(dialog.getByText(text,{exact:true})).toContainText(text);
     expect((await nativeCalls(page)).filter(call => call.path?.startsWith('/api/conversations'))).toEqual([]);
     expect(foreign).toEqual([]);
   });
@@ -231,11 +231,11 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     await expect(page.getByRole('button', { name: 'Notes', exact: true })).toBeVisible();
     await expect.poll(async () => (await nativeCalls(page)).filter(call => call.plugin === 'Agent').map(call => call.method)).toContain('start');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await page.getByRole('button', { name: /Agent connection/ }).click();
-    await expect(page.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Eliza Cloud account & plan',exact:true }).click();
+    await expect(page.getByRole('button', { name: 'Sign out of Eliza Cloud', exact: true })).toBeVisible();
     const before = (await nativeCalls(page)).length;
     if (mode === 'cancelled') await page.evaluate(() => { (window as any).holdStop = true; });
-    await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+    await page.getByRole('button', { name: 'Sign out of Eliza Cloud', exact: true }).click();
     if (mode === 'cancelled') {
       // Cancel while Cloud AI is still being unbound: sign-out still removes the local key.
       await page.waitForFunction(() => typeof (window as any).releaseStop === 'function');
@@ -261,13 +261,13 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     expect(calls.slice(before).some(call => call.plugin === 'AlphaHostedResults' && call.method === 'disableBackground')).toBe(true);
     if (mode !== 'cancelled') expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
     expect(await secureValues(page)).not.toHaveProperty('cloud:production');
-    await expect(page.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
+    await expect(page.getByRole('main', { name: 'Sign in', exact: true }).getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
     // P-43: sign-out unbinds inference only; the resident restarted and the outcome says so.
     if (mode !== 'cancelled') await expect(status).toContainText('Your agent is running. Sign in to Eliza Cloud to turn AI back on.');
     await expect.poll(async () => (await nativeCalls(page)).slice(before).filter(call => call.plugin === 'Agent' && call.method === 'start').length).toBeGreaterThan(0);
     await page.reload();
     // Signed out after a restart: the sign-in dialog opens by itself while the resident runs.
-    await expect(page.getByRole('dialog', { name: 'Your agent', exact: true })).toBeVisible();
+    await expect(page.getByRole('main', { name: 'Sign in', exact: true })).toBeVisible();
     expect((await nativeCalls(page)).filter(call => call.plugin === 'AlphaConnection' && call.method === 'request')).toEqual([]);
     expect(foreign).toEqual([]);
   });
@@ -413,13 +413,15 @@ test('automatic agent startup stays quiet while local apps remain usable',async(
     };
   });
   await page.goto('/');
-  await completeOptionalAccessSetup(page);
+  // Optional setup waits for startup to settle; local apps remain usable meanwhile.
+  await expect(page.locator('.alpha-startup-permissions')).toHaveCount(0);
   await expect.poll(()=>page.evaluate(()=>(window as any).agentStartHeld)).toBe(true);
   await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Notes',exact:true}).click();
   await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
   await page.evaluate(()=>(window as any).releaseAgentStart());
+  await completeOptionalAccessSetup(page);
 });
 
 test('transient startup storage failures recover without flashing global notices',async({page})=>{
@@ -462,8 +464,8 @@ test('an unavailable deletion receipt status does not block account settings con
   const notice = page.getByRole('complementary', { name: 'Pending deletions' });
   await expect(notice).toContainText('Pending deletion status is unavailable');
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: /Agent connection/ }).click();
-  const signout = page.getByRole('button', { name: 'Sign out', exact: true });
+  await page.getByRole('button', { name: 'Eliza Cloud account & plan',exact:true }).click();
+  const signout = page.getByRole('button', { name: 'Sign out of Eliza Cloud', exact: true });
   // Force geometric overlap without forcing the click: informational text must not consume it.
   await signout.evaluate(button => {
     const banner = document.querySelector<HTMLElement>('.alpha-deletion-undo')!, rect = button.getBoundingClientRect();

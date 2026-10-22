@@ -4,6 +4,8 @@ import android.graphics.Rect;
 /** Host stub. The public stub* fields let JVM tests set what a real view would measure. */
 public class View {
  public static final int VISIBLE=0,INVISIBLE=4,GONE=8,ACCESSIBILITY_LIVE_REGION_POLITE=1;
+ public interface OnAttachStateChangeListener{void onViewAttachedToWindow(View view);void onViewDetachedFromWindow(View view);}
+ public void addOnAttachStateChangeListener(OnAttachStateChangeListener listener){}
  public interface OnClickListener{void onClick(View view);}
  private final Context context;
  private int visibility=VISIBLE;
@@ -11,6 +13,16 @@ public class View {
  public boolean stubShown,stubAttached;
  public int stubWindowVisibility=GONE,stubWidth,stubHeight,stubVisibleWidth,stubVisibleHeight;
  public float stubAlpha=1f;
+ public boolean stubFocus=true;private float z;private Object params;
+ public boolean hasWindowFocus(){return stubFocus;}
+ public float getZ(){return z;}public void setZ(float value){z=value;}
+ public void bringToFront(){if(stubParent instanceof ViewGroup)((ViewGroup)stubParent).front(this);}
+ public Object getLayoutParams(){return params;}public void setLayoutParams(Object value){params=value;}
+ public boolean stubLayoutRequested;public boolean isLayoutRequested(){return stubLayoutRequested;}
+ public WindowInsets stubInsets=new WindowInsets();public WindowInsets getRootWindowInsets(){return stubInsets;}
+ public ViewTreeObserver getViewTreeObserver(){return new ViewTreeObserver();}
+ public void setMinWidth(int width){}public void setMinHeight(int height){}public void setFilterTouchesWhenObscured(boolean filter){}
+
  public View(Context context){this.context=context;}
  public View(Context context,android.util.AttributeSet attrs){this.context=context;}
  public final Context getContext(){return context;}

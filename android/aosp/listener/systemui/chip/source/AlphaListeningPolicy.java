@@ -45,7 +45,7 @@ public final class AlphaListeningPolicy {
   * The explanation SystemUI attaches when the indicator is not shown ({@code shown}: surface
   * visible and, while recording, the chip too). In order: display off; AOD not showing it; a report
   * within {@link #TRANSITION_DEBOUNCE_MS} of a keyguard/doze/display change; the expanded shade
-  * without the listening notification; an app hiding the unlocked status bar. Anything else (for
+  * without its measured indicator; an app hiding the unlocked status bar. Anything else (for
   * example a detached or faded chip) has no reason and the listener treats it as a loss.
   */
  public static String hiddenReason(boolean shown,String display,long sinceTransitionMs,boolean shadeExpanded,boolean statusBarHidden,boolean keyguardShowing){
@@ -68,16 +68,6 @@ public final class AlphaListeningPolicy {
  /** The lock-screen/AOD chip (keyguard indication area) counts while the keyguard shows and the shade is collapsed. */
  public static boolean keyguardCounts(boolean measured,boolean keyguardShowing,boolean shadeExpanded){
   return measured&&keyguardShowing&&!shadeExpanded;
- }
- /**
-  * With the shade expanded the chips are covered; the indicator in the shade is the listener's
-  * own ongoing notification, which SystemUI verifies in its active notifications.
-  */
- public static boolean shadeCounts(boolean shadeExpanded,boolean listenerNotificationShown){return shadeExpanded&&listenerNotificationShown;}
- /** The verified listener's ongoing indicator notification (id 1, channel listening-indicator). */
- public static boolean shadeNotification(int admittedUid,int notificationUid,String notificationPackage,int notificationId,String channel,boolean ongoing){
-  return admittedUid>=10000&&admittedUid<20000&&admittedUid==notificationUid&&PACKAGE.equals(notificationPackage)
-   &&notificationId==1&&"listening-indicator".equals(channel)&&ongoing;
  }
  /** An app requested the status bar hidden (WindowInsets.Type.statusBars() not requested visible) and it is not transiently shown. */
  public static boolean statusBarHidden(int requestedVisibleTypes,int statusBarsType,boolean transientShown){

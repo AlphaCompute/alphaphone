@@ -31,6 +31,11 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await page.goto(`http://127.0.0.1:${address.port}/`);
   await expect.poll(()=>page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return c.getSnapshot().cloudAccount?.userId;})).toBe(owner);
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toEqual([]);
+  const setup=page.locator('dialog.alpha-startup-permissions');
+  await expect(setup).toBeVisible();
+  await setup.getByRole('button',{name:'Not now',exact:true}).click();
+  await expect(setup.getByRole('heading',{name:'You’re all set',exact:true})).toBeVisible();
+  await setup.getByRole('button',{name:'Go to Alpha',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
   expect(await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().open)).toBe(false);
@@ -63,6 +68,9 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await expect(signIn.getByRole('form',{name:'Sign in with email'})).toBeVisible();
   await expect(signIn.getByRole('button',{name:'Continue with Google',exact:true})).toHaveCount(0);
   await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
+  await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
+  await expect(signIn).toHaveCount(0);
+  await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByText('owned@example.invalid',{exact:true})).toBeVisible();
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toHaveLength(2);
   expect(await page.evaluate(()=>(window as any).openedCloudURLs)).toContain(`https://eliza.app/auth/cli-login?session=${session}&app=alpha`);

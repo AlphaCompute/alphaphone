@@ -38,11 +38,11 @@ const KINDS = {
 } as const;
 
 for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', 'error'] as const) {
-  test(`a resident reply that fails with ${kind} (${frame} frame) says so, offers the next step and sends once`, async ({ page }) => {
+  test(`a resident reply that fails with ${kind} (${frame} frame) says so, offers the next step and sends once`, async ({ page }, info) => {
     test.setTimeout(120_000);
     const foreign = await connected(page);
     await setStub(page, { stream: { failure: kind, frame } });
-    if (kind === 'insufficient_credits') await stub(page, s => { s.accounts[0].balance = 0; s.persist(); });
+    if (kind === 'insufficient_credits') await stub(page, s => { s.accounts[0].balance = 0; s.accounts[0].plan = 'none'; s.persist(); });
     await send(page, `Failing ${kind}`);
     await expect(conversation(page).getByText(text, { exact: true })).toHaveCount(1);
     // Upstream's provider prose is never shown, and the agent's own outcome needs no history check.
@@ -54,6 +54,20 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
       const manage = page.getByRole('button', { name: /^Manage billing in Eliza Cloud/ });
       await expect(manage).toHaveCount(1);
       expect(await stub(page, s => s.opened)).toEqual([]);
+      const code = page.getByRole('button', { name: /^Use a membership code/ });
+      await expect(code).toBeVisible();
+      await code.click();
+      const account = page.getByRole('dialog', { name: /^Eliza Cloud account/ });
+      await expect(account).toBeVisible();
+      await expect(account.getByRole('textbox', { name: 'Subscription code' })).toBeVisible();
+      await expect(account.getByRole('button', { name: /^(Manage (billing|plan) in Eliza Cloud|Choose a plan)/ })).toBeVisible();
+      expect(await stub(page, s => s.opened)).toEqual([]);
+      await page.screenshot({path:info.outputPath('membership-code-mobile.png'),animations:'disabled'});
+      await page.setViewportSize({width:1024,height:768});
+      await expect(account.getByRole('textbox',{name:'Subscription code'})).toBeVisible();
+      await page.screenshot({path:info.outputPath('membership-code-wide.png'),animations:'disabled'});
+      await page.setViewportSize({width:412,height:915});
+      await account.getByRole('button', { name: 'Close connection settings', exact: true }).click();
       await manage.click();
       await expect.poll(() => stub(page, s => s.opened)).toEqual(['https://cloud.eliza.app/cloud/billing']);
     } else {
@@ -63,8 +77,8 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
       await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
       await button(page, 'Settings').click();
       await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.getByRole('dialog')).not.toContainText('Connected');
+      await expect(page.getByRole('heading',{name:'Agent connection',exact:true})).toBeVisible();
+      await expect(page.getByRole('region',{name:'Settings',exact:true})).not.toContainText('Connected');
     }
     // Exactly one stream request and no automatic resend of any kind.
     await page.waitForTimeout(1500);
@@ -124,8 +138,8 @@ test('without a network the resident says AI needs a connection, sends nothing, 
   // Readiness is retracted while offline.
   await button(page, 'Settings').click();
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  await expect(page.getByRole('dialog')).not.toContainText('Connected');
-  await page.getByRole('button', { name: 'Close connection settings', exact: true }).click();
+  await expect(page.getByRole('region',{name:'Settings',exact:true})).not.toContainText('Connected');
+  await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await context.setOffline(false);
   await expect(notice).toHaveCount(0);
@@ -203,7 +217,7 @@ test('a resident send the runtime no longer accepts (401) asks for an Eliza Clou
   await connected(page);
   await setStub(page, { stream: 'expired' });
   await send(page, 'Sent with an expired session');
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('main',{name:'Sign in',exact:true});
   await expect(dialog.getByRole('alert')).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/pair/i);

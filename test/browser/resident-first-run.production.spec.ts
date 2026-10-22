@@ -31,12 +31,12 @@ async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
   // P-43: the resident starts by itself, signed out. Every Alpha Phone needs an Eliza Cloud account,
   // so the sign-in dialog opens by itself and cannot be dismissed while the agent runs.
   await expect.poll(() => starts(page), { timeout: 30_000 }).toBe(1);
-  const welcome = page.getByRole('dialog', { name: 'Your agent', exact: true });
+  const welcome = page.getByRole('main', { name: 'Sign in', exact: true });
   await expect(welcome).toBeVisible();
   await expect(welcome.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] ?? null)).toBeNull();
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
-  await expect(welcome.getByText('Sign in to Eliza Cloud to use AI. Your agent keeps running on this phone.', { exact: true })).toBeVisible();
+  await expect(welcome.getByText('Sign in to Eliza Cloud to use Alpha Phone.', { exact: true })).toBeVisible();
   await expect(welcome.getByRole('button', { name: 'Use local apps without AI', exact: true })).toHaveCount(0);
   await expect(welcome.getByRole('button',{name:'Reconnect agent',exact:true})).toHaveCount(0);
   await expect(welcome.getByText('Your agent runs with AI off until you sign in to Eliza Cloud.',{exact:true})).toHaveCount(0);
@@ -47,7 +47,8 @@ async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
 /** No key was kept or bound, and the resident is running without AI (P-43). `untouched`: the sign-in
  * never stored a key, so the resident kept running throughout (never stopped, never restarted). */
 async function nothingLeft(page: Page, welcome: ReturnType<Page['getByRole']>, untouched = false) {
-  await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect.poll(()=>harness(page,f=>f.calls.filter((call:string)=>call==='Agent.start').length)).toBeGreaterThan(0);
+  await expect(welcome).toBeVisible();
   await expect(welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeEnabled();
   expect(await harness(page, f => f.slots['cloud:production'] ?? null)).toBeNull();
   expect(await stub(page, s => s.order.some((entry: string) => entry.startsWith('configureCloudProvider')))).toBe(false);
@@ -146,8 +147,8 @@ test('first run: Cloud refusing the new key (401 on the account read) removes it
   expect(await stub(page, s => s.order.filter((entry: string) => entry.startsWith('store') || entry === 'remove cloud key'))).toEqual(['store first-run-key', 'remove cloud key']);
   await nothingLeft(page, welcome);
   await expect(welcome.getByRole('alert')).toHaveText('Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.');
-  await expect(welcome.getByRole('button',{name:'Reconnect agent',exact:true})).toBeVisible();
-  await expect(welcome.getByText('Conversation history',{exact:true})).toBeVisible();
+  await expect(welcome.getByRole('button',{name:'Reconnect agent',exact:true})).toHaveCount(0);
+  await expect(welcome.getByText('Conversation history',{exact:true})).toHaveCount(0);
 });
 
 // An account Cloud reports unable to use AI no longer blocks the resident agent: billing state never
