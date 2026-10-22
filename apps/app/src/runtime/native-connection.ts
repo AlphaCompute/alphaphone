@@ -249,11 +249,31 @@ export async function openConnectionBrowser(url:string,signal:AbortSignal) {
   const requestId=crypto.randomUUID();
   let rejectAbort:(reason:unknown)=>void=()=>{};
   const interrupted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
-  const cancel=()=>{void native.cancel({requestId}).catch(()=>{});rejectAbort(signal.reason||new DOMException('Cancelled','AbortError'));};
+  let nativeRetired=false;
+  const retireNative=()=>{if(nativeRetired)return;nativeRetired=true;void native.cancel({requestId}).catch(()=>{});};
+  const cancel=()=>{retireNative();rejectAbort(signal.reason||new DOMException('Cancelled','AbortError'));};
   signal.addEventListener('abort',cancel,{once:true});
+  // Android also reports the page returning through visibility/focus. A delayed
+  // native browser reply must not strand this same login after a real return.
+  // Focus alone is insufficient: this page must first have gone to background.
+  let backgrounded=false;
+  let finishReturn:()=>void=()=>{};
+  const returned=new Promise<void>(resolve=>{finishReturn=resolve;});
+  const visible=()=>{if(document.hidden)backgrounded=true;else if(backgrounded)finishReturn();};
+  const focused=()=>{if(backgrounded&&!document.hidden)finishReturn();};
+  document.addEventListener('visibilitychange',visible);
+  window.addEventListener('focus',focused);
   try{
-    const opened=native.openExternal({url,requestId});
+    const opened=Promise.resolve(native.openExternal({url,requestId})).then(()=> 'native' as const);
     if(signal.aborted)cancel();
-    await Promise.race([opened,interrupted]);signal.throwIfAborted();
-  }finally{signal.removeEventListener('abort',cancel);}
+    // One caller continues into the existing foreground-gated, single-use poll.
+    // Promise.race also observes a late native rejection; no retry is started.
+    const winner=await Promise.race([opened,returned.then(()=> 'foreground' as const),interrupted]);signal.throwIfAborted();
+    // Retire only this browser call. The login signal and credential poll stay live.
+    if(winner==='foreground')retireNative();
+  }catch(error){signal.throwIfAborted();throw error;}finally{
+    signal.removeEventListener('abort',cancel);
+    document.removeEventListener('visibilitychange',visible);
+    window.removeEventListener('focus',focused);
+  }
 }

@@ -467,7 +467,13 @@ async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated
 }
 /** The development hosted-agent client. Product builds have none (#406). */
 function developmentCloud(): DevelopmentCloudAgentProtocol { if (!testMocksEnabled || !(cloud instanceof DevelopmentCloudAgentProtocol)) throw Error(PAIRING_RETIRED); return cloud; }
-function update(patch: Partial<ConnectionSnapshot>) { state = { ...state, ...patch }; if (!developmentPageSuspended) listeners.forEach(listener => listener()); }
+function update(patch: Partial<ConnectionSnapshot>) {
+  const next = { ...state, ...patch };
+  // Modal ownership follows production presentation. Automatic restore only suppresses rendering
+  // temporarily; it must not erase an explicitly opened account or plan panel.
+  state = isAndroid && !testMocksEnabled ? { ...next, open: connectionChooserVisible({ ...next, automaticRestore: false }) } : next;
+  if (!developmentPageSuspended) listeners.forEach(listener => listener());
+}
 // P-43: where the resident is always present no "no agent" choice is ever stored.
 function save(selection: Selection) { localStorage.setItem(SELECTION, JSON.stringify(residentAlwaysPresent && (selection.kind === 'none' || selection.kind === 'offline') ? { kind: 'resident' } : selection)); }
 function retire(name?: string) {
@@ -1305,7 +1311,9 @@ async function refreshActionReview(signal:AbortSignal){
     const entries=await readActionHistory(selected,signal);
     if(generation!==epoch||selected!==active)return;
     const review=entries.some(entry=>entry.state==='reconciliation_required');
-    update({actionHistory:entries,...(review?{open:true,message:'A phone action needs your review. Check this phone, then record whether it happened.'}:{})});
+    // Production action history lives in Settings. A background refresh must not replace sign-in
+    // instructions or claim modal ownership over the current view.
+    update({actionHistory:entries,...(review&&!(isAndroid&&!testMocksEnabled)?{open:true,message:'A phone action needs your review. Check this phone, then record whether it happened.'}:{})});
   }catch{signal.throwIfAborted();/* The history stays available from Phone action history. */}
 }
 function boundNavigation():ViewNavigationClient|undefined {
@@ -2329,11 +2337,22 @@ export const connectionController = {
 // A Google sign-in that native finished after Alpha restarted arrives as a retained event.
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInCompleted', outcome => { void connectionController.signInReturned(outcome); })).catch(() => { /* No retained return. */ });
 if (cloudSignIn?.addListener) Promise.resolve(cloudSignIn.addListener('signInIncomplete', value => { connectionController.signInIncomplete(value); })).catch(() => { /* No retained return. */ });
-export function connectionChooserVisible(snapshot: Pick<ConnectionSnapshot,'open'|'automaticRestore'|'busy'|'error'>): boolean {
+export function productionCloudSignInRequired(snapshot: Pick<ConnectionSnapshot,'cloudAccount'|'error'>): boolean {
+  return isAndroid&&!testMocksEnabled&&(!snapshot.cloudAccount||snapshot.error===errorMessage({status:401})||(snapshot.cloudAccount.expiresAt!==undefined&&snapshot.cloudAccount.expiresAt<=Date.now()));
+}
+export function connectionChooserVisible(snapshot: Pick<ConnectionSnapshot,'open'|'automaticRestore'|'busy'|'error'>&Partial<Pick<ConnectionSnapshot,'cloudAccount'|'purpose'|'signIn'>>): boolean {
+  if(isAndroid&&!testMocksEnabled&&'cloudAccount' in snapshot){
+    if(productionCloudSignInRequired({cloudAccount:snapshot.cloudAccount??null,error:snapshot.error}))return true;
+    // The signed-in agent's state and controls live in Settings, never in an automatic sheet.
+    if(!snapshot.signIn&&snapshot.purpose!=='cloud-account'&&snapshot.purpose!=='plan')return false;
+  }
   return snapshot.open && !(snapshot.automaticRestore && snapshot.busy && !snapshot.error);
 }
 export function ConnectionChooser() {
   const snapshot = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
+  // Production Android always enters through sign-in while signed out.
+  // Only the explicit test-mocks build retains developer bypass behavior.
+  const productionSignInRequired=productionCloudSignInRequired(snapshot);
   const visible=connectionChooserVisible(snapshot);
   const [developmentAction,setDevelopmentAction]=useState('{"type":"create_note","title":"Development note","body":"Reviewed local action"}');
   const [developmentProfile,setDevelopmentProfile]=useState<DevelopmentProfile>('local'),[reply,setReply]=useState(''),[developmentError,setDevelopmentError]=useState('');
@@ -2455,10 +2474,19 @@ export function ConnectionChooser() {
       </div>
     </aside>;
   }
-  if (snapshot.signIn) return <div className="alpha-connection-scrim"><div className="alpha-connection alpha-connection-native alpha-cloud-sign-in" role="dialog" aria-modal="true" aria-labelledby="cloud-sign-in-title" aria-busy={snapshot.busy||undefined} tabIndex={-1} ref={panel}>
+  if (snapshot.signIn) return <div className={productionSignInRequired?'alpha-auth-page':'alpha-connection-scrim'}><div className={`alpha-connection alpha-connection-native alpha-cloud-sign-in${productionSignInRequired?' alpha-auth-content':''}`} role={productionSignInRequired?'main':'dialog'} aria-modal={productionSignInRequired?undefined:true} aria-labelledby="cloud-sign-in-title" aria-busy={snapshot.busy||undefined} tabIndex={-1} ref={panel}>
     <CloudSignInPanel view={snapshot.signIn} busy={snapshot.busy} google={inAppGoogle} message={snapshot.message} error={snapshot.error}
       actions={{google:()=>void connectionController.signInGoogle(),email:address=>void connectionController.signInEmail(address),verify:code=>void connectionController.verifySignInCode(code),resend:()=>void connectionController.resendSignInCode(),cancel:()=>connectionController.cancelSignIn()}}
       extra={browserCloudResidentEnabled?<button disabled={snapshot.busy} onClick={()=>void connectionController.signInBrowser()}>Sign in with browser</button>:testMocksEnabled?<button disabled={snapshot.busy} onClick={()=>void connectionController.signInBrowser()}>Browser sign-in (diagnostic)</button>:undefined}/>
+  </div></div>;
+  if(productionSignInRequired)return <div className="alpha-auth-page"><div className="alpha-connection alpha-auth-content" role="main" aria-labelledby="alpha-auth-title" aria-busy={snapshot.busy||undefined} tabIndex={-1} ref={panel}>
+    <div className="alpha-auth-body">
+      <h1 id="alpha-auth-title" className="serif">Sign in</h1>
+      <p>Sign in to Eliza Cloud to use Alpha Phone.</p>
+      <div className="alpha-connection-actions"><button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Sign in with Eliza Cloud</button></div>
+      {snapshot.busy&&<><p role="status">{snapshot.message||'Please wait…'}</p><button className="alpha-connection-cancel" onClick={()=>connectionController.cancel()}>Cancel</button></>}
+      {snapshot.error&&<p role="alert" className="alpha-connection-error">{snapshot.error}</p>}
+    </div>
   </div></div>;
   const accountCreatedNotice=snapshot.accountCreated&&snapshot.cloudAccount&&<p role="status" className="alpha-cloud-account-created">This sign-in created a new Eliza Cloud account{snapshot.cloudAccount.email?` (${snapshot.cloudAccount.email})`:''}. If you meant to use an existing account, sign out and sign in with that account’s email or Google.</p>;
   const actionReview=snapshot.session&&snapshot.phoneActionsAvailable&&<details open={snapshot.actionHistory.some(item=>item.state==='reconciliation_required')}><summary>Phone action history</summary><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory()}>Refresh actions</button><button disabled={snapshot.busy} onClick={() => void connectionController.actionHistory(true)}>Sync recorded receipts</button>{snapshot.actionHistory.map(item => <section key={item.id} className="alpha-connection-agent"><strong>{item.title}</strong>{item.detail&&<span>{item.detail}</span>}<span>{item.outcome}{item.timestamp&&` · ${item.timestamp}`}</span>{item.state === 'pending' && <button disabled={snapshot.busy} onClick={() => void connectionController.rejectAction(item.id)}>Reject proposal</button>}{['executing','reconciliation_required'].includes(item.state) && <><p>After checking this phone, confirm whether this exact action happened.</p><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'applied')}>I verified it happened</button><button disabled={snapshot.busy} onClick={() => void connectionController.reconcileAction(item.id, 'not_applied')}>I verified it did not happen</button></>}</section>)}</details>;
@@ -2533,7 +2561,7 @@ export function ConnectionChooser() {
         <section aria-label="Eliza Cloud plan"><p><strong>{residentPlan.headline}</strong></p>{residentPlan.detail&&<p>{residentPlan.detail}</p>}{snapshot.planEndsAt&&!residentNeedsPlan?<p>Plan runs until {day(snapshot.planEndsAt)}.</p>:null}</section>
         {residentNeedsPlan&&<p role="status">{NEEDS_PLAN_NOTICE}</p>}
         {keyExpiring&&<section aria-label="Eliza Cloud sign-in"><p role="status">{keyExpiresAt<=Date.now()?'Your Eliza Cloud sign-in on this phone has expired.':`Your Eliza Cloud sign-in on this phone expires ${day(keyExpiresAt)}.`} Approve this phone again to keep AI available.</p><button disabled={snapshot.busy} onClick={()=>void connectionController.residentCloudLogin()}>Approve this phone again</button></section>}
-        {residentPlanView?.kind!=='credits'&&(residentNeedsPlan||planPanel)&&redeemForm}
+        {(residentNeedsPlan||planPanel)&&redeemForm}
         {snapshot.redeemError&&<p id="alpha-redeem-error" role="alert" className="alpha-connection-error">{snapshot.redeemError}</p>}
         {snapshot.redeemNotice&&<p role="status">{snapshot.redeemNotice}</p>}
       </>:<p>{residentSignInRejected?(snapshot.error?'Sign in to Eliza Cloud again to turn AI back on.':'Your saved Cloud sign-in is no longer valid.'):residentAiOff}</p>}
