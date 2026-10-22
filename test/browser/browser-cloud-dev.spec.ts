@@ -53,6 +53,8 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account.getByText('owned@example.invalid',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('existing-cloud-account.png'),animations:'disabled'});
   await account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true}).click();await page.reload();
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount)).toBeNull();
+  // Completed returning users still review access after explicit Settings sign-in.
+  await page.evaluate(()=>window.dispatchEvent(new Event('alpha:agent-settings')));
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
   // In-app sign-in through the development host offers the email code (Google needs the phone's App
@@ -62,9 +64,21 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await expect(signIn.getByRole('button',{name:'Continue with Google',exact:true})).toHaveCount(0);
   await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
-  await expect(signIn).toHaveCount(0);
+  await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true})).toHaveCount(0);
+  const setup=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
+  await expect(setup).toBeVisible();
+  const box=await setup.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width*.95);expect(box!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height*.95);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.startup-permissions.v1')!).dismissed)).toBe(true);
+  await completeOptionalAccessSetup(page);
+  await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.openCloudAccount());
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true}).getByText('owned@example.invalid',{exact:true})).toBeVisible();
+  await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.close());
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await page.reload();
+  await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toHaveLength(2);
   expect(await page.evaluate(()=>(window as any).openedCloudURLs)).toContain(`https://eliza.app/auth/cli-login?session=${session}&app=alpha`);
   await info.attach('closed-cloud-requests',{body:JSON.stringify({calls,mediaCapture:false,playback:false,providerRequests:false}),contentType:'application/json'});

@@ -109,6 +109,8 @@ export interface ConnectionSnapshot {
   /** The phone reports no network. The resident's hosted inference needs it; local apps do not. */
   inferenceOffline?: boolean;
   cloudAccount: CloudServiceSession | null;
+  /** Fresh interactive sign-in owns setup/Ready; quiet account restoration does not replay it. */
+  setupRevision?: number;
   /** Alpha's own Eliza Cloud sign-in screen. Never holds a code, session or credential. */
   signIn?: SignInView | null;
   /** The last in-app sign-in created a new Eliza Cloud account: said explicitly, never silent. */
@@ -438,6 +440,10 @@ async function inAppSignInMethods(environment: CloudEnvironment, signal: AbortSi
 function signInFailed(environment: CloudEnvironment, keepStep = false) {
   if (!keepStep) update({ signIn: { step: 'choose', environment } });
 }
+/** A verified interactive sign-in finishes through setup, not the account/plan modal underneath it. */
+function showPostSignInSetup() {
+  if (state.cloudAccount) update({open: false, purpose: 'agent', setupRevision: (state.setupRevision ?? 0) + 1});
+}
 /** The key is stored; the existing identity, entitlement and agent paths take over unchanged. */
 async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated, signal: AbortSignal) {
   const created = outcome.accountCreated === true;
@@ -449,14 +455,14 @@ async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated
     // key Cloud refused right after issuing it rather than keep it for a retry that cannot work.
     const issued = (await cloudCredentialStore.read(residentEnvironment()))?.credentialId;
     signal.throwIfAborted(); retire();
-    try { await connectResident(signal); } catch (error) { if (residentAlwaysPresent && !active) update({ kind: 'recovering' }); throw error; }
+    try { await connectResident(signal); } catch (error) { if (residentAlwaysPresent && !active) update({ kind: 'recovering' }); showPostSignInSetup(); throw error; }
     if (!state.cloudAccount && state.residentPlanNotice !== 'offline' && issued && (await cloudCredentialStore.read(residentEnvironment()).catch(() => null))?.credentialId === issued) {
       await cloudCredentialStore.clear(residentEnvironment());
       update({ residentSavedCredential: false, open: true, error: 'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.' });
       return;
     }
-    if (state.residentInference !== 'cloud' || created) update({ open: true, ...(created ? { purpose: 'plan' as const } : {}) });
     if (unconfirmed) update({ message: 'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.' });
+    showPostSignInSetup();
     return;
   }
   const accountOnly = state.purpose === 'cloud-account';
@@ -464,6 +470,7 @@ async function signedIn(client: CloudProtocol, outcome: CloudSignInAuthenticated
   if (!active) save({ kind: 'none' });
   if (accountOnly || created || unconfirmed) update({ message: created ? 'Signed in. Eliza Cloud created a new account for this sign-in.' : unconfirmed ? 'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.' : 'Signed in to Eliza Cloud.' });
   else if (hosted) await hosted.inspectPersonal(signal);
+  showPostSignInSetup();
 }
 /** The development hosted-agent client. Product builds have none (#406). */
 function developmentCloud(): DevelopmentCloudAgentProtocol { if (!testMocksEnabled || !(cloud instanceof DevelopmentCloudAgentProtocol)) throw Error(PAIRING_RETIRED); return cloud; }
@@ -1420,13 +1427,13 @@ async function residentBrowserLoginAction(signal: AbortSignal) {
   // Admission binds the new sign-in: native attaches when the process already matches, otherwise
   // it restarts the agent once (a process bound to the replaced key is stopped by the write).
   signal.throwIfAborted(); retire();
-  try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});throw error;}
+  try{await connectResident(signal);}catch(error){if(residentAlwaysPresent&&!active)update({kind:'recovering'});showPostSignInSetup();throw error;}
   // Cloud refused the key it just issued. It is removed rather than kept for a retry that cannot
   // work; the agent keeps running without Cloud inference.
   if(!state.cloudAccount&&state.residentPlanNotice!=='offline'&&issued&&(await cloudCredentialStore.read(residentEnvironment()).catch(()=>null))?.credentialId===issued){await cloudCredentialStore.clear(residentEnvironment());update({residentSavedCredential:false,open:true,error:'Eliza Cloud refused this sign-in. Your agent keeps running; sign in again to turn AI on.'});return;}
-  // Signed in but AI is not connected (the plan could not be checked or bound): keep the dialog open.
-  if(state.residentInference!=='cloud')update({open:true});
+  // A verified account finishes through setup; AI binding/plan warnings stay visible there.
   if(login.previousSignIn==='unconfirmed')update({message:'Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.'});
+  showPostSignInSetup();
 }
 async function browserCloudLoginAction(environment: CloudEnvironment, signal: AbortSignal) {
   const accountOnly=state.purpose==='cloud-account';
@@ -1439,6 +1446,7 @@ async function browserCloudLoginAction(environment: CloudEnvironment, signal: Ab
   await verifyService(cloud, signal);
   if (!active) save({ kind: 'none' });
   if(accountOnly)update({message:login.previousSignIn==='unconfirmed'?'Signed in to Eliza Cloud. Eliza Cloud did not confirm revoking the previous sign-in.':'Signed in to Eliza Cloud.'});else if(hosted)await hosted.inspectPersonal(signal);
+  showPostSignInSetup();
 }
 
 /** Shared controller for the chat adapter. Snapshot contains no credentials.
