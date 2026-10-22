@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {returnToApps} from './app-navigation';
 import {localDraftRow} from './inbox-draft-navigation';
 import {test,expect} from '@playwright/test';
@@ -97,3 +98,5 @@ test('Compose waits for the selected account draft read before accepting a click
  await expect(page.getByRole('textbox',{name:'Message',exact:true})).toHaveValue('');
  expect(await page.evaluate(()=>Object.values((window as any).draftAdmission.slots).map((draft:any)=>draft.body))).toEqual(['Account a local draft']);
 });
+
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

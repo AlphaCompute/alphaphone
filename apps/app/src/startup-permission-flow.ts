@@ -1,3 +1,9 @@
+export const startupPermissionKeys = ['notifications', 'microphone', 'camera', 'location'] as const;
+export const nativeStartupPermissionKeys = [...startupPermissionKeys, 'calendar', 'photos'] as const;
+export type StartupPermissionKey = typeof startupPermissionKeys[number];
+export type NativeStartupPermissionKey = typeof nativeStartupPermissionKeys[number];
+export type StartupPermissionBridge = {status(): Promise<{granted:boolean;enabled:boolean;requestable?:boolean;denied?:boolean}>;request():Promise<unknown>;openSettings():Promise<unknown>};
+
 export type StartupPermissionState = 'checking' | 'request' | 'settings' | 'ready' | 'unavailable';
 
 /** A selected-photo grant is useful access, never described as the whole library. */
@@ -54,7 +60,7 @@ export function reopenStartupPermissions(store: Store | null = defaultStore()) {
 /** Requests occur only from an explicit tap; a denial never schedules another prompt, including
  * after a restart when `key` names the persisted attempt. */
 export function createStartupPermissionFlow(bridge: {
-  status(): Promise<{granted: boolean; enabled: boolean; denied?: boolean}>;
+  status(): Promise<{granted: boolean; enabled: boolean; denied?: boolean; requestable?:boolean}>;
   request(): Promise<unknown>;
   openSettings(): Promise<unknown>;
 }, options: {key?: string; store?: Store | null} = {}) {
@@ -67,9 +73,9 @@ export function createStartupPermissionFlow(bridge: {
     try {
       const access = await bridge.status();
       if (current !== generation) return null;
-      if (typeof access.granted !== 'boolean' || typeof access.enabled !== 'boolean') throw Error('Unavailable');
+      if (typeof access.granted !== 'boolean' || typeof access.enabled !== 'boolean' || access.requestable !== undefined && typeof access.requestable !== 'boolean') throw Error('Unavailable');
       state = access.granted && access.enabled ? 'ready'
-        : attempted || access.granted || access.denied ? 'settings' : 'request';
+        : attempted || access.granted || access.denied || access.requestable === false ? 'settings' : 'request';
     } catch {
       if (current !== generation) return null;
       state = 'unavailable';

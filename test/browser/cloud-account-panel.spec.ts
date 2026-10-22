@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect,type Page} from '@playwright/test';
 async function openInbox(page:Page){await page.getByRole('button',{name:'Inbox',exact:true}).click();await page.getByRole('button',{name:'Connect Eliza Cloud',exact:true}).click();}
 async function fixture(page:Page){
@@ -40,9 +41,11 @@ test('opening and closing account settings preserves connected agent, exact hist
 });
 test('account-only sign-in verifies actual email and skips hosted agent discovery or provisioning',async({page},info)=>{
  await fixture(page);await retainedAgent(page);await openInbox(page);const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await account.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
- const setup=page.locator('dialog.alpha-startup-permissions');await expect(setup).toBeVisible();await setup.getByRole('button',{name:'Not now',exact:true}).click();await expect(setup.getByRole('heading',{name:'You’re all set',exact:true})).toBeVisible();await setup.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(setup).toHaveCount(0);
+ const setup=page.locator('dialog.alpha-startup-permissions');await expect(setup).toBeVisible();await expect(setup.getByRole('heading',{name:'You’re all set',exact:true})).toBeVisible();await setup.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(setup).toHaveCount(0);
  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Accounts',exact:true}).click();await page.getByRole('button',{name:'Manage Cloud account',exact:true}).click();await expect(account.getByText('verified-owner@example.invalid',{exact:true})).toBeVisible();await expect(account.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true})).toBeVisible();await expect(account.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toHaveCount(0);const result=await page.evaluate(async()=>{const c=(await import('/src/runtime/connection-ui.tsx')).connectionController;return {paths:(window as any).accountPanelFixture.paths,before:(window as any).accountPanelBaseline,after:{session:c.getSnapshot().session,history:c.getSnapshot().history,selection:localStorage.getItem('alpha.connection.selection.v1')},account:c.getSnapshot().cloudAccount};});expect(result.after).toEqual(result.before);expect(result.account?.email).toBe('verified-owner@example.invalid');expect(result.paths).not.toContain('/api/v1/eliza/personal');expect(result.paths.some((p:string)=>p.includes('upgrade-tier')||p.includes('/agents'))).toBe(false);await page.screenshot({path:'test-results/cloud-account-panel/cloud-account-connected.png',animations:'disabled'});
 });
 test('Settings Manage Cloud account opens the same focused panel and restores keyboard focus',async({page})=>{
  await fixture(page);await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Accounts',exact:true}).click();const entry=page.getByRole('button',{name:'Manage Cloud account',exact:true});await entry.focus();await entry.press('Enter');const account=page.getByRole('dialog',{name:'Eliza Cloud',exact:true});await expect(account).toBeVisible();await page.keyboard.press('Escape');await expect(account).toHaveCount(0);await expect(entry).toBeFocused();expect(await page.evaluate(()=>(window as any).accountPanelFixture.paths)).toEqual([]);
 });
+
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

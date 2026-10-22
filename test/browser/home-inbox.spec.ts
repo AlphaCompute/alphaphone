@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect,type Page} from '@playwright/test';
 import {returnToApps} from './app-navigation';
 
@@ -95,3 +96,6 @@ for(const scenario of ['recent','expired','owner-change-during-restore'] as cons
  await returnToApps(page);
  expect(await page.evaluate(()=>(window as any).homeInboxFixture.reads)).toBe(0);
 });
+
+// This Inbox fixture owns an existing installation, not fresh permission prompts.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

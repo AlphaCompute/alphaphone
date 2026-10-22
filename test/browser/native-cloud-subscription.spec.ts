@@ -1,4 +1,6 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect,type Page} from '@playwright/test';
+import {completeAccessSetup} from './flag-off-android';
 import {createServer,type ViteDevServer} from 'vite';
 import {resolve} from 'node:path';
 import {webcrypto} from 'node:crypto';
@@ -140,7 +142,7 @@ async function needsPlan(page:Page){
  await expect(notice.getByRole('button',{name:'Choose a plan',exact:true})).toBeVisible();
  // A fresh phone's startup access panel (a modal) is declined first; the notice stays beside the agent.
  const startup=page.locator('dialog.alpha-startup-permissions');
- if(await startup.isVisible().catch(()=>false)){await startup.getByRole('button',{name:'Not now',exact:true}).click();await expect(page.getByRole('dialog',{name:'You’re all set',exact:true})).toBeVisible();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();await expect(startup).toHaveCount(0);}
+ if(await startup.isVisible().catch(()=>false))await completeAccessSetup(page);
  await notice.getByRole('button',{name:'Redeem code',exact:true}).click();
  const panel=page.getByRole('dialog',{name:'Eliza Cloud account & plan',exact:true});await expect(panel).toBeVisible();return panel;
 }
@@ -567,3 +569,6 @@ test('failed native provider binding reports AI off and exposes the error before
  expect(await configured(page)).toBe(1);
  expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentInference)).toBe('unavailable');
 });
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

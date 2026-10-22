@@ -12,7 +12,7 @@
 // Evidence boundary: source/test evidence for the flag-off renderer only. The bridge stub is not
 // the native plugins, the browser hand-off, Eliza Cloud, the resident runtime or a device.
 import { test, expect, type Page } from '@playwright/test';
-import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, openYourAgent, completeOptionalAccessSetup } from './flag-off-android';
+import { flagOffAndroid, harness, button, fenceNetwork, expectNoDevelopmentSurface, openYourAgent } from './flag-off-android';
 import { residentStub, stub, setStub, type StubAccount } from './resident-stub';
 
 test.beforeEach(({}, testInfo) => { test.skip(testInfo.project.name !== 'production', 'Production bundle only'); });
@@ -24,8 +24,33 @@ const starts = (page: Page) => stub(page, s => s.order.filter((entry: string) =>
 
 async function firstRun(page: Page, overrides: Partial<StubAccount> = {}) {
   const foreign = await fenceNetwork(page);
-  await flagOffAndroid(page);
+  await flagOffAndroid(page,{freshAccess:true});
   await residentStub(page, { emptyKeystore: true, accounts: [{ ...account, ...overrides }] });
+  // Only this fresh-install fixture owns permission prompts. Each explicit Allow changes the
+  // synthetic native status; the product must read it back before advancing. No UI completion seed.
+  await page.addInitScript(() => {
+    const w=window as any, previous=w.Capacitor.nativePromise;
+    const state:Record<string,boolean>={notifications:false,microphone:false,camera:false,location:false,calendar:false,photos:false};
+    w.firstRunAccess={requests:[] as string[]};
+    const ports:Record<string,string[]>={DailyApps:['checkPermissions','requestPermissions'],AlphaVoiceCloud:['checkPermissions','requestPermissions'],ElizaLocation:['checkPermissions','requestPermissions'],AlphaCalendar:['checkPermissions','requestAccess'],AlphaPhotoLibrary:['scope','requestAccess']};
+    for(const [name,methods] of Object.entries(ports)) {
+      let header=w.Capacitor.PluginHeaders.find((row:any)=>row.name===name);
+      if(!header)w.Capacitor.PluginHeaders.push(header={name,methods:[]});
+      for(const method of methods)if(!header.methods.some((row:any)=>row.name===method))header.methods.push({name:method,rtype:'promise'});
+    }
+    w.Capacitor.nativePromise=async(plugin:string,method:string,input:any)=>{
+      const key=plugin==='AlphaNotifications'?'notifications':plugin==='AlphaVoiceCloud'?'microphone':plugin==='DailyApps'?'camera':plugin==='ElizaLocation'?'location':plugin==='AlphaCalendar'?'calendar':plugin==='AlphaPhotoLibrary'?'photos':null;
+      if(key && (method==='requestPermissions'||method==='requestAccess')){
+        const requested=plugin==='DailyApps'?input.permissions[0]:key;
+        if(!(requested in state))throw Error('Unexpected startup permission');
+        w.firstRunAccess.requests.push(requested);state[requested]=true;return {};
+      }
+      if(plugin==='AlphaNotifications'&&method==='status')return {permissionGranted:state.notifications,appEnabled:state.notifications};
+      if(plugin==='AlphaPhotoLibrary'&&method==='scope')return {scope:state.photos?'selected':'denied',locked:false};
+      if(key&&method==='checkPermissions')return key==='location'?{location:state.location?'granted':'prompt',accuracy:state.location?'approximate':'none'}:{[key]:state[key]?'granted':'prompt'};
+      return previous(plugin,method,input);
+    };
+  });
   await page.goto('/');
   await setStub(page, { nextToken: account.token });
   // P-43: the resident starts by itself, signed out. Every Alpha Phone needs an Eliza Cloud account,
@@ -65,16 +90,18 @@ test('first run: Cloud sign-in in the browser, credits, provider binding, then t
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   await expect(welcome.getByText(WAITING, { exact: true })).toBeVisible();
   await expect(welcome).toHaveCount(0, { timeout: 30_000 });
-  // Successful sign-in leads to the real optional access review, not directly past onboarding.
-  const access = page.getByRole('dialog', {name: 'Set up Alpha access', exact: true});
+  // Fresh sign-in owns the original required sequence, with no Skip or automatic requests.
+  const access=page.locator('dialog.alpha-startup-permissions');
   await expect(access).toBeVisible();
-  await expect(access.getByText('Choose access for the features you want. You can do this later in Settings.', {exact: true})).toBeVisible();
-  for (const name of ['Notifications', 'Microphone', 'Camera', 'Location for Maps', 'On-phone Calendar', 'Photos and videos'])
-    await expect(access.getByRole('heading', {name, exact: true})).toBeVisible();
-  const accessRequests = () => harness(page, f => f.calls.filter((call: string) => /\.(requestPermissions|requestAccess)$/.test(call)));
-  expect(await accessRequests()).toEqual([]);
-  await completeOptionalAccessSetup(page);
-  expect(await accessRequests()).toEqual([]);
+  expect(await page.evaluate(()=>(window as any).firstRunAccess.requests)).toEqual([]);
+  for(const name of ['Stay in the loop.','Talk to Alpha.','Capture a moment.','Find your way.','Plan your day.','Your photos, here.']) {
+    await expect(access.getByRole('heading',{name,exact:true})).toBeVisible();
+    await expect(access.getByRole('button',{name:/Skip|Not now|Back/})).toHaveCount(0);
+    await access.getByRole('button',{name:'Allow',exact:true}).click();
+  }
+  await expect(access.getByRole('heading',{name:'You’re all set',exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>(window as any).firstRunAccess.requests)).toEqual(['notifications','microphone','camera','location','calendar','photos']);
+  await access.getByRole('button',{name:'Go to Alpha',exact:true}).click();
   await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 });
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await expect(button(page, 'Notes')).toBeVisible();
@@ -165,7 +192,7 @@ test('first run: recovered provider restart clears its stale startup error', asy
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
   // Successful sign-in now continues into access setup; the recovered start must leave no error anywhere.
   await expect(welcome).toHaveCount(0, { timeout: 30_000 });
-  await expect(page.getByRole('dialog', { name: 'Set up Alpha access', exact: true })).toBeVisible();
+  await expect(page.locator('dialog.alpha-startup-permissions')).toBeVisible();
   await expect.poll(() => starts(page)).toBe(3);
   await expect(page.getByText('Local agent failed to start.', { exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] != null)).toBe(true);

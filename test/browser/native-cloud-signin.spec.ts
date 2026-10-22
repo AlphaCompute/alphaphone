@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect,type Page} from '@playwright/test';
 import {createServer,type ViteDevServer} from 'vite';
 import {resolve} from 'node:path';
@@ -299,3 +300,5 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
   await noHandOff(page);
  });
 });
+
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

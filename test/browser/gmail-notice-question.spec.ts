@@ -1,3 +1,4 @@
+import {seedCompletedAccessSetup} from './flag-off-android';
 import {test,expect} from '@playwright/test';
 for(const mode of ['compose','cancel','source-changed','owner-changed'] as const)test('Gmail Ask explicit source review '+mode,async({page},testInfo)=>{
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -96,12 +97,7 @@ for(const mode of ['compose','cancel','source-changed','owner-changed'] as const
    }};
   },'ready');
  await page.goto('/');await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/Agent connection/}).click();await page.getByRole('button',{name:'Start local agent',exact:true}).click();await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0);
- // Finish optional access setup before a Gmail notice opens its separate review.
- await page.getByRole('button',{name:'Set up Alpha access',exact:true}).click();
- const access=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
- await expect(access).toBeVisible();
- await access.getByRole('button',{name:'Not now',exact:true}).click();await page.getByRole('button',{name:'Go to Alpha',exact:true}).click();
- await expect(access).toBeHidden();
+ // Completed-installation UI progress keeps this fixture focused on the Gmail notice review.
  await page.evaluate(async()=>{
   const c=(await import('/src/runtime/connection-ui.tsx')).connectionController,f=(window as any).deliveryFixture,snapshot=c.getSnapshot.bind(c);f.reads=0;
   const client={gmailAccounts:async()=>[{connectionId:'grant',connected:true,label:'Owned mailbox',grantedCapabilities:['google.gmail.triage']}],gmailRead:async()=>{f.reads++;return {message:{id:'mail',threadId:'thread',subject:'Public subject',snippet:f.changed?'Changed snippet':'Public snippet'},bodyText:'PRIVATE BODY NEVER SHARED',historyId:f.changed?'11':'10',attachments:[]};}};
@@ -124,3 +120,5 @@ for(const mode of ['compose','cancel','source-changed','owner-changed'] as const
  }
  expect(errors).toEqual([]);
 });
+
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));

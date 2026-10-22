@@ -1,4 +1,5 @@
-import {completeOptionalAccessSetup} from './flag-off-android';
+import {seedCompletedAccessSetup} from './flag-off-android';
+import {completeAccessSetup} from './flag-off-android';
 import { test, expect, type Page } from '@playwright/test';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -371,7 +372,7 @@ for (const mode of ['signed-out','empty','credits','unavailable','funded','repla
   const agentCalls=async()=>((await page.evaluate(()=>(window as any).residentCalls)) as any[]).filter(c=>c.plugin==='Agent').map(c=>c.method);
   if(mode!=='unpackaged')await expect.poll(agentCalls).toContain('start');
   // Signed-in first use offers optional access; complete its real skip before the account checks.
-  if(mode==='empty'||mode==='unavailable'||mode==='credits'||mode==='funded'||mode==='replaced')await completeOptionalAccessSetup(page);
+  if(mode==='empty'||mode==='unavailable'||mode==='credits'||mode==='funded'||mode==='replaced')await completeAccessSetup(page);
   for(const retired of ['without AI','Continue offline','Connect an agent'])expect(await page.locator('body').innerText()).not.toContain(retired);
   // Every Alpha Phone needs an Eliza Cloud account for AI: signed out, the sign-in dialog opens
   // by itself and cannot be dismissed. Without an admissible plan a non-blocking notice beside the
@@ -470,3 +471,6 @@ test('resident always present (P-43): a kept local-apps choice and a saved sign-
  expect(calls.filter((c:any)=>c.plugin==='Agent').map((c:any)=>c.method)).not.toContain('configureCloudProvider');
 });
 
+
+// UI progress only: this feature fixture does not manufacture OS/provider grants.
+test.beforeEach(async({page})=>seedCompletedAccessSetup(page));
