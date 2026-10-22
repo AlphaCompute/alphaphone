@@ -8,7 +8,7 @@ const require=createRequire(path.join(process.env.ALPHA_BROWSER_MODULES,'__inbox
 const {chromium}=require('playwright'),browser=await chromium.launch({headless:true});
 const slots=new Map();let writes=0;
 try{
- const page=await browser.newPage({viewport:{width:412,height:915},reducedMotion:'reduce'});page.setDefaultTimeout(10000);await page.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));
+ const page=await browser.newPage({viewport:{width:412,height:915},reducedMotion:'reduce'});page.setDefaultTimeout(10000);await page.addInitScript(()=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));});
  await page.exposeFunction('fixtureRead',slot=>slots.get(slot)||null);
  await page.exposeFunction('fixtureCAS',(slot,expected,value)=>{writes++;if(JSON.stringify(slots.get(slot)||null)!==JSON.stringify(expected))return {status:'conflict'};if(value===null)slots.delete(slot);else slots.set(slot,value);return {status:'saved'};});
  async function setup(){await page.goto(url);await page.evaluate(async()=>{
