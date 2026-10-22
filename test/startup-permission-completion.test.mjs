@@ -22,7 +22,7 @@ const config={parentURL:import.meta.url,tsconfig:new URL('../tsconfig.json',impo
 const {StartupPermissions}=await tsImport(process.env.STARTUP_SOURCE||new URL('../apps/app/src/startup-permissions.tsx',import.meta.url).href,config);
 const {reopenStartupPermissions,STARTUP_PERMISSIONS_KEY}=await tsImport(process.env.STARTUP_FLOW_SOURCE||new URL('../apps/app/src/startup-permission-flow.ts',import.meta.url).href,config);
 hooks.deregister();
-async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,platform='android',dismissed=false}={}){
+async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,platform='android',dismissed=false,active=true}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'https://permission-qa.invalid',pretendToBeVisual:true});const old={};
  for(const key of ['window','document','localStorage','Event','dispatchEvent','IS_REACT_ACT_ENVIRONMENT','__alphaStartupPermissionPorts','__alphaStartupPlatform','navigator','Notification'])old[key]=Object.getOwnPropertyDescriptor(globalThis,key);
  const values={window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage,Event:dom.window.Event,dispatchEvent:event=>dom.window.dispatchEvent(event),IS_REACT_ACT_ENVIRONMENT:true};
@@ -42,7 +42,7 @@ async function fixture(t,{notifications=false,microphone=false,holdMicrophone=fa
  };
  const{createRoot}=await import('react-dom/client');const root=createRoot(dom.window.document.getElementById('root'));
  t.after(async()=>{await React.act(async()=>root.unmount());dom.window.close();for(const[key,descriptor]of Object.entries(old)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
- await React.act(async()=>root.render(React.createElement(StartupPermissions)));
+ await React.act(async()=>root.render(React.createElement(StartupPermissions,{active})));
  const button=name=>{const found=[...dom.window.document.querySelectorAll('button')].find(x=>x.textContent===name||x.getAttribute('aria-label')===name);assert(found,`Missing ${name}`);return found;};
  return {document:dom.window.document,state,requests,button,memory:()=>JSON.parse(dom.window.localStorage.getItem(STARTUP_PERMISSIONS_KEY)||'null'),click:async name=>React.act(async()=>button(name).click()),release:async()=>React.act(async()=>release()),resume:async()=>React.act(async()=>resume()),reopen:async()=>React.act(async()=>reopenStartupPermissions())};
 }
@@ -68,3 +68,5 @@ test('browser setup reads access without capturing and stops its explicit consen
 test('completed browser setup stays dismissed until Settings explicitly reopens it',async t=>{
  const f=await fixture(t,{platform:'web',dismissed:true});assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.requests.length,0);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');await f.click('Not now');let homes=0;f.document.defaultView.addEventListener('launcher-home',()=>homes++);await f.click('Go to Alpha');assert.equal(homes,0);assert.equal(f.requests.length,0);
 });
+
+test('Settings can explicitly reopen browser access while signed out without requesting permissions',async t=>{const f=await fixture(t,{platform:'web',active:false});assert.equal(f.document.querySelector('dialog'),null);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');assert.equal(f.requests.length,0);});

@@ -95,7 +95,7 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
   const cloudIdentity = JSON.stringify([cloud?.sessionId, cloud?.credentialId]);
   const allReady = activeKeys.every(key => states[key] === 'ready') && googleStatus.state === 'checked' && googleStatus.gmail && googleStatus.calendar;
   const complete = finishing || (!reopened && allReady);
-  const visible = active && !dismissed && !googleOpen && !connection.open && (reopened || !!connection.cloudAccount) && activeKeys.some(key => states[key] !== 'checking');
+  const visible = (active || reopened) && !dismissed && !googleOpen && !connection.open && (reopened || !!connection.cloudAccount) && activeKeys.some(key => states[key] !== 'checking');
   const setDismissed = (value: boolean) => { writeStartupPermissionMemory({dismissed: value}); setDismissedState(value); if (value) setReopened(false); };
   useEffect(() => {
     const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setFinishing(false); setReopened(true); };
