@@ -1,6 +1,7 @@
 import {anyAbortSignal} from '../runtime/abort-signal';
 import {googleAuthorizationUrlAllowed} from '../runtime/google-authorization';
 import {WebPlugin} from '@capacitor/core';
+import type {CloudCredential,CloudEnvironment} from '../runtime/cloud-protocol';
 
 const endpoint='/__alpha-browser-cloud';
 const references=new Map<string,string|null>();
@@ -35,6 +36,12 @@ export class BrowserCloudConnection extends WebPlugin {
   if(url.protocol!=='https:'||url.username||url.password||url.hash||url.port||!login&&!billing&&!googleAuthorizationUrlAllowed(url.href))throw Error('Unsupported Cloud browser destination');
   const opened=window.open(url.href,'_blank');if(!opened)throw Error('Allow the Cloud sign-in window, then try again.');opened.opener=null;
  }
+}
+/** Private browser-host credential cleanup. Never routes through the native secure-store plugin. */
+export async function clearBrowserCloudCredentialIfCurrent(environment:CloudEnvironment,expected:CloudCredential|null){
+ if(environment!=='production'&&environment!=='staging')throw Error('Unsupported Cloud environment');
+ if(expected!==null&&(!expected.credentialReference||expected.token))throw Error('A browser Cloud reference is required');
+ await new BrowserCloudConnection().secureCompareExchange({slot:'cloud:'+environment,expectedValue:expected===null?null:JSON.stringify(expected),value:null});
 }
 /** Binds native-compatible voice calls to the current host reference and account generation. */
 export async function browserCloudCredential(environment:string,credentialId:string,signal:AbortSignal){

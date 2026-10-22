@@ -1,7 +1,7 @@
 import {browserCloudResidentEnabled,browserCloudManagedServiceAllowed} from './browser-cloud-resident';
 import {managedServiceRequest} from './managed-service-routes';
 import {automationsRouteAllowed} from './automations-route-policy';
-import {BrowserCloudConnection,BrowserCloudSignIn} from '../browser/cloud-connection';
+import {BrowserCloudConnection,BrowserCloudSignIn,clearBrowserCloudCredentialIfCurrent} from '../browser/cloud-connection';
 import {Capacitor} from '@capacitor/core';
 import {devSurfacesEnabled,testMocksEnabled} from '../build-flags';
 import { registerPlugin } from '../platform-plugins';
@@ -207,7 +207,7 @@ export const cloudCredentialStore:CloudCredentialStore={
     if(signal.aborted){await secureConnectionStore.remove(`cloud:${environment}`);signal.throwIfAborted();}
   }),
   // Native credential CAS remains prohibited; only the private browser host admits this capability.
-  ...(browserCloudHost?{clearIfCurrent:(environment:CloudEnvironment,expected:CloudCredential|null)=>serial(async()=>{await secureConnectionStore.compareExchange(`cloud:${environment}`,expected,null);})}:{}),
+  ...(browserCloudHost?{clearIfCurrent:(environment:CloudEnvironment,expected:CloudCredential|null)=>serial(()=>clearBrowserCloudCredentialIfCurrent(environment,expected))}:{}),
   clear:environment=>serial(()=>secureConnectionStore.remove(`cloud:${environment}`)),
 };
 /**
