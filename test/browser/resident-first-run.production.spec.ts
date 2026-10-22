@@ -163,10 +163,11 @@ test('first run: recovered provider restart clears its stale startup error', asy
   const { foreign, welcome } = await firstRun(page);
   await setStub(page, { start: 'reject-once' });
   await welcome.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true }).click();
-  await expect(welcome.getByText('Running on this device', { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(welcome.getByText('Your agent uses Eliza Cloud for AI.', { exact: true })).toBeVisible();
-  await expect(welcome.getByText('Local agent failed to start.', { exact: true })).toHaveCount(0);
+  // Successful sign-in now continues into access setup; the recovered start must leave no error anywhere.
+  await expect(welcome).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByRole('dialog', { name: 'Set up Alpha access', exact: true })).toBeVisible();
   await expect.poll(() => starts(page)).toBe(3);
+  await expect(page.getByText('Local agent failed to start.', { exact: true })).toHaveCount(0);
   expect(await harness(page, f => f.slots['cloud:production'] != null)).toBe(true);
   expect(foreign).toEqual([]);
 });
