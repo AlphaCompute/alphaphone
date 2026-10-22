@@ -35,9 +35,7 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   expect(calls.filter(p=>p.startsWith('/api/auth/cli-session'))).toEqual([]);
   const setup=page.locator('dialog.alpha-startup-permissions');
   await expect(setup).toBeVisible();
-  await setup.getByRole('button',{name:'Not now',exact:true}).click();
-  await expect(setup.getByRole('heading',{name:'You’re all set',exact:true})).toBeVisible();
-  await setup.getByRole('button',{name:'Go to Alpha',exact:true}).click();
+  await completeOptionalAccessSetup(page);
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
   expect(await page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().open)).toBe(false);

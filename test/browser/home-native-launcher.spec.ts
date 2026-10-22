@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import {completeOptionalAccessSetup} from './flag-off-android';
 // Development lane with a native-plugin stub: the page sees an Android Capacitor bridge whose
 // DeviceApps, AlphaNotifications and AlphaVoiceCloud answers come from this file. No Android
 // device, package manager or permission prompt is involved; LauncherHomeInstrumentedTest covers
@@ -125,14 +126,13 @@ test('startup permission "Not now" survives a cold start, and a denied prompt is
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
   await expect(panel).toBeVisible();
+  await panel.getByRole('button',{name:'Continue',exact:true}).click();
   await panel.getByRole('button', { name: 'Enable notifications', exact: true }).click();
   await expect.poll(() => calls(page, 'DailyApps', 'requestPermissions')).toEqual([{ permissions: ['notifications'] }]);
   // Still denied: the next step is Android settings, never a second prompt.
   await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
-  await panel.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'You’re all set', exact: true })).toBeVisible();
   expect((await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).dismissed).toBe(false);
-  await page.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
+  await completeOptionalAccessSetup(page);
   await expect(panel).toHaveCount(0);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).toEqual({ dismissed: true, attempted: { notifications: true } });
 
@@ -148,6 +148,7 @@ test('startup permission "Not now" survives a cold start, and a denied prompt is
   await page.getByRole('button', { name: 'Set up Alpha access', exact: true }).click();
   await expect(panel).toBeVisible();
   expect((await page.evaluate(() => JSON.parse(localStorage.getItem('alpha.startup-permissions.v1') || 'null'))).dismissed).toBe(false);
+  await panel.getByRole('button',{name:'Continue',exact:true}).click();
   await expect(panel.getByRole('button', { name: 'Manage notifications in Android', exact: true })).toBeVisible();
   expect(await calls(page, 'DailyApps', 'requestPermissions')).toEqual([]);
 });

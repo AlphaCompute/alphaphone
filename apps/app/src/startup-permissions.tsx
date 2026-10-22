@@ -26,13 +26,16 @@ const calendar = registerPlugin<{checkPermissions(): Promise<{calendar: string}>
 const keys = ['microphone', 'notifications', 'camera', 'photos', 'location', 'calendar'] as const;
 type PermissionKey = typeof keys[number];
 const details = {
-  notifications: {title: 'Notifications', description: 'Get reminders, scheduled briefs and approval requests when Alpha is in the background.'},
-  microphone: {title: 'Microphone', description: 'Talk to Alpha when you choose voice input. Allowing access does not start recording.'},
-  camera: {title: 'Camera', description: 'Take photos and scan documents in Alpha. Allowing access does not open the camera.'},
-  location: {title: 'Location for Maps', description: 'Choose approximate or precise access in Android. Allowing access does not fetch your location.'},
-  calendar: {title: 'On-phone Calendar', description: 'Allow viewing and saving events in Android calendar accounts. This is separate from connecting Google Calendar through Cloud; granting access does not read or change events.'},
-  photos: {title: 'Photos and videos', description: 'Choose selected items or your library in Android. Access stays on this phone; sharing is a separate action.'},
+  microphone: {title: 'Talk to Alpha', description: 'Ask questions and get replies with your voice.', icon: 'mic'},
+  notifications: {title: 'Stay in the loop', description: 'Get reminders and updates, even when Alpha is in the background.', icon: 'bell'},
+  camera: {title: 'Capture a moment', description: 'Take photos and scan documents with Alpha.', icon: 'camera'},
+  photos: {title: 'Your photos, here', description: 'Choose the photos and videos you want to use in Alpha.', icon: 'images'},
+  location: {title: 'Find your way', description: 'Use your location for nearby places and directions.', icon: 'map-pin'},
+  calendar: {title: 'Make time for it', description: 'View and save events in this phone’s calendars.', icon: 'calendar-days'},
+  google: {title: 'Bring your day together', description: 'Connect Gmail and Google Calendar with your Google account.', icon: 'mail'},
+  files: {title: 'Keep your files handy', description: 'Choose a file or folder whenever you need it. You stay in control.', icon: 'folder'},
 };
+type SetupStep = PermissionKey | 'google' | 'files';
 function runtimeAccess(value: string) {
   if (!['granted', 'denied', 'prompt', 'prompt-with-rationale'].includes(value)) throw Error('Access unavailable');
   return {granted: value === 'granted', enabled: value === 'granted'};
@@ -45,6 +48,10 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
   const activeKeys: readonly PermissionKey[] = native ? keys : ['microphone', 'notifications'];
   const [browser] = useState(() => browserStartupPermissions());
   const [finishing, setFinishing] = useState(false);
+  const [stepIndex, setStepIndex] = useState(0);
+  const steps: readonly SetupStep[] = [...activeKeys, 'google', 'files'];
+  const step = steps[stepIndex];
+  const detail = details[step];
   const connection = useSyncExternalStore(connectionController.subscribe, connectionController.getSnapshot);
   const googleOpen = useSyncExternalStore(googleConnectionController.subscribe, googleConnectionController.getSnapshot);
   const photoDescription = useRef('');
@@ -101,10 +108,10 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
     if (!connection.setupRevision) return;
     // Review current access after an explicit sign-in while retaining completed/attempted memory.
     // This component stays mounted while account dialogs open, so a normal close never replays it.
-    setDismissedState(false); setReopened(false); setFinishing(false);
+    setDismissedState(false); setReopened(false); setFinishing(false); setStepIndex(0);
   }, [connection.setupRevision]);
   useEffect(() => {
-    const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setFinishing(false); setReopened(true); };
+    const reopen = () => { setDismissedState(readStartupPermissionMemory().dismissed); setFinishing(false); setStepIndex(0); setReopened(true); };
     window.addEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
     return () => window.removeEventListener(STARTUP_PERMISSIONS_REOPEN, reopen);
   }, []);
@@ -145,62 +152,78 @@ export function StartupPermissions({active = true}: {active?: boolean} = {}) {
     if (native) void permissions.addListener('appResumed', resume).then(handle => { if (disposed) void handle.remove(); else listener = handle; }).catch(() => {});
     return () => { disposed = true; request?.abort(); void listener?.remove(); window.removeEventListener(GOOGLE_ACCOUNTS_CHANGED, refresh); window.removeEventListener(GMAIL_ACCOUNTS_CHANGED, refresh); document.removeEventListener('visibilitychange', resume); };
   }, [cloudIdentity, cloud?.client, native, active, dismissed, reopened, googleOpen]);
+  const advance = () => { if (actionPending.current) return; if (stepIndex === steps.length - 1) setFinishing(true); else setStepIndex(value => value + 1); };
+  const previous = () => { if (actionPending.current) return; if (finishing) setFinishing(false); else setStepIndex(value => Math.max(0, value - 1)); };
   useEffect(() => {
     const panel = dialog.current;
     if (visible && panel && !panel.open) {
       const phone = document.querySelector('.os');
       if (phone) { const theme = getComputedStyle(phone); for (const token of ['bg', 'fg', 's2', 'line', 'mut', 'acc']) panel.style.setProperty(`--connection-${token}`, theme.getPropertyValue(token === 'acc' ? '--acct' : `--${token}`)); }
       panel.showModal();
-      // A granted checklist may start with its first button far below the introduction.
-      // Focus the heading instead, so reopening starts at the top without changing access.
+      // Each step owns focus without scrolling to its footer or requesting access.
       heading.current?.focus({preventScroll: true});
       panel.scrollTop = 0;
     }
-    const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); if (!actionPending.current) setFinishing(true); };
+    const back = (event: Event) => { event.preventDefault(); event.stopImmediatePropagation(); if (!actionPending.current) { if (stepIndex > 0 || finishing) previous(); else advance(); } };
     if (visible) window.addEventListener('alpha-back', back, true);
     return () => { if (panel?.open) panel.close(); window.removeEventListener('alpha-back', back, true); };
-  }, [visible, complete, reopened]);
+  }, [visible, complete, reopened, stepIndex]);
   async function enable(key: PermissionKey, manage = false) {
     if (actionPending.current) return;
     actionPending.current = true; setBusy(key);
     try {
       if (manage) await device.openSettings({page: 'privacy'});
       const value = manage || states[key] === 'unavailable' ? await flows[key].refresh() : await flows[key].enable();
-      if (alive.current && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); }
+      if (alive.current && value !== null) { setStates(previous => ({...previous, [key]: value})); if (key === 'photos') setPhotoStatus(photoDescription.current); if (key === 'location') setLocationStatus(locationDescription.current); if (value === 'ready' && !manage) setStepIndex(index => Math.min(index + 1, steps.length - 1)); }
     } catch { if (alive.current) setStates(previous => ({...previous, [key]: 'unavailable'})); }
     finally { actionPending.current = false; if (alive.current) setBusy(null); }
   }
   if (!visible) return null;
-  const googleText = (connected: boolean) => googleStatus.state === 'checking' ? 'Checking connection…' : googleStatus.state === 'unavailable' ? 'Connection could not be verified. Check Google accounts.' : connected ? 'Connected with read access' : 'Not connected';
-  return <dialog ref={dialog} className="alpha-startup-permissions" aria-labelledby="alpha-permission-title" aria-describedby="alpha-permission-description" onCancel={event => { event.preventDefault(); if (!actionPending.current) setFinishing(true); }}>
-    <div className="alpha-startup-content"><span className="alpha-compute-mark" role="img" aria-label="Alpha Phone"/>
-    {connection.residentInference && connection.residentInference !== 'cloud' && <p role="status">{connection.residentPlanNotice === 'needs-plan' ? 'AI needs an active Cloud plan. You can finish phone setup and manage your plan in Settings.' : 'Signed in. AI is not ready yet. You can finish phone setup and check your connection in Settings.'}</p>}
-    {connection.error && <p role="alert">{connection.error}</p>}
-    {connection.message?.includes('did not confirm revoking') && <p role="status">{connection.message}</p>}
-    {connection.accountCreated && <p role="status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email ? ` (${connection.cloudAccount.email})` : ''}.</p>}
-    {complete ? <>
-      <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">You’re all set</h2>
-      <p id="alpha-permission-description">You can start using Alpha and manage skipped permissions and Google connections in Settings.</p>
-      <div className="alpha-startup-permission-actions"><button type="button" onClick={() => { setDismissed(true); if (!reopened) window.dispatchEvent(new Event('launcher-home')); }}>Go to Alpha</button></div>
-    </> : <>
-    <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">Set up Alpha access</h2>
-    <p id="alpha-permission-description">Choose access for the features you want. You can do this later in Settings.</p>
-    {activeKeys.map(key => <section key={key} aria-labelledby={`alpha-access-${key}`}>
-      <h3 id={`alpha-access-${key}`}>{details[key].title}</h3><p>{details[key].description}</p>
-      {states[key] === 'ready' ? <p role="status">{key === 'photos' ? photoStatus : key === 'location' ? locationStatus : 'Allowed'}</p> : states[key] === 'checking' ? <p role="status">Checking access…</p> : <>
-        {states[key] === 'settings' && <p role="status">{native ? 'Access is off. You can enable it in Android settings.' : 'Access is blocked. Open this site’s settings in your browser, allow access, then check again.'}</p>}
-        {states[key] === 'unavailable' && <p role="status">Access could not be checked. Try again, or manage it later in Settings.</p>}
-        <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} aria-label={busy === key ? 'Checking…' : states[key] === 'settings' ? (native ? `Manage ${details[key].title.toLowerCase()} in Android` : `Check ${key} again`) : states[key] === 'unavailable' ? `Check ${key} again` : `Enable ${key}`} onClick={() => void enable(key)}>{busy === key ? 'Checking…' : states[key] === 'settings' ? (native ? 'Manage' : 'Check again') : states[key] === 'unavailable' ? 'Check again' : 'Enable'}</button></div>
-      </>}
-      {(key === 'photos' || key === 'location') && states[key] === 'ready' && <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => void enable(key, true)}>{key === 'photos' ? 'Manage photo access' : 'Manage location access'}</button></div>}
-    </section>)}
-    <section aria-labelledby="alpha-access-google"><h3 id="alpha-access-google">Gmail and Google Calendar</h3>
-      <p>Connect your Google account through Eliza Cloud. Google shows the permissions before you approve. Sending email and changing Calendar events use additional optional consent in Google accounts.</p>
-      <p role="status">Gmail: {googleText(googleStatus.gmail)}<br/>Google Calendar: {googleText(googleStatus.calendar)}</p>
-      <div className="alpha-startup-permission-actions"><button type="button" disabled={busy !== null} onClick={() => googleConnectionController.open()}>Review Google connections</button></div>
-    </section>
-    <section aria-labelledby="alpha-access-files"><h3 id="alpha-access-files">Files</h3><p>{native ? 'Choose files or folders when you open Files.' : 'Choose files with your browser’s file picker when you need them.'}</p></section>
-    <div className="alpha-startup-permission-actions alpha-startup-permission-footer"><button type="button" disabled={busy !== null} onClick={() => setFinishing(true)}>{allReady ? 'Continue' : 'Not now'}</button></div>
-    </>}</div>
+  const permission = activeKeys.includes(step as PermissionKey) ? step as PermissionKey : null;
+  const status = permission ? states[permission] : null;
+  const googleReady = googleStatus.state === 'checked' && googleStatus.gmail && googleStatus.calendar;
+  const ready = status === 'ready' || step === 'files' || step === 'google' && googleReady;
+  const icon = complete ? 'check' : detail.icon;
+  const act = () => {
+    if (actionPending.current) return;
+    if (ready) { advance(); return; }
+    if (step === 'google') { googleConnectionController.open(); return; }
+    if (permission) void enable(permission);
+  };
+  const permissionName = permission === 'location' ? 'location' : permission === 'photos' ? 'photo access' : permission;
+  const actionLabel = busy ? 'Checking…' : ready ? 'Continue' : step === 'google' ? 'Connect Google' : status === 'settings' ? (native ? 'Open settings' : 'Check again') : status === 'unavailable' ? 'Try again' : 'Allow';
+  const statusText = status === 'ready' ? permission === 'photos' ? photoStatus : permission === 'location' ? locationStatus : 'Already allowed'
+    : status === 'settings' ? (native ? 'Access is off. You can change it in Android settings or continue without it.' : 'Access is blocked. Allow it in this site’s browser settings, then check again.')
+    : status === 'unavailable' ? 'Access couldn’t be checked. Try again, or choose Not now.'
+    : status === 'checking' ? 'Checking access…' : '';
+  return <dialog ref={dialog} className="alpha-startup-permissions" aria-label={complete ? 'You’re all set' : 'Set up Alpha access'} aria-describedby="alpha-permission-description" onCancel={event => { event.preventDefault(); if (!actionPending.current) { if (stepIndex > 0 || finishing) previous(); else advance(); } }}>
+    <div className="alpha-startup-layout">
+      <header className="alpha-startup-header">
+        <div>{!complete && stepIndex > 0 && <button type="button" className="alpha-startup-back" aria-label="Previous setup step" disabled={busy !== null} onClick={previous}><span aria-hidden="true" style={{maskImage:"url('/icons/lucide/chevron-left.svg')",WebkitMaskImage:"url('/icons/lucide/chevron-left.svg')"}}/></button>}</div>
+        <span className="alpha-compute-mark" role="img" aria-label="Alpha Phone"/>
+        <span className="alpha-startup-count">{!complete && `${stepIndex + 1} of ${steps.length}`}</span>
+      </header>
+      <div className="alpha-startup-stage" key={complete ? 'ready' : step}>
+        <div className="alpha-startup-symbol"><span className="alpha-startup-icon" aria-hidden="true" style={{maskImage:`url('/icons/lucide/${icon}.svg')`,WebkitMaskImage:`url('/icons/lucide/${icon}.svg')`}}/></div>
+        <h2 className="serif" ref={heading} tabIndex={-1} id="alpha-permission-title">{complete ? 'You’re all set' : detail.title}</h2>
+        <p id="alpha-permission-description">{complete ? 'Make yourself at home. You can change your choices anytime in Settings.' : detail.description}</p>
+        {!complete && statusText && <p className="alpha-startup-status" role="status">{statusText}</p>}
+        {!complete && step === 'google' && <p className="alpha-startup-status" role="status">{googleStatus.state === 'checking' ? 'Checking your connection…' : googleStatus.state === 'unavailable' ? 'Your Google connection couldn’t be checked.' : `Gmail: ${googleStatus.gmail ? 'Connected' : 'Not connected'} · Calendar: ${googleStatus.calendar ? 'Connected' : 'Not connected'}`}</p>}
+        {complete && <div className="alpha-startup-notices">
+          {connection.residentInference && connection.residentInference !== 'cloud' && <p role="status">{connection.residentPlanNotice === 'needs-plan' ? 'AI needs an active Cloud plan. Manage your plan in Settings.' : 'AI is not ready yet. Check your connection in Settings.'}</p>}
+          {connection.error && <p role="alert">{connection.error}</p>}
+          {connection.message?.includes('did not confirm revoking') && <p role="status">{connection.message}</p>}
+          {connection.accountCreated && <p role="status">This sign-in created a new Eliza Cloud account{connection.cloudAccount?.email ? ` (${connection.cloudAccount.email})` : ''}.</p>}
+        </div>}
+      </div>
+      <footer className="alpha-startup-footer">
+        {!complete && <progress className="alpha-startup-progress" value={stepIndex + 1} max={steps.length} aria-label={`Setup step ${stepIndex + 1} of ${steps.length}`}/>}
+        <div className="alpha-startup-permission-actions">
+          {complete ? <button type="button" className="alpha-startup-primary" onClick={() => { setDismissed(true); if (!reopened) window.dispatchEvent(new Event('launcher-home')); }}>Go to Alpha</button>
+            : <><button type="button" className="alpha-startup-primary" disabled={busy !== null || status === 'checking'} aria-label={permission && status !== 'ready' ? status === 'settings' ? (native ? `Manage ${permissionName} in Android` : `Check ${permission} again`) : status === 'unavailable' ? `Check ${permission} again` : `Enable ${permission}` : undefined} onClick={act}>{actionLabel}</button>
+              {step !== 'files' && <button type="button" className="alpha-startup-skip" disabled={busy !== null} onClick={advance}>Not now</button>}</>}
+        </div>
+      </footer>
+    </div>
   </dialog>;
 }

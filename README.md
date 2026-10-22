@@ -3,10 +3,16 @@
 Independent Android UI on Eliza, using the Alpha Phone prototype as its design
 reference. The current renderer includes native browser, camera,
 calendar, reminders, selected files and local notes. Phone, Contacts and SMS/MMS are
-AOSP-only capabilities; standalone APKs do not expose them. Wallet is outside MVP. Production Android onboarding requires an Eliza Cloud account with supported billing
-(Cloud credits or a subscription; codes depend on Cloud support), then offers optional device-permission and Google-connection setup. The agent runs on the phone. Eliza Cloud supplies text inference, subscriptions, Gmail
-and shared Maps services; the native default profile runs STT/TTS locally through the native speech integration.
-Local speech qualification and complete voice/device acceptance remain open. Remote pairing and hosted agents are unavailable in every production build. Explicit test-mocks tooling
+AOSP-only capabilities; standalone APKs do not expose them. Wallet is outside MVP.
+Production Android starts with Eliza Cloud sign-in, followed by optional device-permission
+and Google-connection setup, Ready, and Home. Skipped access stays available in Settings.
+Cloud inference has a separate entitlement/binding check; a signed-in account does not
+by itself prove that AI is ready, and genuine plan or connection notices remain visible
+through setup. The agent runs on the phone. Eliza Cloud supplies text inference,
+subscriptions, Gmail and shared Maps services. The native default profile stages local
+STT/TTS; browser development can explicitly select local-host or owner-bound Cloud speech.
+Each route needs its own microphone, response and playback acceptance. Complete
+voice/device acceptance remains open. Remote pairing and hosted agents are unavailable in every production build. Explicit test-mocks tooling
 retains remote connections as non-product development infrastructure. Mock mode, prototype
 fixture data, developer device controls and the local development endpoint are
 development surfaces that exist only when the build-time switch

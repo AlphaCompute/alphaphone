@@ -378,12 +378,17 @@ export async function expectNoDevelopmentSurface(page: Page) {
   await expect(button(page, 'Device controls')).toHaveCount(0);
   await expect(page.getByText(/Development (connections|device actions|reply|provider|inbox)/)).toHaveCount(0);
 }
-/** Complete the real optional post-sign-in checklist without granting device access. */
+/** Walk each real optional access step without fabricating a grant. */
 export async function completeOptionalAccessSetup(page: Page) {
   const setup = page.getByRole('dialog', { name: 'Set up Alpha access', exact: true });
-  await setup.getByRole('button', { name: 'Not now', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'You’re all set', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
+  const ready = page.getByRole('dialog', { name: 'You’re all set', exact: true });
+  for (let index = 0; index < 10 && !await ready.isVisible(); index++) {
+    await expect(setup).toBeVisible();
+    const skip=setup.getByRole('button',{name:'Not now',exact:true});
+    if(await skip.count())await skip.click();else await setup.getByRole('button',{name:'Continue',exact:true}).click();
+  }
+  await expect(ready).toBeVisible();
+  await ready.getByRole('button', { name: 'Go to Alpha', exact: true }).click();
   await expect(page.locator('dialog.alpha-startup-permissions')).toHaveCount(0);
 }
 /** A funded resident account connects by itself; no Welcome dialog and no chooser remain. */

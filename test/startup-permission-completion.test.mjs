@@ -22,7 +22,7 @@ const config={parentURL:import.meta.url,tsconfig:new URL('../tsconfig.json',impo
 const {StartupPermissions}=await tsImport(process.env.STARTUP_SOURCE||new URL('../apps/app/src/startup-permissions.tsx',import.meta.url).href,config);
 const {reopenStartupPermissions,STARTUP_PERMISSIONS_KEY}=await tsImport(process.env.STARTUP_FLOW_SOURCE||new URL('../apps/app/src/startup-permission-flow.ts',import.meta.url).href,config);
 hooks.deregister();
-async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,platform='android',dismissed=false,active=true,connection={}}={}){
+async function fixture(t,{notifications=false,microphone=false,holdMicrophone=false,denyMicrophone=false,platform='android',dismissed=false,active=true,connection={}}={}){
  const dom=new JSDOM('<div id="root"></div>',{url:'https://permission-qa.invalid',pretendToBeVisual:true});const old={};
  for(const key of ['window','document','localStorage','Event','dispatchEvent','IS_REACT_ACT_ENVIRONMENT','__alphaStartupPermissionPorts','__alphaStartupPlatform','__alphaStartupConnectionSnapshot','navigator','Notification'])old[key]=Object.getOwnPropertyDescriptor(globalThis,key);
  const values={window:dom.window,document:dom.window.document,localStorage:dom.window.localStorage,Event:dom.window.Event,dispatchEvent:event=>dom.window.dispatchEvent(event),IS_REACT_ACT_ENVIRONMENT:true};
@@ -37,7 +37,7 @@ async function fixture(t,{notifications=false,microphone=false,holdMicrophone=fa
  globalThis.__alphaStartupPermissionPorts={
   AlphaNotifications:{async status(){return {permissionGranted:state.notifications,appEnabled:state.notifications};}},
   DailyApps:{async requestPermissions(input){requests.push({port:'notifications',input});state.notifications=true;},async addListener(_event,callback){resume=callback;return {async remove(){}};}},
-  AlphaVoiceCloud:{async checkPermissions(){return {microphone:state.microphone?'granted':'prompt'};},async requestPermissions(input){requests.push({port:'microphone',input});if(holdMicrophone)await new Promise(resolve=>{release=resolve;});state.microphone=true;return {microphone:'granted'};}},
+  AlphaVoiceCloud:{async checkPermissions(){return {microphone:state.microphone?'granted':'prompt'};},async requestPermissions(input){requests.push({port:'microphone',input});if(holdMicrophone)await new Promise(resolve=>{release=resolve;});state.microphone=!denyMicrophone;return {microphone:state.microphone?'granted':'denied'};}},
   ElizaCamera:{async checkPermissions(){return {camera:'granted'};}},AlphaPhotoLibrary:{async scope(){return {scope:'full',locked:false};}},ElizaLocation:{async checkPermissions(){return {location:'granted',accuracy:'precise'};}},AlphaCalendar:{async checkPermissions(){return {calendar:'granted'};}},
   AlphaDevice:{async openSettings(input){requests.push({port:'settings',input});}},
  };
@@ -45,32 +45,33 @@ async function fixture(t,{notifications=false,microphone=false,holdMicrophone=fa
  t.after(async()=>{await React.act(async()=>root.unmount());dom.window.close();for(const[key,descriptor]of Object.entries(old)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key];}});
  await React.act(async()=>root.render(React.createElement(StartupPermissions,{active})));
  const button=name=>{const found=[...dom.window.document.querySelectorAll('button')].find(x=>x.textContent===name||x.getAttribute('aria-label')===name);assert(found,`Missing ${name}`);return found;};
- return {document:dom.window.document,state,requests,button,memory:()=>JSON.parse(dom.window.localStorage.getItem(STARTUP_PERMISSIONS_KEY)||'null'),click:async name=>React.act(async()=>button(name).click()),release:async()=>React.act(async()=>release()),resume:async()=>React.act(async()=>resume()),reopen:async()=>React.act(async()=>reopenStartupPermissions())};
+ const finish=async()=>{for(let index=0;index<10&&dom.window.document.querySelector('h2')?.textContent!=='You’re all set';index++){const skip=[...dom.window.document.querySelectorAll('button')].find(x=>x.textContent==='Not now'),next=skip||[...dom.window.document.querySelectorAll('button')].find(x=>x.textContent==='Continue');assert(next,'An optional step has a working way forward');await React.act(async()=>next.click());}assert.equal(dom.window.document.querySelector('h2')?.textContent,'You’re all set');};
+ return {finish,document:dom.window.document,state,requests,button,memory:()=>JSON.parse(dom.window.localStorage.getItem(STARTUP_PERMISSIONS_KEY)||'null'),click:async name=>React.act(async()=>button(name).click()),release:async()=>React.act(async()=>release()),resume:async()=>React.act(async()=>resume()),reopen:async()=>React.act(async()=>reopenStartupPermissions())};
 }
 test('already allowed access shows the final card and waits for Start',async t=>{
  const f=await fixture(t,{notifications:true,microphone:true});assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.equal(f.memory()?.dismissed??false,false);assert.equal(f.requests.length,0);await f.click('Go to Alpha');assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.memory().dismissed,true);
 });
 test('allowing the last permission reaches final without silently dismissing',async t=>{
- const f=await fixture(t,{notifications:true});assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');await f.click('Enable microphone');assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.equal(f.memory()?.dismissed??false,false);assert.equal(f.requests.length,1);assert.equal(f.requests[0].port,'microphone');await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
+ const f=await fixture(t,{notifications:true});assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');await f.click('Enable microphone');assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.equal(f.memory()?.dismissed??false,false);assert.equal(f.requests.length,1);assert.equal(f.requests[0].port,'microphone');await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
 });
-test('Not now reaches final and records dismissal only after Start',async t=>{
- const f=await fixture(t);await f.click('Not now');assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.match(f.document.querySelector('p').textContent,/skipped permissions/);assert.equal(f.requests.length,0);assert.equal(f.memory()?.dismissed??false,false);await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
+test('Not now skips one step and the sequential walkthrough reaches Ready before completing',async t=>{
+ const f=await fixture(t);await f.click('Not now');assert.equal(f.document.querySelector('h2').textContent,'Stay in the loop');assert.equal(f.memory()?.dismissed??false,false);await f.finish();assert.equal(f.document.activeElement,f.document.querySelector('h2'),'ready step owns keyboard focus');assert.match(f.document.querySelector('p').textContent,/Settings/);assert.equal(f.requests.length,0);assert.equal(f.memory()?.dismissed??false,false);await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
 });
 test('Settings reopens current access after completion without requesting again',async t=>{
- const f=await fixture(t,{notifications:true,microphone:true});await f.click('Go to Alpha');await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');assert(f.document.querySelectorAll('[role=status]').length>=2);assert.equal(f.requests.length,0);await f.click('Continue');assert.equal(f.document.querySelector('h2').textContent,'You’re all set');await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
+ const f=await fixture(t,{notifications:true,microphone:true});await f.click('Go to Alpha');await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.document.querySelectorAll('[role=status]').length,1);assert.equal(f.requests.length,0);await f.finish();assert.equal(f.document.querySelector('h2').textContent,'You’re all set');await f.click('Go to Alpha');assert.equal(f.memory().dismissed,true);
 });
 test('an outstanding OS prompt cannot be skipped or dismissed through Cancel',async t=>{
- const f=await fixture(t,{notifications:true,holdMicrophone:true});await f.click('Enable microphone');assert.equal(f.button('Not now').disabled,true);await React.act(async()=>f.document.querySelector('dialog').dispatchEvent(new f.document.defaultView.Event('cancel',{cancelable:true})));assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');assert.equal(f.memory()?.dismissed??false,false);await f.release();assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.equal(f.memory()?.dismissed??false,false);
+ const f=await fixture(t,{notifications:true,holdMicrophone:true});await f.click('Enable microphone');assert.equal(f.button('Not now').disabled,true);await React.act(async()=>f.document.querySelector('dialog').dispatchEvent(new f.document.defaultView.Event('cancel',{cancelable:true})));assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.memory()?.dismissed??false,false);await f.release();assert.equal(f.document.querySelector('h2').textContent,'You’re all set');assert.equal(f.memory()?.dismissed??false,false);
 });
 
 test('browser setup reads access without capturing and stops its explicit consent stream',async t=>{
  const f=await fixture(t,{platform:'web',notifications:true});assert.equal(f.requests.length,0);await f.click('Enable microphone');assert.deepEqual(f.requests,[{port:'browsermicrophone',input:{audio:true}},{port:'stop'}]);assert.equal(f.document.querySelector('h2').textContent,'You’re all set');let homes=0;f.document.defaultView.addEventListener('launcher-home',()=>homes++);await f.click('Go to Alpha');assert.equal(homes,1);assert.equal(f.memory().dismissed,true);
 });
 test('completed browser setup stays dismissed until Settings explicitly reopens it',async t=>{
- const f=await fixture(t,{platform:'web',dismissed:true});assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.requests.length,0);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');await f.click('Not now');let homes=0;f.document.defaultView.addEventListener('launcher-home',()=>homes++);await f.click('Go to Alpha');assert.equal(homes,0);assert.equal(f.requests.length,0);
+ const f=await fixture(t,{platform:'web',dismissed:true});assert.equal(f.document.querySelector('dialog'),null);assert.equal(f.requests.length,0);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');await f.finish();let homes=0;f.document.defaultView.addEventListener('launcher-home',()=>homes++);await f.click('Go to Alpha');assert.equal(homes,0);assert.equal(f.requests.length,0);
 });
 
-test('Settings can explicitly reopen browser access while signed out without requesting permissions',async t=>{const f=await fixture(t,{platform:'web',active:false});assert.equal(f.document.querySelector('dialog'),null);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Set up Alpha access');assert.equal(f.requests.length,0);});
+test('Settings can explicitly reopen browser access while signed out without requesting permissions',async t=>{const f=await fixture(t,{platform:'web',active:false});assert.equal(f.document.querySelector('dialog'),null);await f.reopen();assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.requests.length,0);});
 
 test('Ready preserves unknown AI binding and unconfirmed prior-key revocation without another modal',async t=>{
  const message='Signed in. Eliza Cloud did not confirm revoking the sign-in this phone used before.';
@@ -89,4 +90,18 @@ test('Ready does not imply Cloud inference is usable when the account needs a pl
 test('unexpected account creation names only the verified current Cloud email inside setup',async t=>{
  const f=await fixture(t,{notifications:true,microphone:true,connection:{accountCreated:true,cloudAccount:{credentialId:'fixture-credential',email:'verified-owner@example.invalid'}}});
  assert.match(f.document.body.textContent,/This sign-in created a new Eliza Cloud account \(verified-owner@example\.invalid\)/);assert.equal(f.document.querySelectorAll('dialog').length,1);assert.equal(f.requests.length,0);
+});
+
+test('one permission per screen: Back keeps the sequence and does not request access',async t=>{
+ const f=await fixture(t,{platform:'web'});assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.document.querySelectorAll('progress').length,1);
+ await f.click('Not now');assert.equal(f.document.querySelector('h2').textContent,'Stay in the loop');assert.equal(f.document.querySelector('progress').value,2);
+ await f.click('Previous setup step');assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.document.querySelector('progress').value,1);assert.equal(f.requests.length,0);
+ await f.finish();assert.equal(f.requests.length,0);
+});
+test('denied permission stays on its step, offers settings, and never prompts again after Back',async t=>{
+ const f=await fixture(t,{denyMicrophone:true});await f.click('Enable microphone');assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');assert.equal(f.document.querySelectorAll('progress').length,1);assert.match(f.document.body.textContent,/Access is off/);assert.equal(f.requests.length,1);assert.equal(f.memory().attempted.microphone,true);
+ await f.click('Not now');await f.click('Previous setup step');await f.click('Manage microphone in Android');assert.deepEqual(f.requests.map(x=>x.port),['microphone','settings']);assert.equal(f.document.querySelector('h2').textContent,'Talk to Alpha');
+});
+test('Files is an honest chooser explanation, never an invented blanket Allow permission',async t=>{
+ const f=await fixture(t,{platform:'web'});await f.click('Not now');await f.click('Not now');assert.equal(f.document.querySelector('h2').textContent,'Bring your day together');await f.click('Not now');assert.equal(f.document.querySelector('h2').textContent,'Keep your files handy');assert.equal(f.button('Continue').disabled,false);assert.equal([...f.document.querySelectorAll('button')].some(x=>x.textContent==='Allow'),false);assert.equal(f.requests.length,0);await f.click('Continue');assert.equal(f.document.querySelector('h2').textContent,'You’re all set');
 });
