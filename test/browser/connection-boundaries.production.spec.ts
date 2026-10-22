@@ -413,13 +413,15 @@ test('automatic agent startup stays quiet while local apps remain usable',async(
     };
   });
   await page.goto('/');
-  await completeOptionalAccessSetup(page);
+  // Optional setup waits for startup to settle; local apps remain usable meanwhile.
+  await expect(page.locator('.alpha-startup-permissions')).toHaveCount(0);
   await expect.poll(()=>page.evaluate(()=>(window as any).agentStartHeld)).toBe(true);
   await expect(page.getByRole('button',{name:'Notes',exact:true})).toBeVisible();
   await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
   await page.getByRole('button',{name:'Notes',exact:true}).click();
   await expect(page.getByText('Your agent is starting…',{exact:true})).toHaveCount(0);
   await page.evaluate(()=>(window as any).releaseAgentStart());
+  await completeOptionalAccessSetup(page);
 });
 
 test('transient startup storage failures recover without flashing global notices',async({page})=>{
