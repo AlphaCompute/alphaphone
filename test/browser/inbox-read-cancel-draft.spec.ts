@@ -1,7 +1,8 @@
 import {returnToApps} from './app-navigation';
 import {localDraftRow} from './inbox-draft-navigation';
 import {test,expect} from '@playwright/test';
-test.beforeEach(async({context})=>{await context.addInitScript(()=>localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'})));});
+// Model an existing configured account; permission onboarding has its own acceptance tests.
+test.beforeEach(async({context})=>{await context.addInitScript(()=>{localStorage.setItem('alpha.connection.selection.v1',JSON.stringify({kind:'offline'}));localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));});});
 
 for(const request of ['Refresh inbox','Search Gmail','Check connection'])for(const saved of [false,true])test(`Cancelling ${request} retains ${saved?'edited saved':'unsaved'} local mail`,async({page})=>{
  await page.goto('/');
