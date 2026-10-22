@@ -552,7 +552,8 @@ export function installSettingsAdapter(Component: any, views: Bag) {
             const rows:Bag[]=[info('Account',plan.account??(plan.offline?'Eliza Cloud unreachable':'Not signed in')),info('Plan',plan.plan),info('Agent execution',runtimeLocation),info('AI replies',plan.inference)];
             if(plan.endsAt)rows.push(info(plan.status==='active'||plan.status==='trialing'||plan.status==='past_due'?'Plan runs until':'Plan ended',day(plan.endsAt)));
             if(plan.keyExpiresAt)rows.push(info(plan.keyExpiring?'Sign-in expires soon':'Sign-in expires',day(plan.keyExpiresAt)));
-            const actions:Bag[]=connection.busy?[info('Status',connection.message||'Please wait…'),{kNav:true,label:'Cancel',lbl:'Cancel',chev:true,noAB:true,go:()=>connectionController.cancel()}]:plan.signedIn?[
+            if(connection.busy)rows.push(info('Status',connection.message||'Please wait…'));
+            const actions:Bag[]=connection.busy?[action('Cancel',()=>connectionController.cancel())]:plan.signedIn?[
               ...(plan.keyExpiring?[{kNav:true,label:'Approve this phone again',lbl:'Approve this phone again',chev:true,noAB:true,go:()=>void connectionController.residentCloudLogin()}]:[]),
               ...(connection.residentSubscription?.kind!=='credits'?[{kNav:true,label:'Redeem code',lbl:'Redeem code',chev:true,noAB:true,go:()=>connectionController.openPlan()}]:[]),
               {kNav:true,label:'Manage plan',lbl:'Manage plan',chev:true,noAB:true,go:()=>void connectionController.residentManagePlan()},

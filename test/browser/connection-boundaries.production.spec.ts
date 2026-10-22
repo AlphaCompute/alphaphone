@@ -261,7 +261,7 @@ for (const mode of ['revoked', 'unsupported', 'failed', 'refused-in-body', 'not-
     expect(calls.slice(before).some(call => call.plugin === 'AlphaHostedResults' && call.method === 'disableBackground')).toBe(true);
     if (mode !== 'cancelled') expect(stop).toBeLessThan(calls.indexOf(revocations[0]));
     expect(await secureValues(page)).not.toHaveProperty('cloud:production');
-    await expect(page.getByRole('main',{name:'Sign in',exact:true}).getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
+    await expect(page.getByRole('main', { name: 'Sign in', exact: true }).getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
     // P-43: sign-out unbinds inference only; the resident restarted and the outcome says so.
     if (mode !== 'cancelled') await expect(status).toContainText('Your agent is running. Sign in to Eliza Cloud to turn AI back on.');
     await expect.poll(async () => (await nativeCalls(page)).slice(before).filter(call => call.plugin === 'Agent' && call.method === 'start').length).toBeGreaterThan(0);
