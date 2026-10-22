@@ -8,7 +8,7 @@ import vm from 'node:vm';
 import {EntitlementError} from '../apps/app/src/runtime/subscription-entitlement.ts';
 import * as cloudSignInModule from '../apps/app/src/runtime/cloud-sign-in.ts';
 const coordinatorSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/notice-owner-coordinator.ts','utf8'),{mode:'transform'}).replace(/export /g,'');
-const controllerSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].split('\nfunction ResidentRecoveryPanel(')[0].replace(/^import .*;\n/gm,'').replace(/export /g,'').replaceAll('import.meta.env','fixtureViteEnv'),{mode:'transform'});
+const controllerSource=stripTypeScriptTypes(readFileSync('apps/app/src/runtime/connection-ui.tsx','utf8').split('export function ConnectionChooser()')[0].replace(/\nfunction ResidentRecoveryPanel\([\s\S]*?\n}\n(?=export function productionCloudSignInRequired)/, '\n').replace(/^import .*;\n/gm,'').replace(/export /g,'').replaceAll('import.meta.env','fixtureViteEnv'),{mode:'transform'});
 function fixture({offline=false,credential=null,fail=false}={}){
  let release;const read=new Promise(resolve=>release=resolve),transitions=[];
  const memory=new Map(offline?[['alpha.connection.selection.v1',JSON.stringify({kind:'offline',localApps:true})]]:[]);
