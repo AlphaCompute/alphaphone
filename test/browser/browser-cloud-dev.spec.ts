@@ -65,9 +65,9 @@ test('browser restores an existing host Cloud account, uses canonical voice and 
   await signIn.getByRole('button',{name:'Browser sign-in (diagnostic)',exact:true}).click();
   await expect.poll(()=>page.evaluate(async()=>(await import('/src/runtime/connection-ui.tsx')).connectionController.getSnapshot().cloudAccount?.userId)).toBe(owner);
   await expect(page.getByRole('dialog',{name:'Eliza Cloud',exact:true})).toHaveCount(0);
-  const setup=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
-  await expect(setup).toBeVisible();
-  const box=await setup.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width*.95);expect(box!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height*.95);
+  const postSignInSetup=page.getByRole('dialog',{name:'Set up Alpha access',exact:true});
+  await expect(postSignInSetup).toBeVisible();
+  const box=await postSignInSetup.boundingBox();expect(box!.width).toBeGreaterThanOrEqual(page.viewportSize()!.width*.95);expect(box!.height).toBeGreaterThanOrEqual(page.viewportSize()!.height*.95);
   expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.startup-permissions.v1')!).dismissed)).toBe(true);
   await completeOptionalAccessSetup(page);
   await expect(page.getByRole('button',{name:'Inbox',exact:true})).toBeVisible();
