@@ -302,10 +302,12 @@ test('loop A on Android: the resident agent answers, the conversation follows ac
   await button(page, 'Settings').click();
   await expect(page.getByRole('button', { name: 'Agent connection', exact: true })).toContainText('Alpha');
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  const account = page.getByRole('dialog', { name: 'Your agent' });
+  const account = page.getByRole('region', { name: 'Settings',exact:true });
   await expect(account).toContainText('Running on this device');
-  await expect(account).toContainText('Your agent uses Eliza Cloud for AI.');
-  await expect(account.getByRole('button', { name: 'Sign out', exact: true })).toBeVisible();
+  await expect(account.getByText('Eliza Cloud',{exact:true})).toBeVisible();
+  await account.getByRole('button',{name:'Back to Settings',exact:true}).click();
+  await page.getByRole('button',{name:'Eliza Cloud account & plan',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Sign out of Eliza Cloud',exact:true})).toBeVisible();
   expect(await page.locator('body').innerText()).not.toContain('synthetic-cloud-key');
   await expectNoDevelopmentSurface(page);
   expect(await native(page, f => f.unexpected)).toEqual([]);
@@ -783,7 +785,7 @@ test('loop J05 on Android: a page navigation closes the open review, and an agen
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await button(page, 'Settings').click();
   await button(page, 'Agent connection').click();
-  const account = page.getByRole('dialog', { name: 'Your agent' });
+  const account = page.getByRole('region', { name: 'Settings',exact:true });
   await account.getByRole('button', { name: 'Reconnect agent', exact: true }).click();
   await expect(page.locator('.alpha-connection-scrim')).toHaveCount(0, { timeout: 30_000 });
   expect(await native(page, f => f.calls.filter((call: string) => call === 'Agent.start').length)).toBe(2);
@@ -914,7 +916,7 @@ test('loop B / J02 on Android signed out: the Eliza Cloud sign-in comes first an
   await page.goto('/');
   // P-43 with #410: the resident starts signed out and the sign-in dialog, which every Alpha Phone
   // needs, opens by itself and cannot be dismissed; no "without AI" choice is offered.
-  const dialog = page.getByRole('dialog', { name: 'Your agent', exact: true });
+  const dialog = page.getByRole('main', { name: 'Sign in', exact: true });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Close connection settings', exact: true })).toHaveCount(0);

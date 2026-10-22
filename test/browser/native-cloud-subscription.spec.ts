@@ -187,7 +187,7 @@ test.describe('first run requires Eliza Cloud sign-in while the agent runs',()=>
  });
 
  test('an expired saved sign-in exposes the real sign-in action without a plan or permission bypass',async({page},info)=>{
-  await boot(page,{identity:'401'});await expect(signInPage(page)).toBeVisible();await started(page);await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByRole('alert')).toContainText('no longer valid');
+  await boot(page,{identity:'401'});await expect(signInPage(page)).toBeVisible();await started(page);await expect(page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true})).toBeEnabled();await expect(page.getByRole('alert')).toContainText('sign-in has expired');
   await expect(page.getByRole('button',{name:'Retry saved connection',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Continue',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Choose a plan',exact:true})).toHaveCount(0);await expect(page.getByRole('dialog',{name:'Set up Alpha access'})).toHaveCount(0);
   expect((await calls(page)).some(c=>c.method==='configureCloudProvider'||c.method==='openExternal')).toBe(false);await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:info.outputPath('expired-saved-sign-in.png'),animations:'disabled'});
  });
@@ -278,7 +278,7 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
 
  test('an entitlement for another account is refused and binds no inference',async({page})=>{
   await boot(page,await entitlements({sub:'33333333-3333-4333-8333-333333333333'}));
-  await expect(accountPanel(page).getByRole('alert')).toContainText('different account');await started(page);
+  await idle(page);const panel=await openAccountPlan(page);await expect(panel.getByRole('alert')).toContainText('different account');await started(page);
   expect(await configured(page)).toBe(0);
  });
 

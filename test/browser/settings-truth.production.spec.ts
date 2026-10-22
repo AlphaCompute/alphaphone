@@ -10,7 +10,7 @@ type Fixture={snapshot?:Record<string,unknown>;drop?:string[];subscription?:'cre
 async function nativeStub(page:Page,fixture:Fixture={}){
  await page.addInitScript(({snapshot,drop,subscription,agentStartFailure})=>{
   const w=window as any;w.androidBridge={};
-  if(subscription)localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));
+  localStorage.setItem('alpha.startup-permissions.v1',JSON.stringify({dismissed:true,attempted:{}}));
   const now=Date.now(),store=new Map<string,string>();
   // A signed-in phone whose plan was verified recently, started offline: the plan gate keeps local apps
   // and Settings available (Cloud is unreachable, so no agent starts). Synthetic sign-in, not a real key.
@@ -60,7 +60,7 @@ async function nativeStub(page:Page,fixture:Fixture={}){
     if(plugin==='AlphaVoiceCloud')return {microphone:'granted'};
     if(plugin==='Agent'){
      if(agentStartFailure&&method==='start')throw Error('Synthetic resident startup failure');
-     if(subscription&&method==='request'){const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';return {status:200,body:JSON.stringify(input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{} )};}
+     if(method==='request'){const id='9f1dc45a-4011-4e44-947a-30d999d24fa5';return {status:200,body:JSON.stringify(input.path==='/api/auth/me'?{identity:{id,kind:'owner'},access:{role:'OWNER',mode:'local'}}:input.path==='/api/agents'?{agents:[{id,name:'Alpha',status:'running'}]}:input.path==='/api/conversations'?{conversations:[]}:{} )};}
      return method==='providerStatus'?{configured:false}:{packaged:true,state:'stopped',serviceActive:false,socketListening:false};
     }
     if(plugin==='AlphaConnection'){
@@ -69,11 +69,10 @@ async function nativeStub(page:Page,fixture:Fixture={}){
      if(method==='secureWrite'){store.set(input.slot,input.value);return {};}
      // Default fixture is offline; subscription cases return only the finite responses below.
      if(method==='request'){
-      if(!subscription)throw Error('Connection request failed');
       const path=new URL(input.url).pathname;
       if(path==='/api/v1/user')return {status:200,data:{success:true,data:{id:'9f1dc45a-4011-4e44-947a-30d999d24fa5',email:'synthetic-settings@example.invalid'}}};
       if(path==='/api/v1/subscription/entitlement')return {status:404,data:{}};
-      if(path==='/api/v1/billing/limits')return {status:200,data:{success:true,data:{schemaVersion:2,v2:{subscription:subscription==='credits'?{status:'not_applicable',reason:'no_organization_subscription'}:{status:'available',value:{planKey:'plus_monthly',state:subscription,currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}}}}};
+      if(path==='/api/v1/billing/limits')return {status:200,data:{success:true,data:{schemaVersion:2,v2:{subscription:subscription==='credits'?{status:'not_applicable',reason:'no_organization_subscription'}:{status:'available',value:{planKey:'plus_monthly',state:subscription||'active',currentPeriodEnd:'2099-01-01T00:00:00.000Z'}}}}}};
       return {status:404,data:{}};
      }
      return {};

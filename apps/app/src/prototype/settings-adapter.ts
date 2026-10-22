@@ -564,11 +564,27 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         }
         page.groups.push(group([{kNav:true,label:'Agent connection',lbl:'Agent connection',val:connectionController.getSnapshot().name,hasVal:true,chev:true,noAB:true,go:()=>native&&!testMocksEnabled?api.set({page:'agent-connection'}):connectionController.open()}]));
         if(native&&!testMocksEnabled&&state.page==='agent-connection'){
-          const agentRows=[info('Agent',runtimeLocation),info('AI',connection.residentInference==='cloud'?'Eliza Cloud':connection.cloudAccount?'Not available':'Sign in required')];
+          const agentRows=[info('Agent',connection.session?'Running on this device':connection.residentRecoveryReason?'Recovery review needed':connection.kind==='recovering'?'Not running':'Starting…'),info('AI',connection.residentInference==='cloud'?'Eliza Cloud':connection.cloudAccount?'Not available':'Sign in required')];
           if(connection.message)agentRows.push(info('Status',connection.message));
           if(connection.error)agentRows.push(info('Connection problem',connection.error));
-          if(!connection.busy)agentRows.push(action(connection.session?'Reconnect agent':'Retry',()=>void connectionController.startLocal()));
-          else agentRows.push(info('Connection','Please wait…'),action('Cancel',()=>connectionController.cancel()));
+          if(connection.residentRecoveryReason&&!connection.session){
+            agentRows.push(info('Records','Your notes, chats and sign-in stay unchanged.'));
+            if(connection.residentRecoveryReason==='ipc-recovery-retention-limit'){
+              const recovery=connection.residentRecovery;
+              if(recovery?.step==='review'){
+                agentRows.push(info('Review',`Alpha will keep ${recovery.review.retainedCount} old startup records, then restart your agent.`));
+                if(!connection.busy)agentRows.push(action('Keep records and restart',()=>void connectionController.confirmRecovery()),action('Cancel',()=>connectionController.cancelRecoveryReview()));
+              }else{
+                if(recovery?.step==='unavailable')agentRows.push(info('Recovery','Recovery could not be checked. Your records were kept. Review again later.'));
+                if(recovery?.step==='partial')agentRows.push(info('Recovery','Recovery did not finish. Your records were kept. Review again before restarting.'));
+                if(!connection.busy)agentRows.push(action('Review recovery',()=>void connectionController.reviewRecovery()));
+              }
+            }
+          }else if(!connection.busy)agentRows.push(action(connection.session?'Reconnect agent':'Retry',()=>void connectionController.startLocal()));
+          if(connection.busy){
+            agentRows.push(info('Connection','Please wait…'));
+            if(connection.residentRecovery?.step!=='archiving')agentRows.push(action('Cancel',()=>connectionController.cancel()));
+          }
           const groups:Bag[]=[group(agentRows)];
           if(connection.session){
             const historyRows=[info('Conversation history','Load from this agent only. Restoring replaces the visible chat and draft; it does not run past actions.')];
@@ -576,7 +592,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
               historyRows.push(action('New conversation',()=>void connectionController.newConversation()),action('Load conversations',()=>void connectionController.listHistory()));
               for(const item of connection.conversations)historyRows.push(action(`Restore conversation: ${item.title}`,()=>void connectionController.restoreHistory(item.id)));
             }
-            if(connection.historyError)historyRows.push(info('History',connection.historyError));
+            if(connection.historyError){historyRows.push(info('History',connection.historyError));if(!connection.busy)historyRows.push(action('Retry saved conversation',()=>void connectionController.retrySavedHistory()));}
             groups.push(group(historyRows));
           }
           if(connection.session&&connection.phoneActionsAvailable){

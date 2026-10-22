@@ -128,12 +128,12 @@ async function noHandOff(page:Page){
  expect(all.filter(c=>c.method==='openExternal')).toEqual([]);
  expect(all.filter(c=>c.path?.startsWith('/api/auth/cli-session')||c.path?.startsWith('/steward/')||c.path?.startsWith('/api/v1/app-auth/'))).toEqual([]);
 }
-const signInDialog=(page:Page)=>page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true});
+const signInDialog=(page:Page)=>page.getByRole('main',{name:'Sign in to Eliza Cloud',exact:true}).or(page.getByRole('dialog',{name:'Sign in to Eliza Cloud',exact:true}));
 
 test.describe('in-app Eliza Cloud sign-in on the production Android composition',()=>{
  test('email code sign-in stays in Alpha, retries a wrong code, waits out resend and binds Cloud AI',async({page},info)=>{
   await boot(page,await entitlements());
-  await expect(page.getByRole('dialog',{name:'Your agent',exact:true})).toBeVisible();
+  await expect(page.getByRole('main',{name:'Sign in',exact:true})).toBeVisible();
   await agent(page,'unavailable');
   await page.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true}).click();
   const dialog=signInDialog(page);await expect(dialog).toBeVisible();
@@ -182,7 +182,7 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
  test('a slow sign-in readiness check shows progress, prevents repeated taps and respects Cancel',async({page})=>{
   await boot(page,{...await entitlements(),signIn:'readiness-hold'});
   await agent(page,'unavailable');
-  const welcome=page.getByRole('dialog',{name:'Your agent',exact:true});
+  const welcome=page.getByRole('main',{name:'Sign in',exact:true});
   const start=welcome.getByRole('button',{name:'Sign in with Eliza Cloud',exact:true});
   await start.click();
   await expect(start).toBeDisabled({timeout:2000});
@@ -268,7 +268,7 @@ test.describe('in-app Eliza Cloud sign-in on the production Android composition'
   await agent(page,'unavailable');
   // Back leaves the sign-in screen for the sign-in gate, which still cannot be dismissed.
   await dialog.getByRole('button',{name:'Back',exact:true}).click();
-  await expect(page.getByRole('dialog',{name:'Your agent',exact:true})).toBeVisible();
+  await expect(page.getByRole('main',{name:'Sign in',exact:true})).toBeVisible();
   await noHandOff(page);
  });
 

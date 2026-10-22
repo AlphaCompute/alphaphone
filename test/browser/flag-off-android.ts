@@ -392,14 +392,13 @@ export async function residentHome(page: Page) {
   await expect(button(page, 'Notes')).toBeVisible();
   await completeOptionalAccessSetup(page);
 }
-/** Decision P-43: Settings › Agent connection opens the "Your agent" dialog (status and AI inference). */
+/** Production sign-in is a page; signed-in agent controls live in Settings. */
 export async function openYourAgent(page: Page) {
-  // Signed out, the Eliza Cloud sign-in dialog is already open and cannot be dismissed (P-43).
-  const open = page.getByRole('dialog', { name: 'Your agent' });
-  if (await open.isVisible()) return open;
+  const gate = page.getByRole('main', { name: 'Sign in', exact: true });
+  if (await gate.isVisible()) return gate;
   await button(page, 'Settings').click();
-  await page.getByRole('button', { name: /Agent connection/ }).click();
-  const dialog = page.getByRole('dialog', { name: 'Your agent' });
-  await expect(dialog).toBeVisible();
-  return dialog;
+  await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Settings', exact: true });
+  await expect(panel.getByRole('heading', {name:'Agent connection',exact:true})).toBeVisible();
+  return panel;
 }

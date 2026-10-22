@@ -77,8 +77,8 @@ for (const [kind, text] of Object.entries(KINDS)) for (const frame of ['done', '
       await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
       await button(page, 'Settings').click();
       await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await expect(page.getByRole('dialog')).not.toContainText('Connected');
+      await expect(page.getByRole('heading',{name:'Agent connection',exact:true})).toBeVisible();
+      await expect(page.getByRole('region',{name:'Settings',exact:true})).not.toContainText('Connected');
     }
     // Exactly one stream request and no automatic resend of any kind.
     await page.waitForTimeout(1500);
@@ -138,8 +138,8 @@ test('without a network the resident says AI needs a connection, sends nothing, 
   // Readiness is retracted while offline.
   await button(page, 'Settings').click();
   await page.getByRole('button', { name: 'Agent connection', exact: true }).click();
-  await expect(page.getByRole('dialog')).not.toContainText('Connected');
-  await page.getByRole('button', { name: 'Close connection settings', exact: true }).click();
+  await expect(page.getByRole('region',{name:'Settings',exact:true})).not.toContainText('Connected');
+  await page.getByRole('button', { name: 'Back to Settings', exact: true }).click();
   await page.evaluate(() => window.dispatchEvent(new Event('launcher-home')));
   await context.setOffline(false);
   await expect(notice).toHaveCount(0);
@@ -217,7 +217,7 @@ test('a resident send the runtime no longer accepts (401) asks for an Eliza Clou
   await connected(page);
   await setStub(page, { stream: 'expired' });
   await send(page, 'Sent with an expired session');
-  const dialog = page.getByRole('dialog');
+  const dialog = page.getByRole('main',{name:'Sign in',exact:true});
   await expect(dialog.getByRole('alert')).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByRole('button', { name: 'Sign in with Eliza Cloud', exact: true })).toBeVisible();
   await expect(page.locator('body')).not.toContainText(/pair/i);
