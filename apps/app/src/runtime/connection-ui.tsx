@@ -826,7 +826,7 @@ async function recheckResidentPlan(){
     const admission=await admitCloudResident(controller.signal);
     const target=residentBindable()?admission.binding:residentBinding;
     if(target!=='kept'&&target!==residentBinding)residentRebindQueued=true;
-    else if(admission.notice?.open||admission.notice?.error)update({open:true,purpose:'agent',message:'',error:admission.notice.error??''});
+    else if(admission.notice?.open||admission.notice?.error)update({open:true,purpose:state.purpose==='plan'||state.purpose==='cloud-account'?state.purpose:'agent',message:'',error:admission.notice.error??''});
   }catch{/* The next return checks again; the agent keeps running as it is. */}
   finally{if(operation===controller)operation=null;runQueuedResidentRebind();}
 }
@@ -870,7 +870,7 @@ async function connectResident(signal: AbortSignal) {
     if(testMocksEnabled&&!residentBindable()){update({open:true,message:`Plan ${admission.binding==='cloud'?'admitted':'not admitted'} on ${residentEnvironment()} (subscription gate QA). The on-device agent is not started in this mode.`,error:''});return;}
     // A required sign-in is asked for now, while the agent starts behind it (connecting closes the
     // dialog, so it is opened again below once the agent runs).
-    if(admission.notice?.open)update({open:true,purpose:'agent',error:admission.notice.error??''});
+    if(admission.notice?.open)update({open:true,purpose:state.purpose==='plan'||state.purpose==='cloud-account'?state.purpose:'agent',error:admission.notice.error??''});
     bound=await applyResidentBinding(admission,signal);
   }
   if (!await localAgentPackaged()) throw new Error(RESIDENT_UNPACKAGED);
@@ -916,7 +916,7 @@ async function connectResident(signal: AbortSignal) {
     // dialog; everything else is a notice beside the running agent, never a gate.
     // Both a refused sign-in and an unconfirmed unbind are shown; neither hides the other.
     const notice=admission.notice,error=[notice?.error,bound.error].filter(Boolean).join(' ')||undefined;
-    if(notice?.open||error)update({open:true,purpose:'agent',message:notice?.message??'',error:error??''});
+    if(notice?.open||error)update({open:true,purpose:state.purpose==='plan'||state.purpose==='cloud-account'?state.purpose:'agent',message:notice?.message??'',error:error??''});
     else if(notice?.message)update({message:notice.message});
     await restoreSavedHistory(signal);await refreshActionReview(signal);
   }else if(browserLocalAgentEnabled)await restoreSavedHistory(signal);
