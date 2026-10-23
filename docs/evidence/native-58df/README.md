@@ -53,3 +53,29 @@ passed for standalone and launcher debug/release variants, with test mocks disab
 and the resident runtime packaged. The APK verifier reports both releases
 `distributable: false` because voice device acceptance and release signing remain
 open. Building the APKs did not run their installed-app acceptance tests.
+
+## Packaged Alpha speech bridge
+
+The unchanged standalone and launcher app APKs passed the offline Capacitor bridge
+test on the API 35 x86_64 emulator. It covers fixture AAC transcription, streamed
+synthesis, playback completion, explicit stop, queued cancellation and recovery.
+See `packaged-bridge/results.json` for exact app/test APK hashes and raw class logs
+alongside it. This does not prove physical microphone/speaker or signed-in workflows.
+
+The initial test submitted speech during resident startup. A temporary debug trace
+identified `releaseLocalSpeech` stopping that utterance when the selected connection
+changed. The test now waits for the production sign-in page to finish connection
+work, while retaining the account/session cancellation guard. Temporary product
+tracing was removed, and the tested standalone APK matches the original pre-trace
+SHA-256 `2418a1cd0341721a042b1e11a1cfc055eb4b92f5317d364d809d6ac5dff81e27`.
+The startup wait applies only to production builds; test-mocks builds keep their
+existing readiness path.
+
+The final combined run passed **12 tests, zero failures and zero skips**: six
+each in standalone and launcher. It includes native transcription/synthesis,
+model reuse and reopen, the Capacitor bridge, note read-aloud and stop, Silero VAD,
+and sentence cancellation/recovery. `packaged-speech/results.json` binds the run
+to both app APKs and instrumentation APKs; its class logs are retained beside it.
+Networking was disabled during execution, restored afterwards, and both temporary
+Alpha packages were removed. Final `npm run verify` and `npm run android:build`
+passed before this run. Physical audio and user acceptance remain open.
