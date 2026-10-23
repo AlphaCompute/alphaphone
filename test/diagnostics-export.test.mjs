@@ -78,6 +78,31 @@ test('crash entries keep classes only, are bounded and expire after 30 days',()=
  assert.deepEqual(describeCrashEntry({at:now,source:'uncaught',errorClass:'java.lang.IllegalStateException',rootClass:'java.io.IOException',thread:'main'}),{title:'App crashed',detail:'java.lang.IllegalStateException · caused by java.io.IOException · main thread'});
 });
 
+test('plan diagnostics distinguish signed inactive plans from organization-credit presentation without exporting authority',()=>{
+ const inactive=buildDiagnostics({cloudPlan:{view:'inactive',source:'entitlement',status:'none',admission:'needs-plan',entitlement:secrets[2],planName:secrets[0],userId:secrets[3],organizationId:secrets[4],balance:42}},now);
+ assert.deepEqual(inactive.cloudPlan,{view:'inactive',source:'entitlement',status:'none',admission:'needs-plan'});
+ const credits=buildDiagnostics({cloudPlan:{view:'credits',source:'billing-limits',admission:'admit',billingMode:'organization-credits',balance:42}},now);
+ assert.deepEqual(credits.cloudPlan,{view:'credits',source:'billing-limits',admission:'admit'});
+ const unavailable=buildDiagnostics({cloudPlan:{view:'unavailable',reason:'invalid',admission:'unknown'}},now);
+ assert.deepEqual(unavailable.cloudPlan,{view:'unavailable',reason:'invalid',admission:'unknown'});
+ for(const report of [inactive,credits,unavailable]){
+  const json=diagnosticsText(report);
+  for(const secret of secrets)assert.equal(json.includes(secret),false,`leaked ${secret}`);
+  for(const field of ['entitlement','planName','userId','organizationId','balance','billingMode'])assert.equal(Object.hasOwn(report.cloudPlan,field),false,`unexpected ${field}`);
+ }
+ assert.equal(Object.hasOwn(buildDiagnostics({},now),'cloudPlan'),false,'older callers do not invent plan state');
+});
+
+test('plan diagnostics reject arbitrary upstream values and unknown fields',()=>{
+ for(const secret of secrets){
+  assert.equal(buildDiagnostics({cloudPlan:{view:secret,admission:'unknown'}},now).cloudPlan,undefined);
+  assert.equal(buildDiagnostics({cloudPlan:{view:'inactive',admission:secret}},now).cloudPlan,undefined);
+  const report=buildDiagnostics({cloudPlan:{view:'inactive',admission:'needs-plan',source:secret,status:secret,reason:secret,[secret]:secret,apiKey:secret,jwt:secret}},now);
+  assert.deepEqual(report.cloudPlan,{view:'inactive',admission:'needs-plan'});
+  assert.equal(diagnosticsText(report).includes(secret),false);
+ }
+});
+
 test('voice timing: the export carries the timing records, aggregator-ready, and never transcript text',async()=>{
  const store=new Map();
  globalThis.localStorage={getItem:k=>store.has(k)?store.get(k):null,setItem:(k,v)=>store.set(k,String(v)),removeItem:k=>store.delete(k)};

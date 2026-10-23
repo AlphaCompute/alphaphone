@@ -1,4 +1,5 @@
 import {sanitizeCrashEntries,type CrashEntry} from './crash-log.ts';
+import type {PlanAdmission, PlanStatus, SubscriptionView} from './subscription-entitlement.ts';
 
 /**
  * Redacted support diagnostics. The report is built by copying allowlisted fields whose
@@ -41,6 +42,8 @@ export type DiagnosticsInput={
  os?:{androidRelease?:unknown;securityPatch?:unknown;sdkInt?:unknown};
  upstreamPin?:unknown;runtimeHashes?:unknown;permissions?:unknown;roles?:unknown;crashes?:unknown;
  connection?:{kind?:unknown;connected?:unknown};
+ /** Existing presentation/admission state only; never raw entitlement or billing responses. */
+ cloudPlan?:{view?:unknown;source?:unknown;status?:unknown;admission?:unknown;reason?:unknown};
  /** Parsed exportVoiceTiming() output. */
  voiceTiming?:unknown;
  /** AlphaVoiceCloud.nativeVoiceTiming() output (alpha-native-voice-timing-v3). */
@@ -60,6 +63,7 @@ export type DiagnosticsReport={
  permissions:Record<string,boolean>;
  roles:Array<{role:string;held:boolean;available:boolean}>;
  connection:{kind:string;connected:boolean};
+ cloudPlan?:{view:SubscriptionView['kind'];source?:'entitlement'|'billing-limits';status?:PlanStatus;admission:PlanAdmission;reason?:'outage'|'not-published'|'invalid'};
  crashes:{count:number;recent:CrashEntry[]};
  /** A complete alpha-voice-timing-v1 document, readable by scripts/aggregate-voice-latency.mjs. */
  voiceTiming:{format:typeof VOICE_TIMING_FORMAT;marks:string[];records:VoiceTimingRow[]};
@@ -167,6 +171,15 @@ export function buildDiagnostics(input:DiagnosticsInput,now=Date.now()):Diagnost
  const variant=one(app.variant,['launcher','standalone'] as const);if(variant)report.app.variant=variant;
  const buildType=one(app.buildType,['debug','release'] as const);if(buildType)report.app.buildType=buildType;
  if(typeof app.testMocks==='boolean')report.app.testMocks=app.testMocks;
+ const cloud=input.cloudPlan;
+ const view=one(cloud?.view,['checking','active','credits','inactive','unavailable','expired'] as const);
+ const admission=one(cloud?.admission,['admit','admit-with-warning','needs-plan','unknown'] as const);
+ if(view&&admission){
+  report.cloudPlan={view,admission};
+  const source=one(cloud?.source,['entitlement','billing-limits'] as const);if(source)report.cloudPlan.source=source;
+  const status=one(cloud?.status,['active','trialing','past_due','canceled','none'] as const);if(status)report.cloudPlan.status=status;
+  const reason=one(cloud?.reason,['outage','not-published','invalid'] as const);if(reason)report.cloudPlan.reason=reason;
+ }
  const release=text(os.androidRelease,version);if(release)report.os.androidRelease=release;
  const patch=text(os.securityPatch,/^\d{4}-\d{2}-\d{2}$/);if(patch)report.os.securityPatch=patch;
  if(Number.isSafeInteger(os.sdkInt)&&(os.sdkInt as number)>0&&(os.sdkInt as number)<1000)report.os.sdkInt=os.sdkInt as number;

@@ -472,9 +472,16 @@ test('only admission and its background refresher read the entitlement; turns an
   const importers = [];
   const walk = dir => { for (const entry of fs.readdirSync(dir, {withFileTypes: true})) { const path = `${dir}/${entry.name}`; if (entry.isDirectory()) walk(path); else if (/\.(ts|tsx|js|mjs)$/.test(entry.name) && /subscription-entitlement/.test(fs.readFileSync(path, 'utf8'))) importers.push(path); } };
   walk('apps/app/src');
-  assert.deepEqual(importers.sort(), ['apps/app/src/maps/cloud-provider.ts', 'apps/app/src/runtime/cloud-protocol.ts', 'apps/app/src/runtime/connection-ui.tsx', 'apps/app/src/runtime/subscription-entitlement.ts']);
-  const maps = fs.readFileSync('apps/app/src/maps/cloud-provider.ts', 'utf8');
-  assert.deepEqual([...maps.matchAll(/import \{([^}]+)\} from ['"]\.\.\/runtime\/subscription-entitlement\.ts['"]/g)].map(match => match[1].trim()), ['readServiceLimit, retryDuration'], 'Maps imports only pure refusal parsing/presentation, never an entitlement fetch');
+  assert.deepEqual(importers.sort(), ['apps/app/src/maps/cloud-provider.ts', 'apps/app/src/prototype/settings-adapter.ts', 'apps/app/src/runtime/cloud-protocol.ts', 'apps/app/src/runtime/connection-ui.tsx', 'apps/app/src/runtime/diagnostics-export.ts', 'apps/app/src/runtime/subscription-entitlement.ts']);
+  for (const [file, typeOnly, names] of [
+    ['apps/app/src/maps/cloud-provider.ts', false, ['readServiceLimit', 'retryDuration']],
+    ['apps/app/src/prototype/settings-adapter.ts', false, ['planAdmission']],
+    ['apps/app/src/runtime/diagnostics-export.ts', true, ['PlanAdmission', 'PlanStatus', 'SubscriptionView']],
+  ]) {
+    const text = fs.readFileSync(file, 'utf8');
+    const imports = [...text.matchAll(/import(\s+type)?\s*\{([^}]+)\}\s*from\s*['"][^'"]*subscription-entitlement(?:\.ts)?['"]/g)];
+    assert.deepEqual(imports.map(match => ({typeOnly: !!match[1], names: match[2].split(',').map(name => name.trim())})), [{typeOnly, names}], `${file} imports only pure presentation or types, never an entitlement fetch`);
+  }
   // The production account panel no longer offers a credit balance or top-up.
   for (const file of ['apps/app/src/runtime/connection-ui.tsx', 'apps/app/src/prototype/settings-adapter.ts', 'apps/app/src/runtime/cloud-voice.ts', 'apps/app/src/runtime/voice-selection.ts']) {
     const text = fs.readFileSync(file, 'utf8');
