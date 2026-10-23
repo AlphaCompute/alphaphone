@@ -28,6 +28,32 @@ test('required browser denial and cold return expose Settings/check access witho
  await open(page,true);const panel=page.locator('dialog.alpha-startup-permissions');await panel.getByRole('button',{name:'Allow',exact:true}).click();await expect(panel.getByRole('button',{name:'Check access',exact:true})).toBeVisible();await panel.getByRole('button',{name:'Check access',exact:true}).click();expect(await page.evaluate(()=>(window as any).requiredProof.requests)).toEqual([{kind:'notifications'}]);await expect(panel.getByRole('button',{name:/Skip|Not now|Back/})).toHaveCount(0);await page.reload();await page.evaluate(async()=>{(await import('/src/runtime/connection-ui.tsx')).connectionController.close();window.dispatchEvent(new Event('alpha:setup-permissions'));});await expect(panel.getByRole('button',{name:'Check access',exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).requiredProof.requests)).toEqual([]);
 });
 
+// Browser-rendered recovery with controlled permission APIs, not proof of an OS grant.
+test('a pending notification prompt releases Checking at its deadline while required setup stays gated',async({page})=>{
+ await open(page);
+ await page.evaluate(()=>{
+  Notification.requestPermission=()=>{
+   (window as any).requiredProof.requests.push({kind:'notifications'});
+   return new Promise<NotificationPermission>(resolve=>{(window as any).completeRequiredNotification=resolve;});
+  };
+ });
+ const panel=page.locator('dialog.alpha-startup-permissions');
+ await panel.getByRole('button',{name:'Allow',exact:true}).click();
+ await expect(panel.getByRole('button',{name:'Checking…',exact:true})).toBeDisabled();
+ await expect(panel.getByRole('button',{name:'Check access',exact:true})).toBeEnabled({timeout:17000});
+ await expect(panel.getByRole('heading',{name:'Stay in the loop.',exact:true})).toBeVisible();
+ await expect(panel.getByRole('button',{name:/Skip|Not now|Back|Go to Alpha/})).toHaveCount(0);
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha:startup-permission-walkthrough:v1')!))).toEqual({version:1,status:'pending',step:0});
+ expect(await page.evaluate(()=>(window as any).requiredProof.requests)).toEqual([{kind:'notifications'}]);
+ // A late promise result is not permission authority; the fixture's actual status stays default.
+ await page.evaluate(()=>(window as any).completeRequiredNotification('granted'));
+ await panel.getByRole('button',{name:'Check access',exact:true}).click();
+ await expect(panel.getByRole('heading',{name:'Stay in the loop.',exact:true})).toBeVisible();
+ await expect(panel.getByRole('button',{name:'Check access',exact:true})).toBeEnabled();
+ expect(await page.evaluate(()=>(window as any).requiredProof.requests)).toEqual([{kind:'notifications'}]);
+ expect(await page.evaluate(()=>Notification.permission)).toBe('default');
+});
+
 test('existing Google panel owns the modal and returning resumes the same required permission',async({page})=>{
  await open(page);const panel=page.locator('dialog.alpha-startup-permissions');await panel.getByRole('button',{name:'Allow',exact:true}).click();await expect(panel.getByRole('heading',{name:'Talk to Alpha.',exact:true})).toBeVisible();await page.evaluate(async()=>(await import('/src/runtime/google-connection-ui.tsx')).googleConnectionController.open());await expect(panel).toHaveCount(0);await page.evaluate(async()=>(await import('/src/runtime/google-connection-ui.tsx')).googleConnectionController.close());await expect(panel.getByRole('heading',{name:'Talk to Alpha.',exact:true})).toBeVisible();expect(await page.evaluate(()=>(window as any).requiredProof.requests)).toEqual([{kind:'notifications'}]);
 });
