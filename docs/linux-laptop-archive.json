@@ -1,0 +1,110 @@
+{
+  "date": "2026-10-23",
+  "purpose": "Portable source checkpoint; historical alternatives are not applied to the tested candidate",
+  "alphaTestedHead": "6bb4d65b16af6f5c06988529214dd66ff484d2b7",
+  "sdkPin": "f931082ebd87a0fecc3f11f8eacf58f598294d4a",
+  "archives": [
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-account-minimize-ci-20261021",
+      "commit": "81ee0a99717d1be28ea9ce14c76929d14bcfb35b",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-inbox-contract-ci",
+      "commit": "ceca59c896d65b61e6de10a634499747f958b656",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-recovery-fixture-ci",
+      "commit": "642763dbd76e58744909f69a1d1d8ebff0fce7aa",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-sdk573-doc-followup",
+      "commit": "714ab89d51fe51ad3ecf8f9779bafc4647f6f4f6",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-settings-developer-gate",
+      "commit": "f1d66efe6a66e26a5cde183881dc41ed47fee500",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-unpackaged-expectation-20261021",
+      "commit": "0f1e79b57d4f7c78af1ea7dff8854b0ae737fc5e",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/cloud-pglite-snapshot-blob",
+      "commit": "77e76d14c53b84e7a2490f1f4e1cda8de0dc5e01",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/eliza",
+      "commit": "56d34b5da391da1a4dde3159ccc196b2b129213a",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/eliza-private-email-review-20261019",
+      "commit": "abf775d16bcdd014b9ee0fc982124c85626bbdbc",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/sdk-latest-preserved-20261022",
+      "commit": "da4b5ca2b631bd5b215e46865cbe0f51577c157b",
+      "kind": "historical-local-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/cloud-ipc-recovery-pr",
+      "commit": "6d4c532a3c4d3b77b537b447115526ae5dda5a46",
+      "kind": "historical-legacy-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/cloud-ipc-recovery-review",
+      "commit": "371763e735c3f1ce7a61bef09a5f44cab46dead2",
+      "kind": "historical-legacy-commit"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/cloud-resident-stop-race",
+      "commit": "3d6f68a129702a1a2779cc087c93a80ba0f2332e",
+      "kind": "historical-legacy-commit"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alpha-sdk-admission-docs",
+      "commit": "58b8f780799a0ec4d65a7a1e53933731e42f243e",
+      "kind": "archived-uncommitted-files"
+    },
+    {
+      "repository": "AlphaCompute/alphaphone",
+      "branch": "codex/nubs-linux-laptop-archive/alphaphone",
+      "commit": "2575cd3e1f30be7032fa6219112c80d14e63cd98",
+      "kind": "archived-uncommitted-files"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/cloud-provider-sdk-boundary-20261021",
+      "commit": "04fa46c819bd9e9c84641938dbbafd2bf25f187c",
+      "kind": "archived-uncommitted-files"
+    },
+    {
+      "repository": "elizaOS/eliza",
+      "branch": "codex/nubs-linux-laptop-archive/sdk-resident-dependencies-targeted-resolver-20261021",
+      "commit": "f7abf5988ddf98f982b19d475d9d03858a6a1301",
+      "kind": "archived-uncommitted-files"
+    }
+  ]
+}
