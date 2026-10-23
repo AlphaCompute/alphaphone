@@ -1,19 +1,13 @@
 /**
  * Alpha client side of the Eliza Cloud subscription entitlement (issue #410, policy P-26).
  *
- * Billing is a subscription with server-side rate limits, not a user-visible credit meter. The
- * phone never asks a billing service before an assistant turn:
- *  - Eliza Cloud issues a short-lived signed entitlement (compact JWS, ES256). The phone fetches it
- *    when the resident agent is admitted and refreshes it in the background before it expires.
- *  - Each inference or Maps request is authorised by Cloud itself from its cached quota/token
- *    bucket. The phone does not gate a turn on the entitlement; it only presents plan state and
- *    the retry information Cloud returns when a limit is reached.
- *  - Every Alpha Phone signs in to Eliza Cloud and holds a plan (owner decision, issue #410). The
- *    plan gate admits the resident agent for an active or trialing plan, admits a past-due plan
- *    with a warning, and shows "needs plan" (Redeem code / Choose a plan) for a canceled plan or
- *    no plan without starting the agent. Unknown plan state is "needs plan" with a retry.
- *  - Once a plan was verified recently on this phone, a billing outage or an offline start keeps
- *    local apps and local tools available (see connection-ui's admission cache).
+ * Cloud manages subscription allowances or organization credits. The phone never asks a
+ * billing service before an assistant turn: admission reads the signed plan and, when no
+ * subscription exists, the explicit credit mode in the authenticated billing snapshot.
+ * Active/trialing plans and credit mode admit Cloud inference; past-due plans warn. Canceled,
+ * invalid or unknown authority never becomes credit access. Every request remains authorized
+ * by Cloud itself. No credit balance, purchase or quota is invented here.
+ * The agent and local tools run on the device independently of Cloud inference admission.
  *
  * Nothing here selects a price, quota, allowance or burst/sustained limit. Every number shown to
  * the owner comes from a verified Cloud entitlement or a Cloud refusal body. The proposed Cloud
@@ -25,7 +19,7 @@
 export const ENTITLEMENT_PATH = '/api/v1/subscription/entitlement';
 export const ENTITLEMENT_KEYS_PATH = '/api/v1/subscription/entitlement-keys';
 export const REDEEM_PATH = '/api/v1/subscription/redeem';
-/** Read-only organization billing snapshot; used only while the entitlement route is absent. */
+/** Read-only organization billing snapshot; also identifies credit billing when there is no subscription. */
 export const BILLING_LIMITS_PATH = '/api/v1/billing/limits';
 export const ENTITLEMENT_TYPE = 'eliza-entitlement+jwt';
 export const ENTITLEMENT_AUDIENCE = 'eliza-alpha-phone';
@@ -260,7 +254,7 @@ export interface EntitlementSource {
   /** `null` when Cloud has not deployed the entitlement route (404/405/501). */
   entitlement(signal: AbortSignal): Promise<string | null>;
   entitlementKeys(signal: AbortSignal): Promise<JsonWebKey[]>;
-  /** The billing snapshot's subscription section, read only while the entitlement route is absent.
+  /** The billing snapshot's subscription section, read when the route is absent or verifies no subscription.
    * `null` when that snapshot is unavailable or does not say. */
   fallbackPlan?(signal: AbortSignal): Promise<FallbackPlan | null>;
   readonly issuer: string;
@@ -309,29 +303,37 @@ export async function checkEntitlement(source: EntitlementSource, expected: Omit
   try { token = await source.entitlement(signal); }
   catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
   signal.throwIfAborted();
-  if (token === null) {
-    if (!source.fallbackPlan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
-    let plan: FallbackPlan | null;
-    try { plan = await source.fallbackPlan(signal); signal.throwIfAborted(); }
-    catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
-    if (!plan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
-    if (plan.billingMode === 'organization-credits') return { view: { kind: 'credits', source: 'billing-limits' }, entitlement: null };
-    if (plan.status === 'canceled' || plan.status === 'none') return { view: { kind: 'inactive', planName: plan.status === 'none' ? null : plan.planName, status: plan.status, source: 'billing-limits' }, entitlement: null };
-    return { view: { kind: 'active', planName: plan.planName ?? 'Eliza Cloud plan', status: plan.status, allowance: null, expiresAt: plan.periodEnd ?? 0, refreshFailed: false, source: 'billing-limits' }, entitlement: null };
+  let signed: EntitlementCheck | null = null;
+  if (token !== null) {
+    try {
+      const { header } = decodeEntitlement(token);
+      const keys = await keysFor(source, header.kid, signal, now());
+      signal.throwIfAborted();
+      const entitlement = await verifyEntitlement(token, keys, { ...expected, issuer: source.issuer }, now());
+      signal.throwIfAborted();
+      signed = { view: subscriptionView(entitlement), entitlement };
+      // No subscription is distinct from canceled access. Cloud can still bill this
+      // same authenticated organization through its existing credit-funded mode.
+      if (entitlement.plan.status !== 'none') return signed;
+    } catch (error) {
+      signal.throwIfAborted();
+      if (isAuthFailure(error)) throw error;
+      if (error instanceof EntitlementError && error.code === 'account-mismatch') throw error;
+      return { view: { kind: 'unavailable', reason: error instanceof EntitlementError ? 'invalid' : 'outage' }, entitlement: null };
+    }
   }
-  try {
-    const { header } = decodeEntitlement(token);
-    const keys = await keysFor(source, header.kid, signal, now());
-    signal.throwIfAborted();
-    const entitlement = await verifyEntitlement(token, keys, { ...expected, issuer: source.issuer }, now());
-    signal.throwIfAborted();
-    return { view: subscriptionView(entitlement), entitlement };
-  } catch (error) {
-    signal.throwIfAborted();
-    if (isAuthFailure(error)) throw error;
-    if (error instanceof EntitlementError && error.code === 'account-mismatch') throw error;
-    return { view: { kind: 'unavailable', reason: error instanceof EntitlementError ? 'invalid' : 'outage' }, entitlement: null };
-  }
+  if (!source.fallbackPlan) return signed ?? { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
+  let plan: FallbackPlan | null;
+  try { plan = await source.fallbackPlan(signal); signal.throwIfAborted(); }
+  catch (error) { signal.throwIfAborted(); if (isAuthFailure(error)) throw error; return signed ?? { view: { kind: 'unavailable', reason: 'outage' }, entitlement: null }; }
+  // Never turn a signed refusal into an unsigned active plan. Only the canonical
+  // organization-credit mode can supplement a verified absence of a subscription.
+  // The null entitlement keeps the existing periodic billing refresh active.
+  if (plan?.status === 'none' && plan.billingMode === 'organization-credits') return { view: { kind: 'credits', source: 'billing-limits' }, entitlement: null };
+  if (signed) return signed;
+  if (!plan) return { view: { kind: 'unavailable', reason: 'not-published' }, entitlement: null };
+  if (plan.status === 'canceled' || plan.status === 'none') return { view: { kind: 'inactive', planName: plan.status === 'none' ? null : plan.planName, status: plan.status, source: 'billing-limits' }, entitlement: null };
+  return { view: { kind: 'active', planName: plan.planName ?? 'Eliza Cloud plan', status: plan.status, allowance: null, expiresAt: plan.periodEnd ?? 0, refreshFailed: false, source: 'billing-limits' }, entitlement: null };
 }
 /** A refusal that means the signed-in account is no longer the one this phone admitted. */
 export function isEntitlementSignInFailure(error: unknown): boolean {

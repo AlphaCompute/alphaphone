@@ -295,6 +295,25 @@ test.describe('plan state binds Cloud inference; the agent always runs',()=>{
  });
 });
 
+test('signed no-subscription admits canonical credits, then an unconfirmed credit mode unbinds without offline grace',async({page})=>{
+ await boot(page,{...await entitlements(),plan:'none',limits:'none',holdProvider:false});
+ await expect.poll(()=>configured(page)).toBe(1);await idle(page);
+ expect(await page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription)).toEqual({kind:'credits',source:'billing-limits'});
+ const record=await page.evaluate(()=>JSON.parse(localStorage.getItem('alpha.connection.plan-admission.v1')||'null'));
+ expect(record).toMatchObject({status:'credit-funded',credentialId:CREDENTIAL,userId:USER,endsAt:null});
+ const clears=(await calls(page)).filter(c=>c.plugin==='Agent'&&c.method==='clearProvider').length;
+ await fixture(page,{limits:'503'});
+ await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));
+ await expect.poll(()=>page.evaluate(()=>(window as any).planController.getSnapshot().residentSubscription)).toEqual({kind:'inactive',planName:null,status:'none',source:'entitlement'});
+ await expect.poll(async()=>(await calls(page)).filter(c=>c.plugin==='Agent'&&c.method==='clearProvider').length).toBeGreaterThan(clears);
+ await idle(page);
+ expect(await page.evaluate(()=>localStorage.getItem('alpha.connection.plan-admission.v1'))).toBeNull();
+ expect(await configured(page)).toBe(1);
+ expect((await calls(page)).filter(c=>c.plugin==='Agent'&&c.method==='start').length).toBeGreaterThanOrEqual(2);
+ const routes=(await calls(page)).filter(c=>c.method==='request').map(c=>c.path);
+ expect(routes).not.toContain('/api/v1/credits/balance');expect(routes).not.toContain('/api/v1/subscription/redeem');
+});
+
 test.describe('entitlement route unavailable: authenticated billing mode fallback',()=>{
  for(const limits of ['active','past_due'] as const)test(`a ${limits} billing snapshot admits the agent`,async({page})=>{
   await boot(page,{route:'absent',limits});

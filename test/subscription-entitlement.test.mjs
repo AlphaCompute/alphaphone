@@ -618,18 +618,62 @@ test('billing snapshot refresh adopts signed scheduling and discards a late resu
   assert.equal(timers.queue.length, 0);
 });
 
-test('legacy organization credits cannot bypass a signed plan refusal', async () => {
+test('organization-credit billing remains available when a signed entitlement reports no subscription', async () => {
   const fallback = {status:'none',planName:null,periodEnd:null,billingMode:'organization-credits'};
-  const result = await checkEntitlement(source({fallback}), exp, signal(), () => NOW);
-  assert.deepEqual(result,{view:{kind:'credits',source:'billing-limits'},entitlement:null});
-  assert.equal(planAdmission(result.view),'admit');
-  assert.equal(describeSubscription(result.view).headline,'Eliza Cloud credits');
-  assert.equal(describeSubscription(result.view).manageLabel,'Manage billing in Eliza Cloud');
-  assert.equal((await checkEntitlement(source({token:'invalid',fallback}),exp,signal(),()=>NOW)).view.kind,'unavailable');
-  const {jwk,sign}=await keyPair('credit-mode-precedence');
-  const signed=await sign(claims({plan:{id:'p-synthetic',name:'Synthetic plan',status:'none'}}));
-  const checked=await checkEntitlement(source({token:signed,keys:[jwk],fallback}),exp,signal(),()=>NOW);
-  assert.equal(checked.view.kind,'inactive');assert.equal(planAdmission(checked.view),'needs-plan');
+  const creditView = {view:{kind:'credits',source:'billing-limits'},entitlement:null};
+  assert.deepEqual(await checkEntitlement(source({fallback}),exp,signal(),()=>NOW),creditView);
+  const {jwk,sign}=await keyPair('credit-mode-no-subscription');
+  const token=await sign(claims({plan:{id:'free',name:'Free',status:'none'}}));
+  let reads=0;
+  const transport=source({token,keys:[jwk]});transport.fallbackPlan=async()=>{reads++;return fallback;};
+  const checked=await checkEntitlement(transport,exp,signal(),()=>NOW);
+  assert.deepEqual(checked,creditView);assert.equal(reads,1);
+  assert.equal(planAdmission(checked.view),'admit');
+  assert.equal(describeSubscription(checked.view).headline,'Eliza Cloud credits');
+  assert.equal(describeSubscription(checked.view).manageLabel,'Manage billing in Eliza Cloud');
+  assert.equal(checked.entitlement,null,'credit admission uses periodic billing refresh rather than terminal no-plan scheduling');
+});
+test('credit billing cannot override canceled, invalid, expired or mismatched signed authority',async()=>{
+  clearEntitlementKeyCache();
+  const {jwk,sign}=await keyPair('credit-refusals');
+  const other=await keyPair('credit-other-signature');let reads=0;
+  for(const [token,keys,code] of [
+    [await sign(claims({plan:{id:'p',name:'Plan',status:'canceled'}})),[jwk],null],
+    ['invalid',[jwk],null],
+    [await sign(claims({plan:{id:'free',name:'Free',status:'none'},exp:NOW/1000-1,iat:NOW/1000-61})),[jwk],null],
+    [await other.sign(claims({plan:{id:'free',name:'Free',status:'none'}})),[jwk],null],
+    [await sign(claims({plan:{id:'free',name:'Free',status:'none'},org:USER})),[jwk],'account-mismatch'],
+  ]){
+    const transport=source({token,keys});transport.fallbackPlan=async()=>{reads++;return {status:'none',billingMode:'organization-credits'};};
+    if(code)await assert.rejects(checkEntitlement(transport,exp,signal(),()=>NOW),error=>error.code===code);
+    else assert.notEqual(planAdmission((await checkEntitlement(transport,exp,signal(),()=>NOW)).view),'admit');
+  }
+  assert.equal(reads,0);
+});
+test('verified no-subscription needs explicit credit mode; unsigned plans and unknown snapshots cannot promote it',async()=>{
+  const {jwk,sign}=await keyPair('credit-explicit-mode');
+  const token=await sign(claims({plan:{id:'free',name:'Free',status:'none'}}));
+  for(const fallback of [undefined,null,{status:'none',planName:null,periodEnd:null},{status:'active',planName:'Plus',periodEnd:NOW+60000},{status:'canceled',planName:'Plus',billingMode:'organization-credits'}]){
+    const checked=await checkEntitlement(source({token,keys:[jwk],fallback}),exp,signal(),()=>NOW);
+    assert.equal(checked.view.kind,'inactive');assert.equal(checked.view.source,'entitlement');assert.equal(planAdmission(checked.view),'needs-plan');
+  }
+  const outage=await checkEntitlement(source({token,keys:[jwk],fallback:Object.assign(Error('offline'),{status:503})}),exp,signal(),()=>NOW);
+  assert.deepEqual(outage.view,{kind:'inactive',planName:null,status:'none',source:'entitlement'});
+  assert.equal(planAdmission(outage.view),'needs-plan','signed absence plus lookup failure cannot fall through to cached offline admission');
+  for(const error of [Object.assign(Error('revoked'),{status:401}),Object.assign(Error('changed'),{code:'account-changed'})]){
+    await assert.rejects(checkEntitlement(source({token,keys:[jwk],fallback:error}),exp,signal(),()=>NOW),value=>value===error);
+  }
+});
+test('credit refresh stops and reports inactive when a signed no-subscription result cannot confirm credit mode',async()=>{
+  const {jwk,sign}=await keyPair('credit-refresh-no-grace');
+  const token=await sign(claims({plan:{id:'free',name:'Free',status:'none'}}));
+  const refused=await checkEntitlement(source({token,keys:[jwk],fallback:Object.assign(Error('offline'),{status:503})}),exp,signal(),()=>NOW);
+  const timers=fakeTimers(),views=[];let checks=0;
+  const refresher=new EntitlementRefresher({timers,fallbackActive:true,onView:view=>views.push(view),onAuthFailure:()=>assert.fail('not an authentication failure'),check:async()=>{checks++;return refused;}});
+  await timers.advance(FALLBACK_REFRESH_MS);
+  assert.deepEqual(views,[{kind:'inactive',planName:null,status:'none',source:'entitlement'}]);
+  assert.equal(planAdmission(views[0]),'needs-plan');assert.equal(timers.queue.length,0);
+  await timers.advance(FALLBACK_REFRESH_MS*3);assert.equal(checks,1);refresher.stop();
 });
 test('credit billing refreshes in the background and stops on revoked authentication',async()=>{
   const timers=fakeTimers(),views=[];let checks=0,revoked=false,auth=0;

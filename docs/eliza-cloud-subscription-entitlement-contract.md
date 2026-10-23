@@ -12,12 +12,14 @@ Alpha source: `apps/app/src/runtime/subscription-entitlement.ts`, `cloud-protoco
 
 ## Principles (policy P-26)
 
-- Billing is a subscription with server-side rate limits. The phone shows no credit balance,
-  top-up or per-token meter.
+- Cloud billing uses subscription allowances or organization credits, with server-side admission.
+  Alpha supports the owner's credit-funded inference setup; the phone shows no balance, top-up
+  or per-token meter and never grants credits.
 - An assistant turn never waits on a billing service. Cloud authorises each inference or Maps
   request from its own cached quota or token bucket.
-- Every Alpha Phone signs in to Eliza Cloud and holds a plan (owner decision, October 2026). The
-  plan check runs at admission and on return to the app; a turn never does.
+- Every Alpha Phone signs in to Eliza Cloud. Admission accepts a valid active/trialing plan or
+  Cloud's explicit organization-credit billing mode (owner request, October23). The check runs
+  at admission and in the background; a turn never does.
 - The on-device agent ALWAYS runs (owner directive 2026-10-13: "there should NEVER be no agent
   connected"). Plan state decides only whether Eliza Cloud inference (and other Cloud managed
   services) is bound into it. Without an admissible plan, offline or signed out, the agent runs
@@ -39,6 +41,14 @@ with `Authorization: Bearer <the phone's Cloud CLI key>` and `Accept: applicatio
 - `404`, `405` or `501` means the route is not deployed. The phone then reads the subscription
   section of `GET /api/v1/billing/limits` (section 4).
 - Any other status, or a transport failure, is a billing outage (section 4).
+- A verified signed `plan.status:"none"` also reads the same authenticated billing snapshot.
+  Only its explicit `organization-credits` mode admits credit-funded inference. A missing,
+  ambiguous or active-plan snapshot cannot replace signed no-subscription authority. Canceled,
+  invalid, expired or account-mismatched entitlements never take this credit path. No balance
+  check or entitlement request is added to assistant turns; Cloud still enforces each request.
+  Credit mode uses the existing periodic snapshot refresh and stops on revoked authentication.
+  If a verified `none` cannot confirm credit mode, its inactive state is retained even during a
+  snapshot outage; a cached admission cannot turn that result into offline grace.
 
 The phone reads the entitlement when the resident agent is admitted, then refreshes it in the
 background. It never reads it once per turn.
@@ -141,14 +151,15 @@ buckets (elizaOS/eliza PR #36255).
 | No saved sign-in (first run, signed out) | Sign-in dialog; no local-only bypass; it cannot be dismissed. The agent runs behind it | no |
 | Valid entitlement, plan `active` or `trialing` | Plan name and the Cloud allowance | yes |
 | Valid entitlement, plan `past_due` | Plan name, "Payment is past due" warning and "Manage plan in Eliza Cloud" | yes |
-| Valid entitlement, plan `canceled` or `none` | Non-blocking plan notice beside the running agent (Redeem code, Choose a plan); the plan panel shows "<plan> has ended" or "No active plan" with Check plan again | no |
-| Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` bind, `grace`/`past_due`/`unpaid` bind with the warning, `canceled`/`incomplete_expired`/`not_applicable` need a plan | as mapped |
+| Valid entitlement, plan `canceled`, or `none` without explicit organization-credit mode | Non-blocking plan notice beside the running agent (Redeem code, Choose a plan); the plan panel shows "<plan> has ended" or "No active plan" with Check plan again | no |
+| Verified entitlement `none` plus authenticated snapshot `organization-credits` | Eliza Cloud credits; no plan or balance is invented, and the canonical snapshot refreshes periodically | yes, every request still checked by Cloud |
+| Route absent (404/405/501) | `GET /api/v1/billing/limits`, `data.v2.subscription`: `trialing`/`active` bind, `grace`/`past_due`/`unpaid` bind with the warning, `canceled`/`incomplete_expired` need a plan; `not_applicable` with reason `no_organization_subscription` uses credit mode (other reasons remain inactive) | as mapped |
 | Route absent and the billing snapshot is absent or reports no known state | Plan notice; "Plan status unavailable" with Check plan again, Redeem code and Choose a plan | no |
 | Billing outage (5xx, timeout) after identity succeeded | Bound when this sign-in had an admitting plan verified within the last 7 days ("Plan status unavailable"); otherwise the plan notice with a retry | as stated |
 | Cloud unreachable at start (identity or plan read fails in transport) | "Cloud cannot be reached" notice, closable. With a plan verified for this sign-in within 7 days the stored binding is kept (Cloud decides each request once reachable); otherwise it is removed | kept / no |
 | Bad signature, unknown key or bad claims | Reported as unavailable (`invalid`), never trusted; plan notice with a retry | no |
 | Entitlement issued for another account, at admission | An error asking the owner to sign in again | no |
-| Plan reported `canceled`/`none` by a background refresh or a return to the app | Cloud inference is unbound (native restarts the process without the provider; history kept); the plan notice is shown | unbound |
+| Plan reported `canceled`, or `none` without confirmed credit mode, by a background refresh or return to the app | Cloud inference is unbound (native restarts the process without the provider; history kept); the plan notice is shown | unbound |
 | Entitlement issued for another account, during background refresh | Refresh stops, the account is re-admitted: Cloud inference unbound, the Cloud account detached and the same sign-in error shown | unbound |
 | A verified entitlement lapses while refreshes fail | "Plan status is out of date" (`expired`), kept on every later failed refresh until a check succeeds | unchanged; Cloud decides |
 | Sign-in rejected (401), at admission | Sign-in dialog | no |
