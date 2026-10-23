@@ -23,6 +23,9 @@ import static org.junit.Assert.*;
  */
 @RunWith(AndroidJUnit4.class)
 public final class SettingsRolesInstrumentedTest {
+ @org.junit.Before public void requireSignedInViews() throws Exception {
+  AppNavigation.assumeNoRequiredSignIn("SettingsRoles journey");
+ }
  private static final String HOME="android.app.role.HOME";
  private final Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
  private UiAutomation ui(){return InstrumentationRegistry.getInstrumentation().getUiAutomation();}

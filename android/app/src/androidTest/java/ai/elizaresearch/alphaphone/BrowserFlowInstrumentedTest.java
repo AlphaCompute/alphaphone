@@ -17,6 +17,9 @@ import static org.junit.Assert.*;
 /** Public HTTPS flow with real child WebViews. TLS verification is never bypassed. */
 @RunWith(AndroidJUnit4.class)
 public class BrowserFlowInstrumentedTest {
+ @org.junit.Before public void requireSignedInViews() throws Exception {
+  AppNavigation.assumeNoRequiredSignIn("BrowserFlow journey");
+ }
  private String host(String js)throws Exception{return WebViewTestDriver.evaluate(js);}
  private void until(String js)throws Exception{for(int i=0;i<150;i++){if("true".equals(host("Boolean("+js+")")))return;SystemClock.sleep(100);}fail("Browser control missing: "+js);}
  private void click(String label)throws Exception{String q="[...document.querySelectorAll('[data-screen] button')].find(e=>e.getAttribute('aria-label')==="+JSONObject.quote(label)+")";until(q);host("("+q+").click()");}
