@@ -32,18 +32,19 @@ public class NoMockProductInstrumentedTest {
    until("document.querySelector('[data-screen]')");
    String saved=NotesSecureFixture.evaluate("localStorage.getItem('"+SELECTION+"')");
    try{
-    // Open the connection chooser explicitly so every choice is rendered and inspected.
+    // A signed-out production install must render the required sign-in page.
     String previousDocument=NotesSecureFixture.evaluate("performance.timeOrigin");
     WebViewTestDriver.navigateHostDocument("localStorage.removeItem('"+SELECTION+"');location.replace(location.origin+location.pathname)",true);
-    until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.alpha-connection-scrim')");
+    until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.alpha-auth-page [role=main]')");
     NotesSecureFixture.evaluate("document.querySelectorAll('.alpha-connection details').forEach(d=>d.open=true)");
+    assertEquals("Required sign-in cannot be dismissed","false",NotesSecureFixture.evaluate("!!document.querySelector('.alpha-auth-page button[aria-label=\"Close connection settings\"]')"));
     assertNoMockEntry();
    }finally{
     WebViewTestDriver.navigateHostDocument("localStorage."+("null".equals(saved)?"removeItem('"+SELECTION+"')":"setItem('"+SELECTION+"',"+saved+")")+";location.replace(location.origin+location.pathname)",true);
    }
   }
  }
- @Test public void legacyMockSelectionOpensTheChooser()throws Exception{
+ @Test public void legacyMockSelectionRequiresSignIn()throws Exception{
   Assume.assumeFalse("Test-mocks builds intentionally honour a mock selection",BuildConfig.ELIZA_DEV_ALLOW_TEST_MOCKS);
   try(BoundedActivityScenario<MainActivity> scenario=BoundedActivityScenario.launch(MainActivity.class)){
    until("document.querySelector('[data-screen]')");
@@ -51,9 +52,10 @@ public class NoMockProductInstrumentedTest {
    try{
     String previousDocument=NotesSecureFixture.evaluate("performance.timeOrigin");
     WebViewTestDriver.navigateHostDocument("localStorage.setItem('"+SELECTION+"',JSON.stringify({kind:'mock'}));location.replace(location.origin+location.pathname)",true);
-    until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.alpha-connection-scrim')");
-    assertEquals("Underlying phone is inert while choosing","true",NotesSecureFixture.evaluate("document.querySelector('.os').inert"));
+    until("performance.timeOrigin!=="+previousDocument+"&&document.querySelector('.alpha-auth-page [role=main]')");
+    assertEquals("Underlying phone is inert while sign-in is required","true",NotesSecureFixture.evaluate("document.querySelector('.os').inert"));
     assertNotEquals("Legacy mock selection is retired","\"mock\"",NotesSecureFixture.evaluate("JSON.parse(localStorage.getItem('"+SELECTION+"')||'null')?.kind??null"));
+    assertEquals("Required sign-in cannot be dismissed","false",NotesSecureFixture.evaluate("!!document.querySelector('.alpha-auth-page button[aria-label=\"Close connection settings\"]')"));
     assertNoMockEntry();
    }finally{
     WebViewTestDriver.navigateHostDocument("localStorage."+("null".equals(saved)?"removeItem('"+SELECTION+"')":"setItem('"+SELECTION+"',"+saved+")")+";location.replace(location.origin+location.pathname)",true);

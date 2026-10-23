@@ -35,6 +35,9 @@ import static org.junit.Assert.*;
  * emergency calling need a phone. */
 @RunWith(AndroidJUnit4.class)
 public class LauncherHomeInstrumentedTest {
+ @org.junit.Before public void requireSignedInViews() throws Exception {
+  AppNavigation.assumeNoRequiredSignIn("LauncherHome journey");
+ }
  private static final Pattern TOP = Pattern.compile("(?:topResumedActivity|mResumedActivity)[=:][^\\n]*?\\s([A-Za-z0-9_.]+)/");
 
  private static void assumeAlphaIsHome() {

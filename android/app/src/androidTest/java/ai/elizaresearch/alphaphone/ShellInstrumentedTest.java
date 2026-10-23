@@ -38,6 +38,11 @@ public class ShellInstrumentedTest {
    Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage("ai.elizaresearch.alphaphone");
    boolean qualifies = InstrumentationRegistry.getInstrumentation().getTargetContext().getPackageManager().queryIntentActivities(home,0).size()>0;
    assertEquals("HOME qualification follows variant",BuildConfig.IS_LAUNCHER,qualifies);
+  }
+ }
+ @Test public void signedInComposerAndNativeAppHandoffWork() throws Exception {
+  AppNavigation.assumeNoRequiredSignIn("Shell composer and native app handoff");
+  try (BoundedActivityScenario<MainActivity> scenario = BoundedActivityScenario.launch(MainActivity.class)) {
    AppNavigation.liveMode();
    evaluate(scenario,AppNavigation.request("Home"));
    String homeReady="document.documentElement.dataset.activeView==='home'&&!document.querySelector('.alpha-connection-scrim')&&!document.querySelector('.os')?.inert";
