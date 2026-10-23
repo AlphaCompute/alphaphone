@@ -1,6 +1,6 @@
 {
-  "pin": "33a6d19c024a4ec130710f0808df25588266d542",
-  "forkPin": "6e6a4401aae473723cb164a3190eebea6526ea6e",
+  "pin": "b322e38de25a2c2ff26a137552e4470ec2ccc0cc",
+  "forkPin": "6003a10368d8a6d5fb1f70fe9c63a70866e8bcff",
   "identity": "ai.elizaresearch.alphaphone",
   "abi": "arm64-v8a",
   "model": {
@@ -11,8 +11,8 @@
   "libraries": [
     {
       "name": "libelizainference.so",
-      "sha256": "2432c1f0db8af6297a00d64bd5816a7e8665abe30e51eb4350ebcf9a9063166b",
-      "bytes": 8006192,
+      "sha256": "1aac36d40a2228f97c39baa629d1f3ad0c8388c39b18e0f2eacf3ec165669920",
+      "bytes": 8063904,
       "alignment16KiB": true
     },
     {
@@ -28,7 +28,7 @@
       "alignment16KiB": true
     }
   ],
-  "qualificationReceiptSha256": "b876d55132ec326fd04b3673672a148712d5832530cac2f10299259c91dfdc21",
+  "qualificationReceiptSha256": "01cec23b19c9886094cb27ca9d9b73a74749e02bd3237c98e1b95a05e6a546ec",
   "jniIdentityRelocated": true,
   "inputs": [
     {
@@ -66,10 +66,5 @@
     "mode": "registered",
     "className": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
     "subset": "full"
-  },
-  "requalification": {
-    "required": true,
-    "atPin": "58dfddf87ee5adec414746a86a23dada124fbbae",
-    "reason": "Upstream changed the native llama.cpp fork from6e6a4401 to6003a103 and native inputs. The recorded33a6 libraries remain historical; rebuild and qualify new libraries without relabeling these bytes."
   }
 }
