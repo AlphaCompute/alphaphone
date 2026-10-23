@@ -1,8 +1,6 @@
 name: Reproduce pinned Paradee model
 on:
   workflow_dispatch:
-  push:
-    branches: [codex/reproduce-paradee-macos]
 permissions:
   contents: read
 jobs:
