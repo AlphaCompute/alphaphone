@@ -62,7 +62,15 @@
       "repository": "elizaOS/eliza",
       "branch": "codex/nubs-linux-laptop-archive/sdk-latest-preserved-20261022",
       "commit": "da4b5ca2b631bd5b215e46865cbe0f51577c157b",
-      "kind": "historical-local-commit"
+      "kind": "historical-local-commit",
+      "restoration": "portable-git-bundle",
+      "remoteBranchCreated": false,
+      "bundle": "linux-laptop-archive/sdk-latest-preserved.bundle",
+      "bundleSHA256": "869c18c966d9f80563cfcd9440833fe493c1e0862aa99b7e99a991de4b388f05",
+      "prerequisites": [
+        "13224e8f02454ea3a3b03b36aec0ed87f0ea2577",
+        "bdacc0709c3e47d81801deb6f409d3028b4c4304"
+      ]
     },
     {
       "repository": "elizaOS/eliza",

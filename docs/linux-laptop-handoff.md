@@ -1,6 +1,6 @@
 # Linux laptop handoff — 2026-10-23
 
-Start with `codex/nubs-linux-laptop` in AlphaCompute/alphaphone. Its parent is tested candidate `6bb4d65b16af6f5c06988529214dd66ff484d2b7`; this checkpoint adds only this handoff and its archive index. The matching elizaOS/eliza branch points to the exact SDK pin `f931082ebd87a0fecc3f11f8eacf58f598294d4a`.
+Start with `codex/nubs-linux-laptop` in AlphaCompute/alphaphone. It preserves tested candidate `6bb4d65b16af6f5c06988529214dd66ff484d2b7`; this checkpoint adds only handoff/archive material. The existing remote elizaOS/eliza history contains the exact SDK pin `f931082ebd87a0fecc3f11f8eacf58f598294d4a`.
 
 ```sh
 git clone --branch codex/nubs-linux-laptop --recurse-submodules https://github.com/AlphaCompute/alphaphone.git
@@ -29,8 +29,22 @@ Actual accepted Android candidate: existing credit account, exact saved note and
 
 ## Preserved historical work
 
-[linux-laptop-archive.json](linux-laptop-archive.json) lists separate remote `codex/nubs-linux-laptop-archive/*` branches. They retain local-only commit tips and exact snapshots of four dirty checkouts, including old dependency experiments, a provider-diagnostic test, historical admission docs and generated notices. They are backup/review material, not new product fixes; do not merge them wholesale into the tested candidate. Other inventoried source tips are already reachable from existing remote branches.
+[linux-laptop-archive.json](linux-laptop-archive.json) lists separate remote `codex/nubs-linux-laptop-archive/*` branches and one portable bundle. They retain local-only commit tips and exact snapshots of four dirty checkouts, including old dependency experiments, a provider-diagnostic test, historical admission docs and generated notices. They are backup/review material, not new product fixes; do not merge them wholesale into the tested candidate. Other inventoried source tips are already reachable from existing remote branches.
 
 The Alpha-branded Cloud login source is also on elizaOS/eliza's existing `codex/alpha-cloud-sign-in-review-20261019` branch. Its separate deployment and acceptance were not claimed complete. Local edits and original branch/checkouts on Debian were not reset or cleaned to make this backup.
 
 Credentials, browser profiles, emulator disks, private logs, downloaded live backend source, recordings and local screenshots stay on Debian. They are not needed to clone the source or continue development. Reauthenticate on the MacBook rather than copying account keys. Existing user notes inside the emulator are not transferred by Git.
+
+## Exact historical merge bundle
+
+GitHub denied creation of a branch for one historical SDK merge because the OAuth token lacks `workflow` scope. Its exact commit is saved as [sdk-latest-preserved.bundle](linux-laptop-archive/sdk-latest-preserved.bundle); no workflow was changed or run. The matching SDK checkpoint branch was also denied, but its tested pin already exists in upstream remote history and remains the Alpha gitlink.
+
+To restore the historical merge in an Eliza clone, first fetch its public prerequisite parents, then import the bundle from the Alpha clone:
+
+```sh
+git fetch origin 13224e8f02454ea3a3b03b36aec0ed87f0ea2577 bdacc0709c3e47d81801deb6f409d3028b4c4304
+git bundle verify /path/to/alphaphone/docs/linux-laptop-archive/sdk-latest-preserved.bundle
+git fetch /path/to/alphaphone/docs/linux-laptop-archive/sdk-latest-preserved.bundle refs/heads/codex/nubs-linux-laptop-archive/sdk-latest-preserved-20261022:refs/heads/codex/nubs-linux-laptop-archive/sdk-latest-preserved-20261022
+```
+
+This restores exact commit `da4b5ca2b631bd5b215e46865cbe0f51577c157b`. It is historical preservation material; the tested app still pins `f931082e`.
