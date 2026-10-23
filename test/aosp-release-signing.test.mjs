@@ -179,6 +179,35 @@ test("the committed Pixel 10a production descriptor and channel name every unset
   assert.ok(distribution.some(problem => /knownGoodRelease\.otaSha256 is unset/.test(problem)));
 });
 
+test("distribution requires every recovery identity and every update/recovery drill", () => {
+  const complete = {
+    recovery: { knownGoodRelease: { buildFingerprint: FINGERPRINT, otaSha256: "a".repeat(64), recordFile: "releases/42/release-record.json" } },
+    drills: { signedUpdate: "passed", interruptedUpdate: "passed", compatibleRollback: "passed", stockRecovery: "passed" },
+  };
+  assert.deepEqual(channelDistributionProblems(complete), []);
+  const additionalDrill = structuredClone(complete);
+  additionalDrill.drills.additionalRecovery = "failed";
+  assert.ok(channelDistributionProblems(additionalDrill).some(problem => /additionalRecovery drill/.test(problem)));
+  for (const field of Object.keys(complete.recovery.knownGoodRelease)) {
+    for (const value of [undefined, null, "", "  ", "UNSET", 42, {}]) {
+      const candidate = structuredClone(complete);
+      if (value === undefined) delete candidate.recovery.knownGoodRelease[field];
+      else candidate.recovery.knownGoodRelease[field] = value;
+      assert.ok(channelDistributionProblems(candidate).some(problem => problem.includes(`knownGoodRelease.${field}`)), field);
+    }
+  }
+  const malformedHash = structuredClone(complete);
+  malformedHash.recovery.knownGoodRelease.otaSha256 = "not-a-hash";
+  assert.ok(channelDistributionProblems(malformedHash).some(problem => /must be a SHA-256/.test(problem)));
+  for (const drill of Object.keys(complete.drills)) {
+    const candidate = structuredClone(complete);
+    delete candidate.drills[drill];
+    assert.ok(channelDistributionProblems(candidate).some(problem => problem.includes(`${drill} drill`)), drill);
+  }
+  for (const candidate of [null, {}, { recovery: {} }, { recovery: { knownGoodRelease: {} }, drills: { signedUpdate: "passed" } }])
+    assert.ok(channelDistributionProblems(candidate).length >= 6);
+});
+
 test("a complete fixture descriptor admits Pixel 10a production staging inputs; each gap is refused", t => {
   const { repo } = setup(t);
   assert.deepEqual(pixel10aProductProblems(repo.dir), []);
@@ -512,4 +541,3 @@ test("an incremental OTA records its predecessor by file and SHA-256 on the sign
   const loose = await compatibilityRecord({ signedTargetFiles: path.join(fixture.out, "signed-target_files.zip"), ota: path.join(fixture.out, "incremental-ota.zip"), product: read(PIXEL10A_PRODUCT), channel: read(CHANNEL), incrementalFrom: "signed-target_files.zip" });
   assert.ok(loose.problems.some(problem => /incrementalFrom must identify the previous signed target-files by file and SHA-256/.test(problem)));
 });
-
