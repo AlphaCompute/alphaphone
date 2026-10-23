@@ -69,7 +69,7 @@
   },
   "requalification": {
     "required": true,
-    "atPin": "13224e8f02454ea3a3b03b36aec0ed87f0ea2577",
+    "atPin": "619cff55eb6e27f4021a9a6dbe7d14131040d09d",
     "reason": "Upstream changed the native llama.cpp fork from6e6a4401 to6003a103 and native inputs. The recorded33a6 libraries remain historical; rebuild and qualify new libraries without relabeling these bytes."
   }
 }

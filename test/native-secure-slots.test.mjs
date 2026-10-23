@@ -153,6 +153,6 @@ test('browser Cloud conditional cleanup is isolated from the native credential C
  assert.match(native,/browserCloudHost\?\{clearIfCurrent:[^\n]*clearBrowserCloudCredentialIfCurrent/);
  assert.doesNotMatch(native,/secureConnectionStore\.compareExchange\(`cloud:/);
  const start=browser.indexOf('export async function clearBrowserCloudCredentialIfCurrent('),end=browser.indexOf('\n}',start);assert.ok(start>=0&&end>start);const cleanup=browser.slice(start,end);
- assert.match(cleanup,/new BrowserCloudConnection\(\)\.secureCompareExchange/);assert.doesNotMatch(cleanup,/secureConnectionStore|registerPlugin|nativePromise/);
+ assert.match(cleanup,/host=new BrowserCloudConnection\(\)/);assert.match(cleanup,/host\.secureCompareExchange\(/);assert.doesNotMatch(cleanup,/secureConnectionStore|registerPlugin|nativePromise/);
  const {admits}=nativeAllowList();assert.equal(admits('cloud:production'),false);assert.equal(admits('cloud:staging'),false);
 });

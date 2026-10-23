@@ -13,7 +13,9 @@ function same(a,b){return JSON.stringify(Object.entries(a).sort())===JSON.string
 /** Verify every input and output byte; patches may modify only declared existing Java/Kotlin files. */
 export function materializeNativePatches({source,manifest,patchRoot,temporary}){
  if(manifest.schema!==1||manifest.baseCommit!==source.pin||!Array.isArray(manifest.patches))throw Error('Native patch manifest pin/schema mismatch');
- const modules=[...new Set(manifest.patches.map(p=>p.module))].sort(),files=new Map(),expected={};
+ // Modules with no remaining patch are still staged from the pin so Gradle compiles authenticated source.
+ if(manifest.modules!==undefined&&(!Array.isArray(manifest.modules)||manifest.modules.some(m=>typeof m!=='string')))throw Error('Invalid native patch modules');
+ const modules=[...new Set([...(manifest.modules||[]),...manifest.patches.map(p=>p.module)])].sort(),files=new Map(),expected={};
  for(const module of modules){if(!/^plugins\/plugin-native-[a-z-]+\/android$/.test(module))throw Error('Invalid native patch module');for(const [name,file] of source.read(module)){files.set(name,file);expected[name]=file.sha256;}}
  for(const [name,file] of files){const dest=path.join(temporary,name);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,file.bytes,{mode:parseInt(file.mode,8)});}
  const targets=new Set();
