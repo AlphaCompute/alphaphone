@@ -32,3 +32,8 @@ hashes. See the [build and ABI receipt](evidence/paradee-reproduction-native-bui
 The initial ARM64 probe omitted the shared-library search path and failed to load;
 with the explicit test directory in `LD_LIBRARY_PATH`, the same library passed.
 Real-model ASR cancellation was skipped; no application was installed or replaced.
+
+A silent Pixel probe also generated 75,000 finite PCM samples at 24 kHz
+(RMS 0.052109991) for a fixed public sentence using the exact model, current
+ARM64 engine and pinned lexicon. No microphone or speaker was used. This proves
+model loading and PCM generation only; intelligibility and app audio remain untested.

@@ -78,5 +78,19 @@
     "Real-model ASR cancellation skipped",
     "No installed app changed",
     "No speech or image acceptance"
-  ]
+  ],
+  "pixelSilentSynthesis": {
+    "text": "Hello. This is a test of the voice engine.",
+    "samples": 75000,
+    "sampleRate": 24000,
+    "rms": 0.052109991,
+    "g2pKind": 0,
+    "probeSha256": "415ba2f2ec423a376a0e3914c3b5dad89d74b04d8cccacf56d36992eb6b7b73a",
+    "lexiconSha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
+    "deviceInputHashesVerified": true,
+    "microphoneCapture": false,
+    "speakerPlayback": false,
+    "temporaryDeviceFilesRemoved": true,
+    "boundary": "Fixed-input PCM generation only; no listening, intelligibility, fallback G2P, ASR or application acceptance"
+  }
 }
