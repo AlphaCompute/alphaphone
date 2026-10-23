@@ -63,6 +63,7 @@ export const CLIENT_FEATURE_PATHS = [
   'packages/core/src/utils/string-boundaries.ts',
   'packages/core/src/spoken-text.ts',
   'packages/core/src/utils/reasoning-tags.ts',
+  'packages/core/src/utils/stage-directions.ts',
   'packages/core/src/errors.ts',
   'packages/core/src/utils/errors.ts',
   'packages/ui/src/components/shell/chat-overlay-motion.ts',
@@ -109,7 +110,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
   if(projectVoice){
   // Browser consumer projections retain the canonical implementations and exact type declarations.
   // The dashboard transport is unavailable here: Alpha must inject its owned, private fetch.
-  if (upstream.pin !== '619cff55eb6e27f4021a9a6dbe7d14131040d09d') throw Error('Review voice projections for the new upstream pin.');
+  if (upstream.pin !== 'b322e38de25a2c2ff26a137552e4470ec2ccc0cc') throw Error('Review voice projections for the new upstream pin.');
   // The camera contract is upstream at this pin; carry it with the other device-action contracts.
   for(const [name,file] of upstream.read('plugins/plugin-assistant/src/services/device-actions/camera-contract.ts'))source.set(name,file);
 
@@ -118,15 +119,10 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
     'packages/ui/src/voice/voice-session-client.ts':'0692de311d8231262af1ca2113563628836faf01c2ac7bb96f16c51ad22fd6b1',
     'packages/ui/src/voice/voice-chat-types.ts':'043e9a3cd224bc78c67e460070f4e3006120d87db50149f5e2515572eab1cd21',
     'packages/core/src/logger.ts':'8c2401ba44a79b94a11095bdce3568f65374d2d7b1421c5894b08753feafb7d1',
-    'plugins/plugin-maps/src/client/navigation-relay.ts':'2742e4d581c1e9177fdf334199a564df02cd8f707263d62e861489f2cb40a7bd',
   };
   for(const [name,digest] of Object.entries(projectionInputs))if(sourceFiles[name]!==digest)throw Error('Review changed voice projection input: '+name);
   const project = (name, text) => source.set(name, {bytes:Buffer.from(text),mode:'100644',sha256:hash(Buffer.from(text))});
   const text = name => source.get(name).bytes.toString();
-  // Older Android WebViews inject signal composition without changing relay authority or behavior.
-  const relayPath='plugins/plugin-maps/src/client/navigation-relay.ts',relay=text(relayPath);
-  if(relay.split('AbortSignal.any(').length!==3||relay.split('  current(): Owner | null;').length!==2)throw Error('Maps signal projection source changed.');
-  project(relayPath,relay.replace('  current(): Owner | null;','  anySignal?(signals: AbortSignal[]): AbortSignal;\n  current(): Owner | null;').replaceAll('AbortSignal.any(','(host.anySignal ?? AbortSignal.any)('));
 
   const clientPath='packages/ui/src/voice/voice-session-client.ts';
   const fallback='      const { fetchVoiceSession } = await import("./voice-session-fetch");\n      return fetchVoiceSession(url, init);';
@@ -145,7 +141,7 @@ export function prepareClientFeatures({ root = projectRoot, projectVoice = true 
 
   }
   const files = Object.fromEntries([...source].map(([name, file]) => [name, file.sha256]));
-  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?6:0, files };
+  const provenance = { baseCommit: upstream.pin, sourceFiles, projectionVersion:projectVoice?7:0, files };
   const parent = path.join(root, '.eliza'), destination = path.join(parent, 'client-features');
   regularPath(parent, true);
   const exists = regularPath(destination, true), stamp = path.join(destination, '.source.json');

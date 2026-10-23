@@ -69,11 +69,11 @@ test('voice projection refuses an unreviewed pin by default',()=>fixture(({root}
 }));
 test('actual pinned host projections authenticate source/output hashes and exclude dashboard transport',()=>{
  const source=prepareClientFeatures(),stamp=JSON.parse(fs.readFileSync(path.join(source,'.source.json')));
-assert.equal(stamp.baseCommit,'619cff55eb6e27f4021a9a6dbe7d14131040d09d');assert.equal(stamp.projectionVersion,6);
+assert.equal(stamp.baseCommit,'b322e38de25a2c2ff26a137552e4470ec2ccc0cc');assert.equal(stamp.projectionVersion,7);
  const relayPath='plugins/plugin-maps/src/client/navigation-relay.ts';
- assert.equal(stamp.sourceFiles[relayPath],'2742e4d581c1e9177fdf334199a564df02cd8f707263d62e861489f2cb40a7bd');
- assert.notEqual(stamp.sourceFiles[relayPath],stamp.files[relayPath]);
- assert.equal(fs.readFileSync(path.join(source,relayPath),'utf8').split('(host.anySignal ?? AbortSignal.any)(').length,3);
+ // The WebView signal shim is upstream (elizaOS/eliza#37315); the relay is carried unchanged.
+ assert.equal(stamp.sourceFiles[relayPath],stamp.files[relayPath]);
+ assert.match(fs.readFileSync(path.join(source,relayPath),'utf8'),/host\.anySignal \? host\.anySignal\(signals\)/);
  const mapPath='plugins/plugin-maps/src/client/map-plane.ts';
  assert.equal(stamp.sourceFiles[mapPath],stamp.files[mapPath]);
  assert.match(fs.readFileSync(path.join(source,mapPath),'utf8'),/export interface GlobalBasemap/);
