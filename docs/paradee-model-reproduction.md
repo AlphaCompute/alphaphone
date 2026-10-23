@@ -25,3 +25,10 @@ admitted replacement. The helper records environment and source identities and
 retains a failed converter's output for diagnosis; a failed run must not be used
 as an accepted asset. Native libraries, complete voice-bundle staging, APK builds,
 and physical speech qualification retain their existing independent gates.
+
+Fresh current-pin Android engine and JNI builds also passed for ARM64 and x86_64.
+Each passed 24 ABI checks on a Pixel or emulator with verified device library
+hashes. See the [build and ABI receipt](evidence/paradee-reproduction-native-build-20261023.json).
+The initial ARM64 probe omitted the shared-library search path and failed to load;
+with the explicit test directory in `LD_LIBRARY_PATH`, the same library passed.
+Real-model ASR cancellation was skipped; no application was installed or replaced.
