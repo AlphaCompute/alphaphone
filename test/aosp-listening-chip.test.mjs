@@ -41,7 +41,7 @@ test('staged source and exact patch stay bound; independent monitor does not tru
  assert.doesNotMatch(controller,/shadeNotificationShown/);
  for(const hook of [/onVisibilityAggregated/,/onWindowVisibilityChanged/,/onDetachedFromWindow\(\)\{AlphaListeningController\.detach/,/getGlobalVisibleRect/,/isShown\(\)/])assert.match(view,hook);
 });
-const java=name=>path.join(javaHome(),'bin',name);
+const java=name=>{const home=javaHome();return home?path.join(home,'bin',name):name;};
 function javaHome(){return process.env.JAVA_HOME||(process.platform==='darwin'&&fs.existsSync('/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home')?'/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home':'');}
 const stubs=dir=>fs.readdirSync(dir,{recursive:true}).filter(name=>name.endsWith('.java')).map(name=>path.join(dir,name));
 test('prepared Java chip sources type-check against SystemUI stubs and the lease client fails closed on the JVM',()=>{
