@@ -10,7 +10,7 @@ export type NavigationBridge = {
   stopNavigation(input: { sessionId: string }): Promise<{ stopped: boolean }>;
   addListener(name: 'navigationStopped', listener: (event: { sessionId: string; reason: string }) => void): Promise<PluginListenerHandle>;
 };
-type Session = { id: string; title: string; text: string; listener?: Promise<PluginListenerHandle>; stopped: boolean };
+type Session = { id: string; title: string; text: string; listener?: Promise<PluginListenerHandle>; stopped: boolean; onStopped: (reason: string) => void };
 
 export class BackgroundNavigation {
   private session?: Session;
@@ -23,7 +23,7 @@ export class BackgroundNavigation {
   async start(title: string, text: string, onStopped: (reason: string) => void): Promise<boolean> {
     await this.stop();
     if (!this.native()) return false;
-    const session: Session = { id: crypto.randomUUID().replaceAll('-', ''), title, text, stopped: false };
+    const session: Session = { id: crypto.randomUUID().replaceAll('-', ''), title, text, stopped: false, onStopped };
     this.session = session;
     try {
       if (!(await this.bridge.navigationAvailability()).background) throw new Error('unavailable');
@@ -49,7 +49,16 @@ export class BackgroundNavigation {
     const session = this.session;
     if (!session || session.stopped || (session.title === title && session.text === text)) return;
     session.title = title; session.text = text;
-    void this.bridge.updateNavigation({ sessionId: session.id, title, text }).catch(() => {});
+    void this.bridge.updateNavigation({ sessionId: session.id, title, text }).then(result => {
+      if (result?.active !== true) this.lost(session);
+    }, () => this.lost(session));
+  }
+  /** A failed readback cannot establish continued native ownership. Retire only
+   * the session that issued it; an old response must not stop a newer route. */
+  private lost(session: Session) {
+    if (this.session !== session || session.stopped) return;
+    void this.stop();
+    session.onStopped('unavailable');
   }
   /** End the native session from the app. A session already stopped by its notification is not stopped twice. */
   async stop(): Promise<void> {
