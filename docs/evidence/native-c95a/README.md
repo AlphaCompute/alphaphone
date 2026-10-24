@@ -43,3 +43,12 @@ A fresh packaged audit reports a high Zod 4.6.5 advisory
 production signing and device acceptance, it blocks production release approval.
 The runtime lock itself is unchanged from the previous pin; advisory metadata is
 new. This is a development deployment, not a production qualification claim.
+
+## Pixel image deployment
+
+The rebuilt AOSP `android-17.0.0_r1` image was flashed without wiping user data.
+Android boot completed, Alpha v9 retained HOME and resumed successfully, and the
+installed launcher, system launcher, listener and SystemUI hashes matched the
+verified build. SELinux is enforcing. See the
+[v9 deployment receipt](../pixel-version9-aosp-deployment-2026-10-24.json).
+The unchanged incremental base timestamp is not used as deployment identity.

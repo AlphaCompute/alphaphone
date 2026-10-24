@@ -35,5 +35,15 @@
     "installedPixelApkMatches": true,
     "upstreamVoiceContracts": 3
   },
-  "releaseBlocker": "Packaged Zod4.6.5 high advisory GHSA-mrhx-c7xc-m3w5 remains unresolved; production signing and full voice/device acceptance are also pending."
+  "releaseBlocker": "Packaged Zod4.6.5 high advisory GHSA-mrhx-c7xc-m3w5 remains unresolved; production signing and full voice/device acceptance are also pending.",
+  "aosp": {
+    "buildPassed": true,
+    "imageVerificationPassed": true,
+    "flashPassed": true,
+    "bootVerified": true,
+    "postbootPayloadHashesMatched": true,
+    "dataWiped": false,
+    "bootloaderRelocked": false,
+    "deploymentReceipt": "docs/evidence/pixel-version9-aosp-deployment-2026-10-24.json"
+  }
 }
