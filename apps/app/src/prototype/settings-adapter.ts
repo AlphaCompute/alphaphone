@@ -22,6 +22,7 @@ import { retireGmailBackground } from '../runtime/gmail-background';
 import { gmailGrantLabel, googleAccountAccessLabel } from '../runtime/gmail-grants';
 import { clearCrashLog, describeCrashEntry, readCrashLog, recordCloudInferenceFailure, type CrashLog } from '../runtime/crash-log';
 import { buildDiagnostics, diagnosticsFileName, diagnosticsText } from '../runtime/diagnostics-export';
+import {planAdmission} from '../runtime/subscription-entitlement';
 import { exportVoiceTiming } from '../runtime/voice-timing';
 import { readNativeVoiceTiming } from '../runtime/native-voice-turn';
 import { listenerStatus, openListenerSettings, pauseListener, turnOffListener, type ListenerStatus } from '../runtime/always-on-listener';
@@ -300,6 +301,7 @@ export function installSettingsAdapter(Component: any, views: Bag) {
       const [buildFacts, problems, roleState, nativeTiming] = await Promise.allSettled([native ? device.diagnosticsFacts() : Promise.resolve({}), readCrashLog(), native ? system.getStatus() : Promise.resolve({ roles: [] }), readNativeVoiceTiming()]);
       const value: Bag = buildFacts.status === 'fulfilled' ? buildFacts.value : {};
       const connection = connectionController.getSnapshot();
+      const subscription = connection.residentSubscription;
       const report = buildDiagnostics({
         platform: native ? 'android' : 'web',
         app: native ? { version: value.appVersion, versionCode: value.versionCode, variant: value.variant, buildType: value.buildType, testMocks: value.testMocks } : { version: buildVersion, testMocks: testMocksEnabled },
@@ -309,6 +311,12 @@ export function installSettingsAdapter(Component: any, views: Bag) {
         roles: roleState.status === 'fulfilled' ? Object.values(readRoles(roleState.value)) : [],
         crashes: problems.status === 'fulfilled' ? problems.value.entries : [],
         connection: { kind: connection.kind, connected: !!connection.session },
+        cloudPlan: subscription ? {
+          view: subscription.kind, admission: planAdmission(subscription),
+          source: 'source' in subscription ? subscription.source : undefined,
+          status: 'status' in subscription ? subscription.status : undefined,
+          reason: subscription.kind === 'unavailable' ? subscription.reason : undefined,
+        } : undefined,
         // Per-turn voice latency kept on this device; buildDiagnostics copies timing fields only.
         voiceTiming: (() => { try { return JSON.parse(exportVoiceTiming()); } catch { return null; } })(),
         // Native audio-clock voice latency (issue #395): timings, turn ids and hashes only.

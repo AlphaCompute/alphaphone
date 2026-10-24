@@ -21,7 +21,7 @@ async function fixture(t,{native=false,denied=false,unsupported=false,legacy=nul
  dom.window.HTMLDialogElement.prototype.showModal=function(){this.open=true;};dom.window.HTMLDialogElement.prototype.close=function(){this.open=false;};
  const state={notifications:true,microphone:true,camera:true,location:!deniedLocation,calendar:true,photos:'selected',accuracy:badLocation?'invalid':'approximate'},calls=[];
  Object.defineProperty(globalThis,'navigator',{configurable:true,value:{userAgent:'Alpha required onboarding fixture',permissions:{async query({name}){return {state:state[name==='geolocation'?'location':name]?'granted':'denied'};}},mediaDevices:{async getUserMedia(input){calls.push({kind:'media',input});return {getTracks:()=>[{stop(){calls.push({kind:'track-stop'});}}]};}},geolocation:{getCurrentPosition(ok){calls.push({kind:'location'});ok({coords:{latitude:1,longitude:1}});}}}});
- Object.defineProperty(globalThis,'Notification',{configurable:true,value:unsupported?{}:{get permission(){return state.notifications?'granted':'denied';},async requestPermission(){calls.push({kind:'notifications-request'});return state.notifications?'granted':'denied';}}});
+ Object.defineProperty(globalThis,'Notification',{configurable:true,value:unsupported?{}:{get permission(){return typeof state.notifications==='string'?state.notifications:state.notifications?'granted':'denied';},async requestPermission(){calls.push({kind:'notifications-request'});return state.notifications?'granted':'denied';}}});
  globalThis.requiredPorts={AlphaNotifications:{async status(){return {permissionGranted:state.notifications,appEnabled:state.notifications};}},DailyApps:{async checkPermissions(){return {camera:state.camera?'granted':'denied'};},async requestPermissions(input){calls.push({kind:'native-request',input});},async addListener(){return {async remove(){}};}},AlphaVoiceCloud:{async checkPermissions(){return {microphone:state.microphone?'granted':'denied'};},async requestPermissions(input){calls.push({kind:'native-request',input});}},ElizaLocation:{async checkPermissions(){return {location:state.location?'granted':'denied',accuracy:state.location?state.accuracy:'none'};},async requestPermissions(){calls.push({kind:'native-location'});}},AlphaCalendar:{async checkPermissions(){return {calendar:state.calendar?'granted':'denied'};},async requestAccess(){calls.push({kind:'calendar-access'});}},AlphaPhotoLibrary:{async scope(){return {scope:state.photos,locked:false};},async requestAccess(){calls.push({kind:'photos-access'});}},AlphaDevice:{async openSettings(input){calls.push({kind:'settings',input});}}};
  if(denied)state.notifications=false;
  if(legacy)sessionStorage.setItem('alpha:startup-permission-progress:v1',JSON.stringify(legacy));if(durable)localStorage.setItem(startupPermissionProgressKey,JSON.stringify(durable));
@@ -41,6 +41,23 @@ test('denied native permission stays on required step, blocks dismissal, and set
  const f=await fixture(t,{native:true,denied:true});assert.equal(f.heading(),'Stay in the loop.');await f.click('Allow');assert.equal(f.heading(),'Stay in the loop.');assert.equal(f.calls.filter(x=>x.kind==='native-request').length,1);await f.cancel();await f.back();assert.equal(f.heading(),'Stay in the loop.');await f.click('Open Android settings');assert.equal(f.calls.filter(x=>x.kind==='native-request').length,1);assert.equal(f.calls.filter(x=>x.kind==='settings').length,1);assert.equal(f.progress().step,0);
 });
 test('unsupported browser permission is honest and cannot be skipped or inferred granted',async t=>{const f=await fixture(t,{unsupported:true});assert.equal(f.heading(),'Stay in the loop.');assert.match(document.body.textContent,/Access could not be confirmed/);await f.click('Try again');assert.equal(f.heading(),'Stay in the loop.');assert.equal(f.calls.length,0);assert.equal(f.progress().step,0);});
+test('a hung browser notification prompt releases Checking without granting access or retrying, and late completion cannot advance setup',async t=>{
+ const f=await fixture(t);let requests=0,complete;
+ f.state.notifications='default';
+ Notification.requestPermission=()=>{requests++;return new Promise(resolve=>{complete=resolve;});};
+ await React.act(async()=>document.dispatchEvent(new f.dom.window.Event('visibilitychange')));
+ assert.equal(f.heading(),'Stay in the loop.');
+ t.mock.timers.enable({apis:['setTimeout']});
+ await f.click('Allow');assert.equal(f.button('Checking…').disabled,true);assert.equal(requests,1);
+ await React.act(async()=>t.mock.timers.tick(14999));assert.equal(f.button('Checking…').disabled,true);
+ await React.act(async()=>t.mock.timers.tick(1));
+ assert.equal(f.button('Check access').disabled,false);assert.equal(f.progress().step,0);assert.match(document.body.textContent,/Review access using the site controls/);assert.equal(requests,1);
+ await React.act(async()=>complete('granted'));
+ assert.equal(f.heading(),'Stay in the loop.');assert.equal(f.button('Check access').disabled,false);assert.equal(f.progress().step,0);
+ await f.click('Check access');assert.equal(f.heading(),'Stay in the loop.');assert.equal(requests,1);
+ f.state.notifications=true;await f.click('Check access');
+ assert.equal(f.heading(),'Talk to Alpha.');assert.equal(f.progress().step,1);assert.equal(requests,1);
+});
 test('durable partial progress resumes but a revoked earlier grant rewinds without requesting anything',async t=>{const f=await fixture(t);await f.click('Continue');assert.equal(f.progress().step,1);await f.remount();assert.equal(f.heading(),'Talk to Alpha.');f.state.notifications=false;await f.remount();assert.equal(f.heading(),'Stay in the loop.');assert.equal(f.progress().step,0);assert.equal(f.calls.length,0);});
 test('legacy skipped choices restart required setup and old session data is preserved',async t=>{const legacy={version:1,step:2,choices:['allowed','skipped']};const f=await fixture(t,{legacy});assert.equal(f.heading(),'Stay in the loop.');assert.deepEqual(JSON.parse(sessionStorage.getItem('alpha:startup-permission-progress:v1')),legacy);assert.equal(f.progress().step,0);});
 test('storage write/readback failure prevents UI progress without re-requesting a granted permission',async t=>{const f=await fixture(t,{writeFailure:true});await f.click('Continue');assert.equal(f.heading(),'Stay in the loop.');assert.match(document.body.textContent,/Setup progress could not be saved/);assert.equal(f.calls.length,0);});

@@ -40,7 +40,18 @@ export function browserStartupPermission(key: StartupPermissionKey, ports: Brows
     async request() {
       if (!supported()) throw Error('Permission API unavailable');
       requested = true;
-      if (key === 'notifications') { await ports.notifications!.requestPermission(); return; }
+      if (key === 'notifications') {
+        // Some embedded browsers leave this promise pending without showing a prompt.
+        // Bound the UI wait only: the browser still owns permission and late completion.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            ports.notifications!.requestPermission(),
+            new Promise<void>(resolve => {timer = setTimeout(resolve, 15000);}),
+          ]);
+        } finally {clearTimeout(timer);}
+        return;
+      }
       if (key === 'location') {
         try {
           await new Promise<void>((resolve, reject) => ports.geolocation!.getCurrentPosition(

@@ -352,8 +352,9 @@ test('the flag-off build exports redacted diagnostics with the real version and 
  expect(report.format).toBe('alpha-diagnostics/v1');
  expect(report.app).toEqual({version:'0.1.0',versionCode:7,variant:'launcher',buildType:'release',testMocks:false});
  expect(report.permissions).toEqual({Microphone:true,Location:false,Camera:false,Calendar:true,Notifications:true});
- expect(Object.keys(report).sort()).toEqual(['app','connection','crashes','format','generatedAt','nativeVoiceTiming','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
- for(const leak of ['csk-synthetic','Stub phone','Stub maker','stub-build','Stub Mail','update','Update'])expect(shared).not.toContain(leak);
+ expect(Object.keys(report).sort()).toEqual(['app','cloudPlan','connection','crashes','format','generatedAt','nativeVoiceTiming','os','permissions','platform','roles','runtimeHashes','upstreamPin','voiceTiming']);
+ expect(report.cloudPlan).toEqual({view:'active',admission:'admit',source:'billing-limits',status:'active'});
+ for(const leak of ['csk-synthetic','synthetic-settings-key','synthetic-settings@example.invalid','9f1dc45a-4011-4e44-947a-30d999d24fa5','5c1f2a9e-3b4d-4e6f-8a7b-9c0d1e2f3a4b','Stub phone','Stub maker','stub-build','Stub Mail','update','Update'])expect(shared).not.toContain(leak);
 });
 
 test('the browser build of Settings shows no fixture value and no radio or sensor switch',async({page})=>{

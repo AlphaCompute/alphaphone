@@ -14,3 +14,12 @@ test('browser without permission-query support rejects an ended stream and still
  let requests=0,stops=0;const browser=browserStartupPermission('microphone',{media:{async getUserMedia(){requests++;return {getTracks:()=>[{readyState:'ended',stop(){stops++;}}]};}}});
  const flow=createStartupPermissionFlow(browser,{store:null});assert.equal(await flow.refresh(),'request');assert.equal(requests,0);assert.equal(await flow.enable(),'unavailable');assert.equal(stops,1);assert.equal(await flow.refresh(),'unavailable');assert.equal(requests,1);
 });
+test('a late notification request rejection stays observed after the UI deadline and never starts another prompt',async t=>{
+ let rejectRequest,requests=0;
+ const flow=createStartupPermissionFlow(browserStartupPermission('notifications',{notifications:{permission:'default',requestPermission(){requests++;return new Promise((_,reject)=>{rejectRequest=reject;});}}}),{store:null});
+ t.mock.timers.enable({apis:['setTimeout']});
+ const pending=flow.enable();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(requests,1);t.mock.timers.tick(15000);assert.equal(await pending,'settings');
+ rejectRequest(Error('late browser failure'));await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(await flow.refresh(),'settings');assert.equal(await flow.enable(),'unavailable');assert.equal(requests,1);
+});
