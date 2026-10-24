@@ -378,6 +378,8 @@ public final class AlphaCloudSignInPlugin extends Plugin {
     synchronized (lock) { if (attempt != null) return; attempt = owner; }
    }
    if (pending.expired(now)) { end(owner, "expired", false); return; }
+   owner.expiresAt = pending.expiresAt;
+   owner.callbackReceived = true;
    if (received.kind == CloudSignInFlow.ReturnKind.ERROR) {
     end(owner, "mfa_required".equals(received.error) ? "mfa-browser" : "app_link_unverified".equals(received.error) ? "app-link-unverified" : "provider-refused", false);
     return;
@@ -440,7 +442,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
   final Attempt current;
   synchronized (lock) {
    current = attempt;
-   if (current == null || current.google || !current.id.equals(call.getString("attemptId"))) { call.reject("Sign-in expired. Start again.", "expired"); return; }
+   if (current == null || (current.google && !mfa) || !current.id.equals(call.getString("attemptId"))) { call.reject("Sign-in expired. Start again.", "expired"); return; }
    if (current.busy) { call.reject("Another sign-in is in progress", "login-active"); return; }
    if (System.currentTimeMillis() >= current.expiresAt) { attempt = null; call.reject("Sign-in expired. Start again.", "expired"); return; }
    if (current.failedVerifies >= CloudSignInFlow.MAX_VERIFY_ATTEMPTS) { attempt = null; call.reject("Too many incorrect codes", "attempts-exhausted"); return; }
@@ -455,18 +457,6 @@ public final class AlphaCloudSignInPlugin extends Plugin {
      : post(current, CloudEmailCode.VERIFY_PATH, CloudEmailCode.verifyBody(current.environment, current.email, code, current.emailVerifier), null);
     if (verified.status != 200) throw new SignInFailure(CloudSignInFlow.failureForStatus(mfa ? "mfa" : "verify", verified.status));
     JSONObject session = verified.data.optJSONObject("data") != null && !verified.data.has("token") ? verified.data.optJSONObject("data") : verified.data;
-    if (Boolean.TRUE.equals(session.opt("mfaRequired")) && !mfa) {
-     JSONObject challenge = session.optJSONObject("mfa");
-     String type = challenge == null ? null : challenge.optString("type", null), id = challenge == null ? null : challenge.optString("challengeId", null);
-     long expiresAt = challenge == null ? 0 : instant(challenge.opt("expiresAt"));
-     if (id == null || id.isEmpty() || id.length() > 256 || !("totp".equals(type) || "sms".equals(type) || "passkey".equals(type))) throw new SignInFailure("unavailable");
-     synchronized (lock) {
-      if (attempt != current || current.cancelled) throw new SignInFailure("cancelled");
-      current.mfaType = type; current.mfaChallenge = id; current.failedVerifies = 0; current.expiresAt = Math.min(current.expiresAt, expiresAt); current.busy = false; current.waiting = null;
-     }
-     call.resolve(new JSObject().put("status", "mfa").put("method", type).put("expiresAt", current.expiresAt));
-     return;
-    }
     complete(current, session);
    } catch (SignInFailure failure) {
     if (!"invalid-code".equals(failure.code)) { end(current, failure.code, false); return; }
@@ -481,6 +471,16 @@ public final class AlphaCloudSignInPlugin extends Plugin {
  }
  private void release(Attempt current) { synchronized (lock) { current.busy = false; if (attempt == current && current.expiresAt == 0) attempt = null; } }
 
+ /** A retained MFA event is only a hint: the renderer must re-check its live attempt before displaying it. */
+ @PluginMethod public void resumeMfa(PluginCall call) {
+  synchronized (lock) {
+   boolean active = attempt != null && !attempt.cancelled && attempt.mfaType != null
+    && attempt.id.equals(call.getString("attemptId")) && attempt.environment.name.equals(call.getString("environment"))
+    && attempt.expiresAt > System.currentTimeMillis();
+   call.resolve(new JSObject().put("active", active));
+  }
+ }
+
  @PluginMethod public void cancel(PluginCall call) {
   Attempt current;
   synchronized (lock) { current = attempt; attempt = null; }
@@ -493,6 +493,27 @@ public final class AlphaCloudSignInPlugin extends Plugin {
  // ── Shared tail: Steward session → eliza_mobile_ key ─────────────────────────────────────────
 
  private void complete(Attempt current, JSONObject session) throws Exception {
+  if (Boolean.TRUE.equals(session.opt("mfaRequired"))) {
+   JSONObject challenge = session.optJSONObject("mfa");
+   String type = challenge == null ? null : challenge.optString("type", null), id = challenge == null ? null : challenge.optString("challengeId", null);
+   long expiresAt = challenge == null ? 0 : instant(challenge.opt("expiresAt"));
+   if (id == null || id.isEmpty() || id.length() > 256 || !("totp".equals(type) || "sms".equals(type) || "passkey".equals(type))) throw new SignInFailure("unavailable");
+   PluginCall waiting;
+   synchronized (lock) {
+    if (attempt != current || current.cancelled) throw new SignInFailure("cancelled");
+    if (current.mfaType != null) throw new SignInFailure("unavailable");
+    long deadline = Math.min(current.expiresAt, expiresAt);
+    if (deadline <= System.currentTimeMillis()) throw new SignInFailure("expired");
+    current.mfaType = type; current.mfaChallenge = id; current.failedVerifies = 0; current.expiresAt = deadline;
+    current.busy = false; waiting = current.waiting; current.waiting = null;
+   }
+   // Only the local attempt ID crosses the bridge; the server challenge stays native.
+   JSObject required = new JSObject().put("status", "mfa").put("method", type).put("expiresAt", current.expiresAt)
+    .put("attemptId", current.id).put("environment", current.environment.name);
+   if (waiting != null) waiting.resolve(required);
+   else notifyListeners("signInMfaRequired", required, true);
+   return;
+  }
   String token = session.optString("token", null), refresh = session.optString("refreshToken", null);
   if (!CloudSignInFlow.validStewardToken(token)) throw new SignInFailure("unavailable");
   CloudSignInFlow.Environment environment = current.environment;

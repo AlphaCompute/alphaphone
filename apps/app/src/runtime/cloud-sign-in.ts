@@ -32,20 +32,25 @@ export interface CloudSignInAuthenticated {
 }
 export interface CloudSignInEmailStarted { attemptId: string; expiresAt: number; resendAt: number }
 export interface CloudSignInMfaRequired { status: 'mfa'; method: 'totp' | 'sms' | 'passkey'; expiresAt: number }
+export interface CloudSignInGoogleMfaRequired extends CloudSignInMfaRequired { attemptId: string; environment: CloudEnvironment }
+export type CloudSignInGoogleOutcome = CloudSignInAuthenticated | CloudSignInGoogleMfaRequired;
 export interface CloudSignInPort {
   /** Opens Google's consent in a Custom Tab and resolves once the App Link return is exchanged. */
   startGoogle(input: { environment: CloudEnvironment }): Promise<unknown>;
   startEmail(input: { environment: CloudEnvironment; email: string }): Promise<unknown>;
   verifyEmail(input: { attemptId: string; code: string }): Promise<unknown>;
   verifyMfa(input: { attemptId: string; code: string }): Promise<unknown>;
+  /** Revalidates a retained MFA event against the current native attempt; no network or secrets. */
+  resumeMfa?(input: { attemptId: string; environment: CloudEnvironment }): Promise<unknown>;
   /** Ends the attempt and burns any pending Google record. Idempotent. */
   cancel(): Promise<void>;
   /** Which methods this host offers and whether Cloud is ready for in-app sign-in on this phone
    * (`inApp`, from the host's cached readiness probe). Hosts without Google (the browser bridge) say so. */
   status?(input?: { environment: CloudEnvironment }): Promise<unknown>;
   /** `signInCompleted`: a Google return that completed after Alpha restarted (no waiting call).
-   * `signInIncomplete`: a return without a sign-in result arrived with no waiting call. */
-  addListener?(event: 'signInCompleted' | 'signInIncomplete', listener: (outcome: unknown) => void): Promise<unknown>;
+   * `signInIncomplete`: a return without a sign-in result arrived with no waiting call.
+   * `signInMfaRequired`: a retained hint that must be revalidated through resumeMfa. */
+  addListener?(event: 'signInCompleted' | 'signInIncomplete' | 'signInMfaRequired', listener: (outcome: unknown) => void): Promise<unknown>;
 }
 const CODES = new Set<string>(['cancelled', 'login-active', 'invalid-email', 'invalid-code', 'cooldown', 'expired', 'rate-limited', 'offline', 'unavailable', 'account-check', 'state-mismatch', 'browser-closed', 'browser-unavailable', 'provider-refused', 'mfa-browser', 'mfa-unsupported', 'activation-pending', 'storage', 'rejected', 'invalid-request', 'app-link-unverified', 'attempts-exhausted']);
 export class CloudSignInError extends Error {
@@ -112,6 +117,16 @@ export function verified(value: unknown, environment: CloudEnvironment): CloudSi
     return { status: 'mfa', method: row.method, expiresAt: time(row.expiresAt) };
   }
   return authenticated(row, environment);
+}
+/** Google may require a native second factor before a credential exists. Bind it to this attempt/environment. */
+export function googleOutcome(value: unknown, environment: CloudEnvironment): CloudSignInGoogleOutcome {
+  const row = object(value);
+  const outcome = verified(row, environment);
+  if (outcome.status !== 'mfa') return outcome;
+  if (row.environment !== environment || typeof row.attemptId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(row.attemptId)) throw new CloudSignInError('unavailable');
+  if (Object.keys(row).some(key => !['status', 'method', 'expiresAt', 'attemptId', 'environment'].includes(key))) throw new CloudSignInError('unavailable');
+  if (outcome.expiresAt <= Date.now()) throw new CloudSignInError('expired');
+  return { ...outcome, attemptId: row.attemptId, environment };
 }
 export const normalizeSignInCode = (value: string): string | null => { const digits = value.replace(/[\s-]/g, ''); return /^\d{6}$/.test(digits) ? digits : null; };
 export const validSignInEmail = (value: string): boolean => value.length <= 320 && /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(value.trim());

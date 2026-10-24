@@ -39,7 +39,7 @@ public final class CloudSignInFlowTest {
   URI authorize = new URI(CloudSignInFlow.authorizeUrl(production, challenge, state));
   check("https".equals(authorize.getScheme()) && "api.eliza.app".equals(authorize.getHost()) && authorize.getPort() == -1, "Cloud API authority");
   check("/steward/auth/oauth/google/authorize".equals(authorize.getPath()), "Steward Google authorize");
-  check(authorize.getRawQuery().equals("response_type=code&tenant_id=elizacloud&redirect_uri=https%3A%2F%2Feliza.app%2Falphaphone%2Fauth%2Fcallback&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state + "&prompt=select_account"), "exact query, with Google's account chooser");
+  check(authorize.getRawQuery().equals("response_type=code&tenant_id=elizacloud&redirect_uri=https%3A%2F%2Feliza.app%2Falphaphone%2Fauth%2Fcallback&code_challenge=" + challenge + "&code_challenge_method=S256&state=" + state + "&prompt=select_account&mfa=exchange"), "exact query, with Google's account chooser and native MFA");
   check(new URI(CloudSignInFlow.authorizeUrl(staging, challenge, state)).getHost().equals("api-staging.eliza.app"), "staging authority");
   for (String[] bad : new String[][]{{challenge, "short"}, {"x", state}, {challenge, state + "&x=1"}}) {
    try { CloudSignInFlow.authorizeUrl(production, bad[0], bad[1]); check(false, "refused authorize input"); } catch (IllegalArgumentException expected) { checks++; }
