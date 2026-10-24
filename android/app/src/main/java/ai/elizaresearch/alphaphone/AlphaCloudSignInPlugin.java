@@ -54,7 +54,7 @@ import org.json.JSONTokener;
  * this sign-in replaces is revoked once, best effort, after the new key is active.
  *
  * Readiness: status() reports `inApp` only after CloudSignInReadiness confirms Cloud is ready for this
- * phone (cached); until then the renderer keeps the Cloud sign-in hand-off. Returns follow the shared
+ * phone (cached). Email stays in Alpha even if this probe fails. Returns follow the shared
  * callback contract (CloudSignInFlow.parseCallback). Nothing here logs URLs, codes, headers or bodies.
  */
 @CapacitorPlugin(name = "AlphaCloudSignIn")
@@ -189,7 +189,7 @@ public final class AlphaCloudSignInPlugin extends Plugin {
    if (answered != null) for (PluginCall waiting : answered) waiting.resolve(statusOutcome(CloudSignInReadiness.Result.notReady(now)));
   }
  }
- /** Cloud refused this phone's in-app sign-in: re-check before offering it again, so the hand-off returns. */
+ /** Cloud refused this phone's in-app sign-in: invalidate the optional-method readiness cache. */
  private void forgetReadiness(CloudSignInFlow.Environment environment) {
   synchronized (lock) { readiness.remove(environment); }
   try { getContext().getSharedPreferences(READINESS_PREFERENCES, android.content.Context.MODE_PRIVATE).edit().remove(environment.name).apply(); } catch (Exception ignored) { /* Re-probed anyway. */ }
@@ -220,11 +220,16 @@ public final class AlphaCloudSignInPlugin extends Plugin {
   if (!emailOffered) return CloudSignInReadiness.Result.notReady(now);
   // An empty object names no address, so Steward refuses it and no email is sent.
   boolean emailRoute = CloudSignInReadiness.emailRoutePresent(probePost(environment, CloudEmailCode.SEND_PATH));
-  // A fresh, unused state and challenge: Steward stores one short-lived authorize record and nothing is followed.
-  Response authorize = get(CloudSignInFlow.authorizeUrl(environment, CloudSignInFlow.s256(CloudSignInFlow.newVerifier()), CloudSignInFlow.newState()));
-  boolean redirectAllowed = CloudSignInReadiness.redirectAllowed(authorize.status, authorize.location);
-  boolean assetLinks = assetLinksGrant(environment);
-  boolean deviceVerified = appLinkVerified(environment);
+  boolean redirectAllowed = false, assetLinks = false, deviceVerified = false;
+  if (CloudSignInReadiness.googleOffered(providers.status, providers.data.opt("google")) && appLinkVerified(environment)) {
+   // Google readiness is optional: a failed request cannot disable email.
+   try {
+    Response authorize = get(CloudSignInFlow.authorizeUrl(environment, CloudSignInFlow.s256(CloudSignInFlow.newVerifier()), CloudSignInFlow.newState()));
+    redirectAllowed = CloudSignInReadiness.redirectAllowed(authorize.status, authorize.location);
+    assetLinks = assetLinksGrant(environment);
+    deviceVerified = appLinkVerified(environment);
+   } catch (Exception unavailable) { /* Email remains available. */ }
+  }
   return CloudSignInReadiness.combine(registered, redirectAllowed, assetLinks, emailOffered, emailRoute,
    CloudSignInReadiness.googleOffered(providers.status, providers.data.opt("google")), deviceVerified, now);
  }

@@ -13,8 +13,8 @@ import type { CloudEnvironment } from './cloud-protocol';
  * hand-off stores, because the renderer's Cloud requests send it as their Bearer. The port's
  * outcomes themselves carry no secret.
  *
- * Until the host's readiness probe reports Cloud ready for this phone (`status().inApp`), the
- * renderer keeps the Cloud sign-in hand-off (CloudProtocol.login) as the product path.
+ * Email remains in Alpha when readiness is unavailable. The readiness probe gates Google;
+ * it never selects hosted login as a fallback.
  */
 export type CloudSignInFailureCode =
   | 'cancelled' | 'login-active' | 'invalid-email' | 'invalid-code' | 'cooldown' | 'expired' | 'rate-limited'
@@ -117,7 +117,7 @@ export const normalizeSignInCode = (value: string): string | null => { const dig
 export const validSignInEmail = (value: string): boolean => value.length <= 320 && /^[^\s@\p{Cc}\p{Cf}]+@[^\s@\p{Cc}\p{Cf}]+\.[^\s@\p{Cc}\p{Cf}]+$/u.test(value.trim());
 /**
  * The host's readiness answer. In-app sign-in is used only when the host says `inApp: true` and
- * offers email; anything else (absent, malformed, false) keeps the Cloud sign-in hand-off. Google is
+ * offers email; anything else (absent, malformed, false) leaves Google unavailable. Google is
  * offered only when the host also reports it.
  */
 export function signInReadiness(value: unknown): { google: boolean } | null {
