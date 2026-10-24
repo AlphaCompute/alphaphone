@@ -33,7 +33,7 @@ nothing is downloaded.
 
 | Path | Role | Size | Licence |
 | --- | --- | --- | --- |
-| `tts/paradee/paradee-8m-v1_0.gguf` | Paradee-8M F32 (converted from the pinned PyTorch files) | 32 MB | Apache-2.0 |
+| `tts/paradee/paradee-8m-v1_1.gguf` | Paradee-8M F32 (converted from the pinned PyTorch files) | 32 MB | Apache-2.0 |
 | `tts/paradee/misaki-en-us.lex` | misaki US lexicon (converted from the pinned misaki data) | 12.9 MB | Apache-2.0 |
 | `tts/paradee/espeak-ng-data/*` (7 files) | eSpeak NG English data for out-of-lexicon words | 0.8 MB | GPL-3.0-or-later (flagged) |
 | `asr/phonon-2-fv5.gguf` | The ASR slot: Phonon-2 (Parakeet-TDT 0.6B, five-value weights, `general.architecture=parakeet-tdt`) | 331 MB | CC-BY-4.0 (attribution and NOTICE shipped; training-data terms flagged) |
@@ -187,7 +187,7 @@ or a device. Echo, barge-in timing, lock, calls and Bluetooth need device accept
 
 The current source pin uses the upstream-preserving native integration and disables
 the optional Android video helper that required API 28. Both engine ABIs build with
-ABI 18, ASR and Paradee enabled, and 16 KiB load alignment. The voice record contains
+ABI 19, ASR and Paradee enabled, and 16 KiB load alignment. The voice record contains
 their measured hashes and remains unqualified. Staging binds the generated record to
 both the Eliza and llama.cpp revisions; an older bundle cannot satisfy the new pin.
 The earlier path-independent build described below is historical evidence, not a
@@ -200,10 +200,10 @@ claim that the current development build reproduces those bytes.
    builder, then verifies the shared builder's recorded revisions and every fresh output hash. At `968348d792d3` the upstream builder
    emits both source fields; the wrapper rejects disagreement and unrecorded engine staging
    checks the original record against every selected engine hash. No vendor source is edited.
-   The bundle assets recorded today were built this way at eliza `c7a9a0d7e7` (llama.cpp
-   `5df17a66`) on 2026-10-14; the engine bytes recorded for both ABIs come from
-   `node scripts/prepare-embedding-host.mjs --build --remap-build-path` at the same source, so the
-   voice host and the embedding host name the same, path-independent engine.
+   The current engines were built from clean Eliza `58dfddf87ee5` and native
+   `6003a10368d8` checkouts on 2026-10-23. The canonical Paradee v1.1 model was
+   reproduced by the pinned macOS workflow and verified by size and SHA-256.
+   Both hosts select the same engine bytes; see the [component evidence](evidence/native-58df/README.md).
 2. Put the Phonon-2 GGUF, its NOTICE and licence text, and Silero VAD in a directory (their
    pinned sources are in the record).
 3. Stage: `node scripts/android-stage-voice-models.mjs --from <build-native output> --from <model directory>`.
@@ -222,9 +222,10 @@ claim that the current development build reproduces those bytes.
    engine against the record and records a release distributable only with a qualified voice host
    (`scripts/release-blockers.mjs`).
 
-The app's engine comes from the embedding host (`android/embedding-host/qualified-host.json`),
-which needs requalification at this pin (RegisterNatives JNI and the new gitlink); the candidate
-libraries are named in its `requalification` note.
+The app's engine comes from the embedding host (`android/embedding-host/qualified-host.json`).
+The full Alpha JNI bridge and current engine passed BGE component qualification on ARM64
+and x86_64. Its original JNI build revision is preserved, with current input equivalence
+checked separately; this does not establish installed-app or device acceptance.
 
 ## Development host (browser with the local agent)
 

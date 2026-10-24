@@ -11,7 +11,8 @@ const run=(...args)=>spawnSync(process.execPath,['scripts/prepare-embedding-host
 test('remapping authenticates the reviewed SDK root and covers NDK header debug paths',()=>{
  const env=embeddingBuildRemap(root,{sdk:'/different/android-sdk',staging:'/isolated/source',fork:'/isolated/engine',build:'/isolated/jni'});
  const receipt=JSON.parse(fs.readFileSync(path.join(root,SDK_PROVENANCE_RECEIPT),'utf8'));
- assert.ok(env.CCC_OVERRIDE_OPTIONS.includes(`+-ffile-prefix-map=/different/android-sdk=${receipt.env.ANDROID_HOME}`));
+ assert.ok(receipt.env.CCC_OVERRIDE_OPTIONS.includes(`+-ffile-prefix-map=${receipt.env.ANDROID_HOME}=/work/android-sdk`));
+ assert.ok(env.CCC_OVERRIDE_OPTIONS.includes('+-ffile-prefix-map=/different/android-sdk=/work/android-sdk'));
  assert.ok(env.CCC_OVERRIDE_OPTIONS.includes('+-ffile-prefix-map=/isolated/jni=/alphaphone-embedding-host/jni-build'));
  assert.throws(()=>embeddingBuildRemap(root,{sdk:'/sdk with spaces',staging:'/source',fork:'/engine',build:'/build'}),/absolute paths without whitespace/);
 });

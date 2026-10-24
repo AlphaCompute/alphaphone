@@ -77,9 +77,19 @@ export function channelSigningProblems(channel, product, file = "android/aosp/pi
  */
 export function channelDistributionProblems(channel, file = "android/aosp/pixel10a-ota-channel.json") {
   const problems = [];
-  for (const field of placeholderFields(channel?.recovery?.knownGoodRelease ?? {})) problems.push(`${file}: recovery.knownGoodRelease.${field} is unset`);
-  for (const [drill, result] of Object.entries(channel?.drills ?? {})) if (result !== "passed") problems.push(`${file}: ${drill} drill is ${JSON.stringify(result)}, not passed`);
-  if (!channel?.drills || !Object.keys(channel.drills).length) problems.push(`${file}: no update or recovery drills are recorded`);
+  const recovery = channel?.recovery?.knownGoodRelease;
+  for (const field of ["buildFingerprint", "otaSha256", "recordFile"]) {
+    const value = recovery?.[field];
+    if (typeof value !== "string" || !value.trim() || placeholderFields(value).length)
+      problems.push(`${file}: recovery.knownGoodRelease.${field} is unset`);
+    else if (field === "otaSha256" && !HEX64.test(value))
+      problems.push(`${file}: recovery.knownGoodRelease.otaSha256 must be a SHA-256`);
+  }
+  const drills = new Set(["signedUpdate", "interruptedUpdate", "compatibleRollback", "stockRecovery", ...Object.keys(channel?.drills ?? {})]);
+  for (const drill of drills) {
+    const result = channel?.drills?.[drill];
+    if (result !== "passed") problems.push(`${file}: ${drill} drill is ${JSON.stringify(result)}, not passed`);
+  }
   return problems;
 }
 
