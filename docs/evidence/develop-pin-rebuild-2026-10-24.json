@@ -1,0 +1,60 @@
+{
+  "date": "2026-10-24",
+  "status": "candidate-not-admitted",
+  "base": "f665750ce",
+  "upstream": {
+    "previous": "58dfddf87ee5adec414746a86a23dada124fbbae",
+    "candidate": "2743655cd6f63a6e73d6a6b1fe4a14d80ecfd32a",
+    "developReachable": true,
+    "nativeFork": "0d9fd4b9db239bbf851068f98c99f4263f8c05c5",
+    "voiceProjectionChange": "voice-chat-types.ts comment only; remaining authenticated projection inputs unchanged",
+    "androidSource": "plugins/plugin-local-inference/native/android"
+  },
+  "pullRequests": {
+    "616": "Included locally; both normal merge and authorized admin merge rejected by independent-review rule; auto-merge disabled."
+  },
+  "checks": {
+    "typecheck": "passed",
+    "webBuild": "passed",
+    "productionBundleAudit": "passed, 408 files, testMocks=false",
+    "clientAndNdkTests": "10 passed",
+    "documentationAndEmbeddingAdmissionTests": "27 passed",
+    "hostSpeechAdmissionTests": "4 passed",
+    "voiceRecordTests": "8 passed; current pin admission failed, requires new qualified native artifacts",
+    "verify": {
+      "result": "failed",
+      "tests": 1813,
+      "passed": 1791,
+      "failed": 16,
+      "skipped": 6,
+      "note": "Initial integrated run. Subsequent fixes and environment cleanup passed all 58 targeted tests covering 14 initial failures. Full suite not rerun; dependency disposition and voice qualification remain known failing gates."
+    },
+    "androidBuild": "blocked at preflight: native voice outputs absent",
+    "androidBuildLocal": "blocked at preflight: native voice outputs absent",
+    "dependencyAudit": "124 findings, normalized package input unchanged from prior snapshot; new registry advisories and obsolete disposition require review",
+    "repairedTests": "58 passed with JAVA_HOME=/usr/lib/jvm/java-21-openjdk",
+    "cloudHostTests": "4 passed after preserving obsolete vendor build outputs outside checkout",
+    "finalFocused": "24 passed, 1 failed across license, host speech and voice record tests; remaining failure is current-pin voice admission"
+  },
+  "qualification": {
+    "apkBuilt": false,
+    "standaloneVerified": false,
+    "launcherVerified": false,
+    "emulatorHomeTest": false,
+    "aospImageBoot": false,
+    "realIntegrations": false,
+    "deviceUserAcceptance": false
+  },
+  "preservation": {
+    "workspace": "stash created before sync: Preserve pre-sync workspace 2026-10-24; old branch is already an ancestor of main; stale uncommitted work not replayed over current main",
+    "ignoredVendorBuildOutputs": "Moved unchanged to artifacts/pre-sync-vendor-generated-20261024 so immutable upstream source verification can run",
+    "obsoleteGeneratedAssets": "Moved unchanged to artifacts/pre-sync-generated-20261024, including obsolete speech files and old staged agent payload; no historical APK was rebuilt or relabeled."
+  },
+  "remaining": [
+    "Independent approval to merge PR 616",
+    "Native voice and embedding requalification for new fork/model bytes; stage matching outputs",
+    "Prepare current resident source, workflow worker and payload",
+    "Review dependency advisories without silently adding exceptions",
+    "Pass full repository verification and all four APK builds before merge"
+  ]
+}
