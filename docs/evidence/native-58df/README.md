@@ -56,7 +56,7 @@ open. Building the APKs did not run their installed-app acceptance tests.
 
 ## Packaged Alpha speech bridge
 
-The unchanged standalone and launcher app APKs passed the offline Capacitor bridge
+The standalone and launcher app APKs passed the offline Capacitor bridge
 test on the API 35 x86_64 emulator. It covers fixture AAC transcription, streamed
 synthesis, playback completion, explicit stop, queued cancellation and recovery.
 See `packaged-bridge/results.json` for exact app/test APK hashes and raw class logs
@@ -66,7 +66,7 @@ The initial test submitted speech during resident startup. A temporary debug tra
 identified `releaseLocalSpeech` stopping that utterance when the selected connection
 changed. The test now waits for the production sign-in page to finish connection
 work, while retaining the account/session cancellation guard. Temporary product
-tracing was removed, and the tested standalone APK matches the original pre-trace
+tracing was removed, and the bridge run's standalone APK matches the original pre-trace
 SHA-256 `2418a1cd0341721a042b1e11a1cfc055eb4b92f5317d364d809d6ac5dff81e27`.
 The startup wait applies only to production builds; test-mocks builds keep their
 existing readiness path.
@@ -76,6 +76,9 @@ each in standalone and launcher. It includes native transcription/synthesis,
 model reuse and reopen, the Capacitor bridge, note read-aloud and stop, Silero VAD,
 and sentence cancellation/recovery. `packaged-speech/results.json` binds the run
 to both app APKs and instrumentation APKs; its class logs are retained beside it.
+Those are rebuilt APKs (standalone `bb74f35a…`, launcher `c037cac1…`), not the
+bridge run's `2418a1cd…`/`87bc73c3…`. Both runs record a dirty tree at
+`5122983778`, before the committed test wait, so neither binds to committed source.
 Networking was disabled during execution, restored afterwards, and both temporary
 Alpha packages were removed. Final `npm run verify` and `npm run android:build`
 passed before this run. Physical audio and user acceptance remain open.

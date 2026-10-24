@@ -10,7 +10,10 @@ export function embeddingBuildRemap(productRoot, {sdk, staging, fork, build}) {
  const manifest=JSON.parse(fs.readFileSync(path.join(productRoot,'android/embedding-host/qualified-host.json'),'utf8'));
  const bytes=fs.readFileSync(path.join(productRoot,SDK_PROVENANCE_RECEIPT));
  if(createHash('sha256').update(bytes).digest('hex')!==manifest.qualificationReceiptSha256)throw Error('Reviewed SDK provenance receipt is missing or changed');
- const receipt=JSON.parse(bytes),reviewedSdk=receipt.env?.ANDROID_HOME;
+ const receipt=JSON.parse(bytes),buildSdk=receipt.env?.ANDROID_HOME;
+ // The reviewed bytes carry the SDK path the build remapped to, not the build host's SDK root.
+ const sdkRule=(receipt.env?.CCC_OVERRIDE_OPTIONS??'').split(/\s+/).find(option=>option.startsWith(`+-ffile-prefix-map=${buildSdk}=`));
+ const reviewedSdk=sdkRule?sdkRule.slice(`+-ffile-prefix-map=${buildSdk}=`.length):buildSdk;
  if(receipt.forkPin!==manifest.forkPin||receipt.identity!==manifest.identity)throw Error('Reviewed SDK provenance does not match the embedding host');
  for(const directory of [sdk,staging,fork,build,reviewedSdk])
   if(typeof directory!=='string'||!path.isAbsolute(directory)||/\s/.test(directory))throw Error('Build path remapping needs absolute paths without whitespace');
