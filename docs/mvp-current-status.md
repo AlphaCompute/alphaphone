@@ -1,7 +1,9 @@
 # Current MVP status
 
+October 24 candidate update: Eliza develop `2743655cd6f63a6e73d6a6b1fe4a14d80ecfd32a` is under validation, not admitted for distribution. Native engine qualification, dependency-audit dispositions and Android voice inputs remain blocking. See [rebuild evidence](evidence/develop-pin-rebuild-2026-10-24.json). Prior evidence below retains its original source scope.
 
-Current source admission: SDK `58dfddf87ee5adec414746a86a23dada124fbbae` carries the reviewed Maps place-ID correction, task-origin/browser navigation fixes and Android mobile bridge loader. The listed Alpha-compiled native modules, client projections, native engine gitlink and model inputs are unchanged from `f931082ebd87a0fecc3f11f8eacf58f598294d4a`. Shared upstream native browser code changed, but that module is not an Alpha Gradle dependency. Native qualification remains false; current runtime/APK/live acceptance is pending. See [source comparison](evidence/sdk-reviewed-maps-tasks-source-20261023.json).
+
+Previous source admission: SDK `58dfddf87ee5adec414746a86a23dada124fbbae` carries the reviewed Maps place-ID correction, task-origin/browser navigation fixes and Android mobile bridge loader. The listed Alpha-compiled native modules, client projections, native engine gitlink and model inputs are unchanged from `f931082ebd87a0fecc3f11f8eacf58f598294d4a`. Shared upstream native browser code changed, but that module is not an Alpha Gradle dependency. Native qualification remains false; current runtime/APK/live acceptance is pending. See [source comparison](evidence/sdk-reviewed-maps-tasks-source-20261023.json).
 
 Previous source admission: SDK `f931082ebd87a0fecc3f11f8eacf58f598294d4a` carries the reviewed host-model size correction, consented browser control fixes, Clef decisions and migration diagnostics. Android native module inputs, voice projections, native engine gitlink and voice model inputs are unchanged from `b322e38de25a2c2ff26a137552e4470ec2ccc0cc`. See [source comparison](evidence/sdk-reviewed-voice-browser-source-20261023.json).
 
@@ -47,6 +49,8 @@ the operator's index of build, provisioning, release and support material is the
 [operational hand-off index](operational-handoff.md).
 
 ## Product boundaries
+
+Candidate pin `2743655cd6` is blocked on native requalification and dependency review; prior acceptance does not transfer.
 
 The historical October 14 development rebuild used upstream `193d9264fc`; current source pins have advanced since that build. Acceptance evidence below remains scoped to its recorded builds.
 

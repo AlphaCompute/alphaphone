@@ -113,3 +113,32 @@ print('ok')
 `], { encoding: 'utf8', timeout: 20_000 });
   assert.equal(output.trim(), 'ok');
 });
+
+for (const outcome of ['inactive', 'rejected']) test(`native navigation ${outcome} update retires screen-off ownership once`, async () => {
+ const { BackgroundNavigation } = await import('../apps/app/src/maps/background-navigation.ts');
+ const native = bridge(), heard = [], session = new BackgroundNavigation(native, () => true);
+ native.updateNavigation = async () => { if (outcome === 'rejected') throw Error('service lost'); return {active:false}; };
+ await session.start('Route', 'Start', reason => heard.push(reason));
+ session.update('Turn', 'Now');
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(session.active(), false);
+ assert.deepEqual(heard, ['unavailable']);
+ assert.equal(native.listeners.length, 0);
+ await session.stop();
+ assert.equal(native.calls.filter(([kind]) => kind === 'stop').length, 1);
+});
+
+test('a failed update from an old route cannot retire its replacement', async () => {
+ const { BackgroundNavigation } = await import('../apps/app/src/maps/background-navigation.ts');
+ const native = bridge(), heard = [], session = new BackgroundNavigation(native, () => true);
+ let fail;
+ native.updateNavigation = () => new Promise((_, reject) => { fail = reject; });
+ await session.start('Old', 'Start', reason => heard.push(reason));
+ session.update('Old turn', 'Now');
+ await session.start('New', 'Start', reason => heard.push(reason));
+ fail(Error('late failure'));
+ await new Promise(resolve => setImmediate(resolve));
+ assert.equal(session.active(), true);
+ assert.deepEqual(heard, []);
+ await session.stop();
+});

@@ -84,7 +84,7 @@ export function createCloudMaps(captureRequest: () => CloudMapsRequest, configur
    return this.places((await call(this.request, 'places/search', signal, { query: text })).places);
   }
   async detail(id: string, signal: AbortSignal): Promise<Place | null> {
-   if (!/^[NWR][1-9][0-9]{0,18}$/.test(id)) return null;
+   if (!boundedText(id, 512)) return null;
    const result = (await call(this.request, 'places/details', signal, { id })).place;
    return result === null ? null : place(result, this.providerId);
   }

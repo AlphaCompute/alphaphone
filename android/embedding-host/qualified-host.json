@@ -66,5 +66,10 @@
     "mode": "registered",
     "className": "ai/elizaresearch/alphaphone/ElizaVoiceNative",
     "subset": "full"
+  },
+  "requalification": {
+    "required": true,
+    "atPin": "2743655cd6f63a6e73d6a6b1fe4a14d80ecfd32a",
+    "reason": "The develop update changes the native engine gitlink to 0d9fd4b9db239bbf851068f98c99f4263f8c05c5. The recorded 6003 native libraries must be rebuilt and qualified before distribution."
   }
 }
